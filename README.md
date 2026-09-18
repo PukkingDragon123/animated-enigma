@@ -7,14 +7,22 @@ Everything is hand-built in vanilla JavaScript on an HTML5 canvas: no build step
 
 ## Play
 
-Serve the folder with any static server and open `index.html`:
+**In your browser, right now:**
+
+- https://raw.githack.com/PukkingDragon123/animated-enigma/claude/friendly-cori-1x5fiu/play.html
+
+`play.html` is a single self-contained file with every script and style inlined, so it also runs
+straight off your disk with no server at all - just download it and double-click.
+
+**From a checkout**, either open `play.html` directly, or serve the folder and open `index.html`
+(the multi-file version, which is the one to edit):
 
 ```
 python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-(Opening `index.html` directly from disk also works in most browsers.)
+Run `./build.sh` to regenerate `play.html` after changing anything under `src/`.
 
 ## Controls
 
@@ -78,4 +86,5 @@ src/waves.js      timed spawn director
 src/ui.js         HUD and the Workshop overlay
 src/scenes.js     cinematic intro, pier dialogue, end screens
 src/game.js       game state machine, camera, render order
+play.html         generated single-file build (run ./build.sh to refresh)
 ```
