@@ -66,17 +66,35 @@ const Intro = {
       drawSprite(ctx, SP.otter, ox, oy, 0, 2, 2);
       drawSprite(ctx, SP.guns.revolver, ox + 8, oy + 4, -0.3, 2, 2);
       if (t > 8.9) { /* crouch */ }
-    } else if (t < 10.15) {
+    } else if (t < 10.6) {
       const j = this.jumpPos();
       const rot = j.k * 1.3;
-      drawSprite(ctx, SP.manateeTail, j.x - 20 * Math.cos(rot), j.y - 20 * Math.sin(rot) + 2, rot, 2, 2);
-      drawSprite(ctx, SP.manateeBody, j.x, j.y, rot, 2, 2);
-      drawSprite(ctx, SP.otter, j.x + 4 * Math.cos(rot) + 16 * Math.sin(rot), j.y - 16 * Math.cos(rot), rot, 2, 2);
-      if (j.k >= 1 && !this.splashed) { this.splashed = true; Audio_.splash(3); this.shakeT = 0.3; for (let i = 0; i < 70; i++) { const a = rand(-Math.PI, 0), sp = rand(60, 260); this.drops.push({ x: 330, y: 262, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.6, 1.4), c: Math.random() < 0.3 ? '#8ac6ff' : '#eaf8ff' }); } }
+      // after touching the water they keep sinking below the surface (clipped by the waterline)
+      const sink = Math.max(0, t - 10.1) * 90;
+      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 640, 264); ctx.clip();
+      drawSprite(ctx, SP.manateeTail, j.x - 20 * Math.cos(rot), j.y + sink - 20 * Math.sin(rot) + 2, rot, 2, 2);
+      drawSprite(ctx, SP.manateeBody, j.x, j.y + sink, rot, 2, 2);
+      drawSprite(ctx, SP.otter, j.x + 4 * Math.cos(rot) + 16 * Math.sin(rot), j.y + sink - 16 * Math.cos(rot), rot, 2, 2);
+      ctx.restore();
+      if (j.k >= 0.96 && !this.splashed) {
+        this.splashed = true; Audio_.splash(3); this.shakeT = 0.3;
+        for (let i = 0; i < 110; i++) { const a = rand(-Math.PI * 0.95, -Math.PI * 0.05), sp = rand(60, 320); this.drops.push({ x: 330 + rand(-14, 14), y: 262, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.6, 1.5), c: Math.random() < 0.3 ? '#8ac6ff' : '#eaf8ff' }); }
+      }
+    }
+    // splash column
+    if (this.splashed && t < 10.9) {
+      const k = (t - 10.1) / 0.8, h = Math.sin(Math.min(1, k) * Math.PI) * 74;
+      // tapered pixel pillar of water, wide at the base, thin at the tip
+      for (let i = 0; i < 6; i++) {
+        const w = Math.round(30 - i * 4.5), hh = Math.round(h * (0.35 + i * 0.13));
+        ctx.fillStyle = i % 2 ? 'rgba(138,198,255,0.85)' : 'rgba(234,248,255,0.92)';
+        ctx.fillRect(330 - (w >> 1) + Math.round(Math.sin(t * 30 + i) * 1.5), 262 - hh, w, hh);
+      }
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(327, 262 - Math.round(h), 6, 3);
     }
     // splash droplets & foam
     for (const d of this.drops) { ctx.fillStyle = d.c; ctx.fillRect(Math.round(d.x), Math.round(d.y), 2, 2); }
-    if (this.splashed && t < 11) { const k = (t - 10.15); ctx.strokeStyle = `rgba(230,246,255,${Math.max(0, 0.9 - k).toFixed(2)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(330, 264, 20 + k * 120, 6 + k * 30, 0, 0, TAU); ctx.stroke(); }
+    if (this.splashed && t < 11) { const k = Math.max(0, t - 10.1); ctx.strokeStyle = `rgba(230,246,255,${Math.max(0, 0.9 - k).toFixed(2)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(330, 264, 20 + k * 120, 6 + k * 30, 0, 0, TAU); ctx.stroke(); }
     // dive: water rises to fill the screen
     if (t > 10.0) {
       const k = clamp((t - 10.0) / 1.4, 0, 1);

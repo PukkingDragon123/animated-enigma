@@ -137,7 +137,7 @@ class Game {
     // camera
     const p = this.player;
     // bias the camera toward the shore when close to it, so the village stays in view
-    const shoreBias = Math.max(0, (SHORE_Y + 420 - p.y)) * 0.45;
+    const shoreBias = Math.max(0, (SHORE_Y + 420 - p.y)) * 0.8;
     const tx = p.x - 320 + p.vx * 0.22, ty = p.y - 180 + p.vy * 0.22 - shoreBias;
     const k = 1 - Math.pow(0.002, dt);
     this.cam.x = lerp(this.cam.x, clamp(tx, 0, WORLD_W - 640), k); this.cam.y = lerp(this.cam.y, clamp(ty, 0, WORLD_H - 360), k);
