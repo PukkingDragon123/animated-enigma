@@ -1,0 +1,14 @@
+html, body {
+  margin: 0; padding: 0; height: 100%; background: #05070d; overflow: hidden;
+  font-family: monospace;
+}
+#wrap {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #0b1630 0%, #05070d 70%);
+}
+canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: crosshair;
+  outline: none;
+}
