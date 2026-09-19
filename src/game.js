@@ -1,5 +1,6 @@
 // ---- Game: state machine, world, render ---------------------------------
 const WORLD_W = 3200, WORLD_H = 2400, SHORE_Y = 300;
+const RIG_SCALE = 0.58;   // the rig is drawn large for detail, scaled to play size
 
 class Game {
   constructor() {
@@ -8,6 +9,7 @@ class Game {
     this.ctx = this.g.getContext('2d'); this.ctx.imageSmoothingEnabled = false;
     Input.init(this.display);
     window.addEventListener('resize', () => this.resize()); this.resize();
+    buildCharacters();
     this.tree = new SkillTree();
     this.state = 'intro'; Intro.reset();
     this.firstRun = true; this.muted = false;
@@ -64,7 +66,7 @@ class Game {
   banner(text, color, dur = 2, sub = null) { UI.banner = { text, color, dur, sub, t: 0 }; }
   shake(n) { this.shakeAmt = Math.min(20, Math.max(this.shakeAmt, n)); }
   onFishermanShot() { this.holdFire = false; this.banner('FISHER VILLAGE', '#ff6161', 2.6, 'The otter has spoken. FIGHT!'); setTimeout(() => { if (this.director) this.director.started = true; }, 1200); this.state = 'play'; }
-  onEnemyKilled(e) { const p = this.player; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
+  onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() { this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0; this.state = 'victory_wait'; }
   onPlayerDeath() { this.particles.blood(this.player.x, this.player.y, 4); this.particles.splash(this.player.x, this.player.y, 3); this.shake(16); this.endT = 0; this.state = 'dead_wait'; }
   // ---------------------------------------------------------- loop
@@ -96,6 +98,8 @@ class Game {
         this.weaponKeys();
         break;
       case 'tree':
+        TreeScene.update(dt, this.time + dt);
+        this.time += dt;
         UI.updateTree();
         if (Input.hit('Tab') || Input.hit('Escape')) this.state = this.prevState || 'play';
         break;
@@ -127,6 +131,8 @@ class Game {
     for (const w of this.wrecks) w.update(dt);
     if (this.buoy) { this.buoy.update(dt); if (this.buoy.dead) this.buoy = null; }
     this.particles.update(dt, (x, y) => this.ocean.flow(x, y));
+    Toon.update(dt);
+    Rig.updateBlink(dt);
     // rocks make foam
     for (const r of this.rocks) { if (Math.random() < 0.15) { const a = rand(0, TAU); this.ocean.addFoam(r.x + Math.cos(a) * (r.r + 4), r.y + Math.sin(a) * (r.r + 4) * 0.8, 0.12); } r.glow = Math.max(0, r.glow - dt * 2); }
     // cleanup
@@ -170,6 +176,7 @@ class Game {
     if (!this.player.diving) this.player.render(ctx, cam, t);
     for (const p of this.projectiles) p.render(ctx, cam);
     this.particles.render(ctx, cam);
+    Toon.render(ctx, cam);
     this.ocean.renderRipples(ctx, cam);
     // overlays
     if (this.state === 'dialogue') Dialogue.render(ctx, cam);

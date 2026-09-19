@@ -135,7 +135,7 @@ const UI = {
       const n = this.hover;
       if (m.clicked) {
         if (tree.has(n.id)) { if (n.weapon) { tree.primary = n.weapon; Audio_.buy(); } }
-        else if (tree.buy(n)) { Audio_.buy(); G.player.refreshStats(); G.particles.text(G.player.x, G.player.y - 24, n.name + '!', '#6fd88e', 8); if (n.weapon) { tree.primary = n.weapon; } }
+        else if (tree.buy(n)) { Audio_.buy(); G.player.refreshStats(); const q = this.nodeXY(n); TreeScene.grab(n, q.x, q.y); G.particles.text(G.player.x, G.player.y - 24, n.name + '!', '#6fd88e', 8); if (n.weapon) { tree.primary = n.weapon; } }
         else Audio_.deny();
       }
       if (m.rclicked && n.weapon && tree.has(n.id) && G.player.stats.sidearm) { tree.sidearm = tree.sidearm === n.weapon ? null : n.weapon; Audio_.buy(); }
@@ -146,68 +146,105 @@ const UI = {
   },
   drawTree(ctx, t) {
     const tree = G.tree;
-    ctx.fillStyle = 'rgba(4,8,20,0.93)'; ctx.fillRect(0, 0, 640, 360);
-    pixelText(ctx, 'THE WORKSHOP', 8, 6, 12, '#ffe48f');
-    pixelText(ctx, 'Spend scrap. Every choice is yours - no luck involved.', 8, 20, 6, '#aab');
-    SCRAP_TYPES.forEach((k, i) => { const x = 400 + i * 46; drawSprite(ctx, SP.scrap[k], x + 4, 11); pixelText(ctx, tree.scrap[k] + '', x + 11, 7, 9, SCRAP_COLORS[k]); });
-    pixelText(ctx, '[TAB] / [ESC] back to the fight', 634, 20, 6, '#aab', 'right');
-    // panels
-    BRANCHES.forEach((b, bi) => {
-      const px = 4 + bi * 158;
-      ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fillRect(px, 30, 154, 288);
-      ctx.fillStyle = b.color; ctx.fillRect(px, 30, 154, 1);
-      drawSprite(ctx, SP[b.icon], px + 4, 34);
-      pixelText(ctx, b.name, px + 14, 33, 8, b.color);
-      pixelText(ctx, b.blurb, px + 4, 43, 5.5, '#99a');
-    });
-    // links
+    // ---- the deep: he is drowning, and every upgrade is a gulp of air
+    TreeScene.renderBackdrop(ctx, t);
+    TreeScene.drawDrowningOtter(ctx, t);
+
+    // ---- connective strands between bubbles
     for (const n of SKILL_NODES) {
       const a = this.nodeXY(n);
       for (const rid of n.req) {
         const r = SKILL_BY_ID[rid]; if (!r || r.branch !== n.branch) continue;
-        const bpos = this.nodeXY(r);
-        const on = tree.has(rid);
-        ctx.strokeStyle = on ? (tree.has(n.id) ? BRANCHES.find(b => b.id === n.branch).color : '#8899aa') : '#2a2f3a'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(bpos.x, bpos.y + 9); ctx.lineTo(bpos.x, (bpos.y + a.y) / 2); ctx.lineTo(a.x, (bpos.y + a.y) / 2); ctx.lineTo(a.x, a.y - 9); ctx.stroke();
+        const b = this.nodeXY(r);
+        const on = tree.has(rid), both = on && tree.has(n.id);
+        ctx.strokeStyle = both ? 'rgba(255,228,143,0.55)' : on ? 'rgba(150,215,240,0.35)' : 'rgba(60,90,120,0.28)';
+        ctx.lineWidth = 1;
+        const mid = (b.y + a.y) / 2;
+        const wob = Math.sin(t * 1.4 + a.x * 0.05) * 1.5;
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y + 11); ctx.lineTo(b.x + wob, mid); ctx.lineTo(a.x - wob, mid); ctx.lineTo(a.x, a.y - 11);
+        ctx.stroke();
       }
     }
-    // nodes
+
+    // ---- branch headers, floating like signage in the current
+    BRANCHES.forEach((b, bi) => {
+      const px0 = 4 + bi * 158;
+      ctx.fillStyle = 'rgba(8,24,42,0.45)'; ctx.fillRect(px0, 30, 154, 22);
+      ctx.fillStyle = b.color; ctx.fillRect(px0, 30, 154, 1); ctx.fillRect(px0, 51, 154, 1);
+      drawSprite(ctx, SP[b.icon], px0 + 4, 34);
+      pixelText(ctx, b.name, px0 + 14, 33, 8, b.color);
+      pixelText(ctx, b.blurb, px0 + 4, 43, 5.5, '#9dc3d8');
+    });
+
+    // ---- nodes as air bubbles
     for (const n of SKILL_NODES) {
-      const { x, y } = this.nodeXY(n), col = BRANCHES.find(b => b.id === n.branch).color;
+      const base = this.nodeXY(n);
       const owned = tree.has(n.id), avail = tree.available(n), afford = tree.canAfford(n);
       const hover = this.hover === n;
-      ctx.fillStyle = owned ? col : avail ? '#1d2230' : '#0d1018'; ctx.fillRect(x - 12, y - 9, 24, 18);
-      ctx.strokeStyle = owned ? '#fff' : avail && afford ? (Math.floor(t * 3) % 2 ? '#6fd88e' : '#fff') : avail ? '#556' : '#22262e'; ctx.lineWidth = hover ? 2 : 1;
-      ctx.strokeRect(x - 12 + 0.5, y - 9 + 0.5, 23, 17);
-      ctx.globalAlpha = avail || owned ? 1 : 0.35;
+      // bubbles drift
+      const ph = n.pos[0] * 1.7 + n.pos[1] * 0.9 + n.branch.length;
+      const x = Math.round(base.x + Math.sin(t * 0.9 + ph) * 1.6);
+      const y = Math.round(base.y + Math.cos(t * 1.15 + ph) * 1.8);
+      const spr = owned ? TreeScene.sprOwned : !avail ? TreeScene.sprLocked : afford ? TreeScene.sprAfford : TreeScene.sprAvailable;
+      if (hover) ctx.drawImage(TreeScene.sprHover.c, x - TreeScene.sprHover.ax, y - TreeScene.sprHover.ay);
+      ctx.drawImage(spr.c, x - spr.ax, y - spr.ay);
+      // a ready bubble shimmers
+      if (avail && afford && !owned) {
+        ctx.strokeStyle = `rgba(190,255,235,${(0.35 + Math.sin(t * 5 + ph) * 0.3).toFixed(2)})`;
+        ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, 15 + Math.sin(t * 5 + ph), 0, TAU); ctx.stroke();
+      }
+      // icon inside the bubble
+      ctx.globalAlpha = avail || owned ? 1 : 0.4;
       if (n.weapon) { const g = SP.guns[n.weapon]; ctx.drawImage(g.c, Math.round(x - g.w / 2), Math.round(y - g.h / 2)); }
       else { const gl = GLYPH_SP[NODE_ICON[n.id] || 'ability']; drawSprite(ctx, gl, x, y); }
       ctx.globalAlpha = 1;
-      if (n.weapon && owned) { if (tree.primary === n.weapon) pixelText(ctx, 'P', x + 7, y - 9, 6, '#fff', 'left'); if (tree.sidearm === n.weapon) pixelText(ctx, 'S', x + 7, y - 9, 6, '#ffe48f', 'left'); }
+      if (n.weapon && owned) {
+        if (tree.primary === n.weapon) pixelText(ctx, 'P', x + 9, y - 12, 6, '#fff');
+        if (tree.sidearm === n.weapon) pixelText(ctx, 'S', x + 9, y - 12, 6, '#ffe48f');
+      }
       const label = n.name.length > 13 ? n.name.slice(0, 12) + '.' : n.name;
-      pixelText(ctx, label, x, y + 10, 5, owned ? '#fff' : avail ? '#bcc' : '#556', 'center', false);
+      pixelText(ctx, label, x, y + 13, 5, owned ? '#ffe9b0' : avail ? '#cfe9f5' : '#6d8598', 'center', true);
     }
-    // revolver loadout row
-    ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fillRect(4, 300, 154, 16);
-    drawSprite(ctx, SP.guns.revolver, 8, 306); pixelText(ctx, 'Revolver' + (tree.primary === 'revolver' ? ' [P]' : '') + (tree.sidearm === 'revolver' ? ' [S]' : ''), 22, 304, 6, '#fff');
-    pixelText(ctx, 'click: equip  rclick: sidearm', 22, 310, 5, '#889');
-    // tooltip
+
+    TreeScene.renderFx(ctx, t);
+
+    // ---- header
+    ctx.fillStyle = 'rgba(4,14,26,0.72)'; ctx.fillRect(0, 0, 640, 28);
+    pixelText(ctx, 'THE DEEP', 8, 4, 12, '#ffe48f');
+    pixelText(ctx, 'He is out of air. Every upgrade is a bubble — reach out and take it.', 8, 18, 6, '#9fd8ee');
+    SCRAP_TYPES.forEach((k, i) => {
+      const x = 390 + i * 46;
+      drawSprite(ctx, SP.scrap[k], x + 4, 11); pixelText(ctx, tree.scrap[k] + '', x + 11, 6, 9, SCRAP_COLORS[k]);
+    });
+    pixelText(ctx, '[TAB] / [ESC] surface', 634, 18, 6, '#9fd8ee', 'right');
+
+    TreeScene.renderBreath(ctx);
+
+    // ---- tooltip
     const n = this.hover;
-    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 320, 640, 40);
+    ctx.fillStyle = 'rgba(2,10,20,0.85)'; ctx.fillRect(0, 306, 640, 34);
+    ctx.fillStyle = 'rgba(127,212,238,0.5)'; ctx.fillRect(0, 306, 640, 1);
     if (n) {
       const owned = tree.has(n.id), avail = tree.available(n);
-      pixelText(ctx, n.name, 8, 323, 9, BRANCHES.find(b => b.id === n.branch).color);
+      pixelText(ctx, n.name, 8, 309, 9, BRANCHES.find(b => b.id === n.branch).color);
       const lines = wrapText(ctx, n.desc, 380, 6.5);
-      lines.slice(0, 2).forEach((l, i) => pixelText(ctx, l, 8, 335 + i * 9, 6.5, '#dde'));
+      lines.slice(0, 2).forEach((l, i) => pixelText(ctx, l, 8, 320 + i * 8, 6.5, '#dceef7'));
       let cx = 430;
-      pixelText(ctx, 'COST', cx, 323, 6, '#aab'); cx += 26;
-      for (const k in n.cost) { drawSprite(ctx, SP.scrap[k], cx + 4, 327); pixelText(ctx, n.cost[k] + '', cx + 10, 323, 8, owned ? '#889' : tree.scrap[k] >= n.cost[k] ? '#6fd88e' : '#ff6161'); cx += 30; }
-      const status = owned ? (n.weapon ? 'OWNED - click to equip, right-click for sidearm' : 'OWNED') : !avail ? 'LOCKED - needs: ' + n.req.map(r => SKILL_BY_ID[r].name).join(n.reqAny ? ' or ' : ' + ') : tree.canAfford(n) ? 'CLICK TO BUY' : 'NOT ENOUGH SCRAP';
-      pixelText(ctx, status, 430, 341, 6, owned ? '#ffe48f' : !avail ? '#ff6161' : tree.canAfford(n) ? '#6fd88e' : '#ff6161');
+      pixelText(ctx, 'COST', cx, 309, 6, '#9fd8ee'); cx += 26;
+      for (const k in n.cost) {
+        drawSprite(ctx, SP.scrap[k], cx + 4, 313);
+        pixelText(ctx, n.cost[k] + '', cx + 10, 309, 8, owned ? '#7a8c98' : tree.scrap[k] >= n.cost[k] ? '#9ff0d8' : '#ff6161');
+        cx += 30;
+      }
+      const status = owned ? (n.weapon ? 'TAKEN — click to equip, right-click for sidearm' : 'TAKEN')
+        : !avail ? 'OUT OF REACH — needs ' + n.req.map(r => SKILL_BY_ID[r].name).join(n.reqAny ? ' or ' : ' + ')
+        : tree.canAfford(n) ? 'CLICK TO GRAB IT' : 'NOT ENOUGH SCRAP';
+      pixelText(ctx, status, 430, 328, 6, owned ? '#ffe48f' : !avail ? '#ff6161' : tree.canAfford(n) ? '#9ff0d8' : '#ff6161');
     } else {
-      pixelText(ctx, 'Hover a node to inspect it. Enemies drop different scrap: dinghies=wood, harpooners/gunboats=metal, speedboats/jetskis=fuel, dynamite skiffs=powder, netters/trawlers=electronics.', 8, 323, 6, '#aab');
-      pixelText(ctx, `Sunk: ${G.stats.kills}   Absorbs: ${G.stats.absorbs}   Scrap collected: ${G.stats.scrapCollected}   Unlocked: ${tree.unlocked.size}/${SKILL_NODES.length}`, 8, 336, 6, '#dde');
-      pixelText(ctx, 'Tip: the game is paused while you plan.', 8, 348, 6, '#889');
+      pixelText(ctx, 'Hover a bubble to inspect it. Boats drop different scrap: dinghies=wood, harpooners/gunboats=metal, speedboats/jetskis=fuel, skiffs=powder, netters/trawlers=electronics.', 8, 310, 6, '#9fd8ee');
+      pixelText(ctx, `Sunk: ${G.stats.kills}   Absorbs: ${G.stats.absorbs}   Scrap: ${G.stats.scrapCollected}   Taken: ${tree.unlocked.size}/${SKILL_NODES.length}`, 8, 322, 6, '#dceef7');
+      pixelText(ctx, 'The fight is paused while you plan.', 8, 332, 6, '#6f93a8');
     }
   },
 };

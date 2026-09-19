@@ -54,37 +54,49 @@ const Intro = {
     // foam where waves hit the cliff
     ctx.fillStyle = `rgba(230,246,255,${(0.5 + Math.sin(t * 3) * 0.3).toFixed(2)})`; ctx.fillRect(170, 258 + Math.sin(t * 3) * 3, 40, 3); ctx.fillRect(185, 280 + Math.cos(t * 2.5) * 3, 30, 2);
     // characters
+    const rigOpts = (aim, roll, exp) => ({
+      t, aim, facing: 1, tilt: 0, swimPhase: t * 2.5, rollPhase: roll,
+      hurt: false, exp, rage: false, recoil: 0, flash: 0,
+      speed: 0, armored: true, gunSprite: SP.guns.revolver,
+    });
     if (t < 9.0) {
-      // manatee lying on the cliff edge, otter beside (then hops on at t>8.2)
-      const mx = 120, my = 138;
-      drawSprite(ctx, SP.manateeTail, mx - 20, my + 2, Math.sin(t * 2) * 0.1, 2, 2);
-      drawSprite(ctx, SP.manateeBody, mx, my, 0, 2, 2);
-      let ox = 60, oy = 132;
-      if (t > 8.2) { const k = clamp((t - 8.2) / 0.6, 0, 1); ox = lerp(60, mx + 4, k); oy = lerp(132, my - 16, k) - Math.sin(k * Math.PI) * 30; }
-      else if (t > 7.6) { oy = 132 - Math.abs(Math.sin((t - 7.6) * 10)) * 6; } // excited hop
-      drawSprite(ctx, SP.otterTail, ox - 12, oy + 4, 0, 2, 2);
-      drawSprite(ctx, SP.otter, ox, oy, 0, 2, 2);
-      drawSprite(ctx, SP.guns.revolver, ox + 8, oy + 4, -0.3, 2, 2);
-      if (t > 8.9) { /* crouch */ }
+      // the pair waiting on the cliff edge; the otter hops aboard at the end
+      const mx = 120, my = 140;
+      ctx.save(); ctx.translate(mx, my); ctx.scale(1.15, 1.15);
+      Rig.draw(ctx, 0, 0, Object.assign(rigOpts(-0.25, null, t > 7.6 ? 'angry' : 'idle'), { riderHidden: t < 8.5 }));
+      ctx.restore();
+      if (t < 8.5) {
+        // the otter is still standing beside him, pacing and checking the gun
+        let ox = 62, oy = 128;
+        if (t > 8.2) { const k = clamp((t - 8.2) / 0.3, 0, 1); ox = lerp(62, mx + 4, k); oy = lerp(128, my - 14, k) - Math.sin(k * Math.PI) * 26; }
+        else if (t > 7.6) oy = 128 - Math.abs(Math.sin((t - 7.6) * 10)) * 7;
+        ctx.save(); ctx.translate(ox, oy); ctx.scale(1.5, 1.5);
+        ctx.drawImage(CH.otterTail.c, -16, 2);
+        ctx.drawImage(CH.otterTorso.c, -CH.otterTorso.ax, -CH.otterTorso.ay);
+        const hd = otterHeadWithFace(t > 7.6 ? 'angry' : 'idle', Rig.blink, t, false);
+        ctx.drawImage(hd, -CH.otterHead.ax, -CH.otterHead.ay - 9);
+        ctx.drawImage(SP.guns.revolver.c, 4, -2);
+        ctx.restore();
+      }
     } else if (t < 10.6) {
       const j = this.jumpPos();
-      const rot = j.k * 1.3;
-      // after touching the water they keep sinking below the surface (clipped by the waterline)
+      const rot = j.k * 1.25;
       const sink = Math.max(0, t - 10.1) * 90;
       ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 640, 264); ctx.clip();
-      drawSprite(ctx, SP.manateeTail, j.x - 20 * Math.cos(rot), j.y + sink - 20 * Math.sin(rot) + 2, rot, 2, 2);
-      drawSprite(ctx, SP.manateeBody, j.x, j.y + sink, rot, 2, 2);
-      drawSprite(ctx, SP.otter, j.x + 4 * Math.cos(rot) + 16 * Math.sin(rot), j.y + sink - 16 * Math.cos(rot), rot, 2, 2);
-      ctx.restore();
+      ctx.save(); ctx.translate(j.x, j.y + sink); ctx.rotate(rot); ctx.scale(1.15, 1.15);
+      Rig.draw(ctx, 0, 0, rigOpts(-0.3, null, 'angry'));
+      ctx.restore(); ctx.restore();
       if (j.k >= 0.96 && !this.splashed) {
         this.splashed = true; Audio_.splash(3); this.shakeT = 0.3;
-        for (let i = 0; i < 110; i++) { const a = rand(-Math.PI * 0.95, -Math.PI * 0.05), sp = rand(60, 320); this.drops.push({ x: 330 + rand(-14, 14), y: 262, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.6, 1.5), c: Math.random() < 0.3 ? '#8ac6ff' : '#eaf8ff' }); }
+        for (let i = 0; i < 110; i++) {
+          const a = rand(-Math.PI * 0.95, -Math.PI * 0.05), sp = rand(60, 320);
+          this.drops.push({ x: 330 + rand(-14, 14), y: 262, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.6, 1.5), c: Math.random() < 0.3 ? '#8ac6ff' : '#eaf8ff' });
+        }
       }
     }
     // splash column
     if (this.splashed && t < 10.9) {
       const k = (t - 10.1) / 0.8, h = Math.sin(Math.min(1, k) * Math.PI) * 74;
-      // tapered pixel pillar of water, wide at the base, thin at the tip
       for (let i = 0; i < 6; i++) {
         const w = Math.round(30 - i * 4.5), hh = Math.round(h * (0.35 + i * 0.13));
         ctx.fillStyle = i % 2 ? 'rgba(138,198,255,0.85)' : 'rgba(234,248,255,0.92)';

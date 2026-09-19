@@ -187,7 +187,7 @@ class Player {
     this.weaponCd = { primary: 0, sidearm: 0 };
     this.recoil = { primary: 0, sidearm: 0 }; this.flash = { primary: 0, sidearm: 0 };
     this.aim = 0; this.target = null; this.invuln = 0; this.hurt = 0; this.boost = 0; this.slowed = 0; this.slipT = 0;
-    this.swimPhase = 0; this.regenAcc = 0; this.secondWindUsed = false; this.usedSecondWind = false;
+    this.swimPhase = 0; this.joyT = 0; this.regenAcc = 0; this.secondWindUsed = false; this.usedSecondWind = false;
     this.wake = G.ocean.newWake(this, 8);
     this.bob = 0;
   }
@@ -203,7 +203,7 @@ class Player {
     if (this.dead) return;
     const st = this.stats, inp = Input.axis();
     // ---- timers
-    this.invuln -= dt; this.hurt -= dt; this.boost -= dt; this.slowed -= dt; this.absorb.cd -= dt; this.absorb.flash -= dt; this.dive.cd -= dt; this.decoyCd -= dt; this.tidalCd -= dt;
+    this.invuln -= dt; this.hurt -= dt; this.joyT -= dt; this.boost -= dt; this.slowed -= dt; this.absorb.cd -= dt; this.absorb.flash -= dt; this.dive.cd -= dt; this.decoyCd -= dt; this.tidalCd -= dt;
     for (const k of ['primary', 'sidearm']) { this.weaponCd[k] -= dt; this.recoil[k] = Math.max(0, this.recoil[k] - dt); this.flash[k] -= dt; }
     if (this.roll.charges < st.rollCharges) { this.roll.rechargeT -= dt; if (this.roll.rechargeT <= 0) { this.roll.charges++; this.roll.rechargeT = this.cd(2.4 * st.rollCd); } }
     if (st.regen > 0) { this.hp = Math.min(st.maxHp, this.hp + st.regen * dt); }
@@ -263,6 +263,8 @@ class Player {
     this.roll.dur = 0.38;
     if (this.absorb.active) { this.absorb.active = false; this.absorb.cd = this.cd(this.stats.absorbCd * 0.5); }
     G.particles.splash(this.x, this.y, 1.3); Audio_.roll(); G.shake(2);
+    Toon.shock(this.x, this.y, 46, 0.3);
+    for (let i = 0; i < 4; i++) Toon.speed(this.x, this.y, Math.atan2(dy, dx), 2);
     for (const e of G.enemies) e.rollHit = false;
     if (Math.abs(dx) > 0.2) this.facing = sign(dx);
   }
@@ -271,6 +273,7 @@ class Player {
     G.particles.splash(this.x, this.y, 1.1);
     if (this.stats.rollSplash) {
       G.ocean.ripple(this.x, this.y, 70, 200, 0.9); G.shake(4);
+      Toon.shock(this.x, this.y, 90, 0.45); Toon.puff(this.x, this.y, 5);
       for (const e of G.enemies) if (!e.dead && dist(this.x, this.y, e.x, e.y) < 70 + e.radius) { const a = angleTo(this.x, this.y, e.x, e.y); e.hit(this.stats.rollSplash, Math.cos(a) * 260, Math.sin(a) * 260, null); }
     }
   }
@@ -296,6 +299,8 @@ class Player {
     else if (st.rampFrenzy) this.rampage.t -= 0.5;
     this.absorb.flash = 0.25; G.stats.absorbs++;
     Audio_.absorb(); G.shake(2);
+    Toon.impact(proj.x, proj.y, 1.4, '#8ac6ff'); Toon.shock(this.x, this.y, 70, 0.35, '#8ac6ff');
+    Toon.emote(this.x + 14, this.y - 26, '!');
     G.particles.sparks(proj.x, proj.y, 10); G.particles.text(this.x, this.y - 20, 'ABSORB', '#8ac6ff', 8);
     for (let i = 0; i < 12; i++) G.particles.add({ type: 'spark', x: this.x, y: this.y, vx: Math.cos(i / 12 * TAU) * 160, vy: Math.sin(i / 12 * TAU) * 160, life: 0.3, maxLife: 0.3, color: '#8ac6ff' });
     if (st.absorbHeal) this.hp = Math.min(st.maxHp, this.hp + st.absorbHeal);
@@ -314,6 +319,7 @@ class Player {
     amt *= (1 - Math.min(0.7, this.stats.armor));
     this.hp -= amt; this.invuln = 0.5; this.hurt = 0.15;
     G.shake(Math.min(10, 3 + amt / 4)); Audio_.hurt();
+    Toon.impact(this.x, this.y, 1.2, '#ff6161'); Toon.emote(this.x + 12, this.y - 28, '!');
     const a = sx !== undefined ? angleTo(sx, sy, this.x, this.y) : rand(0, TAU);
     this.vx += Math.cos(a) * 120; this.vy += Math.sin(a) * 120;
     G.particles.blood(this.x, this.y, 0.7, a); G.particles.splash(this.x, this.y, 0.8);
@@ -393,83 +399,66 @@ class Player {
     }));
   }
   // ---- render ------------------------------------------------------------
+  expression() {
+    if (this.hurt > 0) return 'surprised';
+    if (this.rampage.active) return 'angry';
+    if (this.absorb.active) return 'surprised';
+    if (this.joyT > 0) return 'happy';
+    if (this.target || Input.mouse.down) return 'angry';
+    return 'idle';
+  }
   render(ctx, cam, t) {
     if (this.dead) return;
     const sx = this.x - cam.x, sy = this.y - cam.y;
     const st = this.stats;
-    // rampage aura
+
+    // ---- rampage aura
     if (this.rampage.active) {
       const k = 1 - this.rampage.t / this.rampage.dur;
       ctx.strokeStyle = `rgba(255,80,60,${(0.5 + Math.sin(t * 20) * 0.3).toFixed(2)})`; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), 26 + Math.sin(t * 15) * 3, 20 + Math.sin(t * 15) * 2, 0, 0, TAU); ctx.stroke();
-      ctx.strokeStyle = `rgba(255,200,60,0.4)`; ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), 26 + 14 * (1 - k), 20 + 12 * (1 - k), 0, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), 30 + Math.sin(t * 15) * 3, 22 + Math.sin(t * 15) * 2, 0, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,200,60,0.4)';
+      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), 30 + 14 * (1 - k), 22 + 12 * (1 - k), 0, 0, TAU); ctx.stroke();
     }
-    // absorb ring
+    // ---- absorb shield bubble
     if (this.absorb.active) {
       const k = this.absorb.t / st.absorbWindow;
       ctx.strokeStyle = `rgba(140,200,255,${(0.9 - k * 0.5).toFixed(2)})`; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(34 - k * 8), Math.round(26 - k * 6), 0, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(36 - k * 8), Math.round(28 - k * 6), 0, 0, TAU); ctx.stroke();
       ctx.strokeStyle = 'rgba(220,240,255,0.5)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(20 + k * 10), Math.round(15 + k * 8), 0, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(22 + k * 10), Math.round(17 + k * 8), 0, 0, TAU); ctx.stroke();
     }
-    if (this.absorb.flash > 0) { ctx.strokeStyle = `rgba(255,255,255,${(this.absorb.flash * 3).toFixed(2)})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(30 + (0.25 - this.absorb.flash) * 200), Math.round(22 + (0.25 - this.absorb.flash) * 150), 0, 0, TAU); ctx.stroke(); }
+    if (this.absorb.flash > 0) {
+      ctx.strokeStyle = `rgba(255,255,255,${(this.absorb.flash * 3).toFixed(2)})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(32 + (0.25 - this.absorb.flash) * 200), Math.round(24 + (0.25 - this.absorb.flash) * 150), 0, 0, TAU); ctx.stroke();
+    }
+
     const bob = Math.sin(t * 2.5) * 1.2;
-    // ---- roll transform: spin around the long axis (squash Y, flip to belly)
-    let scaleY = 1, belly = false, rollRot = 0;
-    if (this.roll.active) {
-      const ph = this.roll.t / this.roll.dur * TAU;
-      scaleY = Math.cos(ph); if (Math.abs(scaleY) < 0.25) scaleY = 0.25 * sign(scaleY || 1);
-      belly = Math.cos(ph) < 0; rollRot = Math.sin(ph) * 0.15;
-    }
-    const diveK = this.dive.active ? 1 : 0;
+    const speed = Math.hypot(this.vx, this.vy);
     ctx.save();
-    ctx.translate(Math.round(sx), Math.round(sy + bob));
-    if (diveK) { ctx.globalAlpha = 0.45; ctx.translate(0, 4); }
-    ctx.scale(this.facing, scaleY);
-    ctx.rotate(this.tilt * this.facing + rollRot);
-    const hurt = this.hurt > 0 && Math.floor(t * 30) % 2 === 0;
-    const body = hurt ? SP.manateeBodyHurt : belly ? SP.manateeBodyBelly : SP.manateeBody;
-    const tail = hurt ? SP.manateeTailHurt : belly ? SP.manateeTailBelly : SP.manateeTail;
-    const tailSwing = Math.sin(this.swimPhase) * 3, tailRot = Math.sin(this.swimPhase) * 0.25;
-    // tail (behind, left)
-    ctx.save(); ctx.translate(-11, 1); ctx.rotate(tailRot); ctx.drawImage(tail.c, -tail.ax + 1, -tail.ay + tailSwing * 0.3); ctx.restore();
-    // flippers
-    const fl = Math.sin(this.swimPhase + 1) * 2;
-    ctx.save(); ctx.translate(4, 8 + fl); ctx.drawImage(SP.manateeFlipper.c, -1, -1); ctx.restore();
-    // body
-    ctx.drawImage(body.c, -body.ax, -body.ay);
-    // otter riding on the back
-    if (!belly) {
-      ctx.save(); ctx.translate(2, -8 + Math.sin(t * 5) * 0.5);
-      const aimLocal = this.facing === 1 ? this.aim : Math.PI - this.aim; // in flipped space
-      const otterFlip = Math.cos(aimLocal) < 0 ? -1 : 1;
-      ctx.save(); ctx.scale(otterFlip, 1);
-      const os = this.rampage.active ? SP.otterRampage : SP.otter;
-      ctx.drawImage(SP.otterTail.c, -9, 2);
-      ctx.drawImage(os.c, -os.ax, -os.ay);
-      ctx.restore();
-      // gun(s)
-      this.drawGun(ctx, this.tree.primary, aimLocal, 'primary', 0);
-      if (st.sidearm && this.tree.sidearm && this.tree.sidearm !== this.tree.primary) this.drawGun(ctx, this.tree.sidearm, aimLocal, 'sidearm', 3);
-      ctx.restore();
-    }
+    if (this.dive.active) ctx.globalAlpha = 0.45;
+    ctx.translate(Math.round(sx), Math.round(sy + bob + (this.dive.active ? 4 : 0)));
+    ctx.scale(RIG_SCALE, RIG_SCALE);
+    Rig.draw(ctx, 0, 0, {
+      t, aim: this.aim, facing: this.facing, tilt: this.tilt,
+      swimPhase: this.swimPhase,
+      rollPhase: this.roll.active ? this.roll.t / this.roll.dur : null,
+      hurt: this.hurt > 0 && Math.floor(t * 30) % 2 === 0,
+      exp: this.expression(), rage: this.rampage.active,
+      recoil: Math.max(this.recoil.primary, this.recoil.sidearm) / 0.12,
+      flash: Math.max(this.flash.primary, this.flash.sidearm),
+      bigFlash: (WEAPONS[this.tree.primary].kick > 4),
+      speed, armored: true,
+      gunSprite: SP.guns[this.tree.primary] || SP.guns.revolver,
+    });
     ctx.restore();
-    // dive bubbles hint / slow net overlay
+    ctx.globalAlpha = 1;
+
     if (this.slowed > 0) { ctx.globalAlpha = 0.8; drawSprite(ctx, SP.net, sx, sy - 4, 0, 2, 2); ctx.globalAlpha = 1; }
-    // rampage meter hint above head when full
-    if (this.rampage.meter >= 100 && !this.rampage.active && Math.floor(t * 3) % 2 === 0) pixelText(ctx, 'Q: RAMPAGE', Math.round(sx), Math.round(sy - 34), 7, '#ff6161', 'center');
+    if (this.rampage.meter >= 100 && !this.rampage.active && Math.floor(t * 3) % 2 === 0)
+      pixelText(ctx, 'Q: RAMPAGE', Math.round(sx), Math.round(sy - 38), 7, '#ff6161', 'center');
   }
-  drawGun(ctx, wid, aimLocal, slot, yoff) {
-    const gs = SP.guns[wid] || SP.guns.revolver;
-    const rec = this.recoil[slot] > 0 ? Math.round(this.recoil[slot] / 0.12 * 3) : 0;
-    ctx.save(); ctx.translate(4, 2 + yoff);
-    ctx.rotate(aimLocal);
-    const flipY = Math.cos(aimLocal) < 0 ? -1 : 1; ctx.scale(1, flipY);
-    ctx.translate(-rec, 0);
-    ctx.drawImage(gs.c, -gs.ax + 2, -gs.ay);
-    if (this.flash[slot] > 0) { const m = (WEAPONS[wid].kick > 4) ? SP.muzzleBig : SP.muzzle; ctx.drawImage(m.c, gs.w - 2, -m.ay + 1); }
-    ctx.restore();
-  }
+
 }
 
 // ============================ ENEMIES ====================================
@@ -597,6 +586,7 @@ class Enemy {
     this.hp -= dmg; this.flash = 0.08; this.kx += kx / (this.cfg.big ? 3 : 1); this.ky += ky / (this.cfg.big ? 3 : 1);
     if (!silent) {
       G.particles.sparks(this.x, this.y, 3); G.particles.debris(this.x, this.y, 2);
+      Toon.impact(this.x, this.y, proj && proj.crit ? 1.5 : 0.8, proj && proj.crit ? '#ffe48f' : '#ffffff');
       // crew gets hurt: a little blood
       if (Math.random() < 0.6) G.particles.blood(this.x, this.y, 0.4, proj ? Math.atan2(proj.vy, proj.vx) : null);
       G.particles.text(this.x + rand(-6, 6), this.y - this.radius - 4, Math.round(dmg) + '', proj && proj.crit ? '#ffe48f' : '#fff', proj && proj.crit ? 9 : 7);
@@ -607,6 +597,7 @@ class Enemy {
   die(silentBoom = false) {
     if (this.dead) return; this.dead = true; this.wake.dead = true;
     const c = this.cfg, r = this.radius;
+    if (!silentBoom) { Toon.burst(this.x, this.y, 1 + r / 22); Toon.shock(this.x, this.y, r * 3.4, 0.5); }
     if (!silentBoom) G.particles.explode(this.x, this.y, r * 2.2, { debris: Math.round(r * 1.2), oil: 0.6 + r / 15, debrisColors: this.type === 'gunboat' || this.type === 'harpooner' ? ['#7d858f', '#4a515a', '#aeb6c1'] : undefined });
     G.particles.blood(this.x, this.y, 1.2 + r / 12);
     G.shake(Math.min(14, 4 + r / 3));

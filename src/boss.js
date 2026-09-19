@@ -142,6 +142,8 @@ class Boss {
     const a = angleTo(rock.x, rock.y, this.x, this.y); this.x = rock.x + Math.cos(a) * (rock.r + this.radius); this.y = rock.y + Math.sin(a) * (rock.r + this.radius);
     G.particles.splash(this.x, this.y, 4); G.particles.debris(this.x, this.y, 14, ['#7c818b', '#5e636d', '#9a9ea8']); G.particles.sparks(this.x, this.y, 14);
     G.particles.blood(this.x, this.y, 2); G.shake(16); Audio_.stun(); G.ocean.ripple(this.x, this.y, 120, 280, 1);
+    Toon.burst(this.x, this.y, 3.2); Toon.shock(this.x, this.y, 150, 0.6);
+    for (let i = 0; i < 5; i++) Toon.emote(this.x + rand(-24, 24), this.y - 30, 'star');
     G.banner('STUNNED! HIT HIM NOW!', '#ffe48f', 1.4); G.particles.text(this.x, this.y - 40, 'CRASH!', '#ffe48f', 12);
     G.stats.bossCrashes++;
     this.hp -= 40; // the rock itself hurts
@@ -152,6 +154,7 @@ class Boss {
     const real = dmg * mult;
     this.hp -= real; this.flash = 0.08; G.stats.damageDealt += real;
     G.particles.sparks(this.x, this.y, 3); if (Math.random() < 0.7) G.particles.blood(this.x, this.y, 0.4);
+    Toon.impact(this.x, this.y, this.stunned ? 1.6 : 0.7, this.stunned ? '#ffe48f' : '#ffffff');
     G.particles.text(this.x + rand(-10, 10), this.y - 30, Math.round(real) + (this.stunned ? '!' : ''), this.stunned ? '#ffe48f' : proj && proj.crit ? '#ffe48f' : '#c8d0d8', this.stunned ? 9 : 7);
     Audio_.hit();
     if (this.phase === 1 && this.hp <= this.maxHp * 0.5) {
@@ -167,6 +170,7 @@ class Boss {
     this.dead = true; this.wake.dead = true;
     G.particles.explode(this.x, this.y, 90, { debris: 30, oil: 2, debrisColors: ['#b57d3f', '#5b6f8c', '#f2c744'] });
     G.particles.blood(this.x, this.y, 8); G.ocean.splatBlood(this.x, this.y, 14, 60); G.shake(24);
+    Toon.burst(this.x, this.y, 5); Toon.shock(this.x, this.y, 260, 0.9);
     for (let i = 0; i < 3; i++) setTimeout(() => { if (G) { G.particles.explode(this.x + rand(-40, 40), this.y + rand(-30, 30), 50); G.particles.blood(this.x + rand(-30, 30), this.y + rand(-30, 30), 3); } }, 250 + i * 300);
     const drops = { metal: 14, wood: 12, fuel: 10, powder: 10, tech: 12 };
     for (const k in drops) for (let i = 0; i < drops[k]; i++) G.pickups.push(new Pickup(this.x, this.y, k));
