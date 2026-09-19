@@ -4,8 +4,8 @@ const RIG_SCALE = 0.64;   // the rig is drawn large for detail, scaled to play s
 // The world is drawn at 1:1 into an offscreen 640x360 canvas, then a centred
 // 320x180 crop of it is blown up to fill the screen. That is a clean 2x pixel
 // zoom: everything doubles in size and the pixels stay square.
-const ZOOM = 2, VIEW_W = 640 / ZOOM, VIEW_H = 360 / ZOOM;
-const CROP_X = (640 - VIEW_W) / 2, CROP_Y = (360 - VIEW_H) / 2;
+const ZOOM = 1.6, VIEW_W = 400, VIEW_H = 225;
+const CROP_X = Math.floor((640 - VIEW_W) / 2), CROP_Y = Math.floor((360 - VIEW_H) / 2);
 
 class Game {
   constructor() {
@@ -20,6 +20,7 @@ class Game {
     window.addEventListener('resize', () => this.resize()); this.resize();
     buildCharacters();
     if (typeof Hazards !== 'undefined') Hazards.init();
+    if (typeof Wildlife !== 'undefined') Wildlife.init();
     if (typeof Upgrades !== 'undefined') Upgrades.init();
     if (typeof MainMenu !== 'undefined') MainMenu.init();
     this.tree = new SkillTree();
@@ -55,6 +56,7 @@ class Game {
     }
     if (typeof Village !== 'undefined') Village.build(this.pier.x, SHORE_Y, WORLD_W);
     if (typeof Hazards !== 'undefined') { Hazards.reset(); Hazards.difficulty = 1; Hazards.populate(WORLD_W, WORLD_H, SHORE_Y); }
+    if (typeof Wildlife !== 'undefined') { Wildlife.reset(); Wildlife.populate(WORLD_W, WORLD_H, SHORE_Y); }
     this.player = new Player(this.pier.x, SHORE_Y + 168, this.tree);
     this.director = new Director();
     this.fisherman = this.firstRun ? new Fisherman(this.pier.x, this.pier.y1 - 6) : null;
@@ -182,6 +184,7 @@ class Game {
     if (this.buoy) { this.buoy.update(dt); if (this.buoy.dead) this.buoy = null; }
     if (typeof Village !== 'undefined') Village.update(dt, t);
     if (typeof Hazards !== 'undefined') Hazards.update(dt, t);
+    if (typeof Wildlife !== 'undefined') Wildlife.update(dt, t);
     if (typeof Gore !== 'undefined') Gore.update(dt);
     this.particles.update(dt, (x, y) => this.ocean.flow(x, y));
     Toon.update(dt);
@@ -234,6 +237,7 @@ class Game {
     if (this.boss && !this.boss.dead) this.ocean.shadow(W, cam, this.boss.x, this.boss.y, 92, 40, t, 1.4);
     if (!this.player.dead) this.ocean.shadow(W, cam, this.player.x, this.player.y, 48, 24, t, this.player.diving ? 1.7 : 1.25);
     for (const w of this.wrecks) this.ocean.shadow(W, cam, w.x, w.y, w.radius * 2, w.radius, t, 0.6);
+    if (typeof Wildlife !== 'undefined') Wildlife.renderUnder(W, cam, t);
     this.ocean.renderTempCurrents(W, cam, t);
     for (const r of this.rocks) r.render(W, cam, t);
     this.ocean.renderWakes(W, cam, t);
@@ -241,6 +245,7 @@ class Game {
     for (const w of this.wrecks) w.render(W, cam);
     for (const p of this.pickups) p.render(W, cam, t);
     if (typeof Hazards !== 'undefined') Hazards.render(W, cam, t);
+    if (typeof Wildlife !== 'undefined') Wildlife.renderOver(W, cam, t);
     if (this.buoy) this.buoy.render(W, cam, t);
     if (this.player.diving) this.player.render(W, cam, t);
     for (const e of this.enemies) e.render(W, cam, t);
@@ -251,6 +256,7 @@ class Game {
     this.particles.render(W, cam);
     if (typeof Gore !== 'undefined') Gore.render(W, cam);
     if (typeof Hazards !== 'undefined') Hazards.renderOver(W, cam, t);
+    if (typeof Wildlife !== 'undefined') Wildlife.renderHint(W, cam, t);
     Toon.render(W, cam);
     this.ocean.renderRipples(W, cam);
     // sun sheen and swell ribbons pass OVER the entities so they read as submerged

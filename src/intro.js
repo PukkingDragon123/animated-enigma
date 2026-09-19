@@ -288,25 +288,25 @@ function buildGrass(H, ramp, dens, tall, seed) {
 }
 function buildShallowMid(seed) {
   const H = 190, c = can(LW, H), x = cx2(c), rng = new SeededRandom(seed);
-  for (let i = 0; i < 16; i++) drawRockForm(x, R(rng.range(0, LW)), H - R(rng.range(0, 7)), R(rng.range(18, 46)), R(rng.range(12, 34)), IP.rock, false);
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 11; i++) drawRockForm(x, R(rng.range(0, LW)), H - R(rng.range(0, 7)), R(rng.range(20, 52)), R(rng.range(12, 30)), IP.rock, false);
+  for (let i = 0; i < 12; i++) {
     const kx = R(rng.range(0, LW));
-    kelpStalk(kx, rng, H - R(rng.range(0, 6)), R(rng.range(60, 165)), IP.kelp, R(rng.range(2, 4)), rng.range(-0.5, 0.5))(x);
+    kelpStalk(kx, rng, H - R(rng.range(0, 6)), R(rng.range(50, 130)), IP.kelp, R(rng.range(2, 4)), rng.range(-0.5, 0.5))(x);
   }
-  for (let i = 0; i < 12; i++) drawCoralFan(x, R(rng.range(0, LW)), H - R(rng.range(2, 12)), R(rng.range(12, 26)), pick([IP.coralA, IP.coralC, IP.coralB]));
-  for (let i = 0; i < 10; i++) drawCoralBrain(x, R(rng.range(0, LW)), H - R(rng.range(0, 8)), R(rng.range(7, 14)), pick([IP.coralB, IP.coralA]));
-  for (let i = 0; i < 9; i++) drawCoralTubes(x, R(rng.range(0, LW)), H - R(rng.range(0, 6)), R(rng.range(10, 22)), pick([IP.coralC, IP.coralA]));
-  for (let i = 0; i < 8; i++) drawStaghorn(x, R(rng.range(0, LW)), H - 4, rng.range(9, 15), IP.coralB, -Math.PI / 2 + rng.range(-0.3, 0.3), 0);
+  for (let i = 0; i < 8; i++) drawCoralFan(x, R(rng.range(0, LW)), H - R(rng.range(2, 12)), R(rng.range(12, 24)), pick([IP.coralA, IP.coralC, IP.coralB]));
+  for (let i = 0; i < 8; i++) drawCoralBrain(x, R(rng.range(0, LW)), H - R(rng.range(0, 8)), R(rng.range(7, 14)), pick([IP.coralB, IP.coralA]));
+  for (let i = 0; i < 6; i++) drawCoralTubes(x, R(rng.range(0, LW)), H - R(rng.range(0, 6)), R(rng.range(10, 20)), pick([IP.coralC, IP.coralA]));
+  for (let i = 0; i < 6; i++) drawStaghorn(x, R(rng.range(0, LW)), H - 4, rng.range(9, 14), IP.coralB, -Math.PI / 2 + rng.range(-0.3, 0.3), 0);
   return c;
 }
 function buildDeepMid(seed) {
   const H = 210, c = can(LW, H), x = cx2(c), rng = new SeededRandom(seed);
   const dark = ['#0a1220', '#111b2c', '#1a263a', '#26354c', '#35465f'];
-  for (let i = 0; i < 20; i++) drawRockForm(x, R(rng.range(0, LW)), H - R(rng.range(0, 6)), R(rng.range(14, 40)), R(rng.range(30, 130)), dark, true);
+  for (let i = 0; i < 13; i++) drawRockForm(x, R(rng.range(0, LW)), H - R(rng.range(0, 6)), R(rng.range(16, 44)), R(rng.range(30, 130)), dark, true);
   const deadKelp = ['#101c20', '#1b2e2c', '#27403a', '#365349', '#496c5c'];
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 9; i++) {
     const kx = R(rng.range(0, LW));
-    kelpStalk(kx, rng, H - R(rng.range(0, 4)), R(rng.range(40, 120)), deadKelp, 2, rng.range(-0.6, 0.6))(x);
+    kelpStalk(kx, rng, H - R(rng.range(0, 4)), R(rng.range(40, 110)), deadKelp, 2, rng.range(-0.6, 0.6))(x);
   }
   return c;
 }
@@ -326,15 +326,14 @@ function buildSurfaceUnder(seed, foamCol, waterCol) {
     P(x, foamCol[2], px, top, 1, 1);
     P(x, foamCol[1], px, top + 1, 1, 2);
     P(x, foamCol[0], px, top + 3, 1, 1);
-    for (let y = top + 4; y < H; y++) {
-      const k = (y - top) / (H - top);
-      if (hash2(px, y) > 0.35 + k * 0.6) P(x, foamCol[0], px, y, 1, 1);
-      else if (hash2(px * 3, y * 5) > 0.82 - k * 0.3) P(x, waterCol, px, y, 1, 1);
+    for (let y = top + 4; y < top + 16 && y < H; y++) {
+      const k = (y - top) / 16;
+      if (hash2(px, y) > 0.52 + k * 0.5) P(x, foamCol[0], px, y, 1, 1);
     }
   }
-  for (let i = 0; i < 70; i++) {
-    const bx = R(rng.range(0, LW)), by = R(rng.range(2, 16));
-    P(x, foamCol[2], bx, by, R(rng.range(2, 7)), 1);
+  for (let i = 0; i < 40; i++) {
+    const bx = R(rng.range(0, LW)), by = R(rng.range(2, 12));
+    P(x, foamCol[2], bx, by, R(rng.range(2, 6)), 1);
   }
   return c;
 }
@@ -348,26 +347,27 @@ const MAN_RAMP = {
 };
 function buildManateeBodyCan(L, ramp, opt) {
   opt = opt || {};
-  const W = R(L) + 8, H = R(L * 0.52) + 8, cy = H / 2;
+  const W = R(L) + 8, H = R(L * 0.56) + 8, cy = H / 2;
   const U = u => 4 + u * L, V = v => cy + v * L;
   const lobes = [
-    { x: U(0.055), y: V(0.000), rx: L * 0.055, ry: L * 0.050 },
-    { x: U(0.150), y: V(0.000), rx: L * 0.075, ry: L * 0.085 },
-    { x: U(0.270), y: V(0.006), rx: L * 0.100, ry: L * 0.135 },
-    { x: U(0.400), y: V(0.010), rx: L * 0.125, ry: L * 0.175 },
-    { x: U(0.530), y: V(0.010), rx: L * 0.130, ry: L * 0.190 },
-    { x: U(0.660), y: V(0.005), rx: L * 0.125, ry: L * 0.180 },
-    { x: U(0.770), y: V(-0.006), rx: L * 0.110, ry: L * 0.155 },
-    { x: U(0.860), y: V(-0.016), rx: L * 0.090, ry: L * 0.125 },
-    { x: U(0.930), y: V(-0.004), rx: L * 0.070, ry: L * 0.095 },
-    { x: U(0.980), y: V(0.016), rx: L * 0.045, ry: L * 0.065 },
+    { x: U(0.030), y: V(0.004), rx: L * 0.075, ry: L * 0.058 },
+    { x: U(0.120), y: V(0.006), rx: L * 0.090, ry: L * 0.095 },
+    { x: U(0.225), y: V(0.010), rx: L * 0.105, ry: L * 0.148 },
+    { x: U(0.345), y: V(0.014), rx: L * 0.125, ry: L * 0.190 },
+    { x: U(0.470), y: V(0.016), rx: L * 0.135, ry: L * 0.208 },
+    { x: U(0.590), y: V(0.012), rx: L * 0.130, ry: L * 0.203 },
+    { x: U(0.700), y: V(0.004), rx: L * 0.118, ry: L * 0.180 },
+    { x: U(0.795), y: V(-0.008), rx: L * 0.100, ry: L * 0.148 },
+    { x: U(0.875), y: V(-0.018), rx: L * 0.082, ry: L * 0.118 },
+    { x: U(0.938), y: V(-0.010), rx: L * 0.062, ry: L * 0.092 },
+    { x: U(0.982), y: V(0.014), rx: L * 0.042, ry: L * 0.066 },
   ];
   const f = blobField(W, H, lobes);
   const o = shadeBlob(W, H, f, ramp, { outline: IP.ink, lx: -0.22, ly: -0.92, contrast: 0.86, lift: 0.24, smooth: 3 });
   const ctx = o.ctx;
   const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
   // ---- pale belly: recolour the lowest quarter of every column
-  const belly = ['#7d8b9b', '#9fadbd', '#bccad6'];
+  const belly = ['#6c7887', '#87939f', '#a3aeb8'];
   for (let x = 0; x < W; x++) {
     let y0 = -1, y1 = -1;
     for (let y = 0; y < H; y++) if (f[y * W + x] > 0) { if (y0 < 0) y0 = y; y1 = y; }
@@ -375,21 +375,26 @@ function buildManateeBodyCan(L, ramp, opt) {
     const hgt = y1 - y0;
     for (let y = y0 + 1; y < y1; y++) {
       const k = (y - y0) / hgt;
-      if (k < 0.70) continue;
+      if (k < 0.58) continue;
       const edge = !inside(x, y + 1) || !inside(x - 1, y) || !inside(x + 1, y);
       if (edge && y >= y1 - 1) continue;
-      P(ctx, k > 0.88 ? belly[2] : k > 0.78 ? belly[1] : belly[0], x, y);
+      const g = (k - 0.58) / 0.42 * 3;
+      let gi = Math.floor(g); const gf = g - gi;
+      if (gf > bay(x, y)) gi++;
+      if (gi <= 0) continue;
+      P(ctx, belly[Math.min(2, gi - 1)], x, y);
     }
   }
   // ---- transverse skin folds
-  for (const u of [0.30, 0.44, 0.58, 0.70]) {
+  for (const u of [0.33, 0.60]) {
     const fx = R(U(u));
     for (let y = 0; y < H; y++) {
-      const bend = R(Math.sin((y - cy) / (L * 0.2) * 1.1) * L * 0.022);
+      const k = (y - cy) / (L * 0.21);
+      if (k > 0.55) continue;
+      const bend = R(Math.sin(k * 1.1) * L * 0.026);
       const x = fx + bend;
-      if (!inside(x, y) || !inside(x, y + 1) || !inside(x - 1, y)) continue;
-      P(ctx, ramp[0], x, y);
-      if ((y & 1) === 0) P(ctx, ramp[3], x + 1, y);
+      if (!inside(x, y) || !inside(x, y + 1) || !inside(x - 1, y) || !inside(x + 1, y)) continue;
+      P(ctx, ramp[1], x, y);
     }
   }
   // ---- algae & barnacle speckle on the back
@@ -444,33 +449,38 @@ function addPropGash(b, L) {
   return b;
 }
 function buildFluke(L, ramp) {
-  const W = R(L * 0.40) + 4, H = R(L * 0.44) + 4;
+  const W = R(L * 0.48) + 4, H = R(L * 0.36) + 4, cy = H / 2;
   const f = blobField(W, H, [
-    { x: W * 0.80, y: H * 0.50, rx: W * 0.26, ry: H * 0.20 },
-    { x: W * 0.55, y: H * 0.50, rx: W * 0.34, ry: H * 0.34 },
-    { x: W * 0.34, y: H * 0.46, rx: W * 0.30, ry: H * 0.42 },
-    { x: W * 0.22, y: H * 0.40, rx: W * 0.20, ry: H * 0.36 },
-    { x: W * 0.26, y: H * 0.64, rx: W * 0.22, ry: H * 0.30 },
+    { x: W * 0.99, y: cy, rx: W * 0.10, ry: H * 0.13 },
+    { x: W * 0.86, y: cy, rx: W * 0.12, ry: H * 0.15 },
+    { x: W * 0.72, y: cy, rx: W * 0.13, ry: H * 0.19 },
+    { x: W * 0.56, y: cy, rx: W * 0.15, ry: H * 0.27 },
+    { x: W * 0.36, y: cy, rx: W * 0.19, ry: H * 0.39 },
+    { x: W * 0.19, y: cy, rx: W * 0.17, ry: H * 0.45 },
+    { x: W * 0.09, y: cy, rx: W * 0.10, ry: H * 0.36 },
   ]);
-  const o = shadeBlob(W, H, f, ramp, { outline: IP.ink, lx: -0.3, ly: -0.85, lift: 0.18, smooth: 2 });
+  const o = shadeBlob(W, H, f, ramp, { outline: IP.ink, lx: -0.3, ly: -0.85, lift: 0.16, smooth: 2 });
   for (let i = -2; i <= 2; i++) {
-    for (let x = 3; x < W - 2; x++) {
-      const y = R(H * 0.5 + i * H * 0.13 + (W - x) * i * 0.02);
+    if (!i) continue;
+    for (let x = 3; x < W * 0.7; x++) {
+      const y = R(cy + i * H * 0.10 + (W * 0.7 - x) * i * 0.035);
       if (y > 0 && y < H && f[y * W + x] > 0.06 && ((x + i) & 1) === 0) P(o.ctx, ramp[1], x, y);
     }
   }
-  return spr(o.c, W - 2, H * 0.5);
+  return spr(o.c, W - 2, cy);
 }
 function buildFlipper(L, ramp) {
-  const W = R(L * 0.22) + 3, H = R(L * 0.13) + 3;
+  const W = R(L * 0.30) + 3, H = R(L * 0.115) + 3, cy = H / 2;
   const f = blobField(W, H, [
-    { x: W * 0.22, y: H * 0.48, rx: W * 0.26, ry: H * 0.40 },
-    { x: W * 0.52, y: H * 0.50, rx: W * 0.30, ry: H * 0.38 },
-    { x: W * 0.80, y: H * 0.54, rx: W * 0.22, ry: H * 0.28 },
+    { x: W * 0.10, y: cy, rx: W * 0.16, ry: H * 0.44 },
+    { x: W * 0.32, y: cy + H * 0.04, rx: W * 0.20, ry: H * 0.42 },
+    { x: W * 0.55, y: cy + H * 0.08, rx: W * 0.20, ry: H * 0.36 },
+    { x: W * 0.76, y: cy + H * 0.12, rx: W * 0.17, ry: H * 0.28 },
+    { x: W * 0.90, y: cy + H * 0.14, rx: W * 0.10, ry: H * 0.20 },
   ]);
-  const o = shadeBlob(W, H, f, ramp, { outline: IP.ink, lift: 0.10, smooth: 1 });
-  for (let i = 0; i < 3; i++) P(o.ctx, ramp[4], R(W * 0.80) + (i & 1), R(H * 0.35) + i * Math.max(1, R(H * 0.18)));
-  return spr(o.c, 1, H * 0.5);
+  const o = shadeBlob(W, H, f, ramp, { outline: IP.ink, lift: 0.08, smooth: 1 });
+  for (let i = 0; i < 3; i++) P(o.ctx, ramp[4], R(W * 0.84) + i, R(cy + H * 0.06) + i);
+  return spr(o.c, 2, cy);
 }
 function buildManatee(L, who, opt) {
   opt = opt || {};
@@ -481,17 +491,17 @@ function buildManatee(L, who, opt) {
   const bs = { c: scarCan, f: b.f, W: b.W, H: b.H, U: b.U, V: b.V };
   addPropGash(bs, L);
   const bodyScar = spr(scarCan, b.ax, b.ay);
-  const k = Math.max(1, R(L / 42));
+  const k = Math.max(1, R(L / 30));
   return {
     L: L, k: k, who: who,
     body: body, bodyScar: bodyScar,
     fluke: buildFluke(L, ramp),
     flip: buildFlipper(L, ramp),
-    flipFar: buildFlipper(L, [ramp[0], ramp[0], ramp[1], ramp[1], ramp[2]]),
+    flipFar: buildFlipper(L * 0.80, [ramp[0], ramp[0], ramp[1], ramp[1], ramp[2]]),
     ramp: ramp,
-    eye: [b.U(0.868) - b.ax, b.V(-0.058) - b.ay],
-    mouth: [b.U(0.952) - b.ax, b.V(0.042) - b.ay],
-    tailX: -L * 0.455, shoX: L * 0.20, shoY: L * 0.115,
+    eye: [b.U(0.876) - b.ax, b.V(-0.062) - b.ay],
+    mouth: [b.U(0.958) - b.ax, b.V(0.046) - b.ay],
+    tailX: -L * 0.245, shoX: L * 0.175, shoY: L * 0.080,
   };
 }
 // ---- live, expressive face -------------------------------------------------
@@ -507,11 +517,11 @@ function manateeFace(ctx, M, exp, blink, t) {
     P(ctx, ink, ex - 1, ey - 1, k + 3, k + 2);
     P(ctx, '#575160', ex, ey, k, k);
   } else if (exp === 'wide') {
-    P(ctx, ink, ex - 2, ey - 2, k + 4, k + 4);
-    P(ctx, white, ex - 1, ey - 1, k + 2, k + 2);
-    P(ctx, dark, ex, ey, k, k);
+    P(ctx, ink, ex - 2, ey - 2, k + 3, k + 3);
+    P(ctx, white, ex - 1, ey - 1, k + 1, k + 1);
+    P(ctx, dark, ex, ey, Math.max(1, k - 1), Math.max(1, k - 1));
     P(ctx, sh, ex, ey, 1, 1);
-    P(ctx, M.ramp[0], ex - 2, ey - 4, k + 4, 1);
+    P(ctx, M.ramp[0], ex - 2, ey - 4, k + 3, 1);
   } else {
     P(ctx, ink, ex - 1, ey - 1, k + 2, k + 2);
     P(ctx, dark, ex, ey, k, k);
@@ -539,10 +549,10 @@ function drawManatee(ctx, m, t) {
   const fx = m.flip ? -1 : 1;
   ctx.scale(fx * (m.sx || 1), m.sy || 1);
   const ph = m.phase || 0;
-  const amp = m.tailAmp === undefined ? 0.30 : m.tailAmp;
+  const amp = m.tailAmp === undefined ? 0.26 : m.tailAmp;
   // far flipper first
-  const fa = (m.flipperA === undefined ? 0.5 : m.flipperA) + Math.sin(ph + 0.9) * 0.45;
-  ctx.save(); ctx.translate(M.shoX - 2, M.shoY + 1); ctx.rotate(fa + 0.25);
+  const fa = (m.flipperA === undefined ? 2.12 : m.flipperA) + Math.sin(ph + 0.9) * 0.26;
+  ctx.save(); ctx.translate(M.shoX - 6, M.shoY - 4); ctx.rotate(fa - 0.22);
   ctx.drawImage(M.flipFar.c, -M.flipFar.ax, -M.flipFar.ay); ctx.restore();
   // tail
   ctx.save(); ctx.translate(M.tailX, 0); ctx.rotate(Math.sin(ph) * amp);
@@ -567,101 +577,89 @@ function drawManatee(ctx, m, t) {
 // ============================================================== SEA  OTTER ==
 function buildOtterParts() {
   const F = ['#5d2d14', '#84431f', '#a95c2c', '#c8784a', '#e0a070'];
-  // ---- gaunt body, ribs showing
-  const W = 46, H = 22;
+  // ---- gaunt, hunched body
+  const W = 36, H = 30;
   const f = blobField(W, H, [
-    { x: 6, y: 12, rx: 5, ry: 4.2 },
-    { x: 12, y: 11.5, rx: 6, ry: 6.0 },
-    { x: 19, y: 11, rx: 6.5, ry: 7.2 },
-    { x: 26, y: 11, rx: 6.0, ry: 6.6 },
-    { x: 32, y: 11.5, rx: 5.2, ry: 5.6 },
-    { x: 38, y: 12.5, rx: 4.0, ry: 4.2 },
+    { x: 7, y: 21, rx: 5.4, ry: 5.6 },
+    { x: 13, y: 18, rx: 6.6, ry: 7.8 },
+    { x: 19, y: 15, rx: 6.8, ry: 8.4 },
+    { x: 25, y: 13, rx: 5.6, ry: 7.0 },
+    { x: 30, y: 12, rx: 3.6, ry: 4.6 },
   ]);
   const o = shadeBlob(W, H, f, F, { outline: IP.ink, lift: 0.20, smooth: 2 });
-  // cream belly
-  for (let x = 4; x < W - 4; x++) for (let y = 0; y < H; y++) {
-    if (f[y * W + x] <= 0) continue;
-    let y1 = y; while (y1 + 1 < H && f[(y1 + 1) * W + x] > 0) y1++;
-    break;
-  }
   for (let x = 3; x < W - 3; x++) {
     let y0 = -1, y1 = -1;
     for (let y = 0; y < H; y++) if (f[y * W + x] > 0) { if (y0 < 0) y0 = y; y1 = y; }
-    if (y0 < 0) continue;
-    for (let y = y0; y <= y1; y++) if ((y - y0) / Math.max(1, y1 - y0) > 0.72 && y < y1) P(o.ctx, (y - y0) / (y1 - y0) > 0.86 ? '#e8d3ae' : '#c9ae87', x, y);
+    if (y0 < 0 || y1 - y0 < 4) continue;
+    for (let y = y0; y < y1; y++) { const k = (y - y0) / (y1 - y0); if (k > 0.74) P(o.ctx, k > 0.88 ? '#e8d3ae' : '#c9ae87', x, y); }
   }
-  // ribs
   for (let i = 0; i < 4; i++) {
-    const rx = 16 + i * 4;
-    for (let y = 8; y < 16; y++) if (f[y * W + rx] > 0.12) { P(o.ctx, F[0], rx, y); if ((y & 1) === 0) P(o.ctx, F[3], rx + 1, y); }
+    const rx = 14 + i * 4;
+    for (let y = 8; y < 22; y++) if (f[y * W + rx] > 0.16) { P(o.ctx, F[0], rx, y); if ((y & 1) === 0) P(o.ctx, F[3], rx + 1, y); }
   }
-  // old scars
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 5; j++) P(o.ctx, '#e8d3ae', 22 + i * 6 + j, 6 + j);
-  const body = spr(o.c, 23, 11);
-  // ---- head with the beginnings of a tricorn
-  const HW = 24, HH = 24;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) P(o.ctx, '#e8d3ae', 17 + i * 5 + j, 8 + j);
+  const body = spr(o.c, 17, 15);
+  // ---- head: big round skull, blunt muzzle, real ears
+  const HW = 28, HH = 26;
   const hf = blobField(HW, HH, [
-    { x: 11, y: 14, rx: 6.4, ry: 6.0 },
-    { x: 16, y: 15.5, rx: 4.6, ry: 4.0 },
-    { x: 19.5, y: 16.5, rx: 3.0, ry: 2.6 },
+    { x: 11, y: 15, rx: 8.4, ry: 8.0 },
+    { x: 17, y: 17, rx: 6.0, ry: 5.2 },
+    { x: 22, y: 18, rx: 3.6, ry: 3.2 },
   ]);
-  const ho = shadeBlob(HW, HH, hf, F, { outline: IP.ink, lift: 0.22, smooth: 2 });
+  const ho = shadeBlob(HW, HH, hf, F, { outline: IP.ink, lift: 0.24, smooth: 2 });
   const hx = ho.ctx;
-  // ears
-  P(hx, IP.ink, 6, 7, 4, 4); P(hx, F[1], 7, 8, 2, 2);
-  // muzzle cream
-  P(hx, '#e8d3ae', 15, 14, 6, 5); P(hx, IP.ink, 15, 13, 6, 1); P(hx, '#c9ae87', 15, 18, 6, 1);
-  // scar over the eye
-  for (let i = 0; i < 5; i++) P(hx, '#e8d3ae', 9 + i, 7 + i);
-  // crude half-made tricorn: folded scrap, one corner pinned, wire brim
-  const HAT = { k: IP.ink, h: '#3d4767', x: '#28314c', H: '#586590', X: '#7684ad', w: '#b9b3ad' };
+  P(hx, IP.ink, 4, 7, 7, 7); P(hx, F[1], 5, 8, 5, 5); P(hx, F[0], 6, 9, 3, 3);
+  P(hx, IP.ink, 15, 15, 9, 7); P(hx, '#e8d3ae', 15, 16, 8, 5); P(hx, '#c9ae87', 15, 20, 8, 1);
+  for (let i = 0; i < 6; i++) P(hx, '#f0e0bd', 8 + i, 7 + i);
+  // crude half-made tricorn
+  const HAT = { k: IP.ink, h: '#3d4767', x: '#28314c', H: '#586590', X: '#7684ad' };
   stamp(hx, [
-    '....kkkkkkk..',
-    '..kkxxxxxxxk.',
-    '.kxhhhhhhhhxk',
-    'kxhhhhHHhhhhk',
-    'kxhhhhhhhhxk.',
-    'kkxxxhhhxkk..',
-    '..kkkkkkk....',
-  ], 1, 0, HAT);
-  P(hx, '#8a8583', 2, 5, 11, 1);           // wire brim
-  P(hx, IP.ink, 12, 1, 1, 5);              // torn corner
-  P(hx, '#586590', 3, 2, 2, 1);
-  const head = spr(ho.c, 11, 14);
+    '...kkkkkkkkk...',
+    '.kkxxxxxxxxxkk.',
+    'kxxhhhhhhhhhxxk',
+    'kxhhhhHHHhhhhxk',
+    'kxhhhhhhhhhhhxk',
+    'kkxxhhhhhhhxxkk',
+    '.kkxxxxxxxxxkk.',
+    '..kkkkkkkkkkk..',
+  ], 0, 0, HAT);
+  P(hx, '#9aa4ab', 1, 6, 13, 1);
+  P(hx, IP.ink, 13, 0, 2, 3); P(hx, '#7684ad', 12, 1, 3, 2);
+  P(hx, IP.ink, 0, 2, 2, 4);
+  P(hx, '#c4202c', 3, 4, 4, 1);
+  const head = spr(ho.c, 11, 16);
   // ---- arm
-  const AW = 14, AH = 7;
-  const af = blobField(AW, AH, [{ x: 3, y: 3.5, rx: 3.2, ry: 3.0 }, { x: 8, y: 3.5, rx: 3.4, ry: 2.4 }, { x: 11.5, y: 3.5, rx: 2.4, ry: 2.2 }]);
+  const AW = 15, AH = 8;
+  const af = blobField(AW, AH, [{ x: 3, y: 4, rx: 3.4, ry: 3.4 }, { x: 8, y: 4.2, rx: 3.6, ry: 2.8 }, { x: 12.5, y: 4.6, rx: 2.6, ry: 2.4 }]);
   const ao = shadeBlob(AW, AH, af, F, { outline: IP.ink, lift: 0.16, smooth: 1 });
-  P(ao.ctx, '#e8d3ae', 11, 3, 2, 2);
-  const arm = spr(ao.c, 2, 3.5);
+  P(ao.ctx, '#e8d3ae', 11, 3, 3, 3);
+  const arm = spr(ao.c, 2, 4);
   // ---- tail
-  const TW = 26, TH = 10;
-  const tf = blobField(TW, TH, [{ x: 4, y: 5, rx: 4.6, ry: 4.4 }, { x: 10, y: 5, rx: 5, ry: 3.6 }, { x: 16, y: 5, rx: 4.6, ry: 2.8 }, { x: 22, y: 5, rx: 3.6, ry: 1.9 }]);
+  const TW = 22, TH = 12;
+  const tf = blobField(TW, TH, [{ x: 4, y: 6, rx: 5.4, ry: 5.4 }, { x: 10, y: 6, rx: 5.4, ry: 4.4 }, { x: 16, y: 6, rx: 4.4, ry: 3.0 }, { x: 20, y: 6, rx: 2.8, ry: 1.8 }]);
   const to = shadeBlob(TW, TH, tf, F, { outline: IP.ink, lift: 0.16, smooth: 1 });
-  const tail = spr(to.c, 2, 5);
-  return { body: body, head: head, arm: arm, tail: tail, F: F };
+  const tail = spr(to.c, 2, 6);
+  return { body: body, head: head, arm: arm, tail: tail, F: F, ex: -11 + 8, ey: -16 + 11, nx: -11 + 21, ny: -16 + 18 };
 }
 function otterFace(ctx, exp, blink, t) {
   const ink = IP.ink, O = OT;
-  const ex = -O.head.ax + 9, ey = -O.head.ay + 10;
-  const nx = -O.head.ax + 18, ny = -O.head.ay + 14;
-  if (blink || exp === 'sly') { P(ctx, ink, ex, ey, 4, 1); P(ctx, ink, ex + 8, ey, 4, 1); }
+  const ex = O.ex, ey = O.ey, nx = O.nx, ny = O.ny;
+  if (blink || exp === 'sly') { P(ctx, ink, ex - 1, ey + 1, 5, 1); P(ctx, ink, ex + 7, ey + 1, 5, 1); }
   else {
     for (const dx of [0, 8]) {
-      P(ctx, ink, ex + dx - 1, ey - 1, 5, 5);
-      P(ctx, '#e9f0f4', ex + dx, ey, 3, 3);
-      P(ctx, '#0b0b10', ex + dx + (exp === 'plot' ? 1 : 0), ey + 1, 2, 2);
+      P(ctx, ink, ex + dx - 1, ey - 1, 6, 6);
+      P(ctx, '#e9f0f4', ex + dx, ey, 4, 4);
+      P(ctx, '#0b0b10', ex + dx + (exp === 'plot' ? 2 : 1), ey + 1, 2, 3);
       P(ctx, '#ffffff', ex + dx + 1, ey + 1, 1, 1);
     }
   }
-  if (exp === 'angry' || exp === 'plot') { P(ctx, O.F[0], ex - 1, ey - 3, 5, 1); P(ctx, O.F[0], ex + 8, ey - 3, 5, 1); P(ctx, ink, ex + 1, ey - 2, 4, 1); }
-  P(ctx, ink, nx - 1, ny, 3, 2);   // nose
+  if (exp === 'angry' || exp === 'plot') { P(ctx, O.F[0], ex - 2, ey - 3, 6, 2); P(ctx, O.F[0], ex + 7, ey - 3, 6, 2); P(ctx, ink, ex, ey - 2, 5, 1); P(ctx, ink, ex + 8, ey - 2, 4, 1); }
+  P(ctx, ink, nx - 1, ny - 1, 4, 3); P(ctx, '#2a1a10', nx, ny - 1, 2, 1);
   const talk = exp === 'talk' && (Math.floor(t * 8) & 1);
-  if (talk) { P(ctx, ink, nx - 2, ny + 3, 5, 3); P(ctx, '#4a1420', nx - 1, ny + 4, 3, 2); }
-  else if (exp === 'grin' || exp === 'sly') { P(ctx, ink, nx - 3, ny + 3, 6, 1); P(ctx, ink, nx + 3, ny + 2, 1, 1); P(ctx, '#e9f0f4', nx - 2, ny + 4, 4, 1); }
-  else P(ctx, ink, nx - 2, ny + 3, 4, 1);
-  // whiskers
-  P(ctx, '#e8d3ae', nx + 3, ny - 1, 4, 1); P(ctx, '#e8d3ae', nx + 3, ny + 2, 4, 1);
+  if (talk) { P(ctx, ink, nx - 3, ny + 3, 6, 4); P(ctx, '#4a1420', nx - 2, ny + 4, 4, 2); }
+  else if (exp === 'grin' || exp === 'sly') { P(ctx, ink, nx - 5, ny + 3, 8, 1); P(ctx, ink, nx + 3, ny + 2, 1, 1); P(ctx, '#e9f0f4', nx - 4, ny + 4, 6, 1); P(ctx, ink, nx - 4, ny + 5, 6, 1); }
+  else P(ctx, ink, nx - 4, ny + 3, 6, 1);
+  P(ctx, '#f0e0bd', nx + 2, ny - 2, 5, 1); P(ctx, '#f0e0bd', nx + 2, ny + 1, 5, 1);
 }
 function drawOtter(ctx, o, t) {
   const O = OT;
@@ -670,14 +668,14 @@ function drawOtter(ctx, o, t) {
   ctx.rotate(o.rot || 0);
   const s = o.s || 1; ctx.scale(s, s);
   const ph = o.phase || 0;
-  ctx.save(); ctx.translate(-20, 2); ctx.rotate(2.9 + Math.sin(ph) * 0.22);
+  ctx.save(); ctx.translate(-12, 7); ctx.rotate(2.75 + Math.sin(ph) * 0.22);
   ctx.drawImage(O.tail.c, -O.tail.ax, -O.tail.ay); ctx.restore();
-  ctx.save(); ctx.translate(6, 4); ctx.rotate((o.armFar === undefined ? 0.7 : o.armFar));
+  ctx.save(); ctx.translate(8, 8); ctx.rotate((o.armFar === undefined ? 0.7 : o.armFar));
   ctx.drawImage(O.arm.c, -O.arm.ax, -O.arm.ay); ctx.restore();
   ctx.drawImage(O.body.c, -O.body.ax, -O.body.ay);
-  ctx.save(); ctx.translate(8, 2); ctx.rotate((o.armNear === undefined ? 0.35 : o.armNear) + Math.sin(ph * 1.3) * 0.12);
+  ctx.save(); ctx.translate(12, 6); ctx.rotate((o.armNear === undefined ? 0.35 : o.armNear) + Math.sin(ph * 1.3) * 0.12);
   ctx.drawImage(O.arm.c, -O.arm.ax, -O.arm.ay); ctx.restore();
-  ctx.save(); ctx.translate(16 + (o.headX || 0), -6 + (o.headY || 0) + Math.sin(ph * 0.8) * 0.6);
+  ctx.save(); ctx.translate(16 + (o.headX || 0), -14 + (o.headY || 0) + Math.sin(ph * 0.8) * 0.6);
   ctx.rotate(o.headR || 0);
   ctx.drawImage(O.head.c, -O.head.ax, -O.head.ay);
   otterFace(ctx, o.exp || 'idle', o.blink, t);
@@ -730,40 +728,41 @@ function figure(ctx, x, y, s, p, col, rim) {
   const pass = (ox, oy, c) => {
     ctx.save(); ctx.translate(R(x + ox), R(y + oy));
     const lean = p.lean || 0;
-    const shX = Math.sin(lean) * -s * 0.42, shY = -Math.cos(lean) * s * 0.42;
-    const hipW = Math.max(2, R(s * 0.10));
-    // legs
-    const kx1 = f * Math.sin(p.legA || 0.15) * s * 0.26, ky1 = Math.cos(p.legA || 0.15) * s * 0.26;
-    const kx2 = f * Math.sin(p.legB || -0.15) * s * 0.26, ky2 = Math.cos(p.legB || -0.15) * s * 0.26;
-    cap(ctx, c, 0, 0, kx1, ky1, hipW);
-    cap(ctx, c, kx1, ky1, kx1 + f * Math.sin(p.kneeA || 0) * s * 0.26, ky1 + Math.cos(p.kneeA || 0) * s * 0.26, hipW - 1);
-    cap(ctx, c, 0, 0, kx2, ky2, hipW);
-    cap(ctx, c, kx2, ky2, kx2 + f * Math.sin(p.kneeB || 0) * s * 0.26, ky2 + Math.cos(p.kneeB || 0) * s * 0.26, hipW - 1);
-    // boots
-    ctx.fillStyle = c;
-    ctx.fillRect(R(kx1 + f * Math.sin(p.kneeA || 0) * s * 0.26) - 2, R(ky1 + Math.cos(p.kneeA || 0) * s * 0.26) - 1, 6, 3);
-    ctx.fillRect(R(kx2 + f * Math.sin(p.kneeB || 0) * s * 0.26) - 2, R(ky2 + Math.cos(p.kneeB || 0) * s * 0.26) - 1, 6, 3);
-    // torso (tapered slicker)
-    cap(ctx, c, 0, 0, shX * 0.5, shY * 0.5, Math.max(3, R(s * 0.20)));
-    cap(ctx, c, shX * 0.5, shY * 0.5, shX, shY, Math.max(3, R(s * 0.17)));
-    // arms
+    const shX = Math.sin(lean) * -s * 0.40, shY = -s * 0.44;
+    const limb = Math.max(3, R(s * 0.095));
+    const leg = (a, b, side) => {
+      const hx = side * Math.max(1, R(s * 0.035));
+      const kx = hx + f * Math.sin(a) * s * 0.24, ky = Math.cos(a) * s * 0.24;
+      cap(ctx, c, hx, 0, kx, ky, limb);
+      const ex = kx + f * Math.sin(b) * s * 0.24, ey = ky + Math.cos(b) * s * 0.24;
+      cap(ctx, c, kx, ky, ex, ey, Math.max(2, limb - 1));
+      ctx.fillStyle = c; ctx.fillRect(R(ex) - (f > 0 ? 2 : R(s * 0.16) - 2), R(ey) - 1, R(s * 0.16), 3);
+    };
+    leg(p.legB === undefined ? -0.48 : p.legB, p.kneeB || 0.10, -1);
+    // torso
+    cap(ctx, c, 0, 0, shX * 0.45, shY * 0.45, Math.max(4, R(s * 0.21)));
+    cap(ctx, c, shX * 0.45, shY * 0.45, shX, shY, Math.max(3, R(s * 0.18)));
+    leg(p.legA === undefined ? 0.48 : p.legA, p.kneeA || -0.08, 1);
     const arm = (a, b, wm) => {
-      const ex = shX + f * Math.sin(a) * s * 0.24, ey = shY + Math.cos(a) * s * 0.24;
-      cap(ctx, c, shX, shY, ex, ey, Math.max(2, R(s * 0.085 * wm)));
-      const hx = ex + f * Math.sin(b) * s * 0.24, hy = ey + Math.cos(b) * s * 0.24;
-      cap(ctx, c, ex, ey, hx, hy, Math.max(2, R(s * 0.075 * wm)));
+      const ex = shX + f * Math.sin(a) * s * 0.23, ey = shY + Math.cos(a) * s * 0.23;
+      cap(ctx, c, shX, shY, ex, ey, Math.max(2, R(s * 0.095 * wm)));
+      const hx = ex + f * Math.sin(b) * s * 0.22, hy = ey + Math.cos(b) * s * 0.22;
+      cap(ctx, c, ex, ey, hx, hy, Math.max(2, R(s * 0.08 * wm)));
       return [hx, hy];
     };
-    const hb = arm(p.armB === undefined ? 1.2 : p.armB, p.foreB === undefined ? 1.6 : p.foreB, 0.9);
-    const ha = arm(p.armA === undefined ? 1.4 : p.armA, p.foreA === undefined ? 1.8 : p.foreA, 1);
-    // head + cap
-    const hx2 = shX + f * Math.sin(p.head || 0) * s * 0.16, hy2 = shY - Math.cos(p.head || 0) * s * 0.16;
+    arm(p.armB === undefined ? 0.55 : p.armB, p.foreB === undefined ? 0.95 : p.foreB, 0.85);
+    // head: rounded skull with a peaked cap
+    const hr = Math.max(3, R(s * 0.105));
+    const hx2 = shX + f * Math.sin(p.head || 0) * s * 0.14, hy2 = shY - Math.cos(p.head || 0) * s * 0.15;
     ctx.fillStyle = c;
-    ctx.fillRect(R(hx2) - R(s * 0.085), R(hy2) - R(s * 0.085), R(s * 0.17), R(s * 0.17));
-    ctx.fillRect(R(hx2) - R(s * 0.10), R(hy2) - R(s * 0.12), R(s * 0.20), R(s * 0.07));
-    if (p.cap !== false) ctx.fillRect(R(hx2) + (f > 0 ? R(s * 0.06) : -R(s * 0.16)), R(hy2) - R(s * 0.10), R(s * 0.10), 2);
+    ctx.fillRect(R(hx2) - hr, R(hy2) - hr + 1, hr * 2, hr * 2 - 1);
+    ctx.fillRect(R(hx2) - hr + 1, R(hy2) - hr, hr * 2 - 2, hr * 2 + 1);
+    cap(ctx, c, shX, shY, hx2, hy2 + hr, Math.max(3, R(s * 0.10)));   // neck
+    ctx.fillRect(R(hx2) - hr - 1, R(hy2) - hr - 1, hr * 2 + 2, Math.max(2, R(s * 0.06)));  // cap crown
+    ctx.fillRect(R(hx2) + (f > 0 ? hr : -hr - R(s * 0.14)), R(hy2) - hr + 1, R(s * 0.14), 2); // brim
+    const ha = arm(p.armA === undefined ? 0.75 : p.armA, p.foreA === undefined ? 1.15 : p.foreA, 1);
     ctx.restore();
-    return [ha, hb];
+    return ha;
   };
   pass(-1, -1, rim || '#50708c');
   return pass(0, 0, col || '#0c0f15');
@@ -1063,9 +1062,10 @@ function drawBiz(ctx, o, t) {
   if (o.cigar) { ctx.drawImage(B.cigar.c, 6, -1); }
   ctx.restore();
   // near arm (+ binoculars)
-  ctx.save(); ctx.translate(2, -10 + bob); ctx.rotate(o.armNear === undefined ? 1.1 : o.armNear);
+  const an = o.armNear === undefined ? 1.1 : o.armNear;
+  ctx.save(); ctx.translate(2, -10 + bob); ctx.rotate(an);
   ctx.drawImage(B.arm.c, -B.arm.ax, -B.arm.ay);
-  if (o.binoc) { ctx.save(); ctx.rotate(-(o.armNear === undefined ? 1.1 : o.armNear) + (o.binocA || 0)); ctx.drawImage(B.binoc.c, 2, -B.binoc.ay); ctx.restore(); }
+  if (o.binoc) { ctx.translate(B.arm.w - 5, 1); ctx.rotate(-an); ctx.drawImage(B.binoc.c, -B.binoc.ax, -B.binoc.ay); }
   ctx.restore();
   ctx.restore();
 }
@@ -1268,15 +1268,24 @@ const WATER = {}, LAY = {}, MAN = {};
 let OT = null, BIZ = null, CR = null, BOAT = null, YAC = null, TANK = null, HARP = null;
 let FISHSPR = [], FISHDEAD = [], BUILT = false;
 
+function buildNearClutter(seed, kramp) {
+  const H = 200, c = can(LW, H), x = cx2(c), rng = new SeededRandom(seed);
+  for (let i = 0; i < 5; i++) drawRockForm(x, R(rng.range(0, LW)), H + 6, R(rng.range(60, 130)), R(rng.range(30, 66)), IP.rock, false);
+  for (let i = 0; i < 6; i++) {
+    const kx = R(rng.range(0, LW));
+    kelpStalk(kx, rng, H - 1, R(rng.range(90, 180)), kramp, R(rng.range(4, 6)), rng.range(-0.5, 0.5))(x);
+  }
+  return c;
+}
 function buildFarRidge(seed, tint) {
   const H = 150, c = can(LW, H), x = cx2(c), rng = new SeededRandom(seed);
-  for (let i = 0; i < 26; i++) {
-    const rx = R(rng.range(0, LW)), w = R(rng.range(30, 90)), h = R(rng.range(20, 84));
+  for (let i = 0; i < 16; i++) {
+    const rx = R(rng.range(0, LW)), w = R(rng.range(40, 110)), h = R(rng.range(20, 74));
     drawRockForm(x, rx, H - R(rng.range(0, 5)), w, h, IP.rock, rng.next() > 0.6);
   }
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 10; i++) {
     const kx = R(rng.range(0, LW));
-    kelpStalk(kx, rng, H - 2, R(rng.range(30, 80)), IP.kelp, 2, rng.range(-0.4, 0.4))(x);
+    kelpStalk(kx, rng, H - 2, R(rng.range(30, 74)), IP.kelp, 2, rng.range(-0.4, 0.4))(x);
   }
   return tintLayer(c, tint, 0.62);
 }
@@ -1289,13 +1298,13 @@ function buildIntroArt() {
   WATER.night = buildWater(IP.night, 640, 360, { pow: 0.85 });
   LAY.shafts = buildShafts(LW, 300, '#d4f8ff');
   LAY.bed = buildBed();
-  LAY.grassNear = buildGrass(48, IP.grass, 300, 46, 771);
-  LAY.grassFar = tintLayer(buildGrass(30, IP.grass, 220, 28, 991), '#144a58', 0.55);
+  LAY.grassNear = buildGrass(44, IP.grass, 150, 42, 771);
+  LAY.grassFar = tintLayer(buildGrass(28, IP.grass, 120, 26, 991), '#144a58', 0.55);
   LAY.midS = buildShallowMid(4242);
-  LAY.nearS = tintLayer(buildShallowMid(313), '#05161f', 0.74);
+  LAY.nearS = tintLayer(buildNearClutter(313, IP.kelp), '#04141d', 0.76);
   LAY.farS = buildFarRidge(777, '#16525f');
   LAY.midD = buildDeepMid(1234);
-  LAY.nearD = tintLayer(buildDeepMid(555), '#02060c', 0.80);
+  LAY.nearD = tintLayer(buildNearClutter(555, ['#101c20', '#1b2e2c', '#27403a', '#365349', '#496c5c']), '#02060c', 0.82);
   LAY.farD = buildFarRidge(888, '#071a2c');
   LAY.surfS = buildSurfaceUnder(11, IP.foam, '#48ad9e');
   LAY.surfD = buildSurfaceUnder(12, ['#9dbdd4', '#cfe4f0', '#eef8ff'], '#2d74ab');
@@ -1367,7 +1376,9 @@ const FX = {
       if (p.life <= 0) { L.splice(i, 1); continue; }
       switch (p.k) {
         case 'b': p.x += p.vx * dt + Math.sin(p.ph + p.life * 4) * 8 * dt; p.y += p.vy * dt; p.vy -= 12 * dt; break;
-        case 'r': p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - dt * 1.6; p.vy = p.vy * (1 - dt * 1.6) - 5 * dt; p.r += p.g * dt * 6; break;
+        case 'r': p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - dt * 1.6; p.vy = p.vy * (1 - dt * 1.6) - 5 * dt;
+          // clouds spread slowly and stop: an unbounded one swallows the frame
+          p.r += p.g * dt * 1.5; if (p.r > 15) p.r = 15; break;
         case 'f': p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - dt * 3; p.vy *= 1 - dt * 3; break;
         case 'd': p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 420 * dt; break;
         case 'c': p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (flowY === undefined ? 90 : flowY) * dt; p.vx *= 1 - dt * 0.7; break;
@@ -1386,12 +1397,27 @@ const FX = {
           break;
         }
         case 'r': {
+          // a diffuse dithered cloud, not a solid block: scanline rows with a
+          // broken edge, plus a speckled fringe that thins into the water
           const k = Math.min(1, p.life / 1.4);
           const c = IP.blood[k > 0.85 ? 3 : k > 0.55 ? 2 : k > 0.3 ? 1 : 0];
-          ctx.fillStyle = rgbaq(c, Math.min(0.92, k + 0.25));
-          const r = R(p.r);
-          ctx.fillRect(R(p.x) - r, R(p.y) - R(r * 0.7), r * 2, R(r * 1.4));
-          ctx.fillRect(R(p.x) - R(r * 0.7), R(p.y) - r, R(r * 1.4), r * 2);
+          const r = R(p.r), cx = R(p.x), cy = R(p.y);
+          // the wider it spreads, the thinner it gets
+          const thin = 1 - Math.min(0.75, r / 20);
+          ctx.fillStyle = rgbaq(c, Math.min(0.55, (k * 0.55 + 0.08) * thin));
+          for (let dy = -r; dy <= r; dy++) {
+            let w = Math.round(Math.sqrt(Math.max(0, r * r - dy * dy)));
+            if (w <= 0) continue;
+            w -= (hash2(cx + dy * 7, cy) * 2.2) | 0;
+            if (w <= 0) continue;
+            ctx.fillRect(cx - w, cy + dy, w * 2, 1);
+          }
+          ctx.fillStyle = rgbaq(IP.blood[4], Math.min(0.30, k * 0.30 * thin));
+          for (let i = 0; i < 7; i++) {
+            const a = hash2(cx + i * 11, cy + i * 5) * TAU;
+            const rr = r * (0.82 + hash2(cx + i * 3, cy + i) * 0.55);
+            ctx.fillRect(cx + Math.round(Math.cos(a) * rr), cy + Math.round(Math.sin(a) * rr), 2, 2);
+          }
           break;
         }
         case 'f': ctx.fillStyle = rgbaq(IP.foam[p.life > 0.5 ? 2 : 1], Math.min(1, p.life * 2)); ctx.fillRect(R(p.x), R(p.y), R(p.r) + 1, R(p.r) + 1); break;
@@ -1852,9 +1878,9 @@ BEATS.push({
     SC.men.forEach((ox, i) => {
       const lean = SC.rammed ? -0.5 * st + Math.sin((bt - 2.7) * 14 + i) * 0.2 * st : 0.30 + Math.sin(bt * 1.4 + i) * 0.06;
       figure(ctx, SC.boatX + ox + SC.rock * 8, feet + SC.rock * 4, 30, {
-        facing: -1, lean: lean, armA: 2.3 - st * 1.8, foreA: 2.1 - st * 2.4,
-        armB: 2.1 - st * 1.2, foreB: 1.9 - st * 2.0,
-        legA: 0.22 + st * 0.3, legB: -0.20 - st * 0.2, kneeA: -0.1, kneeB: 0.12, head: -0.3 + st * 0.5,
+        facing: -1, lean: lean, armA: 0.95 - st * 1.5, foreA: 1.25 - st * 1.9,
+        armB: 0.80 - st * 1.1, foreB: 1.10 - st * 1.6,
+        legA: 0.50 + st * 0.3, legB: -0.46 - st * 0.2, kneeA: -0.1, kneeB: 0.12, head: -0.3 + st * 0.6,
       });
     });
     ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY + Math.abs(SC.rock) * 5)); ctx.rotate(SC.rock * 0.10 + Math.sin(bt * 2) * 0.02);
@@ -1946,10 +1972,10 @@ BEATS.push({
       const rec = fired ? clamp(1 - (bt - SC.harps.find(h => h.gun === i).t0) * 3, 0, 1) : 0;
       const aim = i === 1 ? (bt > 1.0 ? 1 : 0) : i === 0 ? (bt > 3.6 ? 1 : 0) : 0;
       figure(ctx, SC.boatX + ox, feet, 31, {
-        facing: -1, lean: 0.34 + aim * 0.10 - rec * 0.2,
-        armA: 1.95 + aim * 0.5 - rec * 0.3, foreA: 2.05 + aim * 0.5 - rec * 0.5,
-        armB: 1.75 + aim * 0.5 - rec * 0.2, foreB: 1.95 + aim * 0.4 - rec * 0.4,
-        legA: 0.26, legB: -0.22, kneeA: -0.12, kneeB: 0.1, head: -0.36 - aim * 0.16,
+        facing: -1, lean: 0.30 + aim * 0.10 - rec * 0.22,
+        armA: 0.92 + aim * 0.30 - rec * 0.35, foreA: 1.15 + aim * 0.22 - rec * 0.45,
+        armB: 0.78 + aim * 0.28 - rec * 0.25, foreB: 1.02 + aim * 0.20 - rec * 0.35,
+        legA: 0.52, legB: -0.48, kneeA: -0.12, kneeB: 0.1, head: -0.28 - aim * 0.20,
       });
       if (aim) {
         // the harpoon gun in their hands
@@ -2291,8 +2317,8 @@ function drawDeck(ctx, t, bt) {
   for (let i = 0; i < 5; i++) P(ctx, '#5c3a1c', 41, 244 + i * 11, 72, 2);
   P(ctx, IP.ink, 130, 250, 54, 40); P(ctx, '#4a525e', 131, 251, 52, 38); P(ctx, '#767f8d', 131, 251, 52, 6);
   // a couple of deck hands watching
-  figure(ctx, 240, 300, 40, { facing: 1, lean: -0.05, armA: 2.6, foreA: 2.9, armB: 2.7, foreB: 3.0, legA: 0.2, legB: -0.18, head: 0.1 }, '#243044', '#5a7290');
-  figure(ctx, 300, 302, 38, { facing: 1, lean: 0.08, armA: 2.2, foreA: 2.6, armB: 2.5, foreB: 2.8, legA: -0.16, legB: 0.2, head: 0.16 }, '#2b2436', '#6a6280');
+  figure(ctx, 240, 300, 40, { facing: 1, lean: -0.05, armA: 0.25, foreA: 0.45, armB: 0.15, foreB: 0.30, legA: 0.46, legB: -0.44, head: 0.1 }, '#243044', '#5a7290');
+  figure(ctx, 300, 302, 38, { facing: 1, lean: 0.08, armA: -0.45, foreA: -0.9, armB: 0.30, foreB: 0.55, legA: -0.42, legB: 0.46, head: 0.16 }, '#2b2436', '#6a6280');
   void bt;
 }
 // ---- inside the tank -------------------------------------------------------
@@ -2317,3 +2343,154 @@ function drawTankScene(ctx, t, o) {
   }
   motes(ctx, t * 12, t, 50, '#c8e08a', 0.3);
 }
+
+// ---------------------------------------------------------------- 10. OTTER
+const TALK = [
+  [0.9, 'otter', "Fourth one they've dropped in this month."],
+  [3.4, 'you', 'They took my brother.'],
+  [5.6, 'otter', 'Yeah. They do that. Up the ramp, into the hold.'],
+  [8.2, 'otter', 'Which is why I have been chewing on a plan.'],
+  [10.6, 'you', 'What do you need?'],
+  [12.2, 'otter', 'Something with a temper. You will do.'],
+];
+BEATS.push({
+  name: 'otter', dur: 15.5,
+  lines: [[13.6, 'We get out. Then we go and get him back.']],
+  enter() {
+    A.you = actor(MAN.youBig, 156, 206, { beat: 1.1, exp: 'sad', tailAmp: 0.16 });
+    SC.ot = { x: 268, y: 192, phase: 0, s: 1.15, exp: 'plot', flip: false, armNear: 0.4, armFar: 0.9, headR: -0.1 };
+    SC.tankFish = [];
+    for (let i = 0; i < 30; i++) SC.tankFish.push({ x: rand(30, 340), y: rand(50, 320), ph: rand(0, TAU), k: randi(0, 3), s: randi(0, 2), dead: i < 7, sp: rand(12, 40) * (Math.random() < 0.5 ? -1 : 1) });
+    SC.talkI = -1;
+  },
+  update(dt, bt) {
+    swim(A.you, dt);
+    SC.ot.phase += dt * 1.6;
+    let cur = -1;
+    for (let i = 0; i < TALK.length; i++) if (bt >= TALK[i][0]) cur = i;
+    SC.talkI = cur;
+    if (cur !== SC.lastTalk) {
+      SC.lastTalk = cur;
+      if (cur >= 0 && typeof Audio_ !== 'undefined') Audio_.tone(TALK[cur][1] === 'otter' ? 420 : 300, 0.07, 'square', 0.07);
+    }
+    const speaking = cur >= 0 ? TALK[cur][1] : null;
+    const typing = cur >= 0 && (bt - TALK[cur][0]) < TALK[cur][2].length / 26;
+    A.you.exp = (speaking === 'you' && typing) ? 'talk' : (bt > 13.2 ? 'angry' : 'sad');
+    SC.ot.exp = (speaking === 'otter' && typing) ? 'talk' : (bt > 13.2 ? 'plot' : (Math.floor(bt) % 5 === 0 ? 'sly' : 'plot'));
+    if (typing && Math.random() < 9 * dt && typeof Audio_ !== 'undefined') Audio_.tone(speaking === 'otter' ? 500 + rand(0, 90) : 330 + rand(0, 60), 0.035, 'square', 0.045);
+    // both drift to the glass for the last beat
+    const k = clamp((bt - 11.5) / 3.0, 0, 1), e = k * k * (3 - 2 * k);
+    A.you.x = lerp(156, 250, e) + Math.sin(bt * 0.5) * 3;
+    A.you.y = 206 + Math.sin(bt * 0.7) * 5 - e * 6;
+    A.you.rot = Math.sin(bt * 0.7) * 0.05;
+    SC.ot.x = lerp(268, 318, e) + Math.sin(bt * 0.6) * 2;
+    SC.ot.y = 192 + Math.sin(bt * 0.9) * 4 - e * 4;
+    SC.ot.armNear = lerp(0.4 + Math.sin(bt * 1.1) * 0.3, -0.4, e);
+    SC.ot.headR = lerp(-0.1 + Math.sin(bt * 0.8) * 0.08, 0.05, e);
+    if (Math.random() < 2.5 * dt) FX.bubble(SC.ot.x + 14, SC.ot.y - 8, 1, 0.7);
+    if (Math.random() < 1.6 * dt) FX.bubble(A.you.x + 26, A.you.y - 10, 1, 0.6);
+    for (const f of SC.tankFish) {
+      if (!f.dead) { f.x += f.sp * dt; if (f.x > 344) f.sp = -Math.abs(f.sp); if (f.x < 32) f.sp = Math.abs(f.sp); }
+      else f.x += 4 * dt * Math.sin(Intro.t * 0.4 + f.ph);
+    }
+    if (bt > 14.1) Intro.fade = clamp((bt - 14.1) / 1.4, 0, 1);
+  },
+  render(ctx, bt) {
+    drawTankScene(ctx, Intro.t, { deck: true, fish: SC.tankFish });
+    drawManatee(ctx, A.you, Intro.t);
+    SC.ot.blink = Intro.blink;
+    drawOtter(ctx, SC.ot, Intro.t);
+    FX.render(ctx);
+    ctx.drawImage(TANK.glass, 0, 0);
+    ctx.drawImage(TANK.frame, 0, 0);
+    const cur = SC.talkI;
+    if (cur >= 0 && bt < 13.4) {
+      const [t0, who, text] = TALK[cur];
+      const prog = clamp((bt - t0) / (text.length / 26), 0, 1);
+      if (who === 'otter') bubble(ctx, SC.ot.x + 10, SC.ot.y - 24, text, 1, 'otter', prog);
+      else bubble(ctx, A.you.x + 10, A.you.y - 32, text, 1, 'you', prog);
+    }
+  },
+});
+
+// ============================================================== THE  INTRO =
+const Intro = {
+  t: 0, bt: 0, dt: 1 / 60, beat: 0, done: false,
+  scroll: 0, shake: 0, fade: 0, grace: 0.35, blink: false, blinkT: 2,
+  reset() {
+    buildIntroArt();
+    this.t = 0; this.bt = 0; this.dt = 1 / 60; this.beat = 0; this.done = false;
+    this.scroll = 0; this.shake = 0; this.fade = 0; this.grace = 0.4;
+    this.blink = false; this.blinkT = 2;
+    sndT = 0; sndT2 = 0;
+    FX.clear();
+    for (const k in SC) delete SC[k];
+    if (BUILT && BEATS[0].enter) BEATS[0].enter();
+  },
+  skip() { this.done = true; },
+  next() {
+    this.beat++; this.bt = 0; this.fade = 0; this.scroll = 0; this.shake = 0;
+    FX.clear();
+    for (const k in SC) delete SC[k];
+    if (this.beat >= BEATS.length) { this.done = true; return; }
+    if (BEATS[this.beat].enter) BEATS[this.beat].enter();
+  },
+  update(dt) {
+    if (this.done) return;
+    if (!BUILT) { buildIntroArt(); if (!BUILT) { this.done = true; return; } if (BEATS[this.beat].enter) BEATS[this.beat].enter(); }
+    if (dt > 1 / 20) dt = 1 / 20;
+    this.dt = dt; this.t += dt; this.bt += dt; this.grace -= dt;
+    this.blinkT -= dt;
+    if (this.blinkT <= 0) { this.blink = !this.blink; this.blinkT = this.blink ? 0.10 : rand(1.6, 4.6); }
+    if (this.grace <= 0 && typeof Input !== 'undefined' && Input.mouse) {
+      const adv = (Input.hit && (Input.hit('Enter') || Input.hit('NumpadEnter') || Input.hit('Space'))) || Input.mouse.clicked;
+      if (adv) { this.next(); return; }
+      if (Input.anyKey) { this.skip(); return; }
+    }
+    this.shake = Math.max(0, this.shake - dt * 30);
+    const b = BEATS[this.beat];
+    if (!b) { this.done = true; return; }
+    b.update(dt, this.bt);
+    FX.update(dt);
+    if (this.bt >= b.dur) this.next();
+  },
+  render(ctx) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    if (!BUILT || this.done) {
+      ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, 640, 360);
+      ctx.restore(); return;
+    }
+    const b = BEATS[this.beat];
+    if (!b) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, 640, 360); ctx.restore(); return; }
+    ctx.save();
+    if (this.shake > 0.2) ctx.translate(R(rand(-this.shake, this.shake)), R(rand(-this.shake, this.shake)));
+    b.render(ctx, this.bt);
+    ctx.restore();
+    if (this.fade > 0) { ctx.fillStyle = rgbaq('#000000', this.fade); ctx.fillRect(0, 0, 640, 360); }
+    if (this.t < 0.9) { ctx.fillStyle = rgbaq('#000000', 1 - this.t / 0.9); ctx.fillRect(0, 0, 640, 360); }
+    letterbox(ctx);
+    // narration
+    if (b.lines) {
+      let line = null, prog = 0;
+      for (const L of b.lines) if (this.bt >= L[0]) { line = L[1]; prog = this.bt - L[0]; }
+      if (line && prog < line.length / 44 + 3.4) narrate(ctx, line, prog);
+    }
+    // persistent skip hint + beat pips
+    if (this.t > 0.6) {
+      pixelText(ctx, 'press any key to skip', 634, 9, 6, Math.floor(this.t * 0.8) % 2 ? '#7f8a96' : '#5f6a76', 'right');
+      pixelText(ctx, 'ENTER / click: next scene', 6, 9, 6, '#4e5a66', 'left');
+      for (let i = 0; i < BEATS.length; i++) {
+        P(ctx, i < this.beat ? '#5f6a76' : i === this.beat ? '#e8eef4' : '#2a323c', 258 + i * 13, 11, i === this.beat ? 9 : 7, 2);
+      }
+    }
+    ctx.restore();
+  },
+};
+
+try { if (typeof document !== 'undefined' && document.createElement) buildIntroArt(); } catch (e) { /* built lazily on reset */ }
+
+global.Intro = Intro;
+global.IntroBeats = BEATS;
+global.__introDebug = { MAN: MAN, drawManatee: drawManatee, drawOtter: drawOtter, drawBiz: drawBiz, figure: figure, drawCrane: drawCrane, drawNet: drawNet, get HARP() { return HARP; }, get BOAT() { return BOAT; }, get YAC() { return YAC; }, get TANK() { return TANK; } };
+})(typeof window !== 'undefined' ? window : this);

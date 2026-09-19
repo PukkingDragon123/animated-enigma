@@ -225,6 +225,9 @@ class Player {
     if (st.dive && Input.actHit('dive') && !this.dive.active && this.dive.cd <= 0 && !this.roll.active) { this.dive.active = true; this.dive.t = 0; G.particles.splash(this.x, this.y, 1.6); G.particles.bubbles(this.x, this.y, 8); Audio_.splash(1.2); }
     if (st.decoy && Input.actHit('decoy') && this.decoyCd <= 0) { this.decoyCd = this.cd(14); G.buoy = new Buoy(this.x - this.facing * 30, this.y); G.particles.splash(G.buoy.x, G.buoy.y, 0.8); G.particles.text(this.x, this.y - 20, 'DECOY!', '#8ac6ff'); }
     if (st.tidal && Input.actHit('tidal') && this.tidalCd <= 0) this.tidalSlam();
+    // interact: mount a whale, crack a chest
+    if (typeof Wildlife !== 'undefined' && Wildlife.onPlayerAction &&
+        (Input.hit('KeyG') || Input.hit('KeyX') || Input.actHit('interact'))) Wildlife.onPlayerAction();
     if (this.absorb.active) { this.absorb.t += dt; if (this.absorb.t > st.absorbWindow) { this.absorb.active = false; this.absorb.cd = this.cd(st.absorbCd); } }
     if (this.dive.active) { this.dive.t += dt; if (Math.random() < 0.3) G.particles.bubbles(this.x + rand(-8, 8), this.y + rand(-6, 6), 1); if (this.dive.t > 1.5) { this.dive.active = false; this.dive.cd = this.cd(7); G.particles.splash(this.x, this.y, 1.8); Audio_.splash(1.3); } }
     // ---- movement
@@ -353,7 +356,7 @@ class Player {
   updateWeapons(dt, t) {
     const st = this.stats;
     const mouseWorld = G.screenToWorld(Input.mouse.x, Input.mouse.y);
-    this.target = G.nearestEnemy(this.x, this.y, 300, null, true);
+    this.target = G.nearestEnemy(this.x, this.y, 340, null, true);
     let wantFire = false;
     const manualFire = Input.act('fire');
     const touchAim = (typeof MobileUI !== 'undefined' && MobileUI.enabled) ? MobileUI.aimAt() : null;

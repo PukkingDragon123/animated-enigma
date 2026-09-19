@@ -247,6 +247,8 @@
     });
   }
 
+  const SHORT_SCRAP = { metal: 'METAL', wood: 'WOOD', fuel: 'FUEL', powder: 'PWDR', tech: 'TECH' };
+
   // node id -> icon name (weapon nodes draw their gun sprite instead)
   const NICON = {
     w_tune: 'dmg', w_hollow: 'dmg', w_hollow2: 'pierce', w_rapid: 'rate', w_bigiron: 'multi',
@@ -580,7 +582,7 @@
   // ===========================================================================
   const Otter = {
     x: 76, y: 150, vy: 8, breath: 0.62, relief: 0, gasp: 0, lunge: null,
-    buf: null, bufCtx: null, bubbles: [], t: 0, scale: 2.5,
+    buf: null, bufCtx: null, bubbles: [], t: 0, scale: 2.8,
 
     build() {
       if (this.buf) return;
@@ -616,12 +618,12 @@
       if (this.y < b.y0) { this.y = b.y0; this.vy = 2; }
       if (this.lunge) { this.lunge.t += dt; if (this.lunge.t > this.lunge.dur) this.lunge = null; }
       // air escaping his lungs
-      if (Math.random() < 0.35 + panic * 0.5) this.bubbles.push({
-        x: this.x + rand(2, 12), y: this.y - 26, r: randi(0, 3),
-        vx: rand(-9, 9), vy: rand(-40, -18), life: rand(1.2, 2.4), max: 2.4,
+      if (Math.random() < 0.22 + panic * 0.3) this.bubbles.push({
+        x: this.x + rand(10, 18), y: this.y - 22, r: randi(0, 3),
+        vx: rand(16, 44), vy: rand(-58, -30), life: rand(1.2, 2.4), max: 2.4,
       });
       if (this.gasp > 0.3) for (let i = 0; i < 2; i++) this.bubbles.push({
-        x: this.x + rand(0, 14), y: this.y - 26, r: randi(2, 4), vx: rand(-24, 24), vy: rand(-70, -30), life: rand(0.6, 1.4), max: 1.4,
+        x: this.x + rand(10, 20), y: this.y - 22, r: randi(2, 4), vx: rand(20, 60), vy: rand(-96, -46), life: rand(0.6, 1.4), max: 1.4,
       });
       for (let i = this.bubbles.length - 1; i >= 0; i--) {
         const p = this.bubbles[i]; p.life -= dt;
@@ -638,10 +640,10 @@
       bx.translate(8, 0); bx.rotate(a2);
       bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
       bx.translate(10, 0);
-      bx.fillStyle = '#1a1220'; bx.fillRect(-3, -4, 6, 8);
-      bx.fillStyle = '#c8703c'; bx.fillRect(-2, -3, 4, 6);
-      bx.fillStyle = '#f0b87e'; bx.fillRect(-2, -3, 2, 3);
-      bx.fillStyle = '#1a1220'; bx.fillRect(2, -4, 2, 2); bx.fillRect(2, 2, 2, 2);
+      bx.fillStyle = '#1a1220'; bx.fillRect(-2, -3, 5, 6);
+      bx.fillStyle = '#c8703c'; bx.fillRect(-1, -2, 3, 4);
+      bx.fillStyle = '#f0b87e'; bx.fillRect(-1, -2, 2, 2);
+      bx.fillStyle = '#1a1220'; bx.fillRect(3, -3, 1, 2); bx.fillRect(3, 0, 1, 2);
       bx.restore();
     },
 
@@ -657,7 +659,7 @@
       bx.scale(S, S);
 
       // he hangs limp and tipped back; a lunge whips him toward the bubble
-      let lean = -0.26 + Math.sin(t * 0.62) * 0.16;
+      let lean = -0.32 + Math.sin(t * 0.62) * 0.26;
       let reach = 0;
       if (this.lunge) {
         const k = this.lunge.t / this.lunge.dur;
@@ -671,13 +673,13 @@
       const fast = t * (3.4 + panic * 3.4);
 
       // tail hanging and thrashing below him
-      bx.save(); bx.translate(-5, 9);
-      bx.rotate(1.95 + Math.sin(fast * 0.75) * (0.34 + panic * 0.4));
+      bx.save(); bx.translate(-6, 8);
+      bx.rotate(2.35 + Math.sin(fast * 0.75) * (0.3 + panic * 0.36));
       bx.drawImage(CH.otterTail.c, -CH.otterTail.ax, -CH.otterTail.ay);
       bx.restore();
 
       // far arm, clawing at water that will not hold him
-      this.limb(bx, 5, -4, -1.05 + Math.sin(fast + 1.1) * (0.42 + panic * 0.3), -0.75 + Math.sin(fast * 1.3) * 0.5);
+      this.limb(bx, 8, -4, -0.42 + Math.sin(fast + 1.1) * (0.3 + panic * 0.24), -0.88 + Math.sin(fast * 1.3) * 0.36);
 
       // torso
       bx.save(); bx.scale(1, heave);
@@ -685,7 +687,7 @@
       bx.restore();
 
       // near arm — the one that grabs (hidden while the real reach is drawn)
-      if (reach < 0.15) this.limb(bx, -4, -4, -2.15 + Math.sin(fast * 0.9) * (0.42 + panic * 0.3), 0.8 + Math.sin(fast * 1.15) * 0.5);
+      if (reach < 0.15) this.limb(bx, -8, -4, -2.72 + Math.sin(fast * 0.9) * (0.3 + panic * 0.24), 0.9 + Math.sin(fast * 1.15) * 0.36);
 
       // head, screwed up in pain — or gasping with relief
       bx.save();
@@ -769,16 +771,18 @@
   function buildNodeBubbles() {
     const wob = [[0, 0], [1, -1], [0, 0], [-1, 1]];
     const skin = {
-      locked: { rim: '#2b4257', body: 'rgba(24,42,60,0.95)', core: 'rgba(12,26,40,0.86)', hi: 'rgba(90,125,155,0.5)', crest: 'rgba(40,64,86,0.9)' },
-      avail: { rim: '#9fe0f5', body: 'rgba(52,122,160,0.72)', core: 'rgba(22,62,92,0.55)', hi: 'rgba(235,252,255,0.95)', crest: 'rgba(130,200,230,0.7)' },
-      afford: { rim: '#c9fff0', body: 'rgba(70,168,175,0.75)', core: 'rgba(26,84,96,0.55)', hi: 'rgba(255,255,255,1)', crest: 'rgba(170,240,230,0.8)' },
-      owned: { rim: '#ffe48f', body: 'rgba(176,126,36,0.85)', core: 'rgba(96,66,14,0.72)', hi: 'rgba(255,255,255,1)', crest: 'rgba(255,214,120,0.85)' },
+      locked: { rim: '#2b4257', body: 'rgba(24,42,60,0.95)', core: 'rgba(11,23,36,0.9)', hi: 'rgba(90,125,155,0.5)', crest: 'rgba(40,64,86,0.9)', ref: 'rgba(96,136,168,0.45)' },
+      avail: { rim: '#9fe0f5', body: 'rgba(52,122,160,0.72)', core: 'rgba(17,50,76,0.62)', hi: 'rgba(235,252,255,0.95)', crest: 'rgba(130,200,230,0.7)', ref: 'rgba(200,245,255,0.55)' },
+      afford: { rim: '#c9fff0', body: 'rgba(70,168,175,0.78)', core: 'rgba(19,70,80,0.6)', hi: 'rgba(255,255,255,1)', crest: 'rgba(170,240,230,0.8)', ref: 'rgba(225,255,248,0.65)' },
+      owned: { rim: '#ffe48f', body: 'rgba(186,134,38,0.9)', core: 'rgba(58,38,6,0.86)', hi: 'rgba(255,255,255,1)', crest: 'rgba(255,214,120,0.9)', ref: 'rgba(255,240,190,0.7)' },
     };
+    BUB.mini = {};
     for (const key in skin) {
       for (let f = 0; f < 4; f++) {
         const rx = NODE_R + wob[f][0], ry = NODE_R + wob[f][1];
         BUB[key].push(bubbleSprite(rx, ry, skin[key], key === 'locked'));
       }
+      BUB.mini[key] = bubbleSprite(5, 5, skin[key], false);
     }
     // hover halo
     const hr = NODE_R + 4, hc = can(hr * 2 + 3, hr * 2 + 3), hx = hc.getContext('2d');
@@ -819,6 +823,12 @@
     for (let a = 30; a < 78; a++) {
       const an = a / 100 * TAU;
       x.fillRect(Math.round(cx + Math.cos(an) * rx * 0.86), Math.round(cy + Math.sin(an) * ry * 0.86), 1, 1);
+    }
+    // light refracting through the far wall: a bright arc low and right
+    x.fillStyle = sk.ref;
+    for (let a = 8; a < 34; a++) {
+      const an = a / 100 * TAU;
+      x.fillRect(Math.round(cx + Math.cos(an) * rx * 0.70), Math.round(cy + Math.sin(an) * ry * 0.70), 1, 1);
     }
     if (chained) {                                    // a locked bubble is chained shut
       x.fillStyle = '#4b5762';
@@ -936,7 +946,7 @@
       this.labels.length = 0; this.bursts.length = 0;
       this.flash = {};
       this.lastCount = -1;
-      Otter.reset(LAY.stage.x + LAY.stage.w / 2 + 2, LAY.stage.y + 110);
+      Otter.reset(LAY.stage.x + LAY.stage.w / 2 + 2, LAY.stage.y + 116);
       Otter.breath = clamp(Otter.breath, 0.28, 1);
     },
 
@@ -988,7 +998,7 @@
       this.T += dt;
       const T = this.T;
       Deep.update(dt, T);
-      Otter.update(dt, { y0: LAY.stage.y + 62, y1: LAY.stage.y + LAY.stage.h - 108 });
+      Otter.update(dt, { y0: LAY.stage.y + 80, y1: LAY.stage.y + LAY.stage.h - 104 });
       this.glow = (this.glow + dt) % 100;
 
       const tree = this.tree();
@@ -1131,7 +1141,7 @@
       Deep.render(ctx, { wreckX: 250 });
 
       // --- the otter, sinking in the open water on the left ---
-      Otter.draw(ctx, 2.5);
+      Otter.draw(ctx, 2.8);
 
       // --- board: strands, then bubbles ---
       const nodes = tree ? this.branchNodes(this.tab) : [];
@@ -1220,7 +1230,11 @@
       const dim = this.affordOnly && !owned && !(avail && afford);
       if (dim) ctx.globalAlpha = 0.34;
 
-      if (chain && chain.has(n.id)) blit(ctx, BUB.chain, p.x, p.y);
+      if (chain && chain.has(n.id)) {
+        ctx.globalAlpha = (dim ? 0.34 : 1) * (0.6 + Math.sin(T * 5 + p.ph) * 0.4);
+        blit(ctx, BUB.chain, p.x, p.y);
+        ctx.globalAlpha = dim ? 0.34 : 1;
+      }
       if (hov) blit(ctx, BUB.hover, p.x, p.y);
       blit(ctx, BUB[state][frame], p.x, p.y);
 
@@ -1241,10 +1255,13 @@
 
       // owned tick / weapon role badges
       if (owned) {
-        R(ctx, '#14141c', p.x + 8, p.y + 7, 9, 9);
-        R(ctx, '#ffe48f', p.x + 9, p.y + 8, 7, 7);
-        R(ctx, '#6b4a06', p.x + 11, p.y + 12, 1, 2); R(ctx, '#6b4a06', p.x + 12, p.y + 13, 1, 1);
-        R(ctx, '#6b4a06', p.x + 13, p.y + 11, 1, 1); R(ctx, '#6b4a06', p.x + 14, p.y + 10, 1, 1);
+        const bx = p.x + 7, by = p.y + 6;
+        R(ctx, '#14141c', bx, by, 11, 11);
+        R(ctx, '#ffe48f', bx + 1, by + 1, 9, 9);
+        R(ctx, '#c8952f', bx + 1, by + 7, 9, 3);
+        R(ctx, '#fff6d2', bx + 1, by + 1, 9, 1);
+        R(ctx, '#3c2803', bx + 2, by + 5, 2, 3); R(ctx, '#3c2803', bx + 3, by + 6, 2, 2);
+        R(ctx, '#3c2803', bx + 5, by + 4, 2, 2); R(ctx, '#3c2803', bx + 6, by + 2, 2, 3);
       }
       if (n.weapon && owned) {
         const prim = tree.primary === n.weapon, side = tree.sidearm === n.weapon;
@@ -1277,7 +1294,7 @@
       if (tree) {
         const need = this.hover && !tree.has(this.hover.id) ? this.hover.cost : null;
         SCRAP_TYPES.forEach((k, i) => {
-          const x = 112 + i * 47, y = 2, w = 44, h = 22;
+          const x = 118 + i * 46, y = 2, w = 43, h = 22;
           const want = need && need[k] ? need[k] : 0;
           const ok = !want || tree.scrap[k] >= want;
           R(ctx, '#080c16', x, y, w, h);
@@ -1285,8 +1302,8 @@
           box(ctx, want ? (ok ? '#6fd88e' : '#ff6161') : '#2b3548', x, y, w, h);
           drawSprite(ctx, SP.scrap[k], x + 10, y + 11);
           pixelText(ctx, String(tree.scrap[k]), x + 19, y + 3, 8, SCRAP_COLORS[k]);
-          if (want) pixelText(ctx, 'NEED ' + want, x + 19, y + 14, 5, ok ? '#9ff0d8' : '#ff6161');
-          else pixelText(ctx, SCRAP_NAMES[k].split(' ')[0].toUpperCase().slice(0, 7), x + 19, y + 14, 5, '#5d7488');
+          if (want) pixelText(ctx, 'OF ' + want, x + 19, y + 14, 5, ok ? '#9ff0d8' : '#ff6161');
+          else pixelText(ctx, SHORT_SCRAP[k], x + 19, y + 14, 5, '#5d7488');
         });
       }
 
@@ -1324,17 +1341,19 @@
         if (on) { R(ctx, '#16243a', x + 1, y + h - 1, w - 2, 1); }
         const nodes = this.branchNodes(i), have = nodes.filter(n => tree && tree.has(n.id)).length;
         const ready = tree ? nodes.some(n => !tree.has(n.id) && tree.available(n) && tree.canAfford(n)) : false;
-        drawSprite(ctx, SP[b.icon], x + 4, y + 4);
-        pixelText(ctx, b.name, x + 15, y + 3, 6, on ? b.color : '#8ea6bc');
-        // progress
-        const pw = w - 18;
-        R(ctx, '#050a12', x + 15, y + 12, pw, 4);
-        R(ctx, on ? b.color : '#3c556f', x + 16, y + 13, Math.round((pw - 2) * have / nodes.length), 2);
-        pixelText(ctx, have + '/' + nodes.length, x + w - 3, y + 11, 5, '#c2d6e4', 'right');
+        drawSprite(ctx, SP[b.icon], x + 4, y + 3);
+        pixelText(ctx, b.name, x + 13, y + 3, 6, on ? b.color : '#8ea6bc');
+        // progress bar with the tally beside it
+        const pw = w - 30;
+        R(ctx, '#050a12', x + 4, y + 11, pw, 6);
+        R(ctx, '#0b1522', x + 5, y + 12, pw - 2, 4);
+        R(ctx, on ? b.color : '#3c556f', x + 5, y + 12, Math.round((pw - 2) * have / nodes.length), 4);
+        if (have) R(ctx, '#ffffff', x + 5, y + 12, Math.round((pw - 2) * have / nodes.length), 1);
+        pixelText(ctx, have + '/' + nodes.length, x + w - 4, y + 11, 5, on ? '#ffffff' : '#a7bed0', 'right');
         if (ready) {
           const f = Math.floor(T * 3) % 2;
-          R(ctx, f ? '#9ff0d8' : '#6fd88e', x + w - 6, y + 2, 4, 4);
-          box(ctx, '#14141c', x + w - 6, y + 2, 4, 4);
+          R(ctx, '#14141c', x + w - 8, y + 2, 6, 6);
+          R(ctx, f ? '#b6f5cd' : '#6fd88e', x + w - 7, y + 3, 4, 4);
         }
       }
     },
@@ -1385,18 +1404,34 @@
       for (const l of lines) { pixelTextOutlined(ctx, l, X, y, ts, bcol, '#14141c'); y += ts === 12 ? 12 : 10; }
       y += 2;
 
-      // big icon + status
-      UIKit.slot(ctx, X, y, 30, owned ? 'owned' : !avail ? 'locked' : 'available');
-      const art = nodeArt(n);
-      ctx.drawImage(art.c, Math.round(X + 15 - art.w / 2), Math.round(y + 15 - art.h / 2));
+      // big icon plate + status
+      const state = owned ? 'owned' : !avail ? 'locked' : 'available';
+      let px0 = X + 36;
+      if (n.weapon && SP.guns[n.weapon]) {
+        const pw = 50, ph = 30, g = SP.guns[n.weapon];
+        R(ctx, '#0a0a10', X, y, pw, ph);
+        R(ctx, owned ? '#9a6c1e' : '#4f5560', X + 1, y + 1, pw - 2, ph - 2);
+        R(ctx, owned ? '#e0b34e' : '#848b97', X + 1, y + 1, pw - 2, 1);
+        R(ctx, owned ? '#5a3c12' : '#2e323b', X + 1, y + ph - 2, pw - 2, 1);
+        R(ctx, '#0a0a10', X + 3, y + 3, pw - 6, ph - 6);
+        R(ctx, owned ? '#3a2a12' : '#161d30', X + 4, y + 4, pw - 8, ph - 8);
+        ctx.save();
+        ctx.beginPath(); ctx.rect(X + 4, y + 4, pw - 8, ph - 8); ctx.clip();
+        ctx.drawImage(g.c, 0, 0, g.w, g.h, Math.round(X + pw / 2 - g.w), Math.round(y + ph / 2 - g.h), g.w * 2, g.h * 2);
+        ctx.restore();
+        px0 = X + pw + 6;
+      } else {
+        UIKit.slot(ctx, X, y, 30, state);
+        const art = nodeArt(n);
+        ctx.drawImage(art.c, Math.round(X + 15 - art.w / 2), Math.round(y + 15 - art.h / 2));
+      }
       const bn = (BRANCHES.find(b => b.id === n.branch) || BRANCHES[0]).name;
-      pixelText(ctx, bn, X + 36, y + 2, 6, bcol);
+      pixelText(ctx, n.weapon ? bn + ' - WEAPON' : bn, px0, y + 2, 6, bcol);
       const stat = owned ? 'TAKEN' : !avail ? 'OUT OF REACH' : afford ? 'READY TO GRAB' : 'NOT ENOUGH SCRAP';
       const scol = owned ? '#ffe48f' : !avail ? '#ff6161' : afford ? '#9ff0d8' : '#ff9a3c';
-      R(ctx, '#0a0e18', X + 36, y + 11, Wd - 36, 10);
-      box(ctx, scol, X + 36, y + 11, Wd - 36, 10);
-      pixelText(ctx, stat, X + 39, y + 13, 6, scol);
-      if (n.weapon) pixelText(ctx, 'WEAPON', X + 36, y + 23, 5, '#9fd8ee');
+      R(ctx, '#0a0e18', px0, y + 11, X + Wd - px0, 11);
+      box(ctx, scol, px0, y + 11, X + Wd - px0, 11);
+      pixelText(ctx, stat, px0 + 3, y + 14, 6, scol);
       y += 34;
 
       UIKit.divider(ctx, X, y + 2, Wd); y += 7;
@@ -1488,33 +1523,31 @@
       y += 3;
       UIKit.divider(ctx, X, y, Wd); y += 7;
 
-      const leg = [['owned', 'TAKEN', '#ffe9b0'], ['afford', 'READY - you can pay', '#9ff0d8'], ['avail', 'NEEDS MORE SALVAGE', '#bcd6e6'], ['locked', 'CHAINED - build the chain', '#7f97a8']];
+      const leg = [['owned', 'TAKEN', '#ffe9b0'], ['afford', 'READY - you can pay', '#9ff0d8'], ['avail', 'NEEDS MORE SALVAGE', '#bcd6e6'], ['locked', 'CHAINED - unlock the chain', '#7f97a8']];
       for (const l of leg) {
-        ctx.save();
-        ctx.translate(X + 9, y + 6); ctx.scale(0.5, 0.5);
-        ctx.drawImage(BUB[l[0]][0].c, -BUB[l[0]][0].ax, -BUB[l[0]][0].ay);
-        ctx.restore();
-        pixelText(ctx, l[1], X + 22, y + 2, 6, l[2]);
-        y += 13;
+        blit(ctx, BUB.mini[l[0]], X + 7, y + 4);
+        pixelText(ctx, l[1], X + 16, y + 1, 6, l[2]);
+        y += 12;
       }
-      y += 2;
+      y += 1;
       UIKit.divider(ctx, X, y, Wd); y += 7;
-      pixelText(ctx, 'WHERE SALVAGE COMES FROM', X, y, 6, '#8ac6ff'); y += 10;
+      pixelText(ctx, 'WHERE SALVAGE COMES FROM', X, y, 6, '#8ac6ff'); y += 9;
       const src = { metal: 'harpooners, gunboats', wood: 'dinghies, trawlers', fuel: 'speedboats, jetskis', powder: 'skiffs, dynaboats', tech: 'netters, trawlers' };
       for (const k of SCRAP_TYPES) {
-        drawSprite(ctx, SP.scrap[k], X + 4, y + 4);
+        drawSprite(ctx, SP.scrap[k], X + 4, y + 5);
         pixelText(ctx, SCRAP_NAMES[k], X + 11, y, 5, SCRAP_COLORS[k]);
-        pixelText(ctx, src[k], X + 11, y + 7, 5, '#7fa0b4');
-        y += 16;
+        pixelText(ctx, src[k], X + 11, y + 6, 5, '#7fa0b4');
+        pixelText(ctx, String(tree.scrap[k] || 0), X + Wd, y + 2, 7, SCRAP_COLORS[k], 'right');
+        y += 14;
       }
-      if (typeof G !== 'undefined' && G && G.stats) {
-        UIKit.divider(ctx, X, y, Wd); y += 7;
-        const st = G.stats;
-        const line = (a, b) => { pixelText(ctx, a, X, y, 6, '#8fa6b8'); pixelText(ctx, b, X + Wd, y, 6, '#ffffff', 'right'); y += 9; };
-        line('BOATS SUNK', String(st.kills || 0));
-        line('ABSORBS', String(st.absorbs || 0));
-        line('SALVAGE FOUND', String(st.scrapCollected || 0));
-      }
+      y += 1;
+      UIKit.divider(ctx, X, y, Wd); y += 7;
+      const st = (typeof G !== 'undefined' && G && G.stats) ? G.stats : { kills: 0, absorbs: 0, scrapCollected: 0 };
+      const line = (a, b, c) => { pixelText(ctx, a, X, y, 6, '#8fa6b8'); pixelText(ctx, b, X + Wd, y - 1, 7, c || '#ffffff', 'right'); y += 10; };
+      line('BOATS SUNK', String(st.kills || 0), '#ff9a3c');
+      line('ABSORBS', String(st.absorbs || 0), '#8ac6ff');
+      line('SALVAGE FOUND', String(st.scrapCollected || 0), '#6fd88e');
+      line('UPGRADES TAKEN', tree.unlocked.size + '/' + SKILL_NODES.length, '#ffe48f');
     },
 
     // ------------------------------------------------------------- bottom
@@ -1675,7 +1708,7 @@
 
       // ---- the hero: war manatee + armed otter, bobbing in the current ----
       if (typeof CH !== 'undefined' && CH.manatee && typeof Rig !== 'undefined') {
-        const hx = 320 + Math.sin(T * 0.4) * 10, hy = 226 + Math.sin(T * 0.8) * 4;
+        const hx = 296 + Math.sin(T * 0.4) * 10, hy = 240 + Math.sin(T * 0.8) * 4;
         ctx.save();
         ctx.translate(Math.round(hx), Math.round(hy));
         ctx.scale(2, 2);
@@ -1686,7 +1719,7 @@
         });
         ctx.restore();
         // wake bubbles behind him
-        if (Math.random() < 0.4) Deep.rise.push({ x: hx - 70, y: hy + 6, r: randi(0, 3), s: rand(20, 46), ph: rand(0, TAU), w: rand(3, 8) });
+        if (Math.random() < 0.4) Deep.rise.push({ x: hx - 74, y: hy + 6, r: randi(0, 3), s: rand(20, 46), ph: rand(0, TAU), w: rand(3, 8) });
         if (Deep.rise.length > 110) Deep.rise.splice(0, Deep.rise.length - 110);
       }
 
@@ -1731,7 +1764,7 @@
     },
 
     drawRunPanel(ctx, T) {
-      const x = 408, y = 108, w = 218, h = 168;
+      const x = 408, y = 106, w = 218, h = 156;
       UIKit.panel(ctx, x, y, w, h, 'gold');
       const X = x + 10; let Y = y + 10;
       const running = this.runInProgress();
@@ -1754,18 +1787,26 @@
       }
       if (tree) {
         line('UPGRADES', tree.unlocked.size + '/' + SKILL_NODES.length, '#ffe48f');
-        Y += 2;
-        UIKit.divider(ctx, X, Y, w - 20); Y += 8;
+        Y += 1;
+        UIKit.divider(ctx, X, Y, w - 20); Y += 7;
+        pixelText(ctx, 'SALVAGE', X, Y, 5, '#9ab4c6'); Y += 8;
         SCRAP_TYPES.forEach((k, i) => {
-          const sx = X + (i % 3) * 66, sy = Y + Math.floor(i / 3) * 16;
-          drawSprite(ctx, SP.scrap[k], sx + 5, sy + 6);
-          pixelText(ctx, String(tree.scrap[k] || 0), sx + 12, sy + 2, 7, SCRAP_COLORS[k]);
+          const sx = X + i * 39;
+          R(ctx, '#0a0e18', sx, Y, 36, 16); box(ctx, '#2b3548', sx, Y, 36, 16);
+          drawSprite(ctx, SP.scrap[k], sx + 8, Y + 8);
+          pixelText(ctx, String(tree.scrap[k] || 0), sx + 33, Y + 4, 6, SCRAP_COLORS[k], 'right');
         });
-        Y += 34;
-        const wp = WEAPONS[tree.primary] || WEAPONS.revolver;
-        pixelText(ctx, 'WEAPON', X, Y, 5, '#9ab4c6');
-        ctx.drawImage(SP.guns[tree.primary].c, X + 36, Y - 1);
-        pixelText(ctx, fitLabel(wp.name, w - 80, 6), X + 38 + SP.guns[tree.primary].w, Y, 6, '#ffffff');
+        Y += 20;
+        const wp = WEAPONS[tree.primary] || WEAPONS.revolver, gs = SP.guns[tree.primary];
+        pixelText(ctx, 'WEAPON', X, Y + 2, 5, '#9ab4c6');
+        ctx.drawImage(gs.c, X + 34, Y + 1);
+        pixelText(ctx, fitLabel(wp.name, w - 56 - gs.w, 6), X + 38 + gs.w, Y + 1, 6, '#ffffff');
+        if (tree.sidearm) {
+          const ss = SP.guns[tree.sidearm];
+          pixelText(ctx, '+', X + 26, Y + 11, 5, '#ffe48f');
+          ctx.drawImage(ss.c, X + 34, Y + 11);
+          pixelText(ctx, fitLabel(WEAPONS[tree.sidearm].name, w - 56 - ss.w, 5), X + 38 + ss.w, Y + 11, 5, '#ffe48f');
+        }
       }
     },
   };

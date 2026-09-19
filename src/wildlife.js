@@ -184,36 +184,36 @@ const Wildlife = (function () {
     // ====================================================================
     const FISH = {
       sardine: {
-        L: 8, B: 4, pal: { out: '#0e1e2e', dark: '#27506e', mid: '#4d87ac', light: '#a8dcf0', dorsal: '#1d3c56', fin: '#79b6d2', eye: '#0b1118' },
-        lat: '#e2f6ff',
+        L: 7, B: 4, pal: { out: '#0c1a28', dark: '#24465f', mid: '#3f7595', light: '#8fc4dc', dorsal: '#1a3349', fin: '#31607c', eye: '#050a10' },
+        lat: '#cfe9f6',
       },
       anchovy: {
-        L: 7, B: 3, pal: { out: '#101f21', dark: '#2a5a52', mid: '#529685', light: '#b6e8cf', dorsal: '#1d4440', fin: '#7cc3ac', eye: '#0b1118' },
-        lat: '#f2ffe8',
+        L: 6, B: 3, pal: { out: '#0c1a1a', dark: '#245046', mid: '#3d8271', light: '#8ecfb4', dorsal: '#173a35', fin: '#2f6a5c', eye: '#050a10' },
+        lat: '#dcf4e4',
       },
       fusilier: {
-        L: 9, B: 4, pal: { out: '#131a30', dark: '#2b3e78', mid: '#4664bb', light: '#86b6f4', dorsal: '#1e2a57', fin: '#f2c744', eye: '#0b1118' },
-        lat: '#ffe9a0',
+        L: 8, B: 4, pal: { out: '#0d1526', dark: '#25366b', mid: '#3d5aa2', light: '#7fa4dd', dorsal: '#1a2550', fin: '#3b4f8f', eye: '#050a10' },
+        lat: '#ffd98a',
       },
       clown: {
-        L: 8, B: 5, pal: { out: '#2a1008', dark: '#c25310', mid: '#f07c1c', light: '#ffb452', dorsal: '#e0620f', fin: '#ffd79a', eye: '#12070a' },
-        bars: [[0.30, '#fff4e2'], [0.58, '#fff4e2'], [0.84, '#fff4e2']], barOut: '#2a1008',
+        L: 9, B: 6, pal: { out: '#25100a', dark: '#a8460f', mid: '#dd6f16', light: '#ffa445', dorsal: '#8e380c', fin: '#c25a12', eye: '#0d0606' },
+        bars: [[0.32, '#ffefdd'], [0.60, '#ffefdd'], [0.86, '#ffefdd']], barOut: '#25100a',
       },
       angel: {
-        L: 9, B: 6, pal: { out: '#101426', dark: '#243066', mid: '#3d54a8', light: '#7f9ee8', dorsal: '#1b2350', fin: '#f2c744', eye: '#0b1118' },
-        bars: [[0.34, '#ffe066'], [0.62, '#ffe066']], barOut: '#101426',
+        L: 10, B: 7, pal: { out: '#0c1020', dark: '#1e2a5c', mid: '#35479a', light: '#6f87d8', dorsal: '#151c44', fin: '#d9ae37', eye: '#050a10' },
+        bars: [[0.36, '#e8c650'], [0.64, '#e8c650']], barOut: '#0c1020',
       },
       tang: {
-        L: 10, B: 5, pal: { out: '#0d1430', dark: '#1f3a94', mid: '#2f58cc', light: '#6f9bf2', dorsal: '#16265e', fin: '#ffd23c', eye: '#0b1118' },
-        lat: '#0d1430',
+        L: 10, B: 5, pal: { out: '#0a1028', dark: '#1b3185', mid: '#2a4bb8', light: '#6084e0', dorsal: '#131f56', fin: '#e0b23a', eye: '#050a10' },
+        lat: '#0a1028',
       },
       butterfly: {
-        L: 8, B: 5, pal: { out: '#25200e', dark: '#c9a222', mid: '#f4cf46', light: '#fff0a8', dorsal: '#e0b42c', fin: '#fff6cc', eye: '#12100a' },
-        bars: [[0.86, '#1b1a14'], [0.42, '#1b1a14']], barOut: '#8a7318',
+        L: 9, B: 6, pal: { out: '#221c0c', dark: '#b08f1e', mid: '#dcb93c', light: '#ffe796', dorsal: '#8d6f16', fin: '#e8cf72', eye: '#100e08' },
+        bars: [[0.88, '#1b1a14'], [0.44, '#1b1a14']], barOut: '#6f5c14',
       },
       parrot: {
-        L: 11, B: 6, pal: { out: '#0d2a2c', dark: '#1d6f6a', mid: '#2ea79a', light: '#6fe0cb', dorsal: '#17544f', fin: '#e06ca8', eye: '#0b1118' },
-        lat: '#ffd0e8',
+        L: 11, B: 7, pal: { out: '#0a2224', dark: '#175a56', mid: '#238d82', light: '#5cc5b1', dorsal: '#104341', fin: '#b85a8e', eye: '#050a10' },
+        lat: '#ffc3e0',
       },
     };
 
@@ -221,7 +221,7 @@ const Wildlife = (function () {
     function fishFrame(o, flex) {
       const L = o.L, B = o.B;
       const tailL = Math.max(3, Math.round(L * 0.34));
-      const tailB = Math.max(2, Math.round(B * 0.85));
+      const tailB = Math.max(2, Math.round(B * 0.72));
       const W2 = L + tailL + 4, H2 = Math.max(B + 2, tailB * 2 + 3) + 2;
       const c = can(W2, H2), x = c.getContext('2d');
       const cy = H2 >> 1, bx0 = tailL + 2;
@@ -231,7 +231,7 @@ const Wildlife = (function () {
 
       // --- caudal fin (behind the peduncle), swinging with the flex -------
       const ty = cy + bend(0), tipX = bx0 - tailL, tipO = flex * tailB * 1.05;
-      triOut(x, pal.fin, pal.out, bx0 + 0.5, ty, tipX, ty - tailB + tipO, tipX, ty + tailB + tipO, 1.3);
+      triOut(x, pal.fin, pal.out, bx0 + 0.5, ty, tipX, ty - tailB + tipO, tipX, ty + tailB + tipO, 1.12);
       // notch the fin so it reads as a fork
       triPx(x, pal.out, tipX + 0.2, ty + tipO, tipX + tailL * 0.55, ty + tipO - 0.5, tipX + tailL * 0.55, ty + tipO + 0.5);
 
@@ -257,8 +257,8 @@ const Wildlife = (function () {
       if (o.lat) {
         x.fillStyle = o.lat;
         for (let i = 1; i < L - 1; i++) {
-          const h = colH[i]; if (h < 1.1) continue;
-          x.fillRect(bx0 + i, Math.round(colY[i] - h * 0.45), 1, 1);
+          const h = colH[i]; if (h < 1.1 || (i & 1)) continue;
+          x.fillRect(bx0 + i, Math.round(colY[i] - h * 0.48), 1, 1);
         }
       }
       // --- vertical bars ---------------------------------------------------
@@ -317,45 +317,48 @@ const Wildlife = (function () {
 
     // ---------------------------------------------------------------- RAY --
     function buildRay() {
-      const W2 = 52, H2 = 46, CX = 24, CY = 23;
+      const W2 = 42, H2 = 56, CX = 20, CY = 28;
       const frames = [];
-      const ramp = ['#14202c', '#1f3346', '#2f4d63', '#456a84', '#6a8fa8'];
+      const ramp = ['#0d161f', '#16242f', '#20343f', '#2d4a57', '#456c7c'];
       for (let fr = 0; fr < 4; fr++) {
         const curl = [0, 0.9, 0, -0.9][fr];
         const f = shapeField(W2, H2, (x, y) => {
-          const u = (x - CX) / 20;                       // along the body
-          const vRaw = (y - CY) / 21;
-          const v = vRaw - curl * (u * u) * 0.0;         // wings curl vertically below
-          const wing = 1 - Math.pow(Math.abs(v), 1.45) - Math.pow(Math.abs(u + 0.12), 1.9);
+          const u = (x - CX) / 17;                       // nose-to-tail
+          const v = (y - CY) / 26;                       // wing span
+          // superellipse with a low span exponent -> pointed wingtips
+          const wing = 1 - Math.pow(Math.abs(u + 0.10), 1.85) - Math.pow(Math.abs(v), 1.12);
           if (wing <= 0) return 0;
-          // thicker down the spine so the disc domes
-          return wing * (0.55 + 0.45 * Math.exp(-(v * v) * 9));
+          return wing * (0.5 + 0.5 * Math.exp(-(v * v) * 7));
         });
-        const b = blobOf(W2, H2, f, ramp, { outline: '#0a0f16', smooth: 3, lift: 0.16, contrast: 0.9 });
+        const b = blobOf(W2, H2, f, ramp, { outline: '#070b10', smooth: 3, lift: 0.2, contrast: 0.58 });
         const x = b.ctx;
         // spots + spine ridge
         for (let i = 0; i < 90; i++) {
           const hx = hash2(i * 3 + fr, 7), hy = hash2(i * 5 + 11, fr + 3);
           const px0 = 4 + hx * (W2 - 8), py0 = 4 + hy * (H2 - 8);
-          if (hash2(i, fr * 13) > 0.55) maskPx(x, f, W2, H2, px0, py0, '#8fb2c8');
-          else maskPx(x, f, W2, H2, px0, py0, '#16242f');
+          if (hash2(i, fr * 13) > 0.62) maskPx(x, f, W2, H2, px0, py0, '#87b0c4');
+          else maskPx(x, f, W2, H2, px0, py0, '#0f1b24');
         }
-        maskLine(x, f, W2, H2, CX - 17, CY, CX + 12, CY, '#7d9fb6');
-        maskLine(x, f, W2, H2, CX - 17, CY + 1, CX + 12, CY + 1, '#1a2b39');
-        // cephalic horns at the front (facing right)
+        // spine ridge runs nose-to-tail
+        maskLine(x, f, W2, H2, CX - 14, CY, CX + 14, CY, '#5d8496');
+        maskLine(x, f, W2, H2, CX - 14, CY + 1, CX + 14, CY + 1, '#101c26');
+        // shoulder shading either side of the ridge
+        for (let i = -11; i <= 11; i++) {
+          maskLine(x, f, W2, H2, CX + i * 0.5, CY - 5, CX + i * 0.5, CY - 5, '#2b4654');
+        }
+        // cephalic horns at the front (facing +x)
         for (const s of [-1, 1]) {
-          linePx(x, CX + 12, CY + s * 5, CX + 19, CY + s * 7, '#3c5f79', 2);
-          linePx(x, CX + 13, CY + s * 5, CX + 19, CY + s * 7, '#0a0f16', 1);
+          triOut(x, '#2d4a57', '#070b10', CX + 12, CY + s * 3, CX + 20, CY + s * 7, CX + 13, CY + s * 8, 1.1);
         }
         // eyes, bulging on top of the head
         for (const s of [-1, 1]) {
-          pxr(x, '#0a0f16', CX + 11, CY + s * 6 - (s < 0 ? 1 : 0), 2, 2);
-          pxr(x, '#e8f4ff', CX + 11, CY + s * 6 - (s < 0 ? 1 : 0), 1, 1);
+          pxr(x, '#070b10', CX + 10, CY + s * 5 - (s < 0 ? 2 : 0), 3, 3);
+          pxr(x, '#cfe6f4', CX + 11, CY + s * 5 - (s < 0 ? 2 : 0), 1, 1);
         }
-        // wing-tip highlight rim, shifted by the flap
+        // wing-tip highlight rim, flipped by the flap
         for (const s of [-1, 1]) {
-          const ty = CY + s * (18 - Math.abs(curl) * 3);
-          maskLine(x, f, W2, H2, CX - 6, ty, CX + 4, ty - s * 2, curl * s > 0 ? '#9dc2d8' : '#1b2c3a');
+          const ty = CY + s * (20 - Math.abs(curl) * 4);
+          maskLine(x, f, W2, H2, CX - 7, ty, CX + 6, ty - s * 2, curl * s > 0 ? '#7ba4b8' : '#0f1b24');
         }
         frames.push(spr(b.c, CX, CY));
       }
@@ -554,11 +557,15 @@ const Wildlife = (function () {
       }
       triOut(x, '#44566d', '#0a0e15', 31, CY - 2, 25, CY - 2, 29, CY - 3, 1.0);
       // dorsal fin reads as a raised wedge down the spine
-      triPx(x, '#0a0e15', 24, CY - 4, 36, CY - 1, 24, CY + 4);
-      triPx(x, '#63788f', 25, CY - 3, 34, CY - 1, 25, CY + 3);
-      linePx(x, 25, CY, 34, CY, '#93a7bd', 1);
+      for (let i = 0; i < 14; i++) {
+        const px0 = 23 + i, q = i / 13, hgt = Math.sin(q * Math.PI) * 4.2;
+        for (let dy = -hgt; dy <= hgt; dy++) {
+          const a = Math.abs(dy) / Math.max(0.7, hgt);
+          maskPx(x, f, W2, H2, px0, CY + dy, a > 0.84 ? '#0a0e15' : a < 0.32 ? '#7b8ea6' : dy < 0 ? '#566a83' : '#22303f');
+        }
+      }
       // white belly edge hint + gills + eye
-      for (let g = 0; g < 5; g++) linePx(x, 47 - g * 2, CY - 4, 47 - g * 2, CY + 4, '#22303f', 1);
+      for (let g = 0; g < 5; g++) { const gx = 46 - g * 2; linePx(x, gx, CY - 6.5, gx, CY - 3.5, '#1b2733', 1); linePx(x, gx, CY + 3.5, gx, CY + 6.5, '#1b2733', 1); }
       for (const s of [-1, 1]) { pxr(x, '#0a0e15', 52, CY + s * 3 - (s < 0 ? 1 : 0), 2, 2); pxr(x, '#e8f2ff', 52, CY + s * 3 - (s < 0 ? 1 : 0), 1, 1); }
       // caudal fin
       triOut(x, '#3b4c62', '#0a0e15', 10, CY, 1, CY - 9, 4, CY + 1, 1.12);
@@ -582,14 +589,15 @@ const Wildlife = (function () {
       const ramp = ['#1b2733', '#28394b', '#3b5266', '#597287', '#8ba3b8'];
       const b = blobOf(W2, H2, f, ramp, { outline: '#0b1118', smooth: 3, lift: 0.18 });
       const x = b.ctx;
-      // the classic dark cape over a paler flank
-      for (let i = 0; i < 260; i++) {
-        const hx = hash2(i, 5), hy = hash2(i * 3, 17);
-        const px0 = 8 + hx * 40, py0 = CY - 6 + hy * 12;
-        const capeTop = CY - 1.5 + Math.sin((px0 - 8) * 0.14) * 1.6;
-        if (py0 > capeTop + 2.4) maskPx(x, f, W2, H2, px0, py0, '#9fb6c8');
+      // the classic dark cape over a clean paler flank
+      for (let px0 = 8; px0 < 50; px0++) {
+        const capeTop = CY + 1.2 + Math.sin((px0 - 8) * 0.11) * 2.2;
+        for (let py0 = Math.ceil(capeTop); py0 < H2; py0++) {
+          const d = py0 - capeTop;
+          maskPx(x, f, W2, H2, px0, py0, d < 1.2 ? '#728ea6' : d < 3 ? '#9cb5c8' : '#bed0dd');
+        }
+        maskPx(x, f, W2, H2, px0, capeTop - 0.6, '#1d2b39');
       }
-      maskLine(x, f, W2, H2, 12, CY + 1.2, 46, CY - 0.4, '#1d2b39');
       // beak
       linePx(x, 46, CY, 51, CY, '#0b1118', 3);
       linePx(x, 46, CY, 50.5, CY, '#4a6076', 1);
@@ -600,9 +608,14 @@ const Wildlife = (function () {
       for (const s of [-1, 1]) { pxr(x, '#0b1118', 43, CY + s * 3 - (s < 0 ? 1 : 0), 2, 2); pxr(x, '#e8f2ff', 43, CY + s * 3 - (s < 0 ? 1 : 0), 1, 1); }
       // pectorals + the hooked dorsal fin
       for (const s of [-1, 1]) triOut(x, '#31465a', '#0b1118', 33, CY + s * 4.6, 25, CY + s * 10.5, 32, CY + s * 7, 1.1);
-      triPx(x, '#0b1118', 24, CY - 4, 33, CY - 1, 23, CY + 4);
-      triPx(x, '#6b8399', 25, CY - 3, 31, CY - 1, 25, CY + 3);
-      linePx(x, 25, CY, 32, CY, '#a3bacd', 1);
+      // dorsal fin: a raised ridge along the spine, not a pasted triangle
+      for (let i = 0; i < 12; i++) {
+        const px0 = 23 + i, q = i / 11, hgt = Math.sin(q * Math.PI) * 3.4;
+        for (let dy = -hgt; dy <= hgt; dy++) {
+          const a = Math.abs(dy) / Math.max(0.7, hgt);
+          maskPx(x, f, W2, H2, px0, CY + dy - 0.5, a > 0.82 ? '#0b1118' : a < 0.35 ? '#8aa3b8' : dy < 0 ? '#5d7690' : '#27394b');
+        }
+      }
       const body = spr(b.c, 34, CY);
 
       // flukes (separate so they can pump)
@@ -638,14 +651,23 @@ const Wildlife = (function () {
 
       // pectoral flippers: long humpback blades, baked in with their own shading
       for (const s of [-1, 1]) {
-        const ry0 = CY + s * 18, ry1 = CY + s * 46;
-        triOut(x, '#1d3040', '#070c12', 160, ry0, 118, ry1, 138, ry0 + s * 6, 1.08);
-        triOut(x, '#25415a', '#070c12', 158, ry0 + s * 2, 122, ry1 - s * 2, 146, ry0 + s * 9, 1.0);
+        // a long tapered blade swept back and outward, built as a quad
+        const rx0 = 162, ry0 = CY + s * 16;          // root, on the shoulder
+        const tx1 = 112, ty1 = CY + s * 47;          // tip
+        const nx = 15, ny = s * 13;                   // blade width vector
+        const ax0 = rx0, ay0 = ry0;
+        const bx1 = rx0 - nx, by1 = ry0 + ny;
+        const cx1 = tx1, cy1 = ty1;
+        const dx1 = tx1 + 7, dy1 = ty1 - s * 5;
+        // outline first, grown a touch
+        triOut(x, '#1b2d3c', '#070c12', ax0, ay0, bx1, by1, cx1, cy1, 1.05);
+        triOut(x, '#1b2d3c', '#070c12', ax0, ay0, cx1, cy1, dx1, dy1, 1.05);
+        triPx(x, '#26445c', ax0 - 2, ay0 + s * 2, bx1 + 3, by1 - s * 2, cx1 + 4, cy1 - s * 4);
         // knobbly white leading edge
-        for (let i = 0; i <= 14; i++) {
-          const q = i / 14;
-          const px0 = 159 - q * 40, py0 = ry0 + s * (q * 28);
-          pxr(x, i % 3 === 0 ? '#d8e8f2' : '#8fb0c2', px0, py0, 1, 1);
+        for (let i = 0; i <= 18; i++) {
+          const q = i / 18;
+          const px0 = lerp(rx0 + 5, tx1 + 5, q), py0 = lerp(ry0, ty1 - s * 3, q);
+          pxr(x, i % 3 === 0 ? '#dceaf4' : '#7fa0b4', px0, py0, 1, 1);
         }
       }
       // mottled hide
@@ -663,15 +685,28 @@ const Wildlife = (function () {
         maskPx(x, f, W2, H2, px0, CY + 1, '#101d28');
       }
       for (let i = 0; i < 6; i++) maskPx(x, f, W2, H2, 20 + i * 5, CY - 2, '#7b9dae');
-      // small humpback dorsal hump
-      triPx(x, '#070c12', 60, CY - 10, 74, CY - 3, 58, CY + 8);
-      triPx(x, '#3e6072', 62, CY - 8, 71, CY - 3, 60, CY + 6);
+      // small humpback dorsal hump: a raised ridge, shaded inside the mask
+      for (let i = 0; i < 20; i++) {
+        const px0 = 56 + i, q = i / 19;
+        const hgt = Math.sin(q * Math.PI) * 6;
+        for (let dy = -hgt; dy <= hgt; dy++) {
+          const a = Math.abs(dy) / Math.max(0.8, hgt);
+          maskPx(x, f, W2, H2, px0, CY + dy, a > 0.86 ? '#0d1a24' : a < 0.3 ? '#56798c' : dy < 0 ? '#3f6274' : '#1c303e');
+        }
+      }
       // rostrum ridges + tubercles
       for (let r = -1; r <= 1; r++) maskLine(x, f, W2, H2, 176, CY + r * 6, 204, CY + r * 2.4, '#0c1822');
       for (let i = 0; i < 26; i++) {
         const q = i / 25, px0 = 176 + q * 30, py0 = CY + (hash2(i, 9) - 0.5) * 14 * (1 - q * 0.6);
         maskPx(x, f, W2, H2, px0, py0, '#9db9c8');
         maskPx(x, f, W2, H2, px0, py0 + 1, '#0d1a24');
+      }
+      // the long jaw line either side of the rostrum
+      for (const s2 of [-1, 1]) {
+        for (let i = 0; i < 34; i++) {
+          const q = i / 33;
+          maskPx(x, f, W2, H2, 174 + q * 32, CY + s2 * lerp(13, 2.5, q * q), '#050a10');
+        }
       }
       // blowhole (paired slits) and the eyes
       pxr(x, '#070c12', 172, CY - 3, 3, 2); pxr(x, '#070c12', 172, CY + 1, 3, 2);
@@ -1273,13 +1308,13 @@ const Wildlife = (function () {
       for (let i = 2; i < 24; i++) {
         const q = i / 23;
         const wob = Math.sin(beat * 1.4 - q * 3.4) * 3.6 * q;
-        const ax2 = sx + Math.cos(back) * (17 + i * 1.3) - Math.sin(back) * wob;
-        const ay2 = sy + Math.sin(back) * (17 + i * 1.3) + Math.cos(back) * wob;
+        const ax2 = sx + Math.cos(back) * (14 + i * 1.3) - Math.sin(back) * wob;
+        const ay2 = sy + Math.sin(back) * (14 + i * 1.3) + Math.cos(back) * wob;
         ctx.fillRect(Math.round(ax2), Math.round(ay2), q > 0.6 ? 1 : 2, q > 0.6 ? 1 : 2);
       }
       // soft contact shadow on the sand
       ctx.fillStyle = 'rgba(6,18,40,0.22)';
-      ellipsePx(ctx, sx + 2, sy + 4, 22, 17, 'rgba(6,18,40,0.22)');
+      ellipsePx(ctx, sx + 2, sy + 4, 24, 19, 'rgba(6,18,40,0.20)');
       const squash = 1 - Math.abs(Math.sin(beat * Math.PI * 0.5)) * 0.10;
       blitRot(ctx, sp.ray.fr[fi], sx, sy, r.a, 1, squash);
     }
@@ -1685,7 +1720,7 @@ const Wildlife = (function () {
           const A = AU(); if (A) A.splash(2.4);
           scare(w.x, w.y, 260, 1.5);
         }
-        if (w.breachT > 1.6) { w.state = 'deep'; w.stateT = rand(16, 26); w.cool = 22; w.crashed = false; }
+        if (w.breachT > 1.6) { w.state = 'deep'; w.stateT = rand(16, 26); w.cool = 22; w.crashed = false; w.launched = false; }
       }
       w.sp = lerp(w.sp, targetSp, Math.min(1, dt * 1.6));
 
@@ -2035,7 +2070,14 @@ const Wildlife = (function () {
         out.push({ rare: pick(['doubloon', 'ruby', 'pearl']) });
         if (Math.random() < 0.3) out.push({ rare: 'crown' });
       }
-      return out;
+      // merge duplicate scrap types so the readout never repeats a line
+      const merged = [], byType = {};
+      for (const L of out) {
+        if (L.rare) { merged.push(L); continue; }
+        if (byType[L.type]) { byType[L.type].n += L.n; continue; }
+        byType[L.type] = L; merged.push(L);
+      }
+      return merged;
     }
     function makeTreasure(x, y, tier) {
       tier = clamp(tier | 0, 0, 3);
@@ -2199,14 +2241,14 @@ const Wildlife = (function () {
       if (tr.state === 'open' && tr.glow > 0) {
         // a hard-edged shaft of light, stepped in three bands
         const a = clamp(tr.glow, 0, 1);
-        const bands = [[0.34, 26, 46], [0.22, 17, 60], [0.12, 9, 74]];
+        const bands = [[0.26, 13, 40, '#fff3c4'], [0.17, 9, 54, '#ffe9a8'], [0.11, 5, 66, '#fffbe8']];
         for (let i = 0; i < 3; i++) {
           ctx.globalAlpha = bands[i][0] * a;
-          ctx.fillStyle = '#fff3c4';
+          ctx.fillStyle = bands[i][3];
           const halfTop = bands[i][1], hgt = bands[i][2];
-          for (let y = 0; y < hgt; y += 2) {
+          for (let y = 0; y < hgt; y += 3) {
             const q = y / hgt;
-            const hw = Math.round(lerp(4, halfTop, q));
+            const hw = Math.max(1, Math.round(lerp(3, halfTop, q)));
             ctx.fillRect(sx - hw, sy - y, hw * 2, 2);
           }
         }
@@ -2230,6 +2272,479 @@ const Wildlife = (function () {
       }
     }
 
-    return REST3();
+    // ====================================================================
+    //  AREA EFFECTS
+    // ====================================================================
+    function splashHit(x, y, radius, damage) {
+      const g = _G;
+      const T = TN();
+      if (T) { T.shock(x, y, radius * 1.9, 0.5); T.impact(x, y, radius / 48, '#eaf8ff'); }
+      const p = PT();
+      if (p) { p.splash(x, y, Math.min(3, radius / 40)); for (let i = 0; i < 6; i++) p.spray(x, y, i / 6 * TAU, 3, 190); }
+      disturb(x, y, Math.min(8, radius / 14), 0, 0);
+      ripple(x, y, radius * 1.7, 240, 0.8);
+      for (let i = 0; i < 12; i++) foam(x + rand(-radius, radius) * 0.8, y + rand(-radius, radius) * 0.8, 0.45);
+      if (!g) return;
+      const hitList = [];
+      if (g.enemies) for (let i = 0; i < g.enemies.length; i++) { const e = g.enemies[i]; if (e && !e.dead) hitList.push(e); }
+      if (g.boss && !g.boss.dead) hitList.push(g.boss);
+      for (let i = 0; i < hitList.length; i++) {
+        const e = hitList[i];
+        const d = dist(x, y, e.x, e.y);
+        if (d > radius) continue;
+        const k = 1 - d / radius;
+        const ang = (d < 0.01) ? rand(0, TAU) : angleTo(x, y, e.x, e.y);
+        const kick = (300 + 520 * k);
+        if (typeof e.hit === 'function') e.hit(damage * (0.45 + k * 0.55), Math.cos(ang) * kick, Math.sin(ang) * kick, null);
+        else { e.kx = (e.kx || 0) + Math.cos(ang) * kick; e.ky = (e.ky || 0) + Math.sin(ang) * kick; }
+        if (T) T.impact(e.x, e.y, 1.1, '#eaf8ff');
+      }
+      if (hitList.length) { const A = AU(); if (A) A.splash(2); }
+    }
+
+    function scare(x, y, radius, power) {
+      syncG();
+      const pw = power === undefined ? 1 : power;
+      const r2 = radius * radius;
+      const bump = (o, mul, fleeAim) => {
+        const dx = o.x - x, dy = o.y - y, d2 = dx * dx + dy * dy;
+        if (d2 > r2) return 0;
+        const d = Math.sqrt(d2) || 0.001;
+        const k = (1 - d / radius) * pw * (mul || 1);
+        o.fear = Math.min(2.2, (o.fear || 0) + k);
+        if (fleeAim) o.a = Math.atan2(dy / d, dx / d);
+        return k;
+      };
+      for (const sc of S.schools) { const k = bump(sc, 1.3); if (k > 0.3) { sc.a = Math.atan2(sc.y - y, sc.x - x); sc.split = Math.min(1, sc.split + k); } }
+      for (const g of S.reefs) bump(g, 1.2);
+      for (const r of S.rays) bump(r, 1, true);
+      for (const tu of S.turtles) bump(tu, 1, true);
+      for (const j of S.jellies) bump(j, 1.2, true);
+      for (const q of S.squids) {
+        const k = bump(q, 1.4, true);
+        if (k > 0.25) {
+          q.jet = 1;
+          if (q.inkCd <= 0) {
+            q.inkCd = 5;
+            S.ink.push({ x: q.x, y: q.y, r: 3, max: rand(28, 46), life: 6, max0: 6, ph: rand(0, TAU) });
+          }
+        }
+      }
+      for (const c of S.crabs) { const k = bump(c, 1.2); if (k > 0.2) { c.state = 'run'; c.t = rand(0.6, 1.4); c.dir = c.x >= x ? 1 : -1; } }
+      for (const s of S.sharks) {
+        const dx = s.x - x, dy = s.y - y, d2 = dx * dx + dy * dy;
+        if (d2 < r2 * 1.4) { s.curious = 0; s.a = Math.atan2(dy, dx); s.sp = Math.min(90, s.sp + 40 * pw); }
+      }
+      for (const w of S.whales) {
+        if (API.riding === w || w.state === 'wind' || w.state === 'breach') continue;
+        const dx = w.x - x, dy = w.y - y;
+        if (dx * dx + dy * dy < r2 * 2) { w.state = 'deep'; w.stateT = Math.max(w.stateT, 6); }
+      }
+      for (const pod of S.pods) for (const d of pod.d) {
+        const dx = d.x - x, dy = d.y - y;
+        if (dx * dx + dy * dy < r2) { d.sp = Math.min(200, d.sp + 60 * pw); }
+      }
+    }
+
+    // ====================================================================
+    //  PROMPTS
+    // ====================================================================
+    let prompt = null;             // {kind, obj, x, y, label, key}
+    function pickPrompt() {
+      prompt = null;
+      const p = P(); if (!p) return;
+      if (API.riding) {
+        const w = API.riding;
+        const s = saddleOf(w);
+        prompt = { kind: 'hold', obj: w, x: s.x, y: s.y - w.z - 30, label: 'HOLD ON', key: null };
+        return;
+      }
+      if (fly.on) return;
+      let best = null, bestD = 1e9;
+      for (let i = 0; i < S.whales.length; i++) {
+        const w = S.whales[i];
+        if (!canRide(w)) continue;
+        const s = saddleOf(w);
+        const d = dist(p.x, p.y, s.x, s.y);
+        if (d < 44 && d < bestD) { bestD = d; best = { kind: 'whale', obj: w, x: s.x, y: s.y - 26, label: 'RIDE THE WHALE', key: API.keyLabel }; }
+      }
+      for (let i = 0; i < S.treasures.length; i++) {
+        const tr = S.treasures[i];
+        if (tr.state !== 'idle') continue;
+        const d = dist(p.x, p.y, tr.x, tr.y);
+        if (d < tr.r + 14 && d < bestD) {
+          bestD = d;
+          const lab = tr.kind === 'hoard' ? ('DIG  ' + tr.dig + '/' + tr.digMax) : (tr.kind === 'clam' ? 'PRY OPEN' : 'OPEN');
+          best = { kind: 'treasure', obj: tr, x: tr.x, y: tr.y - tr.r - 6, label: lab, key: API.keyLabel };
+        }
+      }
+      prompt = best;
+    }
+
+    function txt(ctx, s, x, y, size, col, align, outline) {
+      if (typeof drawText === 'function') { drawText(ctx, s, x, y, size, { color: col, align: align || 'left', outline: outline || '#0a0f18' }); return; }
+      if (typeof pixelText === 'function') { pixelText(ctx, s, x, y, size, col, align || 'left'); return; }
+      ctx.fillStyle = col; ctx.font = 'bold ' + size + 'px monospace'; ctx.textAlign = align || 'left'; ctx.fillText(s, x, y);
+    }
+    function measure(s, size) { if (typeof textWidth === 'function') return textWidth(s, size); return s.length * (size * 0.6); }
+
+    function drawPlaque(ctx, cx, cy, key, label, col, pulse) {
+      const size = 6;
+      const kw = key ? 11 : 0;
+      const tw = Math.ceil(measure(label, size));
+      const pw = tw + kw + 10, ph = 13;
+      const x = Math.round(cx - pw / 2), y = Math.round(cy - ph);
+      pxr(ctx, '#080d14', x - 1, y - 1, pw + 2, ph + 2);
+      pxr(ctx, '#16202c', x, y, pw, ph);
+      pxr(ctx, col, x, y, pw, 1);
+      pxr(ctx, '#0d1520', x, y + ph - 1, pw, 1);
+      let tx0 = x + 4;
+      if (key) {
+        pxr(ctx, '#0a0f18', tx0 - 1, y + 1, 10, 11);
+        pxr(ctx, col, tx0, y + 2, 8, 9);
+        txt(ctx, key, tx0 + 4, y + 3, 6, '#10161f', 'center', null);
+        tx0 += 12;
+      }
+      txt(ctx, label, tx0, y + 4, size, '#f2f8ff', 'left');
+      // a bobbing chevron pointing at the thing
+      const bob = Math.round(Math.sin(pulse * 6) * 1.5);
+      pxr(ctx, col, Math.round(cx) - 2, y + ph + 2 + bob, 5, 1);
+      pxr(ctx, col, Math.round(cx) - 1, y + ph + 3 + bob, 3, 1);
+      pxr(ctx, col, Math.round(cx), y + ph + 4 + bob, 1, 1);
+    }
+
+    // ====================================================================
+    //  SPAWNING / POPULATION
+    // ====================================================================
+    function spotIn(minD, maxD, ymin, ymax) {
+      for (let i = 0; i < 40; i++) {
+        const x = rng.range(90, W - 90);
+        const y = rng.range(ymin, ymax);
+        const d = depthAt(x, y);
+        if (d >= minD && d <= maxD) return { x: x, y: y };
+      }
+      return { x: rng.range(120, W - 120), y: rng.range(ymin, ymax) };
+    }
+    function reefSpot() {
+      const o = OC();
+      if (o && o.reefs && o.reefs.length) {
+        const r = o.reefs[rng.int(0, o.reefs.length - 1)];
+        const a = rng.range(0, TAU), d = rng.range(0, r.r * 0.8);
+        return { x: clamp(r.x + Math.cos(a) * d, 60, W - 60), y: clamp(r.y + Math.sin(a) * d, SH + 100, H - 60) };
+      }
+      return spotIn(0, 0.5, SH + 140, H - 120);
+    }
+
+    let podTimer = 30;
+    function populate(worldW, worldH, shoreY) {
+      syncG();
+      API.init();
+      API.reset();
+      W = worldW || 3200; H = worldH || 2400; SH = shoreY === undefined ? 300 : shoreY;
+      rng = new SeededRandom(9137 + ((Math.random() * 100000) | 0));
+
+      for (let i = 0; i < 15; i++) {
+        const s = spotIn(0.05, 0.85, SH + 180, H - 140);
+        S.schools.push(makeSchool(s.x, s.y, SCHOOL_SPECIES[rng.int(0, 2)], rng.int(16, 34)));
+      }
+      for (let i = 0; i < 16; i++) { const s = reefSpot(); S.reefs.push(makeReefGroup(s.x, s.y)); }
+      for (let i = 0; i < 9; i++) { const s = spotIn(0.15, 0.8, SH + 220, H - 120); S.rays.push(makeRay(s.x, s.y)); }
+      for (let i = 0; i < 7; i++) { const s = spotIn(0.05, 0.7, SH + 160, H - 120); S.turtles.push(makeTurtle(s.x, s.y)); }
+      for (let i = 0; i < 34; i++) { const s = spotIn(0.1, 1, SH + 140, H - 80); S.jellies.push(makeJelly(s.x, s.y)); }
+      for (let i = 0; i < 8; i++) { const s = spotIn(0.2, 1, SH + 260, H - 120); S.squids.push(makeSquid(s.x, s.y)); }
+      for (let i = 0; i < 38; i++) { const s = reefSpot(); S.crabs.push(makeCrab(s.x, s.y)); }
+      for (let i = 0; i < 3; i++) { const s = spotIn(0.25, 1, SH + 400, H - 200); S.sharks.push(makeShark(s.x, s.y)); }
+
+      const wsp = spotIn(0.55, 1, SH + 600, H - 300);
+      S.whales.push(makeWhale(wsp.x, wsp.y));
+
+      // treasure: a mix of tiers, biased deep for the good stuff
+      const tiers = [0, 0, 1, 1, 1, 2, 2, 3];
+      for (let i = 0; i < tiers.length; i++) {
+        const tier = tiers[i];
+        const s = tier >= 2 ? spotIn(0.3, 1, SH + 420, H - 160) : reefSpot();
+        S.treasures.push(makeTreasure(s.x, s.y, tier));
+      }
+      podTimer = 26;
+    }
+
+    // ====================================================================
+    //  UPDATE
+    // ====================================================================
+    let clockT = 0;
+    function update(dt, t) {
+      syncG();
+      if (!inited) return;
+      if (dt > 0.1) dt = 0.1;
+      clockT = t === undefined ? clockT + dt : t;
+      const tt = clockT;
+      const g = _G;
+      if (g && g.cam) { camX = g.cam.x + VIEW_W / 2; camY = g.cam.y + VIEW_H / 2; }
+      else { const p = P(); if (p) { camX = p.x; camY = p.y; } }
+
+      gatherThreats();
+
+      for (let i = 0; i < S.schools.length; i++) updSchool(S.schools[i], dt, tt);
+      for (let i = 0; i < S.reefs.length; i++) {
+        const gr = S.reefs[i];
+        if (Math.abs(gr.x - camX) > 420 || Math.abs(gr.y - camY) > 330) continue;
+        updReefGroup(gr, dt, tt);
+      }
+      for (let i = 0; i < S.rays.length; i++) updRay(S.rays[i], dt, tt);
+      for (let i = 0; i < S.turtles.length; i++) updTurtle(S.turtles[i], dt, tt);
+      for (let i = 0; i < S.jellies.length; i++) {
+        const j = S.jellies[i];
+        if (Math.abs(j.x - camX) > 400 || Math.abs(j.y - camY) > 320) continue;
+        updJelly(j, dt, tt);
+      }
+      for (let i = 0; i < S.squids.length; i++) updSquid(S.squids[i], dt, tt);
+      for (let i = 0; i < S.crabs.length; i++) {
+        const c = S.crabs[i];
+        if (Math.abs(c.x - camX) > 380 || Math.abs(c.y - camY) > 300) continue;
+        updCrab(c, dt, tt);
+      }
+      for (let i = 0; i < S.sharks.length; i++) updShark(S.sharks[i], dt, tt);
+      for (let i = 0; i < S.whales.length; i++) updWhale(S.whales[i], dt, tt);
+      updFly(dt);
+      for (let i = 0; i < S.treasures.length; i++) updTreasure(S.treasures[i], dt, tt);
+      for (let i = S.pods.length - 1; i >= 0; i--) {
+        const pod = S.pods[i];
+        updPod(pod, dt, tt);
+        if (pod.gone) S.pods.splice(i, 1);
+      }
+      updInk(dt);
+      updMarks(dt);
+      updateMagnet(dt);
+      if (combo.flash > 0) combo.flash -= dt;
+
+      // a pod turns up now and then to show off a site the player hasn't opened
+      podTimer -= dt;
+      if (podTimer <= 0) {
+        podTimer = 75;
+        if (!S.pods.length) {
+          const p = P();
+          const cand = [];
+          for (const tr of S.treasures) if (tr.state === 'idle' && p && dist(p.x, p.y, tr.x, tr.y) > 320) cand.push(tr);
+          if (p && cand.length) {
+            cand.sort((a, b) => dist(p.x, p.y, a.x, a.y) - dist(p.x, p.y, b.x, b.y));
+            const goal = cand[Math.min(cand.length - 1, randi(0, 2))];
+            const a = angleTo(goal.x, goal.y, p.x, p.y);
+            S.pods.push(makePod(p.x + Math.cos(a) * 70, p.y + Math.sin(a) * 70, goal));
+          }
+        }
+      }
+      pickPrompt();
+    }
+
+    // ====================================================================
+    //  RENDER
+    // ====================================================================
+    function renderUnder(ctx, cam, t) {
+      syncG();
+      if (!inited || !cam) return;
+      ctx.imageSmoothingEnabled = false;
+      for (let i = 0; i < S.treasures.length; i++) { const tr = S.treasures[i]; if (onScreen(tr.x, tr.y, cam, 60)) drawTreasureUnder(ctx, cam, t, tr); }
+      for (let i = 0; i < S.crabs.length; i++) { const c = S.crabs[i]; if (onScreen(c.x, c.y, cam, 24)) drawCrab(ctx, cam, t, c); }
+      for (let i = 0; i < S.rays.length; i++) { const r = S.rays[i]; if (onScreen(r.x, r.y, cam, 70)) drawRay(ctx, cam, t, r); }
+      drawInk(ctx, cam, t);
+      // big movers cast their shadow on the seabed
+      for (let i = 0; i < S.whales.length; i++) {
+        const w = S.whales[i];
+        if (!onScreen(w.x, w.y, cam, 170)) continue;
+        ctx.globalAlpha = 0.30 + w.sub * 0.16;
+        blitRot(ctx, sp.whale.deep, w.x - cam.x + 7, w.y - cam.y + 10, w.a);
+        ctx.globalAlpha = 1;
+      }
+      for (let i = 0; i < S.sharks.length; i++) { const s = S.sharks[i]; if (!onScreen(s.x, s.y, cam, 60)) continue; ellipsePx(ctx, s.x - cam.x + 4, s.y - cam.y + 7, 24, 9, 'rgba(6,18,40,0.20)'); }
+    }
+
+    function renderOver(ctx, cam, t) {
+      syncG();
+      if (!inited || !cam) return;
+      ctx.imageSmoothingEnabled = false;
+      drawMarks(ctx, cam, t);
+      renderTrails(ctx, cam);
+      for (let i = 0; i < S.schools.length; i++) {
+        const sc = S.schools[i];
+        if (!onScreen(sc.x, sc.y, cam, sc.r * 2 + CULL)) continue;
+        drawSchool(ctx, cam, t, sc);
+      }
+      for (let i = 0; i < S.reefs.length; i++) { const gr = S.reefs[i]; if (onScreen(gr.x, gr.y, cam, gr.r + 40)) drawReefGroup(ctx, cam, t, gr); }
+      for (let i = 0; i < S.turtles.length; i++) { const tu = S.turtles[i]; if (onScreen(tu.x, tu.y, cam, 46)) drawTurtle(ctx, cam, t, tu); }
+      for (let i = 0; i < S.squids.length; i++) { const q = S.squids[i]; if (onScreen(q.x, q.y, cam, 50)) drawSquid(ctx, cam, t, q); }
+      for (let i = 0; i < S.jellies.length; i++) { const j = S.jellies[i]; if (onScreen(j.x, j.y, cam, 40)) drawJelly(ctx, cam, t, j); }
+      for (let i = 0; i < S.sharks.length; i++) { const s = S.sharks[i]; if (onScreen(s.x, s.y, cam, 60)) drawShark(ctx, cam, t, s); }
+      for (let i = 0; i < S.pods.length; i++) drawPod(ctx, cam, t, S.pods[i]);
+      for (let i = 0; i < S.whales.length; i++) { const w = S.whales[i]; if (onScreen(w.x, w.y, cam, 190)) drawWhale(ctx, cam, t, w); }
+      for (let i = 0; i < S.treasures.length; i++) { const tr = S.treasures[i]; if (onScreen(tr.x, tr.y, cam, 80)) drawTreasureOver(ctx, cam, t, tr); }
+      // the rider's shadow while airborne
+      if (fly.on) {
+        ellipsePx(ctx, fly.x - cam.x + 2, fly.y - cam.y + 4, 20 - fly.z * 0.12, 10 - fly.z * 0.06, 'rgba(6,18,40,0.34)');
+      }
+    }
+
+    function renderHint(ctx, cam, t) {
+      syncG();
+      if (!inited || !cam) return;
+      ctx.imageSmoothingEnabled = false;
+      // ---- interaction prompt ------------------------------------------
+      if (prompt) {
+        const sx = prompt.x - cam.x, sy = prompt.y - cam.y;
+        if (sx > -60 && sy > -40 && sx < VIEW_W + 60 && sy < VIEW_H + 40) {
+          const col = prompt.kind === 'whale' ? '#8ff0ff' : prompt.kind === 'hold' ? '#ffe48f' : '#ffd464';
+          drawPlaque(ctx, sx, sy + Math.round(Math.sin(t * 3) * 1.5), prompt.key, prompt.label, col, t);
+        }
+      }
+      // ---- wind-up charge bar while riding ------------------------------
+      if (API.riding) {
+        const w = API.riding, s = saddleOf(w);
+        const sx = Math.round(s.x - cam.x), sy = Math.round(s.y - cam.y - w.z - 44);
+        const k = clamp(w.windT / WIND_DUR, 0, 1);
+        const bw = 46;
+        pxr(ctx, '#080d14', sx - bw / 2 - 1, sy - 1, bw + 2, 7);
+        pxr(ctx, '#16202c', sx - bw / 2, sy, bw, 5);
+        const fw = Math.round(bw * k);
+        for (let i = 0; i < fw; i++) {
+          const q = i / bw;
+          pxr(ctx, q > 0.82 ? '#fff3c4' : q > 0.5 ? '#ffd27a' : '#8ff0ff', sx - bw / 2 + i, sy, 1, 5);
+        }
+        if (k > 0.85 && ((t * 12) | 0) % 2 === 0) txt(ctx, 'BREACH!', sx, sy - 10, 7, '#fff3c4', 'center');
+      }
+      // ---- treasure readout ----------------------------------------------
+      for (let i = 0; i < S.treasures.length; i++) {
+        const tr = S.treasures[i];
+        if (!tr.readout || tr.readT <= 0) continue;
+        const sx = Math.round(tr.x - cam.x), sy = Math.round(tr.y - cam.y) - 34;
+        if (sx < -80 || sy < -60 || sx > VIEW_W + 80 || sy > VIEW_H + 60) continue;
+        const rise = Math.min(1, (4.2 - tr.readT) * 3);
+        const n = tr.readout.length;
+        let wmax = 40;
+        for (let q = 0; q < n; q++) wmax = Math.max(wmax, Math.ceil(measure(tr.readout[q].s, 6)) + 10);
+        const ph = n * 8 + 12, y0 = sy - ph + Math.round((1 - rise) * 8);
+        ctx.globalAlpha = Math.min(1, tr.readT * 1.6);
+        pxr(ctx, '#080d14', sx - wmax / 2 - 1, y0 - 1, wmax + 2, ph + 2);
+        pxr(ctx, '#131d29', sx - wmax / 2, y0, wmax, ph);
+        pxr(ctx, '#ffd464', sx - wmax / 2, y0, wmax, 1);
+        txt(ctx, 'SALVAGE', sx, y0 + 3, 6, '#ffd464', 'center');
+        for (let q = 0; q < n; q++) {
+          const shown = Math.floor((4.2 - tr.readT) * 9);
+          if (q > shown) break;
+          const row = tr.readout[q];
+          pxr(ctx, row.c, sx - wmax / 2 + 3, y0 + 13 + q * 8, 3, 3);
+          txt(ctx, row.s, sx - wmax / 2 + 8, y0 + 11 + q * 8, 6, '#eef6ff', 'left');
+        }
+        ctx.globalAlpha = 1;
+      }
+      // ---- sweep combo ----------------------------------------------------
+      if (combo.n >= 2 && clockT - combo.t < 1.15) {
+        const p = P();
+        const bx = (p ? p.x : combo.x) - cam.x, by = (p ? p.y : combo.y) - cam.y - 30;
+        const age = clockT - combo.t;
+        const pop = combo.flash > 0 ? 1 + combo.flash * 2.4 : 1;
+        const col = combo.n >= 8 ? '#ff9ecb' : combo.n >= 5 ? '#ffe48f' : '#8ff0ff';
+        ctx.globalAlpha = clamp(1.6 - age, 0, 1);
+        const s = 'x' + combo.n + ' SWEEP';
+        const wd = Math.ceil(measure(s, 7)) + 8;
+        pxr(ctx, '#080d14', Math.round(bx - wd / 2 - 1), Math.round(by - 1), wd + 2, 11);
+        pxr(ctx, '#16202c', Math.round(bx - wd / 2), Math.round(by), wd, 9);
+        pxr(ctx, col, Math.round(bx - wd / 2), Math.round(by), wd, 1);
+        txt(ctx, s, Math.round(bx), Math.round(by + 2), 7, col, 'center');
+        if (pop > 1) { ctx.globalAlpha *= 0.6; ringPx(ctx, bx, by + 4, 16 * pop, 8 * pop, col); }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ====================================================================
+    //  PUBLIC API
+    // ====================================================================
+    const API = {
+      keyLabel: 'E',
+      riding: null,
+      whales: S.whales,
+      treasures: S.treasures,
+      schools: S.schools,
+      pods: S.pods,
+      lists: S,
+
+      init() {
+        if (inited) return;
+        buildSprites();
+        inited = true;
+      },
+      reset() {
+        for (const k in S) S[k].length = 0;
+        API.riding = null;
+        fly.on = false;
+        track.clear();
+        combo.n = 0; combo.t = -9; combo.flash = 0;
+        prompt = null;
+        podTimer = 30;
+        if (!rng) rng = new SeededRandom(9137);
+      },
+      populate: populate,
+      update: update,
+      renderUnder: renderUnder,
+      renderOver: renderOver,
+      renderHint: renderHint,
+      scare: scare,
+      splashHit: splashHit,
+
+      spawnWhale(x, y) {
+        syncG();
+        if (!inited) API.init();
+        if (!rng) rng = new SeededRandom(9137);
+        const w = makeWhale(x === undefined ? W * 0.5 : x, y === undefined ? H * 0.7 : y);
+        w.state = 'surface'; w.stateT = 34; w.sub = 0.2;
+        S.whales.push(w);
+        const p = PT(); if (p) { p.splash(w.x, w.y, 3); }
+        disturb(w.x, w.y, 6, 0, 0); ripple(w.x, w.y, 140, 140, 0.7);
+        return w;
+      },
+      spawnDolphins(x, y, goal) {
+        syncG();
+        if (!inited) API.init();
+        if (!rng) rng = new SeededRandom(9137);
+        let g = goal;
+        if (!g) {
+          let bd = 1e9;
+          for (const tr of S.treasures) {
+            if (tr.state !== 'idle') continue;
+            const d = dist(x, y, tr.x, tr.y);
+            if (d < bd) { bd = d; g = tr; }
+          }
+        }
+        if (!g) g = API.spawnTreasure(x + rand(-500, 500), y + rand(-500, 500), randi(1, 3));
+        const pod = makePod(x, y, g);
+        S.pods.push(pod);
+        return pod;
+      },
+      spawnTreasure(x, y, tier) {
+        syncG();
+        if (!inited) API.init();
+        const tr = makeTreasure(clamp(x, 40, W - 40), clamp(y, SH + 60, H - 40), tier === undefined ? 1 : tier);
+        S.treasures.push(tr);
+        return tr;
+      },
+      onPlayerAction() {
+        syncG();
+        if (API.riding) {
+          const w = API.riding;
+          if (w.state === 'wind' && w.windT < WIND_DUR - 0.3) { w.windT = WIND_DUR - 0.3; }
+          return true;
+        }
+        if (!prompt) return false;
+        if (prompt.kind === 'whale') { mountWhale(prompt.obj); prompt = null; return true; }
+        if (prompt.kind === 'treasure') { const ok = openTreasure(prompt.obj); prompt = null; return ok; }
+        return false;
+      },
+      // handy extras the caller may or may not use
+      get flying() { return fly.on; },
+      get prompt() { return prompt; },
+      get combo() { return combo.n; },
+      RareDrop: RareDrop,
+      RARE: RARE,
+    };
+    return API;
   }
 })();
+

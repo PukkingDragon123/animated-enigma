@@ -129,7 +129,7 @@ class Boss {
   }
   summon() {
     G.banner('THE CHIEF CALLS FOR BACKUP', '#ff6161', 1.5);
-    for (let i = 0; i < 3; i++) { const a = rand(0, TAU); G.spawnEnemy(i < 2 ? 'jetski' : 'dinghy', G.player.x + Math.cos(a) * 270, G.player.y + Math.sin(a) * 270); }
+    for (let i = 0; i < 3; i++) { const a = rand(0, TAU); G.spawnEnemy(i < 2 ? 'jetski' : 'dinghy', G.player.x + Math.cos(a) * 310, G.player.y + Math.sin(a) * 310); }
   }
   tailSweep() {
     this.sweep = { x: this.x, y: this.y, r: 20, life: 0.7, hit: false };

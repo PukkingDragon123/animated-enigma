@@ -53,6 +53,19 @@
     _shadeCache[key] = s; return s;
   }
 
+  const _mixCache = Object.create(null);
+  function mix(a, b, f) {
+    const key = a + '>' + b + '|' + f; const hit = _mixCache[key]; if (hit) return hit;
+    const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16);
+    const cl = v => v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+    const r = cl(lerp((x >> 16) & 255, (y >> 16) & 255, f)), g2 = cl(lerp((x >> 8) & 255, (y >> 8) & 255, f)), bl = cl(lerp(x & 255, y & 255, f));
+    const s2 = '#' + ((1 << 24) + (r << 16) + (g2 << 8) + bl).toString(16).slice(1);
+    _mixCache[key] = s2; return s2;
+  }
+  // the colour anything below the surface fades toward
+  const WATER_TINT = '#14606e';
+  function sub(col, f) { return mix(shade(col, 0.62), WATER_TINT, f === undefined ? 0.5 : f); }
+
   // chunky pixel line (no antialiasing, ever)
   function pline(ctx, x0, y0, x1, y1, th, col) {
     const dx = x1 - x0, dy = y1 - y0;
@@ -87,6 +100,13 @@
     pline(ctx, ax, ay, bx, by, th, col);
   }
   function ldot(ctx, x, y, s, col) { ctx.fillStyle = col; ctx.fillRect(Math.round(LX(x, y)) - (s >> 1), Math.round(LY(x, y)) - (s >> 1), s, s); }
+  // a two-bone limb: outline the whole chain first so the elbow has no black seam
+  function limb2(ctx, x0, y0, ex, ey, hx, hy, th1, th2, c1, c2, ink) {
+    const ax = LX(x0, y0), ay = LY(x0, y0), bx = LX(ex, ey), by = LY(ex, ey), cx2 = LX(hx, hy), cy2 = LY(hx, hy);
+    if (ink) { pline(ctx, ax, ay, bx, by, th1 + 2, ink); pline(ctx, bx, by, cx2, cy2, th2 + 2, ink); }
+    pline(ctx, ax, ay, bx, by, th1, c1);
+    pline(ctx, bx, by, cx2, cy2, th2, c2);
+  }
 
   // =======================================================================
   //  1.  PALETTE
@@ -110,15 +130,15 @@
 
   // swimmer looks: a crowd should read as a crowd
   const LOOKS = [
-    { skin: '#e9b78c', shirt: '#4f8fe0', hair: '#2b1f1a', hat: 1 },
-    { skin: '#c68a5c', shirt: '#d24a3c', hair: '#4a3020', hat: 0 },
-    { skin: '#a96f45', shirt: '#3fae68', hair: '#1c1418', hat: 2 },
-    { skin: '#d8a172', shirt: '#ef8f34', hair: '#7a2a1a', hat: 1 },
-    { skin: '#8a5733', shirt: '#66788a', hair: '#2b1f1a', hat: 3 },
-    { skin: '#f0c9a4', shirt: '#c8904f', hair: '#8a7a60', hat: 2 },
-    { skin: '#e9b78c', shirt: '#8069a4', hair: '#6b5030', hat: 0 },
-    { skin: '#c68a5c', shirt: '#3f8b98', hair: '#2b1f1a', hat: 3 },
-  ];
+    { skin: '#e9b78c', shirt: '#e4562f', hair: '#43302a', hat: 1 },
+    { skin: '#c68a5c', shirt: '#f0a13a', hair: '#4a3020', hat: 0 },
+    { skin: '#a96f45', shirt: '#e8dcbe', hair: '#3a2b24', hat: 2 },
+    { skin: '#d8a172', shirt: '#d8763a', hair: '#7a2a1a', hat: 1 },
+    { skin: '#8a5733', shirt: '#eac04a', hair: '#463228', hat: 3 },
+    { skin: '#f0c9a4', shirt: '#c8302e', hair: '#8a7a60', hat: 2 },
+    { skin: '#e9b78c', shirt: '#b4708f', hair: '#6b5030', hat: 0 },
+    { skin: '#c68a5c', shirt: '#7fb2c8', hair: '#43302a', hat: 3 },
+    ];
 
   // =======================================================================
   //  2.  TUNING  --  everything the run can dial up
@@ -320,21 +340,21 @@
   function buildBall(R) {
     const W = R * 2 + 3, o = R + 1;
     const c = hcan(W, W), x = c.getContext('2d');
-    sphere(x, o, o, R, ['#131820', '#1d242e', '#2a323e', '#3b4552', '#525d6c', '#6d798a'], { spec: '#99a5b5' });
+    sphere(x, o, o, R, ['#20262f', '#2c3441', '#3d4654', '#525d6d', '#6c7889', '#8e9aab'], { spec: '#c6d0dd' });
     return spr(c, o, o);
   }
 
   // ---- swimmer torso, seen from above, head end at +x --------------------
   function buildTorso(look) {
-    const L = 13, H = 9, cy = 4;
+    const L = 12, H = 11, cy = 5;
     const c = hcan(L, H), x = c.getContext('2d');
-    const sh = look.shirt, shL = shade(sh, 1.3), shD = shade(sh, 0.62);
+    const sh = look.shirt, shL = shade(sh, 1.45), shD = shade(sh, 0.58);
     const halfW = px => {
       const u = px / (L - 1);
-      if (u < 0.18) return 1.6 + u / 0.18 * 0.7;                 // hips
-      if (u < 0.62) return 2.3 + (u - 0.18) / 0.44 * 1.5;        // back
-      if (u < 0.82) return 3.8;                                   // shoulders
-      return 3.8 - (u - 0.82) / 0.18 * 1.6;                       // neck
+      if (u < 0.18) return 1.7 + u / 0.18 * 0.8;                 // hips
+      if (u < 0.60) return 2.5 + (u - 0.18) / 0.42 * 1.9;        // back
+      if (u < 0.80) return 4.4;                                   // shoulders
+      return 4.4 - (u - 0.80) / 0.20 * 2.0;                       // neck
     };
     for (let px = 0; px < L; px++) {
       const hw = halfW(px);
@@ -347,80 +367,94 @@
       }
     }
     // spine seam + belt + a wet sheen along the shoulders
-    for (let px = 2; px < L - 2; px++) if ((px & 1) === 0) pset(x, shade(sh, 0.8), px, cy + 1);
+    for (let px = 2; px < L - 2; px++) if ((px & 1) === 0) pset(x, shade(sh, 0.78), px, cy + 1);
     pset(x, '#40291f', 2, cy - 2, 1, 5); pset(x, HP.steel, 2, cy, 1, 1);
-    pset(x, shade(sh, 1.55), 8, cy - 3, 3, 1);
+    pset(x, shade(sh, 1.7), 8, cy - 3, 3, 1);
+    pset(x, shade(sh, 1.7), 6, cy - 3, 1, 1);
     return spr(c, 4, cy);
   }
 
   // ---- swimmer head, seen from above (face at +x) ------------------------
+  //  From above you mostly see wet hair, so the crown gets a hard highlight
+  //  and the forehead/cheek stay skin: that is what separates it from the ink.
   function buildHead(look) {
-    const W = 9, o = 4;
+    const W = 11, o = 5;
     const c = hcan(W, W), x = c.getContext('2d');
-    for (let y = -4; y <= 4; y++) for (let px = -4; px <= 4; px++) {
-      const d = Math.hypot(px, y * 1.06);
-      if (d > 3.7) continue;
-      if (d > 2.8) { pset(x, HP.ink, o + px, o + y); continue; }
+    const hairL = shade(look.hair, 1.55), hairD = shade(look.hair, 0.72);
+    for (let y = -5; y <= 5; y++) for (let px = -5; px <= 5; px++) {
+      const d = Math.hypot(px * 0.94, y);
+      if (d > 4.4) continue;
+      if (d > 3.7) { pset(x, HP.ink, o + px, o + y); continue; }
       let col;
-      if (px >= 1) col = y < -0.5 ? shade(look.skin, 1.14) : d > 2.2 ? shade(look.skin, 0.8) : look.skin;
-      else col = y < -0.5 ? shade(look.hair, 1.3) : d > 2.2 ? shade(look.hair, 0.72) : look.hair;
+      if (px >= 0.2) col = y < -1 ? shade(look.skin, 1.2) : (d > 2.8 ? shade(look.skin, 0.86) : look.skin);
+      else if (y < -1.4) col = hairL;
+      else if (y > 1.8) col = hairD;
+      else col = shade(look.hair, 1.18);
       pset(x, col, o + px, o + y);
     }
-    pset(x, shade(look.skin, 0.66), o + 3, o, 1, 1);          // nose
-    pset(x, shade(look.skin, 0.7), o + 1, o - 3, 1, 1);       // ear
-    pset(x, shade(look.skin, 0.7), o + 1, o + 3, 1, 1);
+    pset(x, shade(look.skin, 0.6), o + 4, o, 1, 1);            // nose, pointing the way he swims
+    pset(x, HP.ink, o + 2, o - 1, 1, 1);                       // brow
+    pset(x, shade(look.skin, 0.72), o + 1, o + 3, 1, 1);       // ear
+    pset(x, hairL, o - 3, o - 1, 2, 2);                        // wet shine on the crown
     switch (look.hat) {
       case 1: // bandana
-        for (let px = -3; px <= 1; px++) { pset(x, '#c8302e', o + px, o - 2, 1, 1); pset(x, '#ff6161', o + px, o - 3, 1, 1); }
-        pset(x, '#8e2326', o - 3, o - 1, 2, 1); break;
+        for (let px = -3; px <= 1; px++) { pset(x, '#ff6161', o + px, o - 3, 1, 1); pset(x, '#c8302e', o + px, o - 2, 1, 1); }
+        pset(x, '#8e2326', o - 4, o - 1, 2, 1); pset(x, HP.ink, o - 1, o - 4, 3, 1); break;
       case 2: // cap with a forward brim
-        for (let y = -3; y <= 3; y++) for (let px = -3; px <= 1; px++) { if (Math.hypot(px, y) > 3.2) continue; pset(x, y < 0 ? '#3f6f9e' : '#2d5279', o + px, o + y); }
+        for (let y = -3; y <= 3; y++) for (let px = -3; px <= 1; px++) { if (Math.hypot(px, y) > 3.3) continue; pset(x, y < -1 ? '#5e93c4' : y < 1 ? '#3f6f9e' : '#2d5279', o + px, o + y); }
         pset(x, HP.ink, o + 2, o - 2, 1, 5); pset(x, '#243f5e', o + 2, o - 1, 1, 3); break;
       case 3: // knitted beanie
-        for (let y = -3; y <= 3; y++) for (let px = -3; px <= 2; px++) { if (Math.hypot(px, y) > 3.3) continue; pset(x, ((px + y) & 1) ? '#8a7a60' : '#6b5c46', o + px, o + y); }
-        pset(x, HP.ink, o - 3, o - 3, 1, 1); break;
+        for (let y = -3; y <= 3; y++) for (let px = -3; px <= 2; px++) { if (Math.hypot(px, y) > 3.4) continue; pset(x, ((px + y) & 1) ? '#b0a086' : '#6b5c46', o + px, o + y); }
+        pset(x, HP.ink, o - 4, o - 3, 1, 1); pset(x, '#d8cbb0', o - 2, o - 3, 2, 1); break;
     }
     return spr(c, o, o);
   }
 
   // ---- held gear ---------------------------------------------------------
+  //  Outlined, never solid black: a weapon must read as a shape at 1:1.
+  const GEARPAL = { k: HP.ink, u: '#5c3a1c', U: '#8f5c2c', T: HP.wood, M: HP.steel, m: HP.steelD, W: '#e9f2fb', X: '#2e333a', y: HP.brassL };
+  function rowsSprite(rows, ax, ay, pal) {
+    const w = Math.max.apply(null, rows.map(r => r.length)), h = rows.length;
+    const c = hcan(w, h), x = c.getContext('2d');
+    const map = pal || GEARPAL;
+    for (let r = 0; r < h; r++) for (let q = 0; q < rows[r].length; q++) {
+      const ch = rows[r][q]; if (ch === '.' || ch === ' ') continue;
+      const col = map[ch]; if (!col) continue;
+      pset(x, col, q, r);
+    }
+    return spr(c, ax, ay);
+  }
   function buildKnife() {
-    const c = hcan(8, 3), x = c.getContext('2d');
-    pset(x, HP.ink, 0, 0, 8, 3);
-    pset(x, '#5c3a1c', 1, 1, 2, 1);
-    pset(x, HP.steel, 3, 1, 4, 1);
-    pset(x, '#e6eef8', 4, 1, 2, 1);
-    return spr(c, 1, 1);
+    return rowsSprite([
+      '.kkkkkk.',
+      'kuUMMMWk',
+      '.kkkkkk.',
+    ], 1, 1);
   }
   function buildGaff() {
-    const c = hcan(14, 6), x = c.getContext('2d');
-    pset(x, HP.ink, 0, 2, 12, 3);
-    pset(x, HP.wood, 1, 3, 8, 1);
-    pset(x, shade(HP.wood, 1.28), 1, 3, 4, 1);
-    pset(x, HP.steel, 9, 3, 3, 1);
-    // the hook
-    pset(x, HP.ink, 11, 0, 3, 5);
-    pset(x, HP.steel, 12, 1, 1, 3);
-    pset(x, '#e6eef8', 12, 1, 1, 1);
-    return spr(c, 1, 3);
+    return rowsSprite([
+      '..........kWk',
+      '..........kMk',
+      '.kkkkkkkkkkMk',
+      'kuUTTTTTTUMMk',
+      '.kkkkkkkkkkk.',
+    ], 1, 3);
   }
   function buildHarpoonGun() {
-    const c = hcan(12, 6), x = c.getContext('2d');
-    pset(x, HP.ink, 0, 1, 11, 4);
-    pset(x, '#5c3a1c', 1, 2, 3, 2);
-    pset(x, HP.steelD, 4, 2, 6, 2);
-    pset(x, HP.steel, 4, 2, 6, 1);
-    pset(x, HP.brassL, 6, 3, 2, 1);
-    return spr(c, 2, 3);
+    return rowsSprite([
+      '....kkkkkkk.',
+      '.kkkMMMMMMWk',
+      'kuUUXXXXXXMk',
+      'kuukkkkkkkk.',
+      '.kk.........',
+    ], 2, 2);
   }
   function buildHarpoonShot() {
-    const c = hcan(13, 5), x = c.getContext('2d');
-    pset(x, HP.ink, 0, 1, 13, 3);
-    pset(x, '#5c3a1c', 1, 2, 6, 1);
-    pset(x, HP.steelD, 7, 2, 4, 1);
-    pset(x, '#e6eef8', 10, 2, 2, 1);
-    pset(x, HP.steel, 8, 1, 1, 1); pset(x, HP.steel, 8, 3, 1, 1);   // barbs
-    return spr(c, 11, 2);
+    return rowsSprite([
+      '........kM..',
+      'kuuTTTTMMMMW',
+      '........kM..',
+    ], 11, 1);
   }
   function buildCorpse(look) {
     const c = hcan(15, 11), x = c.getContext('2d');
@@ -472,7 +506,7 @@
     }
     if (TOON) {
       TOON.burst(x, y, 1.4 + r / 44); TOON.shock(x, y, r * 3.1, 0.55);
-      for (let i = 0; i < 4; i++) TOON.puff(x + rand(-r, r) * 0.5, y + rand(-r, r) * 0.5, 2, '#dfe9f2');
+      for (let i = 0; i < 3; i++) TOON.puff(x + rand(-r, r) * 0.5, y + rand(-r, r) * 0.5, 1, '#dfe9f2');
     }
     if (g.shake) g.shake(Math.min(18, 6 + r / 5));
     const push = TUNE.shellPush;
@@ -665,19 +699,27 @@
       const sprite = S.mine[m.kind][lit ? 1 : 0];
       const dy = sy - bob;
       ctx.save();
-      ctx.translate(sx, dy); ctx.rotate(m.rot * 0.35);
+      ctx.translate(sx, dy); ctx.rotate(Math.sin(t * 1.1 + m.ph) * 0.11 + m.rot * 0.05);
       ctx.drawImage(sprite.c, -sprite.ax, -sprite.ay);
       ctx.restore();
-      // waterline: everything under it reads as submerged
-      ctx.fillStyle = 'rgba(10,54,78,0.42)';
-      ctx.fillRect(sx - 9, sy + 1, 18, Math.max(1, 9 - bob));
-      // foam collar
-      const fa = 0.4 + Math.sin(t * 3.4 + m.ph) * 0.16;
-      ctx.fillStyle = 'rgba(234,248,255,' + fa.toFixed(2) + ')';
-      ctx.fillRect(sx - 7, sy + 1, 14, 1);
-      ctx.fillRect(sx - 9, sy + 2, 4, 1); ctx.fillRect(sx + 5, sy + 2, 4, 1);
-      ctx.fillStyle = 'rgba(185,227,247,0.4)';
-      ctx.fillRect(sx - 5 + Math.round(Math.sin(t * 2.2 + m.ph) * 2), sy + 3, 10, 1);
+      // waterline: the part of the sphere below it reads as submerged, and the
+      // tint follows the silhouette instead of sitting in a giveaway rectangle
+      ctx.fillStyle = 'rgba(10,54,78,0.45)';
+      const MR = 6;
+      for (let q = bob + 1; q <= MR; q++) {
+        const hw = Math.round(Math.sqrt(Math.max(0, MR * MR - q * q)));
+        if (hw < 1) continue;
+        ctx.fillRect(sx - hw, dy + q, hw * 2 + 1, 1);
+      }
+      // foam collar: broken dashes around the waterline, never a flat wash
+      const fw = Math.sin(t * 3.4 + m.ph);
+      ctx.fillStyle = fw > -0.3 ? HP.foam : HP.foam2;
+      ctx.fillRect(sx - 6, sy + 1, 3, 1); ctx.fillRect(sx - 1, sy + 1, 2, 1); ctx.fillRect(sx + 4, sy + 1, 3, 1);
+      ctx.fillStyle = HP.foam2;
+      ctx.fillRect(sx - 9, sy + 2, 3, 1); ctx.fillRect(sx + 6, sy + 2, 3, 1);
+      ctx.fillRect(sx - 4 + Math.round(fw * 2), sy + 3, 3, 1); ctx.fillRect(sx + 2 - Math.round(fw * 2), sy + 3, 2, 1);
+      ctx.fillStyle = 'rgba(200,236,255,0.45)';
+      ctx.fillRect(sx - 8 - Math.round(fw), sy + 4, 4, 1); ctx.fillRect(sx + 5 + Math.round(fw), sy + 4, 4, 1);
       // lamp flare when it is about to go
       if (m.fuse >= 0 && lit) {
         ctx.fillStyle = '#fff6d5';
@@ -1033,8 +1075,8 @@
       ctx.fillStyle = 'rgba(6,18,48,0.42)';
       ctx.beginPath(); ctx.ellipse(sx + 2, sy + 4, Math.max(3, 8 - z * 0.07), Math.max(2, 4 - z * 0.035), 0, 0, TAU); ctx.fill();
     } else {
-      ctx.fillStyle = 'rgba(6,18,48,0.30)';
-      ctx.beginPath(); ctx.ellipse(sx + 3, sy + 5, 9, 5, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(6,18,48,0.22)';
+      ctx.beginPath(); ctx.ellipse(sx + 2, sy + 4, 8, 4, 0, 0, TAU); ctx.fill();
     }
 
     const ph = s.ph;
@@ -1045,7 +1087,7 @@
       const f = Math.sin(ph * 2);
       for (let i = 0; i < 2; i++) {
         const sg = i ? 1 : -1;
-        limb(ctx, -3.5, sg * 1.8, -10 + f * sg * 2, sg * (3 + f * 2), 3, i ? L.pantsD : L.pants, ink);
+        limb(ctx, -3.5, sg * 1.8, -10 + f * sg * 2, sg * (3 + f * 2), 3, i ? shade(L.pants, 0.7) : L.pants, ink);
       }
       ctx.save(); ctx.translate(sx, dy); ctx.rotate(s.ang);
       ctx.drawImage(body.c, -body.ax, -body.ay); ctx.restore();
@@ -1053,8 +1095,7 @@
         const sg = i ? 1 : -1;
         const hx2 = 2 + Math.sin(ph * 3 + i * 2) * 4, hy2 = sg * (6 + Math.cos(ph * 3 + i * 2) * 2);
         ik(4.2, sg * 3, hx2, hy2, 3.6, 3.6, sg);
-        limb(ctx, 4.2, sg * 3, _ikx, _iky, 3, L.shirt, ink);
-        limb(ctx, _ikx, _iky, hx2, hy2, 2, skin, ink);
+        limb2(ctx, 4.2, sg * 3, _ikx, _iky, hx2, hy2, 3, 2, L.shirt, skin, ink);
       }
       drawSprite(ctx, head, LX(6.6, 0), LY(6.6, 0), s.ang + Math.sin(ph * 2) * 0.3);
       drawGear(ctx, s, 8, 5, s.ang);
@@ -1068,9 +1109,8 @@
         const k = Math.sin(ph * 2 + (i ? Math.PI : 0));
         const fx2 = -10.5 + Math.abs(k) * 1.2, fy2 = sg * (1.8 + k * 2.6);
         ik(-3.4, sg * 1.7, fx2, fy2, 3.4, 3.4, sg);
-        limb(ctx, -3.4, sg * 1.7, _ikx, _iky, 3, L.pantsD, null);
-        limb(ctx, _ikx, _iky, fx2, fy2, 2, L.pantsD, null);
-        ldot(ctx, fx2, fy2, 2, shade(L.pants, 0.5));
+        limb2(ctx, -3.4, sg * 1.7, _ikx, _iky, fx2, fy2, 3, 2, L.subPants, L.subPants, null);
+        ldot(ctx, fx2, fy2, 2, L.subPantsL);
         // the churn the kick leaves behind
         if (k > 0.85) { ctx.fillStyle = 'rgba(234,248,255,0.5)'; ctx.fillRect(Math.round(LX(fx2 - 2, fy2)) - 1, Math.round(LY(fx2 - 2, fy2)) - 1, 2, 2); }
       }
@@ -1084,8 +1124,7 @@
         const sg = i ? 1 : -1;
         const hx2 = (i ? reach : 6.5), hy2 = sg * 2.6;
         ik(4.2, sg * 3, hx2, hy2, 3.6, 3.6, sg);
-        limb(ctx, 4.2, sg * 3, _ikx, _iky, 3, i ? L.shirt : shirtW, ink);
-        limb(ctx, _ikx, _iky, hx2, hy2, 2, i ? skin : skinW, ink);
+        limb2(ctx, 4.2, sg * 3, _ikx, _iky, hx2, hy2, 3, 2, i ? L.shirt : shirtW, i ? skin : skinW, i ? ink : null);
       }
       ctx.save(); ctx.translate(sx, dy); ctx.rotate(s.ang);
       ctx.scale(0.92, 1); ctx.drawImage(body.c, -body.ax, -body.ay); ctx.restore();
@@ -1103,8 +1142,7 @@
         const hx2 = aiming ? 6.5 : 1.5 + Math.sin(ph * 3 + i) * 1.5;
         const hy2 = aiming ? sg * 2.2 : sg * (4.6 + Math.cos(ph * 3 + i) * 2.2);
         ik(4.2, sg * 3, hx2, hy2, 3.6, 3.6, sg);
-        limb(ctx, 4.2, sg * 3, _ikx, _iky, 3, aiming ? L.shirt : shirtW, ink);
-        limb(ctx, _ikx, _iky, hx2, hy2, 2, aiming ? skin : skinW, ink);
+        limb2(ctx, 4.2, sg * 3, _ikx, _iky, hx2, hy2, 3, 2, aiming ? L.shirt : shirtW, aiming ? skin : skinW, aiming ? ink : null);
       }
       ctx.save(); ctx.translate(sx, dy + Math.round(Math.sin(ph * 2) * 0.8)); ctx.rotate(s.ang);
       ctx.scale(0.78, 1); ctx.drawImage(body.c, -body.ax, -body.ay); ctx.restore();
@@ -1126,9 +1164,21 @@
       const u = pass ? u2 : u1, sg = pass ? -1 : 1;
       armPose(u, sg);
       if (_above) continue;
-      ik(4.2, sg * 3, _hx, _hy, 3.6, 3.6, sg);
-      limb(ctx, 4.2, sg * 3, _ikx, _iky, 3, shirtW, null);
-      limb(ctx, _ikx, _iky, _hx, _hy, 2, skinW, null);
+      ik(4.0, sg * 3.4, _hx, _hy, 4.3, 4.3, sg);
+      limb2(ctx, 4.0, sg * 3.4, _ikx, _iky, _hx, _hy, 3, 2, shirtW, skinW, null);
+      ldot(ctx, _hx, _hy, 2, mix(skinW, '#8fd4ff', 0.25));
+    }
+    // ---- the surface froth the body pushes up around itself
+    {
+      const fa = 0.30 + Math.sin(ph * 2) * 0.12;
+      ctx.fillStyle = 'rgba(234,248,255,' + (fa + 0.22).toFixed(2) + ')';
+      ctx.fillRect(Math.round(LX(4, -4.6)), Math.round(LY(4, -4.6)), 2, 1);
+      ctx.fillRect(Math.round(LX(4, 4.6)), Math.round(LY(4, 4.6)), 2, 1);
+      ctx.fillStyle = 'rgba(200,236,255,' + fa.toFixed(2) + ')';
+      ctx.fillRect(Math.round(LX(-1, -5)), Math.round(LY(-1, -5)), 3, 1);
+      ctx.fillRect(Math.round(LX(-1, 5)), Math.round(LY(-1, 5)), 3, 1);
+      ctx.fillRect(Math.round(LX(-6, -4)), Math.round(LY(-6, -4)), 2, 1);
+      ctx.fillRect(Math.round(LX(-6, 4)), Math.round(LY(-6, 4)), 2, 1);
     }
     // torso, rolling with the stroke
     const roll = 1 - Math.abs(Math.sin(ph)) * 0.16;
@@ -1144,28 +1194,32 @@
       armPose(u, sg);
       if (!_above) continue;
       const lift = Math.sin(u) * 1.6;
-      ik(4.2, sg * 3, _hx, _hy - lift * sg * 0.2, 3.6, 3.6, sg);
-      limb(ctx, 4.2, sg * 3, _ikx, _iky - lift, 3, L.shirt, ink);
-      limb(ctx, _ikx, _iky - lift, _hx, _hy - lift, 2, L.litSkin, ink);
+      ik(4.0, sg * 3.4, _hx, _hy - lift * sg * 0.2, 4.3, 4.3, sg);
+      limb2(ctx, 4.0, sg * 3.4, _ikx, _iky - lift, _hx, _hy - lift, 3, 2, L.shirt, L.litSkin, ink);
       ldot(ctx, _hx, _hy - lift, 2, skin);
       if (sg > 0) drawGear(ctx, s, _hx + 1, _hy - lift, s.ang);
       // the splash where the hand knifes back in
-      if (u > Math.PI * 0.84) {
+      if (u > Math.PI * 0.78) {
         const px2 = Math.round(LX(_hx, _hy)), py2 = Math.round(LY(_hx, _hy));
         ctx.fillStyle = HP.foam;
-        ctx.fillRect(px2 - 1, py2 - 1, 2, 2); ctx.fillRect(px2 + 1, py2 - 2, 1, 1); ctx.fillRect(px2 - 2, py2 + 1, 1, 1);
-        ctx.fillStyle = 'rgba(185,227,247,0.75)';
-        ctx.fillRect(px2 - 3, py2, 2, 1); ctx.fillRect(px2 + 2, py2 + 1, 2, 1);
+        ctx.fillRect(px2 - 2, py2 - 1, 4, 2); ctx.fillRect(px2 - 1, py2 - 3, 2, 2); ctx.fillRect(px2 - 1, py2 + 1, 3, 1);
+        ctx.fillStyle = 'rgba(200,236,255,0.8)';
+        ctx.fillRect(px2 - 4, py2 - 2, 2, 1); ctx.fillRect(px2 + 2, py2 + 1, 3, 1); ctx.fillRect(px2 + 3, py2 - 2, 1, 1);
       }
     }
     // bow wave off the head and the trailing wake
-    ctx.fillStyle = 'rgba(234,248,255,0.55)';
-    ctx.fillRect(Math.round(LX(9, -1.5)), Math.round(LY(9, -1.5)), 2, 1);
-    ctx.fillRect(Math.round(LX(9, 1.5)), Math.round(LY(9, 1.5)), 2, 1);
-    ctx.fillStyle = 'rgba(200,236,255,0.4)';
-    const wob = Math.sin(t * 7 + ph) * 1.5;
-    ctx.fillRect(Math.round(LX(-13, wob)), Math.round(LY(-13, wob)), 3, 1);
-    ctx.fillRect(Math.round(LX(-16, -wob)), Math.round(LY(-16, -wob)), 2, 1);
+    ctx.fillStyle = 'rgba(240,252,255,0.8)';
+    ctx.fillRect(Math.round(LX(10, -2.2)), Math.round(LY(10, -2.2)), 2, 1);
+    ctx.fillRect(Math.round(LX(10, 2.2)), Math.round(LY(10, 2.2)), 2, 1);
+    ctx.fillStyle = 'rgba(234,248,255,0.5)';
+    ctx.fillRect(Math.round(LX(12, -3.4)), Math.round(LY(12, -3.4)), 2, 1);
+    ctx.fillRect(Math.round(LX(12, 3.4)), Math.round(LY(12, 3.4)), 2, 1);
+    const wob = Math.sin(t * 7 + ph) * 1.6, kick = Math.abs(Math.sin(ph * 2));
+    ctx.fillStyle = 'rgba(234,248,255,' + (0.35 + kick * 0.45).toFixed(2) + ')';
+    ctx.fillRect(Math.round(LX(-11, wob)), Math.round(LY(-11, wob)), 4, 2);
+    ctx.fillStyle = 'rgba(200,236,255,0.45)';
+    ctx.fillRect(Math.round(LX(-14, -wob)), Math.round(LY(-14, -wob)), 3, 1);
+    ctx.fillRect(Math.round(LX(-17, wob * 0.6)), Math.round(LY(-17, wob * 0.6)), 2, 1);
   }
 
   function drawGear(ctx, s, hx2, hy2, ang) {
@@ -1252,11 +1306,11 @@
     shells.push(sh);
     const g = gg();
     if (g) {
-      if (g.particles) { g.particles.sparks(x, y, 9, Math.atan2(sh.vy, sh.vx), 0.7); g.particles.smoke(x, y, 4, 'rgba(60,58,66,', 6); }
+      if (g.particles) { g.particles.sparks(x, y, 12, Math.atan2(sh.vy, sh.vx), 0.6); g.particles.smoke(x, y, 5, 'rgba(60,58,66,', 4); g.particles.spray(x, y, Math.atan2(sh.vy, sh.vx), 3, 70); }
       if (g.ocean && g.ocean.disturb) g.ocean.disturb(x, y, 3, sh.vx, sh.vy);
       if (g.shake) g.shake(opts.kind === 'mortar' ? 3 : 5);
     }
-    if (TOON) { TOON.burst(x, y, 0.9, '#ffe48f'); TOON.puff(x, y, 3, '#cfd8e2'); }
+    if (TOON) { TOON.burst(x, y, 0.75, '#ffe48f'); TOON.speed(x, y, Math.atan2(sh.vy, sh.vx), 2); }
     snd('explosion', opts.kind === 'mortar' ? 0.5 : 0.75);
     return sh;
   }
@@ -1298,10 +1352,15 @@
       const sx = Math.round(s.x - cam.x), sy = Math.round(s.y - cam.y - s.z);
       if (!onScreen(sx, sy, 70)) continue;
       const idx = clamp(Math.floor(s.z / 26), 0, S.ball.length - 1);
+      // a dark halo so the ball never disappears into light water either
+      ctx.fillStyle = 'rgba(8,20,34,0.38)';
+      ctx.fillRect(sx - S.ball[idx].ax, sy - S.ball[idx].ay, S.ball[idx].w, S.ball[idx].h);
       drawSprite(ctx, S.ball[idx], sx, sy, s.rot);
       // a hot rim so it reads against dark water
-      ctx.fillStyle = 'rgba(255,214,122,0.45)';
-      ctx.fillRect(sx - 1, sy - S.ball[idx].ay - 1, 2, 1);
+      ctx.fillStyle = '#ffd27a';
+      ctx.fillRect(sx - 1, sy - S.ball[idx].ay, 2, 1);
+      ctx.fillStyle = 'rgba(255,214,122,0.4)';
+      ctx.fillRect(sx - 2, sy + S.ball[idx].ay - 1, 4, 1);
     }
   }
 
@@ -1312,23 +1371,31 @@
       const sx = Math.round(s.tx - cam.x), sy = Math.round(s.ty - cam.y);
       if (!onScreen(sx, sy, 50)) continue;
       const k = clamp(1 - s.tLeft / s.tTotal, 0, 1);
-      const r = Math.round(s.blast * (0.82 - 0.30 * k));
+      const r = Math.round(s.blast * 0.52);
       const hot = k > 0.72;
       const col = hot ? (Math.sin(t * 40) > 0 ? '#ffffff' : HP.warn) : HP.warn2;
+      ctx.globalAlpha = 0.4 + k * 0.6;
+      // outer ring: dense dashes, so it reads as a circle drawn on the water
       ctx.fillStyle = col;
-      ctx.globalAlpha = 0.35 + k * 0.65;
-      const n = 28;
+      const n = 40;
       for (let q = 0; q < n; q++) {
-        if ((q & 1) === 0) continue;
-        const a = t * 2 + q / n * TAU;
-        ctx.fillRect(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r * 0.72), 2, 1);
+        if ((q % 3) === 2) continue;
+        const a = t * 1.6 + q / n * TAU;
+        ctx.fillRect(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r * 0.72), 1, 1);
       }
-      // crosshair, tightening as it comes down
-      const cr = Math.round(4 + (1 - k) * 8);
-      ctx.fillRect(sx - cr, sy, cr - 1, 1); ctx.fillRect(sx + 2, sy, cr - 1, 1);
-      ctx.fillRect(sx, sy - Math.round(cr * 0.7), 1, Math.round(cr * 0.7) - 1);
-      ctx.fillRect(sx, sy + 2, 1, Math.round(cr * 0.7) - 1);
-      if (hot) { ctx.fillStyle = '#ffffff'; ctx.fillRect(sx - 1, sy - 1, 3, 3); }
+      // inner ring closes in on the mark as the shell falls
+      const ir = Math.round(3 + (1 - k) * (r - 4));
+      ctx.fillStyle = hot ? '#ffffff' : HP.warn;
+      for (let q = 0; q < 16; q++) {
+        if (q & 1) continue;
+        const a = -t * 3 + q / 16 * TAU;
+        ctx.fillRect(Math.round(sx + Math.cos(a) * ir), Math.round(sy + Math.sin(a) * ir * 0.72), 1, 1);
+      }
+      // crosshair
+      ctx.fillRect(sx - r - 3, sy, 4, 1); ctx.fillRect(sx + r, sy, 4, 1);
+      ctx.fillRect(sx, sy - Math.round(r * 0.72) - 3, 1, 4); ctx.fillRect(sx, sy + Math.round(r * 0.72), 1, 4);
+      ctx.fillStyle = hot ? '#ffffff' : col;
+      ctx.fillRect(sx - 1, sy - 1, 3, 3);
       ctx.globalAlpha = 1;
     }
   }
@@ -1368,7 +1435,7 @@
       const kind = Math.random() < 0.18 ? 'harpoon' : (Math.random() < 0.34 ? 'gaff' : 'knife');
       const s = spawnSwimmer(sx, sy, kind);
       // the leap: a real arc off the gunwale toward the water near the player
-      const land = rand(26, 54);
+      const land = e.radius + rand(22, 58);
       const la = base + rand(-0.5, 0.5);
       const lx2 = e.x + Math.cos(la) * land, ly2 = e.y + Math.sin(la) * land;
       const flight = rand(0.5, 0.72);
@@ -1720,9 +1787,12 @@
         const L = LOOKS[i];
         L.pants = PANTS[i % PANTS.length];
         L.pantsD = shade(L.pants, 0.52);
-        L.wetSkin = shade(L.skin, 0.52);
-        L.litSkin = shade(L.skin, 1.12);
-        L.wetShirt = shade(L.shirt, 0.48);
+        L.wetSkin = mix(shade(L.skin, 0.7), WATER_TINT, 0.6);
+        L.litSkin = shade(L.skin, 1.18);
+        L.wetShirt = mix(shade(L.shirt, 0.68), WATER_TINT, 0.62);
+        L.subPants = mix(shade(L.pants, 0.8), WATER_TINT, 0.58);
+        L.subPantsL = mix(L.subPants, '#8fd4ff', 0.3);
+        L.subInk = mix(HP.ink, WATER_TINT, 0.62);
       }
       buildSprites();
       S.torsoHurt = [];

@@ -91,16 +91,16 @@ class Director {
   spawnPos() {
     const p = G.player;
     for (let i = 0; i < 12; i++) {
-      const a = rand(0, TAU), r = rand(230, 300);
+      const a = rand(0, TAU), r = rand(270, 340);
       const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
       if (x > 30 && x < G.ocean.W - 30 && y > G.ocean.shoreY + 10 && y < G.ocean.H - 30) return { x, y };
     }
-    return { x: clamp(p.x + 260, 30, G.ocean.W - 30), y: clamp(p.y, G.ocean.shoreY + 40, G.ocean.H - 30) };
+    return { x: clamp(p.x + 300, 30, G.ocean.W - 30), y: clamp(p.y, G.ocean.shoreY + 40, G.ocean.H - 30) };
   }
   spawnBurst(type, n) {
     const base = rand(0, TAU), p = G.player;
     for (let i = 0; i < n; i++) {
-      const a = base + (i - n / 2) * 0.25, r = 270;
+      const a = base + (i - n / 2) * 0.25, r = 310;
       const x = clamp(p.x + Math.cos(a) * r, 30, G.ocean.W - 30);
       const y = clamp(p.y + Math.sin(a) * r, G.ocean.shoreY + 20, G.ocean.H - 30);
       G.spawnEnemy(type, x, y);
