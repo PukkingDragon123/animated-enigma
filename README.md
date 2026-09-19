@@ -34,21 +34,24 @@ Run `./build.sh` to regenerate `play.html` after changing anything under `src/`.
 | Q | **Otter Rampage** when the meter is full - the otter sprays everything around you |
 | Left mouse | Aim the otter manually (he auto-aims the nearest boat otherwise) |
 | 1-7 / mouse wheel | Switch weapon |
-| TAB | **The Deep** - the skill tree (pauses the game) |
+| TAB | **The Deep** - the skill tree. Only opens between waves |
+| ENTER | Call in the next wave once the current one is cleared |
 | SHIFT / F / R | Deep Dive / Decoy Buoy / Tidal Slam (once unlocked) |
 | ESC / P | Pause |
 | M | Mute |
 
 ## How it plays
 
-1. **Intro**: the manatee and otter dive into the bay together.
+1. **Intro**: a side-scrolling cinematic tells you why the manatee is doing this.
 2. **Fisher Village**: a fisherman on the pier spots you ("Oh, a manatee! Free meat for tonight!"). One click and the otter answers. The fight begins.
-3. **Waves** of boats arrive over ~5 minutes, each type with its own movement and attack:
-   dinghies (ram), net boats (slowing nets), harpooners (kiting), speedboats (strafing runs), jetski bombers (kamikaze),
+3. **Twelve waves**, each one a fixed force you have to wipe out. Enemy health, speed, fire rate and damage all climb with the wave number.
+   Boat types: dinghies (ram), net boats (slowing nets), harpooners (kiting), speedboats (strafing runs), jetski bombers (kamikaze),
    dynamite skiffs (arcing explosives, chain reactions), trawlers (buckshot tanks), gunboats (turret bursts).
-4. **Boss - the Village Chief** rides a shark and charges at you. Bait his charge into a rock: he crashes, gets stunned, and takes 2.5x damage.
+   The fleet claims bearings around you and closes as a ring rather than a queue, and damaged boats peel off and come back.
+4. **Between waves** the ocean goes quiet. That, and only that, is when **The Deep** opens. Spend your salvage, then call in the next wave yourself.
+5. **Boss - the Village Chief** rides a shark and charges at you. Bait his charge into a rock: he crashes, gets stunned, and takes 2.5x damage.
    At half health he enters **Blood Frenzy**: faster tracking double charges, spear volleys, whirlpools, tail-sweep shockwaves and backup boats.
-5. Boats drop five kinds of scrap (metal, driftwood, fuel, gunpowder, electronics). Spend it in **The Workshop**.
+6. Boats drop five kinds of scrap (metal, driftwood, fuel, gunpowder, electronics).
 
 ## Progression is 100% strategy
 
@@ -127,7 +130,7 @@ src/weapons.js    otter weapon definitions
 src/skills.js     skill-tree data (54 nodes) and stat computation
 src/entities.js   player (manatee + otter), 8 boat types, projectiles, pickups, rocks, wrecks, fisherman
 src/boss.js       the Village Chief on his shark (two phases)
-src/waves.js      timed spawn director
+src/waves.js      wave director: discrete, clearable waves and difficulty scaling
 src/mobile.js     ship's-helm touch controls and ability buttons
 src/village.js    fishing village, procedural villagers, destruction and gore
 src/treescene.js  'The Deep' underwater skill-tree scene

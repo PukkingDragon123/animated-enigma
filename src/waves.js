@@ -59,7 +59,9 @@ class Director {
     const alive = G.enemies.length;
 
     if (w.boss) {
-      // the boss wave ends with the Chief, not with a body count
+      // the boss wave ends with the Chief, not with a body count; once he is
+      // down the escort stops arriving so the fight can actually finish
+      if (G.boss && G.boss.dead) return;
       this.spawnT -= dt;
       if (this.spawnT <= 0 && alive < w.max) { this.spawnT = w.interval * rand(0.7, 1.3); this.spawnOne(w); }
       return;
