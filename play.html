@@ -2719,8 +2719,10 @@ class Ocean {
   buildPalettes() {
     const hx = hexToRgb;
     // 16 depth bands: bright lagoon turquoise -> abyssal navy
-    this.waterRamp = ['#3ad3b4', '#2ac7b1', '#1db5ac', '#16a3a4', '#11929b', '#0f818f', '#0e7181', '#0e6273',
-      '#0d5464', '#0c4755', '#0b3b47', '#0a3039', '#08262e', '#071d24', '#05161b', '#040f13'].map(hx);
+    // The offshore water is where most of the fighting happens, so the deep end
+    // settles into a readable navy instead of bottoming out at black.
+    this.waterRamp = ['#3ad3b4', '#2cc6b2', '#20b8ae', '#1aaaa8', '#169ba1', '#148f99', '#138591', '#127a88',
+      '#11707f', '#106676', '#0f5d6d', '#0e5465', '#0d4c5d', '#0d4556', '#0c3f4f', '#0c3a49'].map(hx);
     const mul = [0.70, 0.82, 0.92, 1.0, 1.09, 1.19, 1.36];
     this.waterLUT = new Uint8Array(16 * 7 * 3);
     for (let b = 0; b < 16; b++) for (let l = 0; l < 7; l++) {
@@ -2736,7 +2738,7 @@ class Ocean {
     this.shoalLUT = new Float32Array(16);
     for (let b = 0; b < 16; b++) {
       const d = b / 15;
-      this.visLUT[b] = Math.round(clamp((0.86 - d) / 0.52, 0, 1) * 5) / 5 * 0.62;
+      this.visLUT[b] = Math.max(0.07, Math.round(clamp((0.92 - d) / 0.55, 0, 1) * 5) / 5 * 0.62);
       this.shoalLUT[b] = 1.38 - d * 0.55;
     }
     // light absorption: water eats red first, then green, so the reef turns
@@ -2748,7 +2750,7 @@ class Ocean {
     this.cR = new Float32Array(64); this.cG = new Float32Array(64); this.cB = new Float32Array(64);
     for (let b = 0; b < 16; b++) {
       const d = b / 15;
-      const ar = 0.78 - d * 0.55, ag = 0.96 - d * 0.42, ab = 1.06 - d * 0.20;
+      const ar = 0.82 - d * 0.38, ag = 0.98 - d * 0.28, ab = 1.06 - d * 0.12;
       this.absR[b] = ar; this.absG[b] = ag; this.absB[b] = ab;
       for (let c = 0; c < 4; c++) {
         this.cR[b * 4 + c] = causAdd[c] * ar * 0.85;
