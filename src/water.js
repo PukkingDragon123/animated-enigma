@@ -71,7 +71,9 @@ class Ocean {
     this.shoalLUT = new Float32Array(16);
     for (let b = 0; b < 16; b++) {
       const d = b / 15;
-      this.visLUT[b] = Math.max(0.07, Math.round(clamp((0.92 - d) / 0.55, 0, 1) * 5) / 5 * 0.62);
+      // a touch more water film over the reef: the detail is still there, but
+      // the play field reads clearly against it at the zoomed-in camera
+      this.visLUT[b] = Math.max(0.06, Math.round(clamp((0.92 - d) / 0.55, 0, 1) * 5) / 5 * 0.50);
       this.shoalLUT[b] = 1.38 - d * 0.55;
     }
     // light absorption: water eats red first, then green, so the reef turns
