@@ -57,7 +57,6 @@
   function tri(ctx, col, ax, ay, bx, by, cx, cy) {
     const y0 = Math.floor(Math.min(ay, by, cy)), y1 = Math.ceil(Math.max(ay, by, cy));
     ctx.fillStyle = col;
-    const xs = [0, 0, 0];
     for (let y = y0; y <= y1; y++) {
       const yc = y + 0.5; let n = 0, lo = 1e9, hi = -1e9;
       const ex = (px0, py0, px1, py1) => {
@@ -71,7 +70,6 @@
       const i0 = Math.round(lo), i1 = Math.round(hi);
       if (i1 >= i0) ctx.fillRect(i0, y, i1 - i0 + 1, 1);
     }
-    void xs;
   }
   // dotted / solid circle outline, pure integer pixels
   function ring(ctx, col, cx, cy, r, gap) {
@@ -120,7 +118,8 @@
   const ISLES = [
     {
       name: "MOTHER'S REACH", x: 114, y: 202, rx: 82, ry: 46, seed: 1101, rough: 1.15,
-      hills: 13, woods: 11, label: [106, 208], ls: 6,
+      hills: 13, woods: 11, label: [134, 214], ls: 6,
+      spits: [[-0.18, 26, 4.5], [2.5, 18, 3.5], [1.15, 14, 3]],
       lobes: [
         { dx: 52, dy: -22, rx: 40, ry: 24 }, { dx: -54, dy: 4, rx: 30, ry: 26 },
         { dx: 10, dy: 30, rx: 46, ry: 18 }, { dx: -14, dy: -30, rx: 32, ry: 18 },
@@ -130,6 +129,7 @@
     {
       name: 'SALT PIER', x: 246, y: 86, rx: 54, ry: 32, seed: 2207, rough: 1.05,
       hills: 7, woods: 6, label: [244, 74], ls: 5,
+      spits: [[3.32, 22, 4], [0.35, 16, 3]],
       lobes: [{ dx: -34, dy: 14, rx: 26, ry: 16 }, { dx: 30, dy: 16, rx: 26, ry: 14 }, { dx: 6, dy: -22, rx: 28, ry: 14 }],
     },
     { name: 'THE SISTERS', x: 298, y: 182, rx: 16, ry: 11, seed: 3301, rough: 1.2, hills: 1, woods: 1, label: [300, 170], ls: 4, lobes: [{ dx: 10, dy: 6, rx: 8, ry: 6 }] },
@@ -138,11 +138,13 @@
     {
       name: 'MARROW ISLE', x: 408, y: 178, rx: 52, ry: 36, seed: 4409, rough: 1.1,
       hills: 9, woods: 8, label: [404, 176], ls: 5,
+      spits: [[2.62, 20, 4], [-0.55, 16, 3.2]],
       lobes: [{ dx: -32, dy: -14, rx: 26, ry: 18 }, { dx: 30, dy: 14, rx: 26, ry: 16 }, { dx: -6, dy: 26, rx: 30, ry: 12 }],
     },
     {
       name: 'BLACKBONE', x: 470, y: 80, rx: 42, ry: 26, seed: 5501, rough: 1.15,
       hills: 7, woods: 3, label: [466, 78], ls: 5,
+      spits: [[0.12, 18, 3.5]],
       lobes: [{ dx: 24, dy: 10, rx: 22, ry: 13 }, { dx: -26, dy: 6, rx: 20, ry: 14 }],
     },
     { name: 'THE FANGS', x: 560, y: 118, rx: 11, ry: 8, seed: 6607, rough: 1.3, hills: 1, woods: 0, label: [566, 138], ls: 4, lobes: [{ dx: 14, dy: 12, rx: 7, ry: 5 }] },
@@ -162,7 +164,7 @@
       foes: ['netter', 'dynaboat', 'jetski'], need: 'FISHER VILLAGE',
     },
     {
-      name: 'PORT MARROW', chapter: 'III', x: 398, y: 208, lab: 'below', threat: 0.58,
+      name: 'PORT MARROW', chapter: 'III', x: 398, y: 208, lab: 'above', threat: 0.58,
       blurb: 'Every hull in the bay gets patched at Marrow. Break the harbour and the fleet has nowhere left to limp home to.',
       foes: ['speedboat', 'harpooner', 'gunboat'], need: 'SALT PIER CANNERY',
     },
@@ -192,18 +194,18 @@
   // shipping lanes: dotted tracks with little chart-ships crawling along them
   const LANES = [
     [[22, 128], [96, 112], [168, 122], [240, 136], [316, 150], [344, 146], [412, 128], [498, 132], [576, 156], [624, 168]],
-    [[196, 250], [268, 248], [352, 240], [436, 232], [520, 226], [608, 220]],
+    [[196, 246], [250, 238], [298, 220], [368, 220], [446, 226], [520, 224], [608, 218]],
     [[300, 30], [352, 56], [402, 96], [446, 126], [498, 158], [548, 178]],
     [[30, 176], [40, 154], [78, 136], [140, 130], [196, 120], [232, 116]],
   ];
 
   // decorative wrecks (chart symbol: masts standing out of the water)
-  const WRECKS = [[238, 196], [216, 140], [332, 98], [462, 150], [520, 248], [86, 88]];
+  const WRECKS = [[262, 196], [150, 136], [336, 104], [446, 150], [520, 248], [76, 148]];
 
   // sea doodles: kind, x, y, facing
   const DOODLES = [
     { k: 'serpent', x: 44, y: 112, f: 1 },
-    { k: 'whale', x: 146, y: 100, f: -1 },
+    { k: 'whale', x: 240, y: 150, f: -1 },
     { k: 'kraken', x: 600, y: 96 },
     { k: 'ray', x: 472, y: 240 },
     { k: 'whale', x: 470, y: 60, f: 1 },
@@ -360,7 +362,40 @@
     D1(ctx, P.ink, x, y + 1);
   }
 
+  // a tapering sand spit hanging off a headland, found by marching out from
+  // the island's centre until the coast is crossed
+  function sandSpit(ctx, m, is, ang, len, wide) {
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    let r = 4, hit = -1;
+    for (; r < Math.max(is.rx, is.ry) + 40; r += 1) {
+      const x = Math.round(is.x + ca * r), y = Math.round(is.y + sa * r);
+      if (x < 2 || y < 2 || x >= MAP_W - 2 || y >= MAP_H - 2) break;
+      if (!m[y * MAP_W + x]) { hit = r; break; }
+    }
+    if (hit < 0) return;
+    const bx = is.x + ca * (hit - 3), by = is.y + sa * (hit - 3);
+    const nx = -sa, ny = ca;
+    for (let i = 0; i < len; i++) {
+      const u = i / len;
+      const hw = wide * (1 - u) * (1 - u * 0.3);
+      const cx = bx + ca * i, cy = by + sa * i;
+      const drift = Math.sin(u * 2.6 + is.seed) * len * 0.09;
+      for (let k = -Math.ceil(hw); k <= Math.ceil(hw); k++) {
+        const x = Math.round(cx + nx * (k + drift)), y = Math.round(cy + ny * (k + drift));
+        if (x < 1 || y < 1 || x >= MAP_W - 1 || y >= MAP_H - 1) continue;
+        const edge = Math.abs(k) >= hw - 0.6;
+        if (edge) { if (((x + y) & 1) === 0) D1(ctx, P.ink2, x, y); }
+        else D1(ctx, hash2(x * 5, y * 7) > 0.82 ? P.landD : P.sand, x, y);
+      }
+      if (hw < 0.6) break;
+    }
+  }
+
   function dressLand(ctx, m, dIn) {
+    // spits first, so hills and woods can still sit on top of the land proper
+    for (const is of ISLES) {
+      for (const sp of is.spits || []) sandSpit(ctx, m, is, sp[0], sp[1], sp[2]);
+    }
     for (const is of ISLES) {
       const rng = new SeededRandom(is.seed * 7 + 13);
       // ---- hills / ridges
@@ -444,76 +479,108 @@
     }
   }
 
-  // classic wreck symbol: three masts standing out of the water
+  // classic wreck symbol: masts and yardarms standing out of a sunken hull
   function drawWreck(ctx, x, y) {
-    R(ctx, P.ink, x - 5, y, 11, 1);
-    for (const dx of [-3, 0, 3]) { R(ctx, P.ink, x + dx, y - 4, 1, 5); D1(ctx, P.ink, x + dx - 1, y - 4); }
-    D1(ctx, P.ink2, x - 4, y + 1); D1(ctx, P.ink2, x + 4, y + 1);
+    for (const dx of [-4, 0, 4]) {
+      R(ctx, P.ink, x + dx, y - 6, 1, 6);
+      R(ctx, P.ink, x + dx - 1, y - 5, 3, 1);
+      if (dx === 0) R(ctx, P.ink, x + dx - 2, y - 3, 5, 1);
+    }
+    R(ctx, P.ink, x - 6, y, 13, 1);
+    R(ctx, P.ink2, x - 5, y + 1, 11, 1);
     R(ctx, P.ink2, x - 3, y + 2, 7, 1);
     D1(ctx, P.ink2, x - 1, y + 3); D1(ctx, P.ink2, x + 1, y + 3);
+    D1(ctx, P.inkL, x - 7, y); D1(ctx, P.inkL, x + 7, y);
   }
 
   // sea doodles ------------------------------------------------------------
+  // a proper engraved sea serpent: three coils, a reared head, a fluked tail
+  const SERP_HEAD = [
+    '.....kkkkkk....',
+    '...kkwwwwwwkkkk',
+    '..kwwwwwwwwwwwk',
+    '.kwwkkwwwwwkkkk',
+    '.kwwwwwwwwkk...',
+    '.kwwwwwwwkk....',
+    '..kwwwwwkk.....',
+    '...kkkkkk......',
+  ];
+  function arcOver(ctx, col, cx, cy, r, sag) {
+    for (let a = Math.PI + 0.06; a <= TAU - 0.06; a += 0.03) {
+      const x = Math.round(cx + Math.cos(a) * r), y = Math.round(cy + Math.sin(a) * r * 0.9);
+      D1(ctx, col, x, y);
+      if (sag) D1(ctx, col, x, y + 1);
+    }
+  }
   function drawSerpent(ctx, x, y, f) {
-    // three coils breaking the surface, a head at one end, a fluked tail at the other
-    for (const h of [0, 17, 34]) {
-      for (let i = -7; i <= 7; i++) {
-        const u = i / 7;
-        const ty = Math.round(y - 8 * Math.cos(u * Math.PI * 0.5));
-        const cx = x + f * (h + i);
-        D1(ctx, P.ink, cx, ty);
-        D1(ctx, P.ink, cx, ty + 4);                       // underside of the coil
-        for (let k = ty + 1; k < ty + 4; k++) if (((cx + k) & 1) === 0) D1(ctx, P.inkL, cx, k);
-        if (i % 4 === 0 && Math.abs(i) < 6) { D1(ctx, P.ink2, cx, ty - 1); D1(ctx, P.ink2, cx + f, ty - 2); }   // dorsal spines
+    for (let c = 0; c < 3; c++) {
+      const cx = x + f * (c * 19), r = 9 - c;
+      arcOver(ctx, P.ink, cx, y, r, true);
+      // scales inside the coil
+      for (let i = -r + 2; i <= r - 2; i += 2) {
+        const h = Math.round(Math.sqrt(Math.max(0, r * r - i * i)) * 0.9);
+        for (let k = -h + 2; k < 0; k += 3) D1(ctx, P.inkL, cx + i, y + k);
+      }
+      // dorsal spines
+      for (let i = -4; i <= 4; i += 4) {
+        const h = Math.round(Math.sqrt(Math.max(0, r * r - i * i)) * 0.9);
+        D1(ctx, P.ink, cx + i, y - h - 1); D1(ctx, P.ink, cx + i + f, y - h - 2);
       }
     }
-    for (let i = -12; i < 50; i += 3) { D1(ctx, P.inkL, x + f * i, y + 6); D1(ctx, P.inkL, x + f * (i + 1), y + 6); }
-    // head, reared up on a neck
-    const hx = x + f * 47, hy = y - 16;
-    for (let k = 0; k < 10; k++) { D1(ctx, P.ink, hx - f * 2, y - 5 - k); D1(ctx, P.ink, hx + f, y - 5 - k); }
-    R(ctx, P.ink, hx - f * 2, hy - 5, 8 * f, 1);
-    R(ctx, P.ink, hx - f * 2, hy + 1, 8 * f, 1);
-    R(ctx, P.ink, hx + f * 6, hy - 5, 1, 7);
-    for (let k = -4; k <= 0; k++) if ((k & 1) === 0) D1(ctx, P.inkL, hx + f * 3, hy + k);
-    D1(ctx, P.sand, hx + f * 3, hy - 3); D1(ctx, P.ink, hx + f * 4, hy - 3);     // eye
-    D1(ctx, P.ink, hx + f * 7, hy - 2); D1(ctx, P.ink, hx + f * 8, hy - 1);      // open jaw
-    D1(ctx, P.ink, hx + f * 7, hy + 2); D1(ctx, P.ink, hx + f * 8, hy + 3);
-    D1(ctx, P.ink, hx - f, hy - 8); D1(ctx, P.ink, hx, hy - 9); D1(ctx, P.ink, hx + f, hy - 8);   // horns
+    // the sea it threads through
+    for (let i = -14; i < 56; i += 3) { D1(ctx, P.inkL, x + f * i, y + 2); D1(ctx, P.inkL, x + f * (i + 1), y + 2); }
+    // neck + head, reared out of the water
+    const nx = x + f * 48;
+    for (let k = 0; k < 13; k++) {
+      D1(ctx, P.ink, nx - f * 3, y - k); D1(ctx, P.ink, nx + f * 3, y - k);
+      D1(ctx, P.sand, nx - f * 2, y - k); D1(ctx, P.sand, nx - f, y - k); D1(ctx, P.sand, nx, y - k);
+      D1(ctx, P.sand, nx + f, y - k); D1(ctx, P.sand, nx + f * 2, y - k);
+      if (k % 3 === 0) { D1(ctx, P.inkL, nx - f, y - k); D1(ctx, P.inkL, nx + f, y - k); }
+    }
+    const hx = nx - f * 7, hy = y - 21;
+    stamp(ctx, f > 0 ? SERP_HEAD : SERP_HEAD.map(r2 => r2.split('').reverse().join('')), hx, hy, { k: P.ink, w: P.sand });
+    const tipx = f > 0 ? hx + 15 : hx - 1;
+    D1(ctx, P.ink, tipx, hy + 4); D1(ctx, P.ink, tipx + f, hy + 3); D1(ctx, P.ink, tipx + f, hy + 5);   // forked tongue
+    D1(ctx, P.ink, hx + (f > 0 ? 5 : 9), hy - 2); D1(ctx, P.ink, hx + (f > 0 ? 7 : 7), hy - 3);         // horns
+    D1(ctx, P.ink, hx + (f > 0 ? 4 : 10), hy - 1);
     // tail
-    for (let k = 0; k < 6; k++) { D1(ctx, P.ink, x - f * (8 + k), y - 2 - k); D1(ctx, P.ink, x - f * (8 + k), y + 1 + k); }
-    D1(ctx, P.ink, x - f * 14, y - 8); D1(ctx, P.ink, x - f * 14, y + 7);
+    for (let k = 0; k < 7; k++) { D1(ctx, P.ink, x - f * (9 + k), y - 1 - k); D1(ctx, P.ink, x - f * (9 + k), y + 1 + Math.round(k * 0.7)); }
+    D1(ctx, P.ink, x - f * 16, y - 8); D1(ctx, P.ink, x - f * 16, y + 6);
   }
   function drawWhale(ctx, x, y, f) {
-    const W = 34;
+    const W = 32;
+    const fat = u => u < 0.78 ? Math.pow(u / 0.78, 0.45) : Math.sqrt(Math.max(0, 1 - Math.pow((u - 0.78) / 0.23, 2)));
+    let lastT = 0, lastB = 0;
     for (let i = 0; i < W; i++) {
-      const u = i / (W - 1);
-      const th = 2 + 7.2 * Math.sin(Math.PI * Math.pow(u, 0.55)) * (1 - u * 0.25);
-      const t0 = Math.round(th), b0 = Math.round(th * 0.82);
-      const cx = x + f * Math.round(i - W * 0.62);
-      D1(ctx, P.ink, cx, y - t0); D1(ctx, P.ink, cx, y + b0);
-      if (i % 2 === 0) for (let k = -t0 + 2; k < b0 - 1; k += 3) D1(ctx, P.inkL, cx, y + k);
-      if (i > W * 0.55 && i % 3 === 0) D1(ctx, P.ink2, cx, y + b0 - 1);   // belly pleats
+      const u = i / (W - 1), k = fat(u);
+      const t = Math.round(9 * k), b2 = Math.round(6.5 * k);
+      const cx = x + f * Math.round(i - W * 0.55);
+      D1(ctx, P.ink, cx, y - t); D1(ctx, P.ink, cx, y + b2);
+      // close up any vertical gaps so the outline never breaks
+      for (let q = Math.min(t, lastT); q < Math.max(t, lastT); q++) D1(ctx, P.ink, cx, y - q);
+      for (let q = Math.min(b2, lastB); q < Math.max(b2, lastB); q++) D1(ctx, P.ink, cx, y + q);
+      lastT = t; lastB = b2;
+      if (i % 2 === 0) for (let q = -t + 2; q < b2 - 1; q += 3) D1(ctx, P.inkL, cx, y + q);
+      if (u > 0.4 && u < 0.92 && i % 3 === 0) D1(ctx, P.ink2, cx, y + b2 - 1);          // throat pleats
     }
-    // blunt head, jaw line and eye
-    const hx = x + f * Math.round(W * 0.37);
-    for (let k = -5; k <= 4; k++) D1(ctx, P.ink, hx + f * (k < 0 ? 1 : 0), y + k);
-    R(ctx, P.ink, hx - f * 7, y + 1, 8, 1);
-    D1(ctx, P.ink, hx - f * 5, y - 2); D1(ctx, P.ink, hx - f * 4, y - 2);
-    // fluke
-    const tx = x - f * Math.round(W * 0.64);
-    for (let k = 0; k < 7; k++) {
-      D1(ctx, P.ink, tx - f * k, y - 1 - k); D1(ctx, P.ink, tx - f * k, y + 1 + Math.round(k * 0.8));
-      if (k > 2) { D1(ctx, P.inkL, tx - f * k, y - k); D1(ctx, P.inkL, tx - f * k, y + Math.round(k * 0.8)); }
+    const hx = x + f * Math.round(W * 0.45);
+    // mouth line, eye and flipper
+    for (let i = 0; i < 12; i++) D1(ctx, P.ink, hx + f * i, y + 2 + Math.round(i * 0.18));
+    D1(ctx, P.ink, hx + f * 7, y - 2); D1(ctx, P.ink, hx + f * 8, y - 2);
+    for (let k = 0; k < 6; k++) { D1(ctx, P.ink, hx - f * (2 + k), y + 5 + (k >> 1)); D1(ctx, P.ink, hx - f * (2 + k), y + 7 + (k >> 1)); }
+    // fluke: two solid lobes, the way an engraver would cut them
+    const tx = x - f * Math.round(W * 0.56);
+    tri(ctx, P.ink, tx, y, tx - f * 9, y - 9, tx - f * 5, y - 1);
+    tri(ctx, P.ink, tx, y, tx - f * 9, y + 8, tx - f * 5, y + 1);
+    for (let k = 2; k < 8; k++) { D1(ctx, P.inkL, tx - f * k, y - k + 1); D1(ctx, P.inkL, tx - f * k, y + k - 1); }
+    // spout: two fat plumes out of the blowhole, with a little spray
+    for (let i = 0; i < 14; i++) {
+      const sy = y - 11 - i, lean = Math.round(i * 0.5);
+      D1(ctx, P.ink, hx - f * (2 + lean), sy); D1(ctx, P.ink, hx - f * (3 + lean), sy);
+      if (i > 3) { D1(ctx, P.ink, hx + f * (lean - 2), sy); D1(ctx, P.ink, hx + f * (lean - 1), sy); }
+      if (i > 8) { D1(ctx, P.inkL, hx - f * (5 + lean), sy + 1); D1(ctx, P.inkL, hx + f * (lean + 1), sy + 1); }
     }
-    D1(ctx, P.ink, tx - f * 7, y - 8); D1(ctx, P.ink, tx - f * 7, y + 7);
-    // flipper
-    for (let k = 0; k < 5; k++) D1(ctx, P.ink, hx - f * (5 + k), y + 5 + (k >> 1));
-    // spout
-    for (let i = 0; i < 9; i++) {
-      D1(ctx, P.inkL, hx - f * (2 + (i >> 1)), y - 10 - i);
-      if (i > 2) D1(ctx, P.inkL, hx + f * (2 + (i >> 2)), y - 10 - i);
-      if (i > 5) D1(ctx, P.faint, hx - f * (6 + (i >> 1)), y - 9 - i);
-    }
+    D1(ctx, P.ink, hx - f * 9, y - 24); D1(ctx, P.ink, hx - f * 11, y - 22); D1(ctx, P.ink, hx + f * 6, y - 23);
   }
   function drawKraken(ctx, x, y) {
     // a knot of tentacles coming up out of the swell, suckers and all
@@ -548,13 +615,13 @@
 
   // ships on the lanes -----------------------------------------------------
   const SHIP_ROWS = [
-    '....k......',
-    '....kwk....',
-    '....k......',
-    '...kwk.....',
-    '..kkwwk....',
-    '.kkwwwwk...',
-    '....k......',
+    '.....k.....',
+    '....kkk....',
+    '...kwwwk...',
+    '...kwwwk...',
+    '..kwwwwwk..',
+    '..kwwwwwk..',
+    '.....k.....',
     'kkkkkkkkkkk',
     '.kkkkkkkkk.',
     '..kkkkkkk..',
@@ -746,23 +813,27 @@
   const S = {};
   function buildSprites() {
     if (S.ready) return; S.ready = true;
-    const pal = { k: P.ink, w: P.sand, r: P.red, g: P.gold, d: P.ink2, l: P.inkL };
+    const pal = { k: P.ink, w: P.sand };
     S.ship = makeSprite(SHIP_ROWS, { ax: 5, ay: 7, pal: pal });
     // the pair, as a chart token: manatee with the otter riding, facing right
     S.token = makeSprite([
-      '.........p......',
-      '.........p......',
-      '........rrr.....',
-      '.........p.BB...',
-      '....kkkk.p.BBB..',
-      '..kkGGGGkkBBBk..',
-      '.kGGGGGGGGGGGkk.',
-      'kGGGGGGGGGGGGGGk',
-      'kgGGGGGGGGGGGGGk',
-      '.kgggggggggggkk.',
-      '..kkkgggggkkk...',
-      '.....kkkkk......',
-    ], { ax: 8, ay: 7, pal: { k: '#2b2118', G: '#8f8c86', g: '#6b6760', B: '#b06a2e', p: '#5c4526', r: '#b8402a' } });
+      '.............k....',
+      '.............krr..',
+      '.............krr..',
+      '...........kkk....',
+      '..........kBBBk...',
+      '..........kBwBk...',
+      '..kk...kkkkBBkkkk.',
+      '.kGGk.kGGGGGGGGGGk',
+      'kGGGGkkGLLLLLLLGGk',
+      'kGGGGGGGLLLLLLGGkk',
+      '.kGGGGkGGGGGGGGGk.',
+      '..kggkkgggggggkk..',
+      '...kk..kkkkkkkk...',
+    ], {
+      ax: 9, ay: 8,
+      pal: { k: '#2b2118', G: '#95918a', L: '#b3afa7', g: '#6b675f', B: '#c07434', w: '#f0d8b4', r: '#b8402a' },
+    });
     // padlock for the locked ports
     S.lock = makeSprite([
       '.kkk.',
@@ -790,11 +861,6 @@
   // =========================================================================
   //  ROUTES — a sea road from the lagoon to every port, bent around the land
   // =========================================================================
-  function seaAt(mask, x, y) {
-    const xi = Math.round(x), yi = Math.round(y);
-    if (xi < IN.x0 || yi < IN.y0 || xi > IN.x1 || yi > IN.y1) return false;
-    return !mask[yi * MAP_W + xi];
-  }
   function clearance(dOut, mask, x, y) {
     const xi = Math.round(x), yi = Math.round(y);
     if (xi < 1 || yi < 1 || xi >= MAP_W - 1 || yi >= MAP_H - 1) return 0;
@@ -1006,7 +1072,7 @@
     for (const rf of REEFS) drawReef(cx, rf, mask);
     const rng = new SeededRandom(9137);
     let placed = 0;
-    for (let i = 0; i < 900 && placed < 52; i++) {
+    for (let i = 0; i < 1400 && placed < 74; i++) {
       const x = Math.round(rng.range(IN.x0 + 6, IN.x1 - 10)), y = Math.round(rng.range(IN.y0 + 6, IN.y1 - 8));
       const cl = clearance(dOut, mask, x, y);
       if (cl < 5) continue;
@@ -1017,6 +1083,13 @@
       if (x > 14 && x < 206 && y > 14 && y < 90) clash = true;        // cartouche
       if (x > 292 && x < 452 && y > 224 && y < 256) clash = true;     // scale bar
       if (x > 512 && x < 624 && y > 222 && y < 252) clash = true;     // open-sea note
+      for (const w of WRECKS) if (Math.abs(x - w[0]) < 13 && Math.abs(y - w[1]) < 11) clash = true;
+      for (const dd of DOODLES) {
+        const rx = dd.k === 'serpent' ? 62 : dd.k === 'whale' ? 26 : 18;
+        const ry = dd.k === 'serpent' ? 30 : dd.k === 'whale' ? 28 : 16;
+        const ox = dd.k === 'serpent' ? (dd.f || 1) * 22 : 0;
+        if (Math.abs(x - dd.x - ox) < rx && Math.abs(y - dd.y) < ry) clash = true;
+      }
       if (clash) continue;
       const v = Math.max(2, Math.round(cl * 1.1 + rng.range(0, 14)));
       txt(cx, String(v), x, y, 5, { color: P.ink2, align: 'center' });
@@ -1040,7 +1113,7 @@
     }
     txt(cx, 'OPEN SEA', 568, 230, 6, { color: P.ink2, align: 'center', tracking: 3, outline: P.seaL });
     txt(cx, 'HERE THE CHART ENDS', 566, 241, 5, { color: P.ink2, align: 'center', outline: P.seaL });
-    txt(cx, 'THE NARROWS', 232, 166, 5, { color: P.ink2, align: 'center', tracking: 1, outline: P.seaL });
+    txt(cx, 'THE NARROWS', 214, 176, 5, { color: P.ink2, align: 'center', tracking: 1, outline: P.seaL });
     txt(cx, 'MOTHER DEEP', 104, 132, 5, { color: P.ink2, align: 'center', tracking: 1, outline: P.seaL });
 
     // ---- furniture on top
@@ -1084,7 +1157,7 @@
     R(ctx, on ? P.red : P.grey, r.x + 1, r.y + 1, 11, r.h - 2);
     txt(ctx, d.chapter, r.x + 6, r.y + 3, 5, { color: on ? P.sand : '#ded3ab', align: 'center' });
     txt(ctx, d.name, r.x + 15, r.y + 3, 6, { color: on ? P.ink : P.grey });
-    if (!on) drawSprite(ctx, S.lock, r.x + r.w - 5, r.y + 6);
+    if (!on) drawSprite(ctx, S.lock, r.x + r.w - 7, r.y + 6);
   }
 
   function drawPort(ctx, d, T, sel, hov) {
@@ -1140,7 +1213,7 @@
       for (let i = 0; i < DEST.length; i++) {
         const d = DEST[i];
         if (d.unlocked === undefined) d.unlocked = i === 0;
-        d.plaqW = 20 + mText(d.name, 6);
+        d.plaqW = 27 + mText(d.name, 6);
         d.lines = wrapText(null, d.blurb, 286, 6).slice(0, 3);
       }
       this.chart = buildChart(this);          // this also snaps the ports to the coast
@@ -1185,6 +1258,7 @@
       for (let i = 0; i < DEST.length; i++) DEST[i].unlocked = i < n;
       this.selected = clamp(n - 1, 0, DEST.length - 1);
       this.action = null; this.routeT = 0; this.travel = 0; this.hover = -1; this.denyT = 0;
+      this.overSail = false; this.overBack = false;
     },
     consume() { this.action = null; },
 
@@ -1226,6 +1300,7 @@
 
     update(dt, t) {
       this.init();
+      this.selected = clamp(this.selected | 0, 0, DEST.length - 1);
       this.T += dt;
       this.denyT = Math.max(0, this.denyT - dt);
       const m = Input.mouse;
@@ -1276,6 +1351,7 @@
     // -------------------------------------------------------------- render
     render(ctx, t) {
       this.init();
+      this.selected = clamp(this.selected | 0, 0, DEST.length - 1);
       const T = this.T;
       ctx.drawImage(this.chart, 0, 0);
       this.drawShimmer(ctx, T);
@@ -1331,10 +1407,10 @@
       const k = (Math.sin(T * 2.4) * 0.5 + 0.5);
       ring(ctx, P.ink2, x, y, 7 + Math.round(k * 2), 3);
       const w = 7 + mText('THE LAGOON', 6);
-      R(ctx, P.sand, x + 8, y - 5, w, 11);
-      box(ctx, P.ink, x + 8, y - 5, w, 11);
-      txt(ctx, 'THE LAGOON', x + 12, y - 2, 6, { color: P.ink });
-      txt(ctx, 'YOU ARE HERE', x + 8, y - 14, 5, { color: P.red, tracking: 1 });
+      R(ctx, P.sand, x + 8, y - 6, w, 11);
+      box(ctx, P.ink, x + 8, y - 6, w, 11);
+      txt(ctx, 'THE LAGOON', x + 12, y - 3, 6, { color: P.ink });
+      txt(ctx, 'YOU ARE HERE', x + 9, y + 7, 5, { color: P.red, tracking: 1, outline: P.sand });
     },
 
     drawRoute(ctx, T) {
@@ -1343,10 +1419,10 @@
       // 1) a scrubbed light underlay so the track reads over stipple and rhumbs
       this.walk(pts, shown, 1, (x, y) => { D1(ctx, P.sand, x, y); });
       // 2) the dashed carmine track itself, crawling forward
-      const ph = Math.floor(T * 14);
+      const ph = Math.floor(T * 14), per = d.unlocked ? 7 : 6, on = d.unlocked ? 4 : 2;
       this.walk(pts, shown, 1, (x, y, s) => {
-        const k = ((Math.floor(s) - ph) % 7 + 7) % 7;
-        if (k < 4) D1(ctx, d.unlocked ? P.red : P.grey, x, y);
+        const k = ((Math.floor(s) - ph) % per + per) % per;
+        if (k < on) D1(ctx, d.unlocked ? P.red : P.ink2, x, y);
       });
       // 3) course ticks every 30 leagues
       this.walk(pts, shown, 1, (x, y, s, dx, dy) => {
@@ -1354,7 +1430,6 @@
         const nx = -dy, ny = dx;
         for (let k = -2; k <= 2; k++) D1(ctx, P.ink2, Math.round(x + nx * k), Math.round(y + ny * k));
       });
-      void T;
     },
     // walk a polyline at 1px steps up to `upTo` length
     walk(pts, upTo, step, fn) {

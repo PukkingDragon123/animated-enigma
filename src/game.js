@@ -36,7 +36,6 @@ class Game {
     this.viewW = VIEW_W; this.viewH = VIEW_H; this.cropX = CROP_X; this.cropY = CROP_Y;
     if (typeof Wildlife !== 'undefined') { Wildlife.init(); Wildlife.keyLabel = 'G'; }
     if (typeof Upgrades !== 'undefined') Upgrades.init();
-    if (typeof WorldMap !== 'undefined') WorldMap.init();
     if (typeof MainMenu !== 'undefined') MainMenu.init();
     this.tree = new SkillTree();
     this.state = (typeof MainMenu !== 'undefined') ? 'menu' : 'intro';
@@ -151,7 +150,7 @@ class Game {
       case 'intro':
         Intro.update(dt);
         if (Intro.done) {
-          if (typeof WorldMap !== 'undefined') { WorldMap.open(1); this.state = 'worldmap'; }
+          if (typeof WorldMap !== 'undefined') { WorldMap.init(); WorldMap.open(1); this.state = 'worldmap'; }
           else { this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; }
         }
         break;
