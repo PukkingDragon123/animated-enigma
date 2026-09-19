@@ -17356,99 +17356,9 @@ function drawNet(ctx, o) {
   return pts;
 }
 
-// ================================================================== TANK ====
-function buildTank() {
-  const bg = buildWater(IP.tank, 640, 360, { wob: 1.1, pow: 0.85 });
-  const x = cx2(bg);
-  // suspended muck and light streaks
-  for (let i = 0; i < 700; i++) {
-    const mx = R(hash2(i, 3) * 640), my = R(hash2(i * 5, 9) * 360);
-    P(x, hash2(i, 11) > 0.5 ? '#8fa85c' : '#2b3a1c', mx, my, 1 + (i & 1), 1);
-  }
-  for (let i = 0; i < 5; i++) {
-    const sx = R(hash2(i * 13, 2) * 420), sw = R(8 + hash2(i, 7) * 18);
-    for (let y = 0; y < 300; y++) { const a = qa((1 - y / 300) * 0.05); if (a > 0) { x.fillStyle = rgbaq('#d8f0a0', a); x.fillRect(sx + R(y * 0.10), y, sw, 1); } }
-  }
-  // sludge floor with bones and rubbish
-  for (let px = 0; px < 640; px++) {
-    const yy = 330 + R(vnoise(px * 0.03, 2) * 10);
-    P(x, IP.ink, px, yy, 1, 1);
-    for (let y = yy + 1; y < 360; y++) P(x, hash2(px, y) > 0.6 ? '#232f16' : '#1a2410', px, y);
-  }
-  for (let i = 0; i < 26; i++) {
-    const bx = R(hash2(i * 7, 21) * 640), by = 336 + R(hash2(i, 5) * 16);
-    P(x, IP.ink, bx, by, 7, 3); P(x, '#c9c2a4', bx + 1, by + 1, 5, 1);
-  }
-  // ---- riveted frame
-  const fr = can(640, 360), f = cx2(fr);
-  const drawBar = (bx, by, bw, bh) => {
-    P(f, IP.ink, bx, by, bw, bh);
-    P(f, '#4b5460', bx + 1, by + 1, bw - 2, bh - 2);
-    P(f, '#79838f', bx + 1, by + 1, bw - 2, 2);
-    P(f, '#2a303a', bx + 1, by + bh - 4, bw - 2, 3);
-    for (let i = 4; i < (bw > bh ? bw : bh) - 4; i += 13) {
-      if (bw > bh) { P(f, '#9aa4b0', bx + i, by + 4, 2, 2); P(f, IP.ink, bx + i, by + 6, 2, 1); }
-      else { P(f, '#9aa4b0', bx + 4, by + i, 2, 2); P(f, IP.ink, bx + 4, by + i + 2, 2, 1); }
-    }
-    // rust
-    for (let i = 0; i < bw * bh / 26; i++) {
-      const rx = bx + R(hash2(i * 3, bx) * bw), ry = by + R(hash2(i * 7, by) * bh);
-      P(f, hash2(rx, ry) > 0.5 ? '#7a4a26' : '#5c3418', rx, ry, 2, 1);
-    }
-  };
-  drawBar(0, 0, 640, 22); drawBar(0, 338, 640, 22);
-  drawBar(0, 0, 20, 360); drawBar(620, 0, 20, 360);
-  drawBar(430, 18, 14, 324);
-  // ---- grimy glass
-  const gl = can(640, 360), g = cx2(gl);
-  for (let i = 0; i < 46; i++) {
-    const sx = R(hash2(i * 11, 5) * 640), sy = R(hash2(i * 3, 17) * 340), sh = R(20 + hash2(i, 9) * 120);
-    g.fillStyle = rgbaq('#cfe8c8', qa(0.05 + hash2(i, 2) * 0.05));
-    g.fillRect(sx, sy, 1 + (i % 3), sh);
-  }
-  for (let i = 0; i < 24; i++) {
-    const sx = R(hash2(i * 19, 8) * 640), sy = R(hash2(i * 23, 4) * 340);
-    g.fillStyle = rgbaq('#2c3a18', qa(0.10 + hash2(i, 6) * 0.10));
-    g.fillRect(sx, sy, R(10 + hash2(i, 3) * 40), R(4 + hash2(i, 12) * 14));
-  }
-  for (let i = 0; i < 6; i++) {
-    const sx = R(hash2(i * 29, 1) * 600);
-    g.fillStyle = rgbaq('#f2fff0', 0.06);
-    for (let y = 22; y < 338; y++) g.fillRect(sx + R(y * 0.16), y, 14, 1);
-  }
-  // ---- the deck seen through the glass
-  const dv = can(300, 250), d = cx2(dv);
-  for (let y = 0; y < 96; y++) {
-    const k = y / 96, cols = IP.sky;
-    const fi = k * (cols.length - 1);
-    let i0 = Math.floor(fi), frr = fi - i0; i0 = clamp(i0, 0, cols.length - 1);
-    for (let px = 0; px < 300; px++) P(d, cols[clamp(frr > bay(px, y) ? i0 + 1 : i0, 0, cols.length - 1)], px, y);
-  }
-  // sea horizon
-  P(d, '#2d74ab', 0, 88, 300, 8); P(d, '#1a4b78', 0, 92, 300, 4);
-  // deck planks
-  for (let y = 96; y < 250; y++) {
-    const col = ((y % 9) === 0) ? '#8e8572' : ((y % 9) < 4 ? '#cfc6ae' : '#bdb49c');
-    P(d, col, 0, y, 300, 1);
-  }
-  for (let px = 0; px < 300; px += 37) P(d, '#8e8572', px, 96, 1, 154);
-  // railing + stanchions
-  for (let px = 10; px < 300; px += 40) { P(d, IP.ink, px, 40, 4, 58); P(d, '#c3ccd8', px + 1, 41, 2, 56); }
-  P(d, IP.ink, 0, 40, 300, 4); P(d, '#dfe6ee', 0, 41, 300, 2);
-  P(d, IP.ink, 0, 66, 300, 3); P(d, '#b9c4d0', 0, 67, 300, 1);
-  // crates, a cooler and a winch
-  P(d, IP.ink, 30, 118, 54, 40); P(d, '#8a5f2f', 31, 119, 52, 38); P(d, '#b5813f', 31, 119, 52, 4);
-  for (let i = 0; i < 4; i++) P(d, '#5c3a1c', 31, 124 + i * 9, 52, 2);
-  P(d, IP.ink, 190, 128, 64, 34); P(d, '#d8dde4', 191, 129, 62, 32); P(d, '#9aa6b6', 191, 153, 62, 8);
-  P(d, '#c4202c', 196, 133, 52, 4);
-  P(d, IP.ink, 110, 100, 40, 30); P(d, '#4a525e', 111, 101, 38, 28); P(d, '#767f8d', 111, 101, 38, 5);
-  for (let i = 0; i < 5; i++) P(d, '#2a3038', 114 + i * 7, 106, 3, 20);
-  return { bg: bg, frame: fr, glass: gl, deck: dv };
-}
-
 // ============================================================ ASSET STORE ==
 const WATER = {}, LAY = {}, MAN = {};
-let OT = null, BIZ = null, CR = null, BOAT = null, YAC = null, TANK = null, HARP = null;
+let OT = null, BIZ = null, CR = null, BOAT = null, YAC = null, HARP = null;
 let FISHSPR = [], FISHDEAD = [], BUILT = false;
 
 function buildNearClutter(seed, kramp) {
@@ -17502,7 +17412,6 @@ function buildIntroArt() {
   CR = buildCrane();
   BOAT = buildFishingBoat();
   YAC = buildYacht();
-  TANK = buildTank();
   HARP = buildHarpoon();
   const fr = [
     ['#7a5a18', '#a8801f', '#d2a52f', '#eec756', '#fdeb9f'],
@@ -17550,6 +17459,12 @@ const FX = {
       this.add({ k: 'c', x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.8, 2.0), w: randi(2, 5), h: randi(1, 3), c: pick(['#b57d3f', '#8f5c2c', '#5c3a1c', '#d9a25a']) });
     }
   },
+  catchSpray(x, y, n, pw) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(-Math.PI, 0.4), sp = rand(60, 320) * (pw || 1);
+      this.add({ k: 'sh', x: x + rand(-40, 40), y: y + rand(-14, 14), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: rand(0, TAU), vr: rand(-9, 9), life: rand(0.8, 2.0), s: randi(0, 3) });
+    }
+  },
   ring(x, y, max, life, col) { this.add({ k: 'g', x: x, y: y, r: 2, max: max, life: life, t0: life, c: col || '#eaf8ff' }); },
   update(dt, flowY) {
     const L = this.list;
@@ -17565,6 +17480,7 @@ const FX = {
         case 'f': p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - dt * 3; p.vy *= 1 - dt * 3; break;
         case 'd': p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 420 * dt; break;
         case 'c': p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (flowY === undefined ? 90 : flowY) * dt; p.vx *= 1 - dt * 0.7; break;
+        case 'sh': p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 330 * dt; p.vx *= 1 - dt * 0.5; p.r += p.vr * dt; break;
         case 'g': p.r += (p.max / p.t0) * dt; break;
       }
     }
@@ -17606,6 +17522,7 @@ const FX = {
         case 'f': ctx.fillStyle = rgbaq(IP.foam[p.life > 0.5 ? 2 : 1], Math.min(1, p.life * 2)); ctx.fillRect(R(p.x), R(p.y), R(p.r) + 1, R(p.r) + 1); break;
         case 'd': ctx.fillStyle = p.c; ctx.fillRect(R(p.x), R(p.y), 2, 2); break;
         case 'c': ctx.fillStyle = p.c; ctx.fillRect(R(p.x), R(p.y), p.w, p.h); break;
+        case 'sh': { const sp = HOLD.shrimp && HOLD.shrimp[p.s]; if (!sp) break; ctx.save(); ctx.translate(R(p.x), R(p.y)); ctx.rotate(p.r); ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore(); break; }
         case 'g': {
           const a = qa(p.life / p.t0 * 0.8);
           if (a <= 0) break;
@@ -17781,6 +17698,7 @@ function drawAir(ctx, surfY, scroll, t) {
   const sy = R(surfY);
   if (sy <= 0) return;
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 640, sy); ctx.clip();
+  P(ctx, IP.sky[0], 0, 0, 640, sy);
   tile(ctx, LAY.sky, scroll * 0.10, sy - LAY.sky.height - 10);
   // far sea, sitting on the horizon
   const hz = sy - 12;
@@ -18462,17 +18380,7 @@ BEATS.push({
       ctx.restore();
       FX.render(ctx);
       // consciousness going: a hard-edged vignette closing in, then black
-      if (SC.black > 0) {
-        const k = SC.black;
-        for (let i = 0; i < 12; i++) {
-          const a = qa(clamp(k * 1.6 - i * 0.10, 0, 1));
-          if (a <= 0) continue;
-          ctx.fillStyle = rgbaq('#000000', a);
-          const inset = R(i * 13 * (1 - k * 0.35));
-          ctx.fillRect(0, inset, 640, 13); ctx.fillRect(0, 360 - inset - 13, 640, 13);
-          ctx.fillRect(inset, 0, 16, 360); ctx.fillRect(640 - inset - 16, 0, 16, 360);
-        }
-      }
+      if (SC.black > 0) aperture(ctx, SC.black);
     } else {
       P(ctx, '#000000', 0, 0, 640, 360);
       // the heartbeat, as a dim red breath at the edges
@@ -18591,7 +18499,7 @@ function buildShrimpSprites() {
 }
 function buildHoldBG() {
   const c = can(640, 360), x = cx2(c);
-  const W = ['#140f0c', '#1e1712', '#2a2019', '#382b21', '#4a3a2c'];
+  const W = ['#0e0b08', '#16110c', '#1f1711', '#2b2018', '#3a2c20'];
   // back wall planking
   for (let y = 0; y < 360; y++) {
     const b = ((y % 13) === 0) ? 0 : ((y % 13) < 4 ? 2 : 1);
@@ -18673,15 +18581,20 @@ function buildCrateWall() {
   const board = (bx, bw) => {
     for (let px2 = bx; px2 < bx + bw && px2 < 640; px2++) {
       if (px2 < 0) continue;
+      const u = (px2 - bx) / bw;
       for (let y = 0; y < 360; y++) {
-        const n = vnoise(px2 * 0.06, y * 0.03);
+        const n = vnoise(px2 * 0.09, y * 0.02) * 0.6 + 0.2;
         const edge = px2 === bx || px2 === bx + bw - 1;
-        let col = edge ? '#150e07' : n > 0.66 ? '#4d3a24' : n > 0.44 ? '#3c2d1c' : n > 0.26 ? '#2f2316' : '#241a11';
+        const shade = u < 0.12 ? 1 : u > 0.86 ? -1 : 0;
+        let col = edge ? '#130d06'
+          : shade > 0 ? (n > 0.42 ? '#5a4429' : '#4c3922')
+            : shade < 0 ? (n > 0.42 ? '#2a1f13' : '#221a0f')
+              : (n > 0.5 ? '#44331f' : n > 0.34 ? '#3a2b1a' : '#312414');
         if ((y % 71) < 2 && !edge) col = '#1b1309';
         P(x, col, px2, y);
       }
       // grain
-      for (let y = 0; y < 360; y += 9) if (hash2(px2, y) > 0.72) P(x, '#1d1409', px2, y + R(hash2(px2, 3) * 6), 1, 3);
+      for (let y = 0; y < 360; y += 13) if (hash2(px2, y) > 0.86) P(x, '#251b0f', px2, y + R(hash2(px2, 3) * 8), 1, 3);
     }
     // nails
     for (const ny of [30, 128, 232, 330]) { P(x, IP.ink, bx + 3, ny, 3, 3); P(x, '#8c97a8', bx + 4, ny + 1, 2, 2); P(x, IP.ink, bx + bw - 6, ny, 3, 3); P(x, '#8c97a8', bx + bw - 5, ny + 1, 2, 2); }
@@ -18693,8 +18606,8 @@ function buildCrateWall() {
   // heavy corner posts, in front of everything
   for (const [bx, bw] of [[0, 30], [610, 30]]) {
     for (let px2 = bx; px2 < bx + bw; px2++) for (let y = 0; y < 360; y++) {
-      const n = vnoise(px2 * 0.05, y * 0.04);
-      P(x, (px2 === bx || px2 === bx + bw - 1) ? IP.ink : n > 0.6 ? '#3a2b1a' : n > 0.36 ? '#2a1f12' : '#1c140b', px2, y);
+      const u = (px2 - bx) / bw, n = vnoise(px2 * 0.07, y * 0.03) * 0.5 + 0.25;
+      P(x, (px2 === bx || px2 === bx + bw - 1) ? IP.ink : u < 0.18 ? '#3a2b1a' : u > 0.8 ? '#150f08' : n > 0.45 ? '#2a1f12' : '#211809', px2, y);
     }
     for (let y = 18; y < 360; y += 64) { P(x, IP.ink, bx + 2, y, bw - 4, 9); P(x, '#4a525e', bx + 3, y + 1, bw - 6, 7); P(x, '#8c97a8', bx + 3, y + 1, bw - 6, 2); }
   }
@@ -18704,8 +18617,8 @@ function buildCrateWall() {
     P(x, (y === 44 || y === 61) ? IP.ink : n > 0.55 ? '#46341f' : '#33261650', px2, y);
   }
   for (let px2 = 0; px2 < 640; px2++) for (let y = 45; y < 61; y++) {
-    const n = vnoise(px2 * 0.04, y * 0.1);
-    P(x, n > 0.55 ? '#46341f' : n > 0.3 ? '#382a19' : '#2b2013', px2, y);
+    const n = vnoise(px2 * 0.05, y * 0.06) * 0.5 + 0.25;
+    P(x, y < 48 ? '#503c24' : y > 57 ? '#241a0e' : (n > 0.45 ? '#3e2e1b' : '#342715'), px2, y);
   }
   P(x, IP.ink, 0, 44, 640, 2); P(x, IP.ink, 0, 60, 640, 2);
   void W;
@@ -18713,10 +18626,13 @@ function buildCrateWall() {
 }
 function buildLooseBoard() {
   const c = can(36, 360), x = cx2(c);
-  for (let px2 = 0; px2 < 33; px2++) for (let y = 0; y < 360; y++) {
-    const n = vnoise((px2 + 486) * 0.06, y * 0.03);
-    const edge = px2 === 0 || px2 === 32;
-    P(x, edge ? '#150e07' : n > 0.66 ? '#4d3a24' : n > 0.44 ? '#3c2d1c' : n > 0.26 ? '#2f2316' : '#241a11', px2, y);
+  for (let px2 = 0; px2 < 33; px2++) {
+    const u = px2 / 33;
+    for (let y = 0; y < 360; y++) {
+      const n = vnoise((px2 + 486) * 0.09, y * 0.02) * 0.6 + 0.2;
+      const edge = px2 === 0 || px2 === 32;
+      P(x, edge ? '#130d06' : u < 0.12 ? (n > 0.42 ? '#5a4429' : '#4c3922') : u > 0.86 ? (n > 0.42 ? '#2a1f13' : '#221a0f') : (n > 0.5 ? '#44331f' : n > 0.34 ? '#3a2b1a' : '#312414'), px2, y);
+    }
   }
   for (const ny of [30, 128, 232, 330]) { P(x, IP.ink, 3, ny, 3, 3); P(x, '#8c97a8', 4, ny + 1, 2, 2); }
   return spr(c, 16, 180);
@@ -18780,6 +18696,12 @@ function holdArt() {
   HOLD.bg = buildHoldBG();
   HOLD.wall = buildCrateWall();
   HOLD.board = buildLooseBoard();
+  {  // short broken plank used for flying debris
+    const pc = can(34, 104), px3 = cx2(pc);
+    px3.drawImage(HOLD.board.c, -1, -90);
+    for (let i = 0; i < 6; i++) { const yy = i & 1 ? 0 : 103; P(px3, IP.ink, 4 + i * 5, yy, 4, 2); P(px3, '#8a6a3a', 4 + i * 5, yy === 0 ? 2 : 101, 4, 1); }
+    HOLD.plank = spr(pc, 16, 52);
+  }
   HOLD.pileBack = buildFishPile(640, 150, 1717, 420);
   HOLD.pileFront = buildFishPile(560, 96, 9292, 260);
   HOLD.bulb = buildBulb();
@@ -18846,6 +18768,24 @@ function drawCapOtter(ctx, o, t) {
   ctx.restore();
 }
 // ---- lighting + eyelids ----------------------------------------------------
+function hullHole(ctx, x, y, r, seed) {
+  for (let yy = -r; yy <= r; yy++) {
+    const k = Math.sqrt(Math.max(0, 1 - (yy / r) * (yy / r)));
+    const w = r * k * (0.80 + hash2(seed, yy + 128) * 0.32);
+    if (w < 1) continue;
+    P(ctx, '#0a0806', R(x - w), R(y + yy * 0.9), R(w * 2), 2);
+  }
+  for (let i = 0; i < 20; i++) {
+    const a = i / 20 * TAU;
+    const r0 = r * (0.78 + hash2(seed + i, 3) * 0.16);
+    const r1 = r * (0.98 + hash2(seed + i, 7) * 0.22);
+    const ax0 = x + Math.cos(a) * r0, ay0 = y + Math.sin(a) * r0 * 0.9;
+    const ax1 = x + Math.cos(a) * r1, ay1 = y + Math.sin(a) * r1 * 0.9;
+    const bw = 2 + hash2(seed + i, 11) * 2;
+    tri(ctx, IP.ink, ax0, ay0 - bw - 1, ax0, ay0 + bw + 1, ax1, ay1);
+    tri(ctx, hash2(i, seed) > 0.5 ? '#8a5f2f' : '#6b4a2a', ax0, ay0 - bw, ax0, ay0 + bw, ax1 - Math.cos(a), ay1 - Math.sin(a));
+  }
+}
 function glowPatch(ctx, x, y, rx, ry, col, a0, steps) {
   for (let i = steps; i >= 1; i--) {
     const k = i / steps, a = qa(a0 * (1 - k) * (1 - k) + a0 * 0.08);
@@ -18869,6 +18809,25 @@ function slatShaft(ctx, x0, x1, y0, y1, lean, a0, col) {
     ctx.fillRect(R(x0 + off - k * 8), y, R((x1 - x0) + k * 16), 1);
   }
 }
+// vision closing down to nothing: a hard-edged iris, drawn in two steps so the
+// rim reads as a band rather than a blur
+function aperture(ctx, k) {
+  if (k <= 0) return;
+  const draw = (rx, ry, a) => {
+    if (a <= 0) return;
+    ctx.fillStyle = rgbaq('#000000', a);
+    for (let y = 0; y < 360; y += 2) {
+      const dy = (y - 176) / Math.max(1, ry);
+      const w = Math.abs(dy) >= 1 ? 0 : Math.sqrt(1 - dy * dy) * rx;
+      const x0 = R(324 - w), x1 = R(324 + w);
+      if (x0 > 0) ctx.fillRect(0, y, x0, 2);
+      if (x1 < 640) ctx.fillRect(x1, y, 640 - x1, 2);
+    }
+  };
+  draw(430 * (1 - k) + 40, 260 * (1 - k) + 26, 0.5);
+  draw(400 * (1 - k), 236 * (1 - k), 1);
+  if (k > 0.94) { ctx.fillStyle = rgbaq('#000000', (k - 0.94) / 0.06); ctx.fillRect(0, 0, 640, 360); }
+}
 function eyelids(ctx, open) {
   if (open >= 1) return;
   const o = clamp(open, 0, 1);
@@ -18882,6 +18841,376 @@ function eyelids(ctx, open) {
     if (half > 2) { P(ctx, '#0d0a08', x, top, 2, 2); P(ctx, '#0d0a08', x, bot - 2, 2, 2); }
   }
 }
+
+
+// ------------------------------------------------------------- 10. THE CRATE
+function crateScene(ctx, t, o) {
+  const H = holdArt();
+  ctx.drawImage(H.bg, 0, 0);
+  // hatch light from the deck gap, plus the swinging bulb beyond the slats
+  const sw = Math.sin(t * 1.1) * 16;
+  slatShaft(ctx, 252, 330, 44, 320, 0.10, 0.20 + (o.hatch || 0) * 0.34);
+  glowPatch(ctx, 150 + sw, 120, 150, 122, '#ffdf9a', 0.26, 5);
+  // the crate itself
+  ctx.drawImage(H.wall, 0, 0);
+  if (!o.boardOff) ctx.drawImage(H.board.c, 486, 0);
+  else {
+    ctx.save(); ctx.translate(R(502 + (o.boardOff.x || 0)), R(190 + (o.boardOff.y || 0)));
+    ctx.rotate(o.boardOff.r || 0); ctx.drawImage(H.plank.c, -H.plank.ax, -H.plank.ay); ctx.restore();
+  }
+  // light bleeding through the slat gaps
+  for (let gx = -12; gx < 660; gx += 42) {
+    if (gx > 484 && gx < 520 && !o.boardOff) continue;
+    ctx.fillStyle = rgbaq('#ffe1a4', 0.10);
+    ctx.fillRect(gx + 33, 62, 9, 298);
+    ctx.fillStyle = rgbaq('#ffe1a4', 0.05);
+    ctx.fillRect(gx + 31, 62, 2, 298); ctx.fillRect(gx + 42, 62, 2, 298);
+  }
+  // hatch mouth overhead, open when they are tipping more catch in
+  if (o.hatch) {
+    ctx.fillStyle = rgbaq('#ffeec2', qa(0.22 * o.hatch));
+    ctx.fillRect(252, 0, 78, 46);
+    P(ctx, '#ffe9b0', 252, 44, 78, 2);
+    for (let i = 0; i < 3; i++) { const bx = 262 + i * 24; P(ctx, IP.ink, bx, 0, 14, R(16 + Math.sin(t * 6 + i) * 3)); }
+  }
+  // the bulb, swinging on its cord beyond the slats
+  ctx.save(); ctx.translate(R(150 + sw), 44); ctx.rotate(Math.sin(t * 1.1) * 0.16);
+  ctx.drawImage(H.bulb.c, -H.bulb.ax, -H.bulb.ay); ctx.restore();
+  // the catch: a heap you are half buried in
+  ctx.drawImage(H.pileBack, 0, 214);
+}
+function cratePileFront(ctx) {
+  ctx.drawImage(holdArt().pileFront, 40, 264);
+}
+BEATS.push({
+  name: 'crate', dur: 9.5,
+  lines: [[2.6, 'I woke up in a box, under the catch.'], [5.2, 'Every so often the hatch opened and more came down.'], [7.8, 'Shrimp. Dead things. And me.']],
+  enter() {
+    holdArt();
+    SC.open = 0; SC.hatch = 0; SC.fall = []; SC.dumped = 0;
+    A.you = actor(MAN.youBig, 286, 268, { beat: 0.5, exp: 'pain', tailAmp: 0.05, rot: 0.06 });
+  },
+  update(dt, bt) {
+    swim(A.you, dt);
+    // waking: two flutters, then open
+    SC.open = bt < 0.9 ? 0 : bt < 1.3 ? (bt - 0.9) / 0.4 * 0.30
+      : bt < 1.7 ? 0.30 - (bt - 1.3) / 0.4 * 0.24
+        : bt < 2.4 ? 0.06 + (bt - 1.7) / 0.7 * 0.62
+          : bt < 2.8 ? 0.68 - (bt - 2.4) / 0.4 * 0.16
+            : Math.min(1, 0.52 + (bt - 2.8) / 0.4 * 0.48);
+    A.you.exp = bt < 3.4 ? 'pain' : bt < 6 ? 'sad' : 'wide';
+    A.you.y = 268 + Math.sin(bt * 0.7) * 2;
+    A.you.rot = 0.06 + Math.sin(bt * 0.5) * 0.02;
+    // the hatch opens and another load comes down
+    SC.hatch = (bt > 4.4 && bt < 6.6) ? clamp(Math.min(bt - 4.4, 6.6 - bt) / 0.4, 0, 1) : 0;
+    if (bt > 4.8 && bt < 6.2 && Math.random() < 34 * dt) {
+      SC.fall.push({ x: rand(254, 330), y: 40, vy: rand(90, 190), vx: rand(-14, 14), r: rand(0, TAU), vr: rand(-6, 6), s: randi(0, 3) });
+      if (Math.random() < 0.12 && typeof Audio_ !== 'undefined') Audio_.noise(0.14, 0.05, 2600, 700);
+    }
+    if (bt > 4.75 && bt < 4.85 && typeof Audio_ !== 'undefined') { Audio_.noise(0.5, 0.14, 900, 120); Audio_.tone(70, 0.3, 'square', 0.1, -20); }
+    for (let i = SC.fall.length - 1; i >= 0; i--) {
+      const f = SC.fall[i];
+      f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 320 * dt; f.r += f.vr * dt;
+      if (f.y > 300 + hash2(i, 3) * 30) SC.fall.splice(i, 1);
+    }
+    if (bt > 5.0 && bt < 6.4) Intro.shake = Math.max(Intro.shake, 1.0);
+  },
+  render(ctx, bt) {
+    crateScene(ctx, Intro.t, { hatch: SC.hatch });
+    drawManatee(ctx, A.you, Intro.t);
+    cratePileFront(ctx);
+    const H = holdArt();
+    for (const f of SC.fall) {
+      const s = H.shrimp[f.s];
+      ctx.save(); ctx.translate(R(f.x), R(f.y)); ctx.rotate(f.r);
+      ctx.drawImage(s.c, -s.ax, -s.ay); ctx.restore();
+    }
+    FX.render(ctx);
+    // a little grime on the lens: floating scales caught in the light
+    motes(ctx, Intro.t * 6, Intro.t, 30, '#d8e0b0', 0.22);
+    eyelids(ctx, SC.open);
+    void bt;
+  },
+});
+
+// -------------------------------------------------------- 11. THE METAL NOISE
+BEATS.push({
+  name: 'noise', dur: 8.0,
+  lines: [[0.5, 'Something in the hold was working at the metal.'], [3.2, 'It got closer every time it hit.'], [6.2, 'And then it looked back at me.']],
+  enter() {
+    holdArt();
+    SC.clank = 0; SC.next = 0.7; SC.step = 0; SC.spark = 0; SC.reveal = 0;
+    A.you = actor(MAN.youBig, 286, 268, { beat: 0.6, exp: 'wide', tailAmp: 0.06, rot: 0.06 });
+    SC.ot = { x: 560, y: 262, phase: 0, s: 1.7, exp: 'idle', flip: true, armNear: 0.5, armFar: 1.2, headR: 0, tool: true, toolR: 0 };
+  },
+  update(dt, bt) {
+    swim(A.you, dt);
+    SC.ot.phase += dt * 1.4;
+    A.you.y = 268 + Math.sin(bt * 0.8) * 2 - clamp((bt - 0.8) / 1.2, 0, 1) * 10;
+    A.you.rot = 0.06 - clamp((bt - 0.8) / 1.2, 0, 1) * 0.16;
+    SC.spark = Math.max(0, SC.spark - dt * 3);
+    SC.next -= dt;
+    if (SC.next <= 0 && bt < 6.6) {
+      SC.step++;
+      SC.next = Math.max(0.42, 1.25 - SC.step * 0.12);
+      SC.clank = 1; SC.spark = 1;
+      Intro.shake = Math.max(Intro.shake, 2 + SC.step * 0.5);
+      const vol = clamp(0.06 + SC.step * 0.022, 0, 0.24);
+      if (typeof Audio_ !== 'undefined') {
+        Audio_.tone(190 + SC.step * 26, 0.10, 'square', vol, -90);
+        Audio_.noise(0.13, vol * 0.8, 3600 + SC.step * 300, 800);
+      }
+      for (let i = 0; i < 9; i++) FX.add({ k: 'd', x: 503 + rand(-4, 4), y: 239 + rand(-10, 10), vx: rand(-150, -20), vy: rand(-110, 40), life: rand(0.2, 0.55), c: Math.random() < 0.5 ? '#ffd27a' : '#fff6cc' });
+    }
+    SC.clank = Math.max(0, SC.clank - dt * 5);
+    SC.reveal = clamp((bt - 5.4) / 0.6, 0, 1);
+    SC.ot.x = lerp(580, 512, SC.reveal);
+    SC.ot.y = lerp(280, 250, SC.reveal);
+    SC.ot.exp = bt > 6.4 ? 'angry' : 'idle';
+    SC.ot.armNear = 0.5 + Math.sin(bt * 5) * 0.28 * (bt < 6.4 ? 1 : 0.2);
+    SC.ot.toolR = Math.sin(bt * 5) * 0.4;
+    SC.ot.blink = Intro.blink;
+  },
+  render(ctx, bt) {
+    crateScene(ctx, Intro.t, { hatch: 0 });
+    drawManatee(ctx, A.you, Intro.t);
+    cratePileFront(ctx);
+    // the otter works at the bolt on the far side of the slats
+    if (bt > 2.2) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, 640, 360); ctx.clip();
+      ctx.globalAlpha = qa(0.35 + SC.reveal * 0.65);
+      drawCapOtter(ctx, SC.ot, Intro.t);
+      ctx.restore();
+    }
+    // sparks at the bolt, and the bolt itself
+    P(ctx, IP.ink, 496, 232, 14, 14); P(ctx, '#5d6675', 497, 233, 12, 12);
+    P(ctx, '#9aa6b6', 497, 233, 12, 4); P(ctx, IP.ink, 500, 237, 6, 6);
+    if (SC.spark > 0) {
+      glowPatch(ctx, 503, 239, 54, 40, '#ffd27a', 0.38 * SC.spark, 4);
+      P(ctx, '#fff6cc', 500, 236, 5, 5);
+    }
+    FX.render(ctx);
+    if (SC.clank > 0) { ctx.fillStyle = rgbaq('#ffe9b0', qa(SC.clank * 0.10)); ctx.fillRect(0, 0, 640, 360); }
+    motes(ctx, Intro.t * 6, Intro.t, 30, '#d8e0b0', 0.22);
+  },
+});
+
+// ------------------------------------------------------------- 12. THE PLAN
+const TALK = [
+  [0.7, 'otter', 'Breathe. You are not the first one they boxed.'],
+  [3.4, 'you', 'Who are you?'],
+  [5.0, 'otter', 'Nobody worth a bullet. I take things. Tools, mostly.'],
+  [8.0, 'otter', 'Eleven days in this hold. Hold still - you are getting plate.'],
+  [11.6, 'you', 'There was another one. Smaller. My brother.'],
+  [14.4, 'otter', 'Grey, about so big? He went out last night.'],
+  [16.6, 'otter', 'Different boat. Different buyer. He is already gone.'],
+  [20.4, 'you', 'Where.'],
+  [21.8, 'otter', 'The village these boats crawl home to. We work up the chain.'],
+];
+BEATS.push({
+  name: 'plan', dur: 24.5,
+  lines: [],
+  enter() {
+    holdArt();
+    SC.talkI = -1; SC.lastTalk = -2; SC.plate = 0; SC.clink = false; SC.dim = 0;
+    A.you = actor(MAN.youBig, 250, 262, { beat: 0.5, exp: 'sad', tailAmp: 0.05, rot: 0.04 });
+    SC.ot = { x: 452, y: 264, phase: 0, s: 1.6, exp: 'talk', flip: true, armNear: 0.6, armFar: 1.2, headR: 0 };
+  },
+  update(dt, bt) {
+    swim(A.you, dt);
+    SC.ot.phase += dt * 1.2;
+    let cur = -1;
+    for (let i = 0; i < TALK.length; i++) if (bt >= TALK[i][0]) cur = i;
+    SC.talkI = cur;
+    const who = cur >= 0 ? TALK[cur][1] : null;
+    const typing = cur >= 0 && (bt - TALK[cur][0]) < TALK[cur][2].length / 26;
+    if (cur !== SC.lastTalk) { SC.lastTalk = cur; if (typeof Audio_ !== 'undefined' && cur >= 0) Audio_.tone(who === 'otter' ? 300 : 220, 0.06, 'square', 0.06); }
+    if (typing && Math.random() < 9 * dt && typeof Audio_ !== 'undefined') Audio_.tone(who === 'otter' ? 480 + rand(0, 80) : 330 + rand(0, 50), 0.03, 'square', 0.04);
+    // he fits the first plate while he talks
+    if (bt > 8.6) {
+      const k = clamp((bt - 8.6) / 1.5, 0, 1);
+      SC.plate = k;
+      if (bt > 8.6 && bt < 9.6) { SC.ot.x = lerp(452, 366, clamp((bt - 8.6) / 1.0, 0, 1)); SC.ot.y = lerp(264, 252, clamp((bt - 8.6) / 1.0, 0, 1)); }
+      if (k >= 1 && !SC.clink) { SC.clink = true; Intro.shake = 3; if (typeof Audio_ !== 'undefined') { Audio_.tone(430, 0.09, 'square', 0.16, -160); Audio_.noise(0.12, 0.12, 4200, 900); } }
+      SC.ot.armNear = 0.6 + Math.sin(bt * 7) * 0.4 * (1 - k);
+    }
+    if (bt > 11.0 && bt < 12.2) { SC.ot.x = lerp(366, 442, clamp((bt - 11.0) / 1.2, 0, 1)); SC.ot.y = lerp(252, 264, clamp((bt - 11.0) / 1.2, 0, 1)); }
+    // the news lands: the light drops out of the scene for a moment
+    SC.dim = (bt > 19.0 && bt < 21.4) ? clamp(Math.min(bt - 19.0, 21.4 - bt) / 0.7, 0, 1) : 0;
+    A.you.exp = (who === 'you' && typing) ? 'talk' : bt > 22.6 ? 'angry' : bt > 19.0 ? 'sad' : 'calm';
+    SC.ot.exp = (who === 'otter' && typing) ? 'talk' : bt > 19.0 && bt < 21.4 ? 'idle' : 'angry';
+    SC.ot.blink = Intro.blink;
+    A.you.blink = Intro.blink;
+    A.you.y = 262 + Math.sin(bt * 0.6) * 2 - (bt > 19 ? clamp((bt - 19) / 2, 0, 1) * 4 : 0);
+    A.you.rot = 0.04 + Math.sin(bt * 0.45) * 0.02;
+    if (Math.random() < 1.4 * dt) FX.add({ k: 'd', x: rand(60, 580), y: 60, vx: rand(-4, 4), vy: rand(20, 50), life: rand(1.6, 3), c: '#8f9a6a' });
+  },
+  render(ctx, bt) {
+    crateScene(ctx, Intro.t, { hatch: 0 });
+    drawManatee(ctx, A.you, Intro.t);
+    // the first plate, strapped across the back
+    if (SC.plate > 0) {
+      const k = SC.plate, H = holdArt();
+      ctx.save();
+      ctx.translate(R(A.you.x - 4), R(A.you.y - 9 - (1 - k) * 26));
+      ctx.rotate(A.you.rot - (1 - k) * 0.3);
+      ctx.globalAlpha = qa(0.35 + k * 0.65);
+      ctx.drawImage(H.plate.c, -H.plate.ax, -H.plate.ay);
+      ctx.restore();
+    }
+    drawCapOtter(ctx, SC.ot, Intro.t);
+    cratePileFront(ctx);
+    FX.render(ctx);
+    motes(ctx, Intro.t * 6, Intro.t, 30, '#d8e0b0', 0.22);
+    if (SC.dim > 0) { ctx.fillStyle = rgbaq('#05070c', qa(SC.dim * 0.55)); ctx.fillRect(0, 0, 640, 360); }
+    const cur = SC.talkI;
+    if (cur >= 0) {
+      const t0 = TALK[cur][0], who = TALK[cur][1], text = TALK[cur][2];
+      const prog = clamp((bt - t0) / (text.length / 26), 0, 1);
+      if (bt - t0 < text.length / 26 + 2.2) {
+        if (who === 'otter') bubble(ctx, SC.ot.x - 4, SC.ot.y - 54, text, 1, 'otter', prog);
+        else bubble(ctx, A.you.x + 16, A.you.y - 30, text, 1, 'you', prog);
+      }
+    }
+  },
+});
+
+// --------------------------------------------------------- 13. THE BREAK OUT
+BEATS.push({
+  name: 'breakout', dur: 12.0,
+  lines: [[0.3, 'He had been chewing on that one bolt for a week.'], [5.8, 'We did not use the door.']],
+  enter() {
+    holdArt();
+    SC.popped = false; SC.burst = false; SC.smash = false; SC.splash = false;
+    SC.boardOff = null; SC.run = 0; SC.flash = 0; SC.shout = 0;
+    SC.boatX = 214; SC.boatY = 158;
+    A.you = actor(MAN.youBig, 250, 262, { beat: 1.0, exp: 'angry', tailAmp: 0.2, rot: 0.04 });
+    SC.ot = { x: 470, y: 232, phase: 0, s: 1.4, exp: 'angry', flip: true, armNear: 0.6, armFar: 1.2, tool: true, toolR: 0 };
+  },
+  update(dt, bt) {
+    swim(A.you, dt);
+    SC.ot.phase += dt * 1.6;
+    SC.flash = Math.max(0, SC.flash - dt * 4);
+    if (bt < 1.7) {                                    // the last few turns of the bolt
+      SC.ot.armNear = 0.6 + Math.sin(bt * 12) * 0.5;
+      SC.ot.toolR = Math.sin(bt * 12) * 0.5;
+      if (Math.random() < 10 * dt) { Intro.shake = Math.max(Intro.shake, 2); if (typeof Audio_ !== 'undefined') Audio_.tone(220, 0.07, 'square', 0.12, -80); }
+      A.you.beat = 1.4;
+    } else if (bt < 3.1) {                             // POP, and the crate lets go
+      if (!SC.popped) {
+        SC.popped = true; SC.flash = 1; Intro.shake = 16;
+        SC.boardOff = { x: 0, y: 0, r: 0, vx: 210, vy: -60, vr: 5 };
+        SC.boards = [];
+        for (let i = 0; i < 3; i++) SC.boards.push({ x: 420 - i * 44, y: 0, r: 0, vx: 140 + i * 60, vy: -120 - i * 40, vr: rand(-6, 6) });
+        FX.chunks(506, 176, 34);
+        FX.catchSpray(330, 270, 70, 1.15);
+        if (typeof Audio_ !== 'undefined') { Audio_.explosion(0.7); Audio_.noise(0.4, 0.3, 2600, 300); }
+        for (let i = 0; i < 40; i++) FX.add({ k: 'd', x: rand(440, 560), y: rand(120, 260), vx: rand(20, 260), vy: rand(-180, 120), life: rand(0.5, 1.4), c: '#ffd27a' });
+      }
+      const k = clamp((bt - 1.7) / 1.4, 0, 1);
+      A.you.x = lerp(250, 320, k); A.you.y = lerp(262, 226, k * k);
+      A.you.rot = lerp(0.04, -0.18, k); A.you.beat = 7;
+      SC.ot.x = lerp(470, 388, k); SC.ot.y = lerp(232, 206, k);
+      if (Math.random() < 40 * dt) FX.add({ k: 'c', x: rand(200, 520), y: rand(200, 300), vx: rand(-90, 190), vy: rand(-220, -40), life: rand(0.6, 1.4), w: randi(2, 5), h: randi(1, 3), c: pick(['#d08a76', '#eab79c', '#93a0aa', '#c3ced6']) });
+    } else if (bt < 5.4) {                             // down the hold, men shouting above
+      SC.run = clamp((bt - 3.1) / 2.3, 0, 1);
+      A.you.x = 320; A.you.y = 214 + Math.sin(bt * 8) * 5;
+      A.you.rot = -0.1 + Math.sin(bt * 8) * 0.07; A.you.beat = 11;
+      SC.ot.x = 288; SC.ot.y = 190 + Math.sin(bt * 8) * 4; SC.ot.tool = false;
+      SC.shout = 1;
+      Intro.shake = Math.max(Intro.shake, 3);
+      if (Math.random() < 30 * dt) FX.add({ k: 'd', x: rand(0, 640), y: 46, vx: rand(-10, 10), vy: rand(60, 160), life: rand(0.4, 0.9), c: '#6a5b3a' });
+      if (typeof Audio_ !== 'undefined') { sndT -= dt; if (sndT <= 0) { sndT = 0.34; Audio_.noise(0.2, 0.09, 420, 60); } }
+      if (bt > 5.1 && !SC.smash) {
+        SC.smash = true; SC.flash = 1; Intro.shake = 20;
+        if (typeof Audio_ !== 'undefined') { Audio_.explosion(1.1); Audio_.splash(3); }
+      }
+    } else if (bt < 7.6) {                             // out through the hull
+      const k = clamp((bt - 5.4) / 2.2, 0, 1);
+      SC.boatX = 214 - k * 26;
+      A.you.x = lerp(330, 556, k); A.you.y = lerp(226, 300, k * k);
+      A.you.rot = lerp(-0.34, 0.5, k); A.you.beat = 9;
+      if (k < 0.3 && Math.random() < 40 * dt) FX.chunks(lerp(330, 556, k), lerp(226, 300, k * k), 2);
+      if (Math.random() < 50 * dt) FX.drops(A.you.x + rand(-16, 16), A.you.y + rand(-10, 10), 1, 0.6);
+      if (!SC.splash && A.you.y > 248) {
+        SC.splash = true; Intro.shake = 10;
+        FX.drops(A.you.x, 252, 90, 1.3); FX.foam(A.you.x, 252, 44, 1.6);
+        if (typeof Audio_ !== 'undefined') Audio_.splash(3);
+      }
+    } else {                                           // clear water, and gone
+      const k = clamp((bt - 7.6) / 4.4, 0, 1);
+      Intro.scroll += lerp(120, 300, k) * dt;
+      A.you.x = 300 + Math.sin(bt * 1.4) * 6; A.you.y = 216 + Math.sin(bt * 3.4) * 9;
+      A.you.rot = Math.sin(bt * 3.4) * 0.10; A.you.beat = 7; A.you.exp = 'angry';
+      if (Math.random() < 34 * dt) FX.bubble(A.you.x - 40, A.you.y + 6, 1, 2.4);
+      if (bt > 10.6) Intro.fade = clamp((bt - 10.6) / 1.4, 0, 1);
+    }
+    if (SC.boardOff) {
+      const b = SC.boardOff;
+      b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 260 * dt; b.r += b.vr * dt;
+    }
+    if (SC.boards) for (const b of SC.boards) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 300 * dt; b.r += b.vr * dt; }
+    if (bt > 1.7 && bt < 3.0 && Math.random() < 34 * dt) FX.catchSpray(A.you.x, A.you.y + 20, 2, 0.8);
+  },
+  render(ctx, bt) {
+    if (bt < 5.4) {
+      crateScene(ctx, Intro.t, { hatch: 0, boardOff: SC.boardOff });
+      if (SC.run > 0) {                                 // boots stamping on the boards above
+        for (let i = 0; i < 4; i++) {
+          const bx = R(60 + i * 150 - SC.run * 260);
+          const st = Math.sin(Intro.t * 9 + i * 1.7) > 0 ? 0 : 3;
+          P(ctx, IP.ink, bx, 26 + st, 22, 12); P(ctx, IP.ink, bx + 26, 30 - st, 20, 10);
+        }
+        speedLines(ctx, 520, 200, 16, 90, 1, 'rgba(230,220,190,0.25)', 5);
+      }
+      if (SC.boards) for (const b of SC.boards) {
+        const H2 = holdArt();
+        ctx.save(); ctx.translate(R(b.x), R(b.y + 170)); ctx.rotate(b.r);
+        ctx.drawImage(H2.plank.c, -H2.plank.ax, -H2.plank.ay); ctx.restore();
+      }
+      drawManatee(ctx, A.you, Intro.t);
+      const H = holdArt();
+      ctx.save(); ctx.translate(R(A.you.x - 4), R(A.you.y - 9)); ctx.rotate(A.you.rot);
+      ctx.drawImage(H.plate.c, -H.plate.ax, -H.plate.ay); ctx.restore();
+      if (bt < 3.1) cratePileFront(ctx);
+      drawCapOtter(ctx, SC.ot, Intro.t);
+      FX.render(ctx);
+      if (SC.shout && bt > 3.4) {
+        pixelTextOutlined(ctx, 'IT IS LOOSE!', 150, 70, 9, '#ffe48f', '#14141c', 'center');
+        if (bt > 4.2) pixelTextOutlined(ctx, 'GET THE GAFF!', 470, 84, 9, '#ffe48f', '#14141c', 'center');
+      }
+    } else {
+      // outside: the boat with a hole in her side
+      backdrop(ctx, { mood: 'open', scroll: Intro.scroll, t: Intro.t, surfY: bt < 7.6 ? 252 : 40, bedY: 356, set: 'D', shafts: 0.5 });
+      if (bt < 7.6) {
+        drawAir(ctx, 252, Intro.scroll, Intro.t);
+        ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY + 94)); ctx.rotate(0.04);
+        ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay); ctx.restore();
+        hullHole(ctx, R(SC.boatX + 108), R(SC.boatY + 88), 26, 31);
+        drawManatee(ctx, A.you, Intro.t);
+        const H = holdArt();
+        ctx.save(); ctx.translate(R(A.you.x - 4), R(A.you.y - 9)); ctx.rotate(A.you.rot);
+        ctx.drawImage(H.plate.c, -H.plate.ax, -H.plate.ay); ctx.restore();
+        drawCapOtter(ctx, Object.assign({}, SC.ot, { x: A.you.x - 22, y: A.you.y - 26, rot: A.you.rot, flip: false, tool: false, exp: 'angry' }), Intro.t);
+      } else {
+        const k = clamp((bt - 7.6) / 4.4, 0, 1);
+        ctx.save(); ctx.translate(R(520 - k * 460), R(64)); ctx.scale(0.5 - k * 0.3, 0.5 - k * 0.3);
+        ctx.globalAlpha = qa(0.9 - k * 0.7);
+        ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay); ctx.restore();
+        drawManatee(ctx, A.you, Intro.t);
+        const H = holdArt();
+        ctx.save(); ctx.translate(R(A.you.x - 4), R(A.you.y - 9)); ctx.rotate(A.you.rot);
+        ctx.drawImage(H.plate.c, -H.plate.ax, -H.plate.ay); ctx.restore();
+        drawCapOtter(ctx, Object.assign({}, SC.ot, { x: A.you.x - 14, y: A.you.y - 28, rot: A.you.rot, s: 1.2, flip: false, tool: false, exp: 'happy' }), Intro.t);
+        speedLines(ctx, A.you.x - 90, A.you.y, 16, 64, -1, 'rgba(190,225,245,0.32)', 7);
+      }
+      FX.render(ctx);
+      if (bt >= 7.6) foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 356, set: 'D' });
+    }
+    if (SC.flash > 0) { ctx.fillStyle = rgbaq('#ffffff', SC.flash * 0.8); ctx.fillRect(0, 0, 640, 360); }
+  },
+});
 
 // ============================================================== THE  INTRO =
 const Intro = {
@@ -18897,7 +19226,9 @@ const Intro = {
     for (const k in SC) delete SC[k];
     if (BUILT && BEATS[0].enter) BEATS[0].enter();
   },
-  skip() { this.done = true; },
+  // The cinematic can no longer be skipped; kept as a no-op so older
+  // callers (and any saved bindings) do not throw.
+  skip() { },
   next() {
     this.beat++; this.bt = 0; this.fade = 0; this.scroll = 0; this.shake = 0;
     FX.clear();
@@ -18913,9 +19244,10 @@ const Intro = {
     this.blinkT -= dt;
     if (this.blinkT <= 0) { this.blink = !this.blink; this.blinkT = this.blink ? 0.10 : rand(1.6, 4.6); }
     if (this.grace <= 0 && typeof Input !== 'undefined' && Input.mouse) {
+      // ENTER / SPACE / click steps one beat early. There is no way to jump
+      // the whole cinematic.
       const adv = (Input.hit && (Input.hit('Enter') || Input.hit('NumpadEnter') || Input.hit('Space'))) || Input.mouse.clicked;
       if (adv) { this.next(); return; }
-      if (Input.anyKey) { this.skip(); return; }
     }
     this.shake = Math.max(0, this.shake - dt * 30);
     const b = BEATS[this.beat];
@@ -18948,10 +19280,11 @@ const Intro = {
     }
     // persistent skip hint + beat pips
     if (this.t > 0.6) {
-      pixelText(ctx, 'press any key to skip', 634, 9, 6, Math.floor(this.t * 0.8) % 2 ? '#7f8a96' : '#5f6a76', 'right');
       pixelText(ctx, 'ENTER / click: next scene', 6, 9, 6, '#4e5a66', 'left');
-      for (let i = 0; i < BEATS.length; i++) {
-        P(ctx, i < this.beat ? '#5f6a76' : i === this.beat ? '#e8eef4' : '#2a323c', 258 + i * 13, 11, i === this.beat ? 9 : 7, 2);
+      const n = BEATS.length, w = n > 10 ? 6 : 7, gap = n > 10 ? 11 : 13;
+      const x0 = R(320 - (n * gap - (gap - w)) / 2);
+      for (let i = 0; i < n; i++) {
+        P(ctx, i < this.beat ? '#5f6a76' : i === this.beat ? '#e8eef4' : '#2a323c', x0 + i * gap, 11, i === this.beat ? w + 2 : w, 2);
       }
     }
     ctx.restore();
@@ -18962,7 +19295,7 @@ try { if (typeof document !== 'undefined' && document.createElement) buildIntroA
 
 global.Intro = Intro;
 global.IntroBeats = BEATS;
-global.__introDebug = { MAN: MAN, drawManatee: drawManatee, drawOtter: drawOtter, drawBiz: drawBiz, figure: figure, drawCrane: drawCrane, drawNet: drawNet, get HARP() { return HARP; }, get BOAT() { return BOAT; }, get YAC() { return YAC; }, get TANK() { return TANK; } };
+global.__introDebug = { MAN: MAN, drawManatee: drawManatee, drawOtter: drawOtter, drawBiz: drawBiz, figure: figure, drawCrane: drawCrane, drawNet: drawNet, get HARP() { return HARP; }, get BOAT() { return BOAT; }, get YAC() { return YAC; }, get HOLD() { return HOLD; }, drawCapOtter: drawCapOtter, holdArt: holdArt };
 })(typeof window !== 'undefined' ? window : this);
 
 /* ===== src/game.js ===== */
