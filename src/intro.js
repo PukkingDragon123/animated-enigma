@@ -1738,12 +1738,12 @@ BEATS.push({
   name: 'boat', dur: 7.5,
   lines: [[0.5, 'Then the water started shaking.'], [3.8, 'It came through the grass without slowing down.']],
   enter() {
-    SC.surfY = 86; SC.boatX = 820; SC.boatY = 86; SC.propA = 0; SC.boatRot = 0;
-    A.dad = actor(MAN.dad, 300, 196, { beat: 1.4 });
-    A.mom = actor(MAN.mom, 214, 214, { beat: 1.4 });
-    A.you = actor(MAN.you, 268, 254, { beat: 2.2 });
-    A.bro = actor(MAN.bro, 226, 272, { beat: 2.8 });
-    SC.sch1 = makeSchool(18, 420, 180, 60, 0, 1, -30);
+    SC.surfY = 100; SC.boatX = 820; SC.boatY = 100; SC.propA = 0; SC.boatRot = 0;
+    A.dad = actor(MAN.dad, 300, 214, { beat: 1.4 });
+    A.mom = actor(MAN.mom, 214, 232, { beat: 1.4 });
+    A.you = actor(MAN.you, 268, 272, { beat: 2.2 });
+    A.bro = actor(MAN.bro, 214, 296, { beat: 2.8 });
+    SC.sch1 = makeSchool(18, 420, 200, 60, 0, 1, -30);
   },
   update(dt, bt) {
     Intro.scroll += 26 * dt;
@@ -1762,15 +1762,15 @@ BEATS.push({
     for (const k2 of ['dad', 'mom', 'you', 'bro']) swim(A[k2], dt);
     const panic = clamp((bt - 1.6) / 1.2, 0, 1);
     A.dad.beat = lerp(1.4, 4.4, panic); A.dad.exp = bt > 1.7 ? 'angry' : 'calm';
-    A.dad.x = lerp(300, 372, panic) + Math.sin(bt) * 4; A.dad.y = lerp(196, 150, panic);
+    A.dad.x = lerp(300, 372, panic) + Math.sin(bt) * 4; A.dad.y = lerp(214, 170, panic);
     A.dad.rot = -panic * 0.22;
     A.mom.beat = lerp(1.4, 4.8, panic); A.mom.exp = bt > 1.7 ? 'wide' : 'calm';
-    A.mom.x = lerp(214, 126, panic * panic); A.mom.y = lerp(214, 258, panic);
+    A.mom.x = lerp(214, 126, panic * panic); A.mom.y = lerp(232, 272, panic);
     A.mom.rot = panic * 0.26;
     A.you.beat = lerp(2.2, 6.0, panic); A.you.exp = bt > 1.7 ? 'wide' : 'calm';
-    A.you.x = lerp(268, 108, panic * panic); A.you.y = lerp(254, 288, panic);
+    A.you.x = lerp(268, 108, panic * panic); A.you.y = lerp(272, 300, panic);
     A.bro.beat = lerp(2.8, 7.0, panic); A.bro.exp = bt > 1.7 ? 'wide' : 'calm';
-    A.bro.x = lerp(226, 66, panic * panic); A.bro.y = lerp(272, 302, panic);
+    A.bro.x = lerp(214, 60, panic * panic); A.bro.y = lerp(296, 318, panic);
     if (panic > 0.2 && Math.random() < 14 * dt) { FX.bubble(A.you.x + 20, A.you.y - 6, 1, 1.4); FX.bubble(A.bro.x + 14, A.bro.y - 4, 1, 1.4); }
   },
   render(ctx, bt) {
@@ -1799,10 +1799,10 @@ BEATS.push({
   name: 'scar', dur: 7.0,
   lines: [[0.4, 'She turned to put herself between it and us.'], [3.0, 'The propeller found her back.'], [5.2, 'The water went red and warm.']],
   enter() {
-    SC.surfY = 78; SC.boatX = 420; SC.boatY = 78; SC.propA = 0; SC.hit = false;
-    A.mom = actor(MAN.mom, 452, 226, { beat: 3.2, exp: 'wide' });
-    A.you = actor(MAN.you, 214, 276, { beat: 2.4, exp: 'wide' });
-    A.bro = actor(MAN.bro, 156, 292, { beat: 3.0, exp: 'wide' });
+    SC.surfY = 104; SC.boatX = 420; SC.boatY = 104; SC.propA = 0; SC.hit = false;
+    A.mom = actor(MAN.mom, 452, 258, { beat: 3.2, exp: 'wide' });
+    A.you = actor(MAN.you, 210, 296, { beat: 2.4, exp: 'wide' });
+    A.bro = actor(MAN.bro, 146, 314, { beat: 3.0, exp: 'wide' });
     A.dad = actor(MAN.dad, -160, 210, { beat: 3.0, exp: 'angry' });
   },
   update(dt, bt) {
@@ -1816,7 +1816,7 @@ BEATS.push({
     // mom rises into the blades
     const k = clamp(bt / 2.35, 0, 1), e = k * k;
     if (!SC.hit) {
-      A.mom.x = lerp(452, px - 26, e); A.mom.y = lerp(226, py + 12, e);
+      A.mom.x = lerp(452, px - 26, e); A.mom.y = lerp(258, py + 14, e);
       A.mom.rot = lerp(0.1, -0.45, e);
       if (bt >= 2.35) {
         SC.hit = true; A.mom.scarred = true; A.mom.exp = 'pain'; A.mom.flash = 1;
@@ -1837,9 +1837,9 @@ BEATS.push({
       A.mom.exp = h > 1.6 ? 'sad' : 'pain';
       if (Math.random() < 20 * dt) FX.blood(A.mom.x + rand(-6, 14), A.mom.y - 8 + rand(-4, 4), 1, 0.55);
     }
-    A.you.x = 214 + Math.sin(bt * 0.8) * 5; A.you.y = 276 + Math.sin(bt * 1.1) * 4;
-    A.bro.x = 156 + Math.sin(bt * 0.9) * 4; A.bro.y = 292 + Math.sin(bt * 1.3) * 4;
-    if (bt > 4.6) { A.dad.x = lerp(-160, -50, clamp((bt - 4.6) / 2.4, 0, 1)); A.dad.y = 210; }
+    A.you.x = 210 + Math.sin(bt * 0.8) * 5; A.you.y = 296 + Math.sin(bt * 1.1) * 4;
+    A.bro.x = 146 + Math.sin(bt * 0.9) * 4; A.bro.y = 314 + Math.sin(bt * 1.3) * 4;
+    if (bt > 4.6) { A.dad.x = lerp(-160, -50, clamp((bt - 4.6) / 2.4, 0, 1)); A.dad.y = 240; }
   },
   render(ctx, bt) {
     backdrop(ctx, { mood: 'shallow', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 340, set: 'S', shafts: 0.8 });
@@ -1863,12 +1863,12 @@ BEATS.push({
   name: 'ram', dur: 6.5,
   lines: [[0.3, 'Dad did not make a sound.'], [2.9, 'He hit it like a landslide.']],
   enter() {
-    SC.surfY = 82; SC.boatX = 430; SC.boatY = 82; SC.propA = 0; SC.rammed = false;
+    SC.surfY = 116; SC.boatX = 430; SC.boatY = 116; SC.propA = 0; SC.rammed = false;
     SC.rock = 0; SC.rockV = 0;
-    A.dad = actor(MAN.dad, -90, 176, { beat: 5.0, exp: 'angry', tailAmp: 0.5 });
-    A.mom = actor(MAN.mom, 120, 268, { beat: 0.9, rot: 0.5, exp: 'sad', scarred: true, tailAmp: 0.12 });
-    A.you = actor(MAN.you, 176, 296, { beat: 2.0, exp: 'wide' });
-    A.bro = actor(MAN.bro, 128, 306, { beat: 2.6, exp: 'wide' });
+    A.dad = actor(MAN.dad, -90, 214, { beat: 5.0, exp: 'angry', tailAmp: 0.5 });
+    A.mom = actor(MAN.mom, 112, 286, { beat: 0.9, rot: 0.5, exp: 'sad', scarred: true, tailAmp: 0.12 });
+    A.you = actor(MAN.you, 190, 312, { beat: 2.0, exp: 'wide' });
+    A.bro = actor(MAN.bro, 134, 326, { beat: 2.6, exp: 'wide' });
     SC.men = [-64, -22, 16];
   },
   update(dt, bt) {
@@ -1879,7 +1879,7 @@ BEATS.push({
     const hullX = SC.boatX - 96;
     if (!SC.rammed) {
       const k = clamp(bt / 2.7, 0, 1), e = k * k * k;
-      A.dad.x = lerp(-90, hullX, e); A.dad.y = lerp(176, 132, e);
+      A.dad.x = lerp(-90, hullX, e); A.dad.y = lerp(214, 168, e);
       A.dad.rot = -e * 0.30;
       if (bt > 1.0 && Math.random() < 30 * dt) FX.bubble(A.dad.x - 40, A.dad.y + 6, 1, 2.2);
       if (bt >= 2.7) {
@@ -1900,7 +1900,7 @@ BEATS.push({
       SC.rock += SC.rockV * dt;
       if (Math.random() < 6 * dt) FX.chunks(SC.boatX - 90 + rand(-10, 10), SC.boatY + rand(-16, 4), 1);
     }
-    A.mom.y = 268 + Math.sin(bt * 0.8) * 3;
+    A.mom.y = 286 + Math.sin(bt * 0.8) * 3;
     if (Math.random() < 4 * dt) FX.blood(A.mom.x + rand(-4, 12), A.mom.y - 6, 1, 0.5);
   },
   render(ctx, bt) {
@@ -1937,15 +1937,15 @@ BEATS.push({
   name: 'harpoons', dur: 11.0,
   lines: [[0.3, 'Then the ropes came down.'], [3.4, 'They took him first.'], [6.6, 'Then they took her.'], [9.2, 'Nobody was left to tell us to swim.']],
   enter() {
-    SC.surfY = 76; SC.boatX = 452; SC.boatY = 76; SC.propA = 0;
+    SC.surfY = 116; SC.boatX = 452; SC.boatY = 116; SC.propA = 0;
     SC.men = [-78, -36, 6];
     SC.harps = [];
-    A.dad = actor(MAN.dad, 286, 208, { beat: 3.4, exp: 'angry' });
-    A.mom = actor(MAN.mom, 372, 262, { beat: 1.0, rot: 0.5, exp: 'sad', scarred: true, tailAmp: 0.12 });
-    A.you = actor(MAN.you, 150, 296, { beat: 1.8, exp: 'wide' });
-    A.bro = actor(MAN.bro, 106, 308, { beat: 2.2, exp: 'wide' });
+    A.dad = actor(MAN.dad, 286, 236, { beat: 3.4, exp: 'angry' });
+    A.mom = actor(MAN.mom, 380, 290, { beat: 1.0, rot: 0.5, exp: 'sad', scarred: true, tailAmp: 0.12 });
+    A.you = actor(MAN.you, 142, 310, { beat: 1.8, exp: 'wide' });
+    A.bro = actor(MAN.bro, 96, 322, { beat: 2.2, exp: 'wide' });
   },
-  gunPos(i) { return [SC.boatX + SC.men[i] - 12, SC.boatY - 44]; },
+  gunPos(i) { return [SC.boatX + SC.men[i] - 12, SC.boatY - 40]; },
   fire(i, target, bt) {
     const g = this.gunPos(i);
     const a = angleTo(g[0], g[1], target.x + 4, target.y - 6);
@@ -1992,7 +1992,7 @@ BEATS.push({
       }
     }
     // the kids shrink back, pressed together
-    A.you.x = 150 + Math.sin(bt * 0.7) * 5; A.you.y = 296 + Math.sin(bt * 1.0) * 3;
+    A.you.x = 142 + Math.sin(bt * 0.7) * 5; A.you.y = 310 + Math.sin(bt * 1.0) * 3;
     A.bro.x = A.you.x - 40 + Math.sin(bt * 0.9) * 3; A.bro.y = A.you.y + 12;
     A.bro.rot = -0.12 + Math.sin(bt * 0.9) * 0.05;
     if (bt > 8.0) { A.you.exp = 'sad'; A.bro.exp = 'sad'; }
