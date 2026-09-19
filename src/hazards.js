@@ -18,12 +18,16 @@
   // =======================================================================
   //  0.  GUARDS, VIEW CONSTANTS AND TINY HELPERS
   // =======================================================================
-  // The world scene renders into a 320x180 buffer that is upscaled x2, so the
-  // VISIBLE view is 320x180 world units. Never hardcode 640/360 in world space.
-  const VW = 320, VH = 180, CULL = 88;
+  // The world is drawn at 1:1 and a centred 320x180 crop of it is magnified x2,
+  // so the VISIBLE view is only 320x180 world units. Nothing here hardcodes a
+  // buffer size: the cull box is read off whatever canvas we are handed, which
+  // is correct both for the 640x360 world layer and for a bare 320x180 target.
+  const CULL = 88;
+  let _vw = 640, _vh = 360;
+  function setView(ctx) { const c = ctx && ctx.canvas; if (c) { _vw = c.width || 640; _vh = c.height || 360; } }
 
   function gg() { try { return (typeof G !== 'undefined' && G) ? G : null; } catch (e) { return null; } }
-  function onScreen(sx, sy, m) { m = m || CULL; return sx > -m && sy > -m && sx < VW + m && sy < VH + m; }
+  function onScreen(sx, sy, m) { m = m || CULL; return sx > -m && sy > -m && sx < _vw + m && sy < _vh + m; }
 
   let TOON = null, GORE = null, AUD = null;
   function bindFx() {
@@ -629,8 +633,7 @@
 
   function onScreenWorld(g, x, y) {
     const cam = g.cam; if (!cam) return true;
-    const sx = x - cam.x, sy = y - cam.y;
-    return sx > -40 && sy > -40 && sx < VW + 40 && sy < VH + 40;
+    return onScreen(x - cam.x, y - cam.y, 40);
   }
 
   function renderMines(ctx, cam, t) {
@@ -1768,6 +1771,7 @@
     // everything that sits on or under the surface (call before the player)
     render(ctx, cam, t) {
       if (!built || !cam) return;
+      setView(ctx);
       renderShellShadows(ctx, cam, t);
       renderCorpses(ctx, cam, t);
       renderMines(ctx, cam, t);
@@ -1777,6 +1781,7 @@
     // anything that must sit ON TOP: leaps in mid-air, ropes, markers, shells
     renderOver(ctx, cam, t) {
       if (!built || !cam) return;
+      setView(ctx);
       for (let i = 0; i < swimmers.length; i++) if (swimmers[i].state === 'leap') drawSwimmer(ctx, cam, t, swimmers[i]);
       renderMinesOver(ctx, cam, t);
       renderCrewsOver(ctx, cam, t);

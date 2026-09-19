@@ -20,6 +20,8 @@ class Game {
     window.addEventListener('resize', () => this.resize()); this.resize();
     buildCharacters();
     if (typeof Hazards !== 'undefined') Hazards.init();
+    if (typeof Upgrades !== 'undefined') Upgrades.init();
+    if (typeof MainMenu !== 'undefined') MainMenu.init();
     this.tree = new SkillTree();
     this.state = 'intro'; Intro.reset();
     this.firstRun = true; this.muted = false;
@@ -116,12 +118,12 @@ class Game {
           this.projectiles.push(new Projectile({ x: p.x + Math.cos(a) * 10, y: p.y - 5 + Math.sin(a) * 10, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520, life: d / 520 + 0.5, dmg: 999, owner: 'player', sprite: SP.bulletBig, size: 4, trail: true }));
           this.particles.shell(p.x, p.y - 6, a);
         }
-        if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; }
+        if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); }
         break;
       case 'play':
         this.updateWorld(dt);
         if (Input.hit('Tab')) {
-          if (this.upgradesOpen()) { this.prevState = 'play'; this.state = 'tree'; }
+          if (this.upgradesOpen()) { this.prevState = 'play'; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); }
           else { this.banner('SINK THE WAVE FIRST', '#ff6161', 1.6, 'The Deep only opens between waves.'); Audio_.deny(); }
         }
         else if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'paused';
@@ -132,19 +134,25 @@ class Game {
         this.weaponKeys();
         break;
       case 'tree':
-        TreeScene.update(dt, this.time + dt);
         this.time += dt;
-        UI.updateTree();
-        if (Input.hit('Tab') || Input.hit('Escape')) this.state = this.prevState || 'play';
+        if (typeof Upgrades !== 'undefined') {
+          Upgrades.update(dt, this.time);
+          if (Upgrades.wantsClose || Input.hit('Tab') || Input.hit('Escape')) {
+            Upgrades.wantsClose = false; this.state = this.prevState || 'play';
+          }
+        } else {
+          TreeScene.update(dt, this.time); UI.updateTree();
+          if (Input.hit('Tab') || Input.hit('Escape')) this.state = this.prevState || 'play';
+        }
         break;
-      case 'paused': if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'play'; if (Input.hit('Tab')) { this.prevState = 'play'; this.state = 'tree'; } break;
+      case 'paused': if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'play'; if (Input.hit('Tab') && this.upgradesOpen()) { this.prevState = 'play'; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); } break;
       case 'dead_wait': this.updateWorld(dt * 0.5, true); this.endT += dt; if (this.endT > 2) this.state = 'gameover'; break;
       case 'victory_wait': this.updateWorld(dt, false); this.endT += dt; if (this.endT > 3.5) this.state = 'victory'; break;
       case 'gameover': case 'victory':
         this.updateWorld(dt * 0.3, true);
         const tapRestart = typeof MobileUI !== 'undefined' && MobileUI.enabled && Input.mouse.clicked;
         if (Input.hit('KeyR') || tapRestart) { this.firstRun = false; this.newRun(); this.state = 'play'; }
-        if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; }
+        if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); }
         break;
     }
   }
@@ -254,7 +262,7 @@ class Game {
     // overlays
     if (this.state === 'dialogue') Dialogue.renderHUD(ctx);
     if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree') UI.drawHUD(ctx, t);
-    if (this.state === 'tree') UI.drawTree(ctx, t);
+    if (this.state === 'tree') { if (typeof Upgrades !== 'undefined') Upgrades.render(ctx, t); else UI.drawTree(ctx, t); }
     if (this.state === 'paused') {
       ctx.fillStyle = 'rgba(2,8,18,0.78)'; ctx.fillRect(0, 0, 640, 360);
       UIKit.ribbon(ctx, 320, 54, 'PAUSED', 'gold');

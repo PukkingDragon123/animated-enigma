@@ -1542,3 +1542,332 @@ function titleCard(ctx, k, t) {
   }
   ctx.restore();
 }
+
+// ================================================================== SKY =====
+function buildSky() {
+  const H = 130, c = can(LW, H), x = cx2(c), cols = IP.sky;
+  for (let y = 0; y < H; y++) {
+    const k = Math.pow(y / (H - 1), 0.8) * (cols.length - 1);
+    let i0 = Math.floor(k), fr = k - i0; i0 = clamp(i0, 0, cols.length - 1);
+    for (let px = 0; px < LW; px++) P(x, cols[clamp(fr > bay(px, y) ? i0 + 1 : i0, 0, cols.length - 1)], px, y);
+  }
+  const rng = new SeededRandom(6161);
+  for (let i = 0; i < 9; i++) {
+    const cxx = R(rng.range(0, LW)), cyy = R(rng.range(8, 60)), w = R(rng.range(30, 90)), h = R(rng.range(6, 14));
+    for (let j = 0; j < 5; j++) {
+      const ox = R(rng.range(-w * 0.4, w * 0.4)), oy = R(rng.range(-h * 0.3, h * 0.3));
+      P(x, '#f6f8ee', cxx + ox, cyy + oy, R(w * rng.range(0.3, 0.6)), h);
+      P(x, '#ffffff', cxx + ox, cyy + oy, R(w * rng.range(0.2, 0.4)), Math.max(1, h >> 1));
+      P(x, '#cfd6d0', cxx + ox, cyy + oy + h - 1, R(w * rng.range(0.25, 0.5)), 1);
+    }
+  }
+  for (let i = 0; i < 7; i++) {
+    const gx = R(rng.range(0, LW)), gy = R(rng.range(10, 50));
+    P(x, '#20303c', gx, gy, 3, 1); P(x, '#20303c', gx + 2, gy - 1, 2, 1); P(x, '#20303c', gx + 4, gy, 3, 1);
+  }
+  return c;
+}
+function drawAir(ctx, surfY, scroll, t) {
+  if (!LAY.sky) LAY.sky = buildSky();
+  const sy = R(surfY);
+  if (sy <= 0) return;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 640, sy); ctx.clip();
+  tile(ctx, LAY.sky, scroll * 0.10, sy - LAY.sky.height);
+  // chop + whitecaps at the waterline
+  for (let x = 0; x < 640; x++) {
+    const w = Math.sin(x * 0.07 + t * 2.2) * 2 + Math.sin(x * 0.021 - t * 1.3) * 1.6;
+    const yy = sy - 3 + R(w);
+    P(ctx, '#2d6f86', x, yy, 1, sy - yy);
+    if (hash2(x, Math.floor(t * 3)) > 0.86) P(ctx, '#eaf8ff', x, yy - 1, 2, 2);
+  }
+  ctx.restore();
+  P(ctx, '#0d2a33', 0, sy - 1, 640, 1);
+  for (let x = 0; x < 640; x += 3) if (hash2(x, Math.floor(t * 5)) > 0.7) P(ctx, '#cfeaf2', x, sy + R(Math.sin(x * 0.07 + t * 2.2) * 2), 3, 1);
+}
+function speedLines(ctx, x, y, n, len, dir, col, seed) {
+  ctx.fillStyle = col || 'rgba(225,244,255,0.5)';
+  for (let i = 0; i < n; i++) {
+    const oy = R(y + (hash2(i, seed | 0) - 0.5) * 42);
+    const ox = R(x + (hash2(i * 3, seed | 0) - 0.5) * 40);
+    ctx.fillRect(ox, oy, R(len * (0.5 + hash2(i * 7, seed | 0) * 0.8)) * (dir < 0 ? -1 : 1), 1);
+  }
+}
+// ---------------------------------------------------------------- actors ---
+function actor(set, x, y, o) {
+  return Object.assign({
+    set: set, x: x, y: y, rot: 0, phase: rand(0, TAU), exp: 'calm', flip: false,
+    scarred: false, tailAmp: 0.30, flipperA: 0.45, sx: 1, sy: 1, flash: 0, blink: false,
+    vx: 0, vy: 0, beat: 1.6,
+  }, o || {});
+}
+function swim(m, dt, rate) { m.phase += dt * (rate === undefined ? m.beat : rate); }
+let sndT = 0, sndT2 = 0;
+function engine(dt, inten) {
+  if (typeof Audio_ === 'undefined') return;
+  sndT -= dt;
+  if (sndT <= 0) {
+    sndT = 0.17;
+    Audio_.noise(0.24, 0.045 * inten, 230, 40);
+    Audio_.tone(42 + rand(0, 7), 0.20, 'sawtooth', 0.030 * inten);
+  }
+}
+function churnSound(dt, inten) {
+  if (typeof Audio_ === 'undefined') return;
+  sndT2 -= dt;
+  if (sndT2 <= 0) { sndT2 = 0.33; Audio_.noise(0.28, 0.035 * inten, 1400, 500); }
+}
+
+// ================================================================= BEATS ====
+const A = {};
+const SC = {};
+const BEATS = [];
+
+// ---------------------------------------------------------------- 1. PEACE
+BEATS.push({
+  name: 'peace', dur: 9.5,
+  lines: [[1.6, 'The shallows were warm and the grass was sweet.'], [5.4, 'We had no word for boat.']],
+  enter() {
+    A.dad = actor(MAN.dad, 150, 148, { beat: 1.1, tailAmp: 0.22 });
+    A.mom = actor(MAN.mom, 430, 242, { beat: 1.0, rot: 0.42, tailAmp: 0.18 });
+    A.you = actor(MAN.you, 262, 196, { beat: 1.8 });
+    A.bro = actor(MAN.bro, 216, 214, { beat: 2.4 });
+    SC.sch1 = makeSchool(16, 480, 140, 70, 0, 1, -26);
+    SC.sch2 = makeSchool(11, 120, 250, 50, 1, 3, 20);
+    SC.sch3 = makeSchool(7, 560, 262, 40, 2, 0, -14);
+    FX.bubble(A.mom.x + 40, A.mom.y - 10, 5, 0.6);
+  },
+  update(dt, bt) {
+    Intro.scroll += 15 * dt;
+    for (const k of ['dad', 'mom', 'you', 'bro']) swim(A[k], dt);
+    A.dad.x += 9 * dt; A.dad.y = 148 + Math.sin(bt * 0.5) * 7;
+    A.dad.rot = Math.sin(bt * 0.4) * 0.05;
+    A.mom.x = 430 + Math.sin(bt * 0.32) * 10; A.mom.y = 240 + Math.sin(bt * 0.6) * 4;
+    A.mom.rot = 0.40 + Math.sin(bt * 0.5) * 0.06;
+    A.you.x = 262 + Math.sin(bt * 0.45) * 16; A.you.y = 196 + Math.sin(bt * 0.75) * 8;
+    A.you.rot = Math.sin(bt * 0.75 + 1) * 0.10;
+    A.bro.x = A.you.x - 44 + Math.sin(bt * 0.9) * 22;
+    A.bro.y = A.you.y + 16 + Math.sin(bt * 1.25) * 14;
+    A.bro.rot = Math.sin(bt * 1.25) * 0.22;
+    A.bro.exp = (bt % 4) > 3.2 ? 'talk' : 'calm';
+    if (Math.random() < 0.7 * dt) FX.bubble(A.mom.x + 38, A.mom.y - 6, 1, 0.5);
+    if (Math.random() < 0.4 * dt) FX.bubble(A.you.x + 22, A.you.y - 8, 1, 0.5);
+  },
+  render(ctx, bt) {
+    backdrop(ctx, { mood: 'shallow', scroll: Intro.scroll, t: Intro.t, surfY: 34, bedY: 296, set: 'S', shafts: 1, causticBed: true });
+    drawSchool(ctx, SC.sch1, Intro.t, Intro.dt);
+    drawSchool(ctx, SC.sch3, Intro.t, Intro.dt);
+    drawManatee(ctx, A.mom, Intro.t);
+    drawManatee(ctx, A.dad, Intro.t);
+    drawSchool(ctx, SC.sch2, Intro.t, Intro.dt);
+    drawManatee(ctx, A.you, Intro.t);
+    drawManatee(ctx, A.bro, Intro.t);
+    FX.render(ctx);
+    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 296, set: 'S' });
+    titleCard(ctx, clamp((bt - 0.5) / 7.0, 0, 1), bt);
+  },
+});
+
+// ----------------------------------------------------------------- 2. BOAT
+BEATS.push({
+  name: 'boat', dur: 7.5,
+  lines: [[0.5, 'Then the water started shaking.'], [3.8, 'It came through the grass without slowing down.']],
+  enter() {
+    SC.surfY = 86; SC.boatX = 820; SC.boatY = 86; SC.propA = 0; SC.boatRot = 0;
+    A.dad = actor(MAN.dad, 300, 196, { beat: 1.4 });
+    A.mom = actor(MAN.mom, 214, 214, { beat: 1.4 });
+    A.you = actor(MAN.you, 268, 254, { beat: 2.2 });
+    A.bro = actor(MAN.bro, 226, 272, { beat: 2.8 });
+    SC.sch1 = makeSchool(18, 420, 180, 60, 0, 1, -30);
+  },
+  update(dt, bt) {
+    Intro.scroll += 26 * dt;
+    const k = clamp(bt / 3.4, 0, 1), e = 1 - Math.pow(1 - k, 2.2);
+    SC.boatX = lerp(820, 452, e) - Math.max(0, bt - 3.4) * 9;
+    SC.boatY = SC.surfY + Math.sin(bt * 2.4) * 2;
+    SC.boatRot = Math.sin(bt * 2.0) * 0.02;
+    SC.propA += dt * 34;
+    engine(dt, clamp(bt * 0.5, 0, 1)); churnSound(dt, clamp(bt * 0.4, 0, 1));
+    if (bt > 1.4) {
+      Intro.shake = Math.max(Intro.shake, 1.2 * clamp((bt - 1.4) / 2, 0, 1));
+      const px = SC.boatX + BOAT.prop[0], py = SC.boatY + BOAT.prop[1];
+      FX.bubble(px + rand(-6, 6), py + rand(-10, 10), 2, 2.4);
+      if (Math.random() < 0.7) FX.foam(px + rand(0, 26), py + rand(-12, 12), 1, 0.6);
+    }
+    for (const k2 of ['dad', 'mom', 'you', 'bro']) swim(A[k2], dt);
+    const panic = clamp((bt - 1.6) / 1.2, 0, 1);
+    A.dad.beat = lerp(1.4, 4.4, panic); A.dad.exp = bt > 1.7 ? 'angry' : 'calm';
+    A.dad.x = lerp(300, 372, panic) + Math.sin(bt) * 4; A.dad.y = lerp(196, 150, panic);
+    A.dad.rot = -panic * 0.22;
+    A.mom.beat = lerp(1.4, 4.8, panic); A.mom.exp = bt > 1.7 ? 'wide' : 'calm';
+    A.mom.x = lerp(214, 126, panic * panic); A.mom.y = lerp(214, 258, panic);
+    A.mom.rot = panic * 0.26;
+    A.you.beat = lerp(2.2, 6.0, panic); A.you.exp = bt > 1.7 ? 'wide' : 'calm';
+    A.you.x = lerp(268, 108, panic * panic); A.you.y = lerp(254, 288, panic);
+    A.bro.beat = lerp(2.8, 7.0, panic); A.bro.exp = bt > 1.7 ? 'wide' : 'calm';
+    A.bro.x = lerp(226, 66, panic * panic); A.bro.y = lerp(272, 302, panic);
+    if (panic > 0.2 && Math.random() < 14 * dt) { FX.bubble(A.you.x + 20, A.you.y - 6, 1, 1.4); FX.bubble(A.bro.x + 14, A.bro.y - 4, 1, 1.4); }
+  },
+  render(ctx, bt) {
+    backdrop(ctx, { mood: 'shallow', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 336, set: 'S', shafts: 0.85, causticBed: true });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+    drawSchool(ctx, SC.sch1, Intro.t, Intro.dt);
+    // boat + churn
+    ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY)); ctx.rotate(SC.boatRot);
+    ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay);
+    drawProp(ctx, BOAT.prop[0], BOAT.prop[1], 15, SC.propA, 1);
+    ctx.restore();
+    // churned white water trailing aft of the prop
+    const px = SC.boatX + BOAT.prop[0], py = SC.boatY + BOAT.prop[1];
+    for (let i = 0; i < 26; i++) {
+      const d = i * 5, a = qa(0.40 - i * 0.014);
+      if (a <= 0) break;
+      ctx.fillStyle = rgbaq('#e6f6ff', a);
+      const hgt = R(6 + i * 1.5 + Math.sin(Intro.t * 9 + i) * 3);
+      ctx.fillRect(R(px + d), R(py - hgt / 2 + Math.sin(Intro.t * 7 + i * 0.7) * 3), 5, hgt);
+    }
+    drawManatee(ctx, A.dad, Intro.t);
+    drawManatee(ctx, A.mom, Intro.t);
+    drawManatee(ctx, A.you, Intro.t);
+    drawManatee(ctx, A.bro, Intro.t);
+    FX.render(ctx);
+    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 336, set: 'S' });
+  },
+});
+
+// ------------------------------------------------------------- 3. THE SCAR
+BEATS.push({
+  name: 'scar', dur: 7.0,
+  lines: [[0.4, 'She turned to put herself between it and us.'], [3.0, 'The propeller found her back.'], [5.2, 'The water went red and warm.']],
+  enter() {
+    SC.surfY = 78; SC.boatX = 420; SC.boatY = 78; SC.propA = 0; SC.hit = false;
+    A.mom = actor(MAN.mom, 452, 226, { beat: 3.2, exp: 'wide' });
+    A.you = actor(MAN.you, 214, 276, { beat: 2.4, exp: 'wide' });
+    A.bro = actor(MAN.bro, 156, 292, { beat: 3.0, exp: 'wide' });
+    A.dad = actor(MAN.dad, -160, 210, { beat: 3.0, exp: 'angry' });
+  },
+  update(dt, bt) {
+    Intro.scroll += 12 * dt;
+    SC.boatX = 420 - bt * 5; SC.boatY = SC.surfY + Math.sin(bt * 2.2) * 2;
+    SC.propA += dt * 34;
+    engine(dt, 1); churnSound(dt, 0.8);
+    const px = SC.boatX + BOAT.prop[0], py = SC.boatY + BOAT.prop[1];
+    FX.bubble(px + rand(-6, 6), py + rand(-10, 10), 1, 2.2);
+    for (const k of ['dad', 'mom', 'you', 'bro']) swim(A[k], dt);
+    // mom rises into the blades
+    const k = clamp(bt / 2.35, 0, 1), e = k * k;
+    if (!SC.hit) {
+      A.mom.x = lerp(452, px - 26, e); A.mom.y = lerp(226, py + 12, e);
+      A.mom.rot = lerp(0.1, -0.45, e);
+      if (bt >= 2.35) {
+        SC.hit = true; A.mom.scarred = true; A.mom.exp = 'pain'; A.mom.flash = 1;
+        Intro.shake = 13;
+        FX.blood(A.mom.x + 6, A.mom.y - 10, 34, 1.15);
+        FX.foam(px, py, 26, 1.4);
+        if (typeof Audio_ !== 'undefined') { Audio_.hurt(); Audio_.splash(2); Audio_.noise(0.5, 0.3, 900, 120); }
+      }
+    } else {
+      const h = bt - 2.35;
+      A.mom.flash = Math.max(0, 1 - h * 5);
+      A.mom.vx = approach(A.mom.vx === 0 ? -80 : A.mom.vx, -14, 60 * dt);
+      A.mom.vy = approach(A.mom.vy === 0 ? 34 : A.mom.vy, 12, 40 * dt);
+      A.mom.x += A.mom.vx * dt; A.mom.y += A.mom.vy * dt;
+      A.mom.rot = lerp(A.mom.rot, 0.55 + Math.sin(h * 3.4) * 0.18, 3 * dt);
+      A.mom.beat = lerp(3.2, 0.9, clamp(h / 2, 0, 1));
+      A.mom.tailAmp = lerp(0.3, 0.12, clamp(h / 2, 0, 1));
+      A.mom.exp = h > 1.6 ? 'sad' : 'pain';
+      if (Math.random() < 20 * dt) FX.blood(A.mom.x + rand(-6, 14), A.mom.y - 8 + rand(-4, 4), 1, 0.55);
+    }
+    A.you.x = 214 + Math.sin(bt * 0.8) * 5; A.you.y = 276 + Math.sin(bt * 1.1) * 4;
+    A.bro.x = 156 + Math.sin(bt * 0.9) * 4; A.bro.y = 292 + Math.sin(bt * 1.3) * 4;
+    if (bt > 4.6) { A.dad.x = lerp(-160, -50, clamp((bt - 4.6) / 2.4, 0, 1)); A.dad.y = 210; }
+  },
+  render(ctx, bt) {
+    backdrop(ctx, { mood: 'shallow', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 340, set: 'S', shafts: 0.8 });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+    ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY)); ctx.rotate(Math.sin(bt * 2) * 0.02);
+    ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay);
+    drawProp(ctx, BOAT.prop[0], BOAT.prop[1], 15, SC.propA, 1);
+    ctx.restore();
+    drawManatee(ctx, A.dad, Intro.t);
+    drawManatee(ctx, A.mom, Intro.t);
+    drawManatee(ctx, A.you, Intro.t);
+    drawManatee(ctx, A.bro, Intro.t);
+    FX.render(ctx);
+    if (SC.hit && bt - 2.35 < 0.16) { ctx.fillStyle = rgbaq('#ffffff', 0.55 - (bt - 2.35) * 3); ctx.fillRect(0, 0, 640, 360); }
+    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 340, set: 'S' });
+  },
+});
+
+// ---------------------------------------------------------------- 4. THE RAM
+BEATS.push({
+  name: 'ram', dur: 6.5,
+  lines: [[0.3, 'Dad did not make a sound.'], [2.9, 'He hit it like a landslide.']],
+  enter() {
+    SC.surfY = 82; SC.boatX = 430; SC.boatY = 82; SC.propA = 0; SC.rammed = false;
+    SC.rock = 0; SC.rockV = 0;
+    A.dad = actor(MAN.dad, -90, 176, { beat: 5.0, exp: 'angry', tailAmp: 0.5 });
+    A.mom = actor(MAN.mom, 120, 268, { beat: 0.9, rot: 0.5, exp: 'sad', scarred: true, tailAmp: 0.12 });
+    A.you = actor(MAN.you, 176, 296, { beat: 2.0, exp: 'wide' });
+    A.bro = actor(MAN.bro, 128, 306, { beat: 2.6, exp: 'wide' });
+    SC.men = [-64, -22, 16];
+  },
+  update(dt, bt) {
+    Intro.scroll += 10 * dt;
+    SC.propA += dt * 30;
+    engine(dt, 1); churnSound(dt, 0.6);
+    for (const k of ['dad', 'mom', 'you', 'bro']) swim(A[k], dt);
+    const hullX = SC.boatX - 96;
+    if (!SC.rammed) {
+      const k = clamp(bt / 2.7, 0, 1), e = k * k * k;
+      A.dad.x = lerp(-90, hullX, e); A.dad.y = lerp(176, 132, e);
+      A.dad.rot = -e * 0.30;
+      if (bt > 1.0 && Math.random() < 30 * dt) FX.bubble(A.dad.x - 40, A.dad.y + 6, 1, 2.2);
+      if (bt >= 2.7) {
+        SC.rammed = true; Intro.shake = 18; SC.rockV = -2.6;
+        FX.ring(A.dad.x + 40, A.dad.y - 6, 120, 0.55, '#ffffff');
+        FX.chunks(A.dad.x + 46, A.dad.y - 20, 22);
+        FX.foam(A.dad.x + 44, A.dad.y - 10, 40, 1.6);
+        FX.bubble(A.dad.x + 30, A.dad.y, 24, 2.6);
+        if (typeof Audio_ !== 'undefined') { Audio_.explosion(0.9); Audio_.stun(); Audio_.splash(3); }
+      }
+    } else {
+      const h = bt - 2.7;
+      A.dad.x -= 40 * dt * Math.max(0, 1 - h);
+      A.dad.y += 14 * dt;
+      A.dad.rot = lerp(A.dad.rot, -0.1 + Math.sin(h * 5) * 0.08, 4 * dt);
+      A.dad.beat = lerp(5.0, 2.4, clamp(h, 0, 1));
+      SC.rockV += (-SC.rock * 26 - SC.rockV * 3.4) * dt;
+      SC.rock += SC.rockV * dt;
+      if (Math.random() < 6 * dt) FX.chunks(SC.boatX - 90 + rand(-10, 10), SC.boatY + rand(-16, 4), 1);
+    }
+    A.mom.y = 268 + Math.sin(bt * 0.8) * 3;
+    if (Math.random() < 4 * dt) FX.blood(A.mom.x + rand(-4, 12), A.mom.y - 6, 1, 0.5);
+  },
+  render(ctx, bt) {
+    backdrop(ctx, { mood: 'shallow', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 344, set: 'S', shafts: 0.8 });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+    // deck hands, drawn before the hull so the bulwark covers their legs
+    const feet = SC.boatY - 25;
+    const st = SC.rammed ? clamp(1 - (bt - 2.7) * 0.9, 0, 1) : 0;
+    SC.men.forEach((ox, i) => {
+      const lean = SC.rammed ? -0.5 * st + Math.sin((bt - 2.7) * 14 + i) * 0.2 * st : 0.30 + Math.sin(bt * 1.4 + i) * 0.06;
+      figure(ctx, SC.boatX + ox + SC.rock * 8, feet + SC.rock * 4, 30, {
+        facing: -1, lean: lean, armA: 2.3 - st * 1.8, foreA: 2.1 - st * 2.4,
+        armB: 2.1 - st * 1.2, foreB: 1.9 - st * 2.0,
+        legA: 0.22 + st * 0.3, legB: -0.20 - st * 0.2, kneeA: -0.1, kneeB: 0.12, head: -0.3 + st * 0.5,
+      });
+    });
+    ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY + Math.abs(SC.rock) * 5)); ctx.rotate(SC.rock * 0.10 + Math.sin(bt * 2) * 0.02);
+    ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay);
+    drawProp(ctx, BOAT.prop[0], BOAT.prop[1], 15, SC.propA, 1);
+    ctx.restore();
+    drawManatee(ctx, A.mom, Intro.t);
+    drawManatee(ctx, A.you, Intro.t);
+    drawManatee(ctx, A.bro, Intro.t);
+    drawManatee(ctx, A.dad, Intro.t);
+    if (!SC.rammed && bt > 1.2) speedLines(ctx, A.dad.x - 70, A.dad.y, 9, 34, -1, 'rgba(225,244,255,0.45)', 3);
+    FX.render(ctx);
+    if (SC.rammed && bt - 2.7 < 0.12) { ctx.fillStyle = rgbaq('#ffffff', 0.6 - (bt - 2.7) * 4); ctx.fillRect(0, 0, 640, 360); }
+    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 344, set: 'S' });
+  },
+});
