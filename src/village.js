@@ -2102,6 +2102,15 @@
           rx += Math.max(seg2, 8);
         }
       }
+      // steps down to the water (boat landing)
+      if (o.stair !== undefined) {
+        const sxp = L + o.stair;
+        Kit.stairs(c, sxp, D + 2, 16, 16, o.stairDir === undefined ? 1 : o.stairDir, rng);
+        R(c, sxp - 1, D + 1, 18, 1, W.ink);
+        // a hand rope down the side
+        for (let i = 0; i < 18; i += 2) R(c, sxp + i, D - 5 + Math.round(i * 0.9), 1, 1, i % 4 ? W.rope1 : W.rope0);
+        R(c, sxp + 17, D - 6, 2, 8, W.ink); R(c, sxp + 17, D - 6, 1, 8, W.post2);
+      }
       // deck clutter
       let cx2 = 4;
       while (cx2 < wb - 8) {
@@ -2356,6 +2365,10 @@
         const o = { x, w, deckY: rowM.deckY + Math.round(rng.range(-3, 3)), waterY: rowM.waterY, seed: seed++ };
         // opening where the jetty joins the shore
         if (x < X + 40 && x + w > X - 40) { o.openX0 = Math.max(0, X - 34 - x); o.openX1 = Math.min(w, X + 34 - x); }
+        if (o.openX0 === undefined && w > 130 && rng.next() < 0.35) {
+          o.stair = Math.round(rng.range(16, w - 40)); o.stairDir = rng.next() < 0.5 ? 1 : -1;
+          o.openX0 = o.stair; o.openX1 = o.stair + 18;
+        }
         const p = makePlatform(o);
         this.add(p, 0);
         platforms.push({ x, w, deckY: o.deckY, str: p });
@@ -2388,7 +2401,8 @@
         this.decks.push({ x0: hx, x1: hx + hw, y0: rowF.deckY - 8, y1: rowF.deckY + 8 });
         // a small deck beside it
         const dx = hx + (side < 0 ? hw + 2 : -64);
-        const pl = makePlatform({ x: dx, w: 62, deckY: rowF.deckY, waterY: rowF.waterY, seed: seed++, hp: 90 });
+        const pl = makePlatform({ x: dx, w: 62, deckY: rowF.deckY, waterY: rowF.waterY, seed: seed++, hp: 90,
+          stair: side < 0 ? 40 : 6, stairDir: side < 0 ? 1 : -1, openX0: side < 0 ? 40 : 6, openX1: side < 0 ? 58 : 24 });
         this.add(pl, 3);
         this.decks.push({ x0: dx, x1: dx + 62, y0: rowF.deckY - 8, y1: rowF.deckY + 10 });
         this.add(makeBoat({ x: dx + 10, y: rowF.waterY + 10, len: rng.int(22, 30), seed: seed++ }), 4);
