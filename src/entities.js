@@ -691,7 +691,9 @@ class Fisherman {
     if (!this.alive) return; this.alive = false; this.deadT = 0;
     G.particles.blood(this.x, this.y - 10, 2.5, Math.atan2(proj.vy, proj.vx));
     G.particles.sparks(this.x, this.y - 10, 8); G.shake(6); Audio_.hurt();
-    if (typeof Gore !== 'undefined') { const a = Math.atan2(proj.vy, proj.vx); Gore.burst(this.x, this.y - 12, 2.2, a); Gore.spray(this.x, this.y - 12, a, 2.4); Gore.mist(this.x, this.y - 12, 8); }
+    // Gore takes a HEIGHT as its last argument, not a screen offset, so the
+    // blood pools at his feet on the pier rather than behind him.
+    if (typeof Gore !== 'undefined') { const a = Math.atan2(proj.vy, proj.vx); Gore.burst(this.x, this.y, 2.2, a, 12); Gore.spray(this.x, this.y, a, 2.4, 12); Gore.mist(this.x, this.y, 8, 12); }
     Toon.impact(this.x, this.y - 12, 1.8, '#ff6161');
     this.fallVx = Math.cos(Math.atan2(proj.vy, proj.vx)) * 40; this.fallVy = -60; this.fallZ = 0;
     G.onFishermanShot();
