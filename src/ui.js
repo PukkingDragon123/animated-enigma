@@ -88,6 +88,7 @@ const UI = {
     const w0 = G.director.currentWave();
     // before the fight the village's own sign is on screen, so don't repeat it
     const waveLabel = G.director.started ? (w0.boss ? 'BOSS' : w0.name) : null;
+    void waveLabel;
     const cw = Math.max(88, waveLabel ? textWidth(waveLabel, 6) + 20 : 0);
     UIKit.panel(ctx, 320 - cw / 2, 2, cw, waveLabel ? 24 : 18, 'dark');
     pixelTextOutlined(ctx, fmtTime(G.director.time), 320, waveLabel ? 5 : 4, 9, '#ffffff', '#14141c', 'center');
@@ -155,6 +156,31 @@ const UI = {
         pixelTextOutlined(ctx, bn.sub, 320, 86, 6, '#ffffff', '#14141c', 'center');
       }
       ctx.globalAlpha = 1;
+    }
+
+    // ---------- between waves ----------
+    const d = G.director;
+    if (d.cleared && !G.boss) {
+      const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+      const pulse = Math.floor(t * 2) % 2;
+      UIKit.panel(ctx, 128, 250, 384, 46, 'gold');
+      pixelTextOutlined(ctx, d.lastWave ? 'THE FLEET IS BROKEN' : 'WAVE CLEARED', 320, 257, 11,
+        pulse ? '#ffffff' : '#ffe48f', '#14141c', 'center');
+      if (d.lastWave) {
+        pixelTextOutlined(ctx, 'Only the Chief is left. Take a breath.', 320, 273, 7, '#e8d9b4', '#14141c', 'center');
+        pixelTextOutlined(ctx, touch ? 'THE DEEP to spend salvage' : '[TAB] THE DEEP to spend salvage', 320, 283, 6, '#c9b890', '#14141c', 'center');
+      } else {
+        pixelTextOutlined(ctx, touch ? 'Open THE DEEP to spend your salvage' : '[TAB] open THE DEEP and spend your salvage', 320, 272, 7, '#e8d9b4', '#14141c', 'center');
+        pixelTextOutlined(ctx, touch ? 'TAP HERE FOR THE NEXT WAVE' : '[ENTER] CALL IN THE NEXT WAVE', 320, 282, 8,
+          pulse ? '#ffe48f' : '#ffffff', '#14141c', 'center');
+      }
+    } else if (d.started && !d.isBossWave) {
+      // a live wave: how much of it is left
+      const w = d.currentWave();
+      const left = d.remaining + G.enemies.length, total = w.count;
+      const k = clamp(1 - left / Math.max(1, total), 0, 1);
+      UIKit.bar(ctx, 250, 28, 140, 7, k, '#ffe48f', '#1b2028');
+      pixelTextOutlined(ctx, `${Math.max(0, left)} LEFT`, 320, 29, 5, '#ffffff', '#14141c', 'center');
     }
 
     if (hpk < 0.3) { ctx.fillStyle = `rgba(200,20,20,${(0.12 + Math.sin(t * 6) * 0.08).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }

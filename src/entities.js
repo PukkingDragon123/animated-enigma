@@ -508,9 +508,12 @@ const ENEMY_TYPES = {
 class Enemy {
   constructor(type, x, y) {
     const c = this.cfg = ENEMY_TYPES[type]; this.type = type;
-    this.x = x; this.y = y; this.vx = 0; this.vy = 0; this.hp = c.hp; this.maxHp = c.hp; this.radius = c.radius;
-    this.angle = angleTo(x, y, G.player.x, G.player.y); this.speed = c.speed; this.throttle = 1;
-    this.attackT = rand(0.5, c.attackCd || 2); this.state = 'approach'; this.stateT = rand(0, 2); this.orbitDir = Math.random() < 0.5 ? -1 : 1;
+    const diff = (G.director && G.director.difficulty) || 1;
+    this.diff = diff;
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0;
+    this.hp = Math.round(c.hp * (1 + (diff - 1) * 1.15)); this.maxHp = this.hp; this.radius = c.radius;
+    this.angle = angleTo(x, y, G.player.x, G.player.y); this.speed = c.speed * (1 + (diff - 1) * 0.30); this.throttle = 1;
+    this.attackT = rand(0.5, c.attackCd || 2) / (0.6 + diff * 0.4); this.state = 'approach'; this.stateT = rand(0, 2); this.orbitDir = Math.random() < 0.5 ? -1 : 1;
     this.dead = false; this.flash = 0; this.burn = 0; this.burnT = 0; this.kx = 0; this.ky = 0; this.ramCd = 0; this.bob = rand(0, TAU);
     this.wake = G.ocean.newWake(this, c.wake); this.sprite = SP.boats[type]; this.hurtSprite = SP.boatsHurt[type];
     this.zig = rand(0, TAU); this.burstLeft = 0; this.burstT = 0; this.strafeDir = 1;
@@ -594,8 +597,8 @@ class Enemy {
     const pl = G.player;
     const dp = dist(this.x, this.y, pl.x, pl.y);
     if (!pl.dead && !pl.diving && dp < this.radius + 11) {
-      if (c.kamikaze) { this.die(true); G.particles.explode(this.x, this.y, 44); pl.damage(c.kamikaze, this.x, this.y); return; }
-      if (c.ram && this.ramCd <= 0 && spd > 30 && !pl.rolling) { this.ramCd = 1.0; pl.damage(c.ram, this.x, this.y); this.kx -= Math.cos(this.angle) * 80; this.ky -= Math.sin(this.angle) * 80; G.particles.splash((this.x + pl.x) / 2, (this.y + pl.y) / 2, 1.2); }
+      if (c.kamikaze) { this.die(true); G.particles.explode(this.x, this.y, 44); pl.damage(c.kamikaze * (1 + (this.diff - 1) * 0.8), this.x, this.y); return; }
+      if (c.ram && this.ramCd <= 0 && spd > 30 && !pl.rolling) { this.ramCd = 1.0; pl.damage(c.ram * (1 + (this.diff - 1) * 0.8), this.x, this.y); this.kx -= Math.cos(this.angle) * 80; this.ky -= Math.sin(this.angle) * 80; G.particles.splash((this.x + pl.x) / 2, (this.y + pl.y) / 2, 1.2); }
       else if (pl.rolling && !pl.stats.rollDmg) { const a = angleTo(pl.x, pl.y, this.x, this.y); this.kx += Math.cos(a) * 120; this.ky += Math.sin(a) * 120; }
     }
     // decoy buoy ram
@@ -615,7 +618,7 @@ class Enemy {
       case 'dynamite': if (!inRange) return; this.attackT = c.attackCd; {
         const tx = p.x + (p.vx || 0) * 0.6 + rand(-20, 20), ty = p.y + (p.vy || 0) * 0.6 + rand(-20, 20);
         const dd = dist(this.x, this.y, tx, ty), flight = clamp(dd / 220, 0.6, 1.6), a = angleTo(this.x, this.y, tx, ty);
-        G.projectiles.push(new Projectile({ x: this.x, y: this.y, vx: Math.cos(a) * dd / flight, vy: Math.sin(a) * dd / flight, life: flight, dmg: 22, owner: 'enemy', sprite: SP.dynamite, size: 4, explode: 46, arc: true, vz: 150 * flight, knock: 0, absorbable: true }));
+        G.projectiles.push(new Projectile({ x: this.x, y: this.y, vx: Math.cos(a) * dd / flight, vy: Math.sin(a) * dd / flight, life: flight, dmg: 22 * (1 + (this.diff - 1) * 0.8), owner: 'enemy', sprite: SP.dynamite, size: 4, explode: 46, arc: true, vz: 150 * flight, knock: 0, absorbable: true }));
         Audio_.tone(300, 0.2, 'sine', 0.15, 200);
       } break;
       case 'buckshot': if (!inRange) return; this.attackT = c.attackCd; for (let i = -2; i <= 2; i++) this.shoot('buckshot', toP + i * 0.14 + rand(-0.03, 0.03), 300, 6, 0.8); Audio_.shot('shotgun'); this.recoilFx(toP, 'flash'); break;
@@ -623,6 +626,7 @@ class Enemy {
     }
   }
   shoot(kind, a, speed, dmg, life) {
+    dmg *= (1 + (this.diff - 1) * 0.8);
     const spr = kind === 'harpoon' ? SP.enemyHarpoon : kind === 'buckshot' ? SP.buckshot : SP.enemyBullet;
     G.projectiles.push(new Projectile({ x: this.x + Math.cos(a) * this.radius, y: this.y + Math.sin(a) * this.radius, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life, dmg, owner: 'enemy', sprite: spr, size: kind === 'harpoon' ? 4 : 2, trail: true, knock: 0 }));
     if (kind !== 'buckshot') this.recoilFx(a, 'flash');

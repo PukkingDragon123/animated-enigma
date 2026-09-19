@@ -7391,9 +7391,12 @@ const ENEMY_TYPES = {
 class Enemy {
   constructor(type, x, y) {
     const c = this.cfg = ENEMY_TYPES[type]; this.type = type;
-    this.x = x; this.y = y; this.vx = 0; this.vy = 0; this.hp = c.hp; this.maxHp = c.hp; this.radius = c.radius;
-    this.angle = angleTo(x, y, G.player.x, G.player.y); this.speed = c.speed; this.throttle = 1;
-    this.attackT = rand(0.5, c.attackCd || 2); this.state = 'approach'; this.stateT = rand(0, 2); this.orbitDir = Math.random() < 0.5 ? -1 : 1;
+    const diff = (G.director && G.director.difficulty) || 1;
+    this.diff = diff;
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0;
+    this.hp = Math.round(c.hp * (1 + (diff - 1) * 1.15)); this.maxHp = this.hp; this.radius = c.radius;
+    this.angle = angleTo(x, y, G.player.x, G.player.y); this.speed = c.speed * (1 + (diff - 1) * 0.30); this.throttle = 1;
+    this.attackT = rand(0.5, c.attackCd || 2) / (0.6 + diff * 0.4); this.state = 'approach'; this.stateT = rand(0, 2); this.orbitDir = Math.random() < 0.5 ? -1 : 1;
     this.dead = false; this.flash = 0; this.burn = 0; this.burnT = 0; this.kx = 0; this.ky = 0; this.ramCd = 0; this.bob = rand(0, TAU);
     this.wake = G.ocean.newWake(this, c.wake); this.sprite = SP.boats[type]; this.hurtSprite = SP.boatsHurt[type];
     this.zig = rand(0, TAU); this.burstLeft = 0; this.burstT = 0; this.strafeDir = 1;
@@ -7477,8 +7480,8 @@ class Enemy {
     const pl = G.player;
     const dp = dist(this.x, this.y, pl.x, pl.y);
     if (!pl.dead && !pl.diving && dp < this.radius + 11) {
-      if (c.kamikaze) { this.die(true); G.particles.explode(this.x, this.y, 44); pl.damage(c.kamikaze, this.x, this.y); return; }
-      if (c.ram && this.ramCd <= 0 && spd > 30 && !pl.rolling) { this.ramCd = 1.0; pl.damage(c.ram, this.x, this.y); this.kx -= Math.cos(this.angle) * 80; this.ky -= Math.sin(this.angle) * 80; G.particles.splash((this.x + pl.x) / 2, (this.y + pl.y) / 2, 1.2); }
+      if (c.kamikaze) { this.die(true); G.particles.explode(this.x, this.y, 44); pl.damage(c.kamikaze * (1 + (this.diff - 1) * 0.8), this.x, this.y); return; }
+      if (c.ram && this.ramCd <= 0 && spd > 30 && !pl.rolling) { this.ramCd = 1.0; pl.damage(c.ram * (1 + (this.diff - 1) * 0.8), this.x, this.y); this.kx -= Math.cos(this.angle) * 80; this.ky -= Math.sin(this.angle) * 80; G.particles.splash((this.x + pl.x) / 2, (this.y + pl.y) / 2, 1.2); }
       else if (pl.rolling && !pl.stats.rollDmg) { const a = angleTo(pl.x, pl.y, this.x, this.y); this.kx += Math.cos(a) * 120; this.ky += Math.sin(a) * 120; }
     }
     // decoy buoy ram
@@ -7498,7 +7501,7 @@ class Enemy {
       case 'dynamite': if (!inRange) return; this.attackT = c.attackCd; {
         const tx = p.x + (p.vx || 0) * 0.6 + rand(-20, 20), ty = p.y + (p.vy || 0) * 0.6 + rand(-20, 20);
         const dd = dist(this.x, this.y, tx, ty), flight = clamp(dd / 220, 0.6, 1.6), a = angleTo(this.x, this.y, tx, ty);
-        G.projectiles.push(new Projectile({ x: this.x, y: this.y, vx: Math.cos(a) * dd / flight, vy: Math.sin(a) * dd / flight, life: flight, dmg: 22, owner: 'enemy', sprite: SP.dynamite, size: 4, explode: 46, arc: true, vz: 150 * flight, knock: 0, absorbable: true }));
+        G.projectiles.push(new Projectile({ x: this.x, y: this.y, vx: Math.cos(a) * dd / flight, vy: Math.sin(a) * dd / flight, life: flight, dmg: 22 * (1 + (this.diff - 1) * 0.8), owner: 'enemy', sprite: SP.dynamite, size: 4, explode: 46, arc: true, vz: 150 * flight, knock: 0, absorbable: true }));
         Audio_.tone(300, 0.2, 'sine', 0.15, 200);
       } break;
       case 'buckshot': if (!inRange) return; this.attackT = c.attackCd; for (let i = -2; i <= 2; i++) this.shoot('buckshot', toP + i * 0.14 + rand(-0.03, 0.03), 300, 6, 0.8); Audio_.shot('shotgun'); this.recoilFx(toP, 'flash'); break;
@@ -7506,6 +7509,7 @@ class Enemy {
     }
   }
   shoot(kind, a, speed, dmg, life) {
+    dmg *= (1 + (this.diff - 1) * 0.8);
     const spr = kind === 'harpoon' ? SP.enemyHarpoon : kind === 'buckshot' ? SP.buckshot : SP.enemyBullet;
     G.projectiles.push(new Projectile({ x: this.x + Math.cos(a) * this.radius, y: this.y + Math.sin(a) * this.radius, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life, dmg, owner: 'enemy', sprite: spr, size: kind === 'harpoon' ? 4 : 2, trail: true, knock: 0 }));
     if (kind !== 'buckshot') this.recoilFx(a, 'flash');
@@ -7842,42 +7846,90 @@ class Boss {
 }
 
 /* ===== src/waves.js ===== */
-// ---- Spawn director: timed waves in Fisher Village -----------------------
+// ---- Spawn director: discrete, clearable waves --------------------------
+// You must WIPE OUT a wave before the upgrade screen opens. Between waves the
+// ocean goes quiet, you spend your salvage, then you call the next one in.
 const WAVES = [
-  { t: 0, name: 'WAVE 1', sub: 'Fishing dinghies leave the pier', pool: { dinghy: 1 }, interval: 1.9, max: 6, burst: [['dinghy', 4]] },
-  { t: 38, name: 'WAVE 2', sub: 'Net boats: absorb the nets! (E / Right-click)', pool: { dinghy: 2, netter: 1 }, interval: 1.7, max: 8, burst: [['netter', 3]] },
-  { t: 78, name: 'WAVE 3', sub: 'Harpooners keep their distance', pool: { dinghy: 2, netter: 1, harpooner: 1.2 }, interval: 1.6, max: 9, burst: [['harpooner', 3]] },
-  { t: 118, name: 'WAVE 4', sub: 'Speedboats on strafing runs', pool: { dinghy: 1.5, netter: 1, harpooner: 1, speedboat: 1.2 }, interval: 1.5, max: 10, burst: [['speedboat', 3]] },
-  { t: 158, name: 'WAVE 5', sub: 'Jetski bombers! Roll away from them', pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 2 }, interval: 1.25, max: 12, burst: [['jetski', 5]] },
-  { t: 198, name: 'WAVE 6', sub: 'Dynamite skiffs: absorb the dynamite', pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1.2 }, interval: 1.25, max: 12, burst: [['dynaboat', 3]] },
-  { t: 238, name: 'WAVE 7', sub: 'The Trawler', pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, trawler: 0.35 }, interval: 1.15, max: 13, burst: [['trawler', 1], ['dinghy', 4]] },
-  { t: 280, name: 'WAVE 8', sub: 'Gunboats from the harbour', pool: { dinghy: 0.6, netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, trawler: 0.4, gunboat: 0.5 }, interval: 1.05, max: 14, burst: [['gunboat', 2], ['speedboat', 2]] },
-  { t: 322, boss: true, name: 'THE VILLAGE CHIEF', sub: 'He rides a shark. Bait his charge into the rocks!', pool: { dinghy: 1, jetski: 1 }, interval: 4.5, max: 4 },
+  { name: 'WAVE 1',  sub: 'Fishing dinghies leave the pier',            pool: { dinghy: 1 },                                                        count: 8,  interval: 1.5, max: 5,  burst: [['dinghy', 3]] },
+  { name: 'WAVE 2',  sub: 'Net boats. Absorb the nets [E / right-click]', pool: { dinghy: 2, netter: 1.4 },                                          count: 11, interval: 1.4, max: 6,  burst: [['netter', 3]] },
+  { name: 'WAVE 3',  sub: 'Harpooners keep their distance',             pool: { dinghy: 1.6, netter: 1, harpooner: 1.4 },                           count: 13, interval: 1.3, max: 7,  burst: [['harpooner', 3]] },
+  { name: 'WAVE 4',  sub: 'Speedboats on strafing runs',                pool: { dinghy: 1.2, netter: 1, harpooner: 1, speedboat: 1.5 },             count: 15, interval: 1.2, max: 8,  burst: [['speedboat', 4]] },
+  { name: 'WAVE 5',  sub: 'Jetski bombers. Roll away from them',        pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 2.2 },    count: 17, interval: 1.1, max: 9,  burst: [['jetski', 5]] },
+  { name: 'WAVE 6',  sub: 'Dynamite skiffs. Absorb the sticks',         pool: { netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1.8 },  count: 18, interval: 1.05, max: 9, burst: [['dynaboat', 4]] },
+  { name: 'WAVE 7',  sub: 'The Trawler',                                pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, trawler: 0.5 }, count: 20, interval: 1.0, max: 10, burst: [['trawler', 1], ['dinghy', 4]] },
+  { name: 'WAVE 8',  sub: 'Gunboats out of the harbour',                pool: { netter: 1, harpooner: 1.2, speedboat: 1, jetski: 1, dynaboat: 1, trawler: 0.4, gunboat: 0.8 }, count: 22, interval: 0.95, max: 11, burst: [['gunboat', 2], ['speedboat', 3]] },
+  { name: 'WAVE 9',  sub: 'The whole fleet is awake now',               pool: { netter: 1, harpooner: 1.2, speedboat: 1.2, jetski: 1.4, dynaboat: 1.2, trawler: 0.5, gunboat: 0.9 }, count: 25, interval: 0.9, max: 12, burst: [['jetski', 5], ['gunboat', 2]] },
+  { name: 'WAVE 10', sub: 'They are not holding anything back',         pool: { harpooner: 1.2, speedboat: 1.3, jetski: 1.4, dynaboat: 1.3, trawler: 0.7, gunboat: 1.1 }, count: 28, interval: 0.85, max: 13, burst: [['trawler', 2], ['gunboat', 3]] },
+  { name: 'WAVE 11', sub: 'Everything they have left',                  pool: { speedboat: 1.3, jetski: 1.5, dynaboat: 1.3, trawler: 0.8, gunboat: 1.3 }, count: 32, interval: 0.8, max: 14, burst: [['gunboat', 3], ['dynaboat', 4]] },
+  { name: 'THE VILLAGE CHIEF', sub: 'He rides a shark. Bait his charge into the rocks', boss: true, pool: { jetski: 1, dinghy: 1 }, count: 999, interval: 5.0, max: 4 },
 ];
+
 class Director {
-  constructor() { this.time = 0; this.waveIdx = -1; this.spawnT = 2; this.started = false; this.bossSpawned = false; }
+  constructor() {
+    this.time = 0; this.waveIdx = -1; this.spawnT = 0;
+    this.started = false; this.bossSpawned = false;
+    this.state = 'idle';        // idle | fighting | cleared
+    this.remaining = 0; this.clearedAt = 0; this.wavesCleared = 0;
+  }
+  // enemies get tougher every wave; hazards read this too
+  get difficulty() { return 1 + Math.max(0, this.waveIdx) * 0.09; }
+  currentWave() { return WAVES[clamp(this.waveIdx, 0, WAVES.length - 1)]; }
+  get isBossWave() { return !!this.currentWave().boss; }
+  get cleared() { return this.state === 'cleared'; }
+  get lastWave() { return this.waveIdx >= WAVES.length - 1; }
+
+  begin() { this.started = true; this.startWave(0); }
+
+  startWave(i) {
+    this.waveIdx = i;
+    const w = WAVES[i]; if (!w) return;
+    this.state = 'fighting';
+    this.remaining = w.count;
+    this.spawnT = 0.8;
+    G.banner(w.name, w.boss ? '#ff6161' : '#ffe48f', 2.4, w.sub);
+    if (typeof Hazards !== 'undefined' && Hazards.difficulty !== undefined) Hazards.difficulty = this.difficulty;
+    if (w.burst) for (const [type, n] of w.burst) { this.spawnBurst(type, n); this.remaining -= n; }
+    if (w.boss && !this.bossSpawned) { this.bossSpawned = true; G.spawnBoss(); }
+  }
+
+  next() {
+    if (this.state !== 'cleared') return false;
+    if (this.lastWave) return false;
+    this.startWave(this.waveIdx + 1);
+    return true;
+  }
+
   update(dt) {
     if (!this.started) return;
     this.time += dt;
-    // advance wave
-    while (this.waveIdx + 1 < WAVES.length && this.time >= WAVES[this.waveIdx + 1].t) {
-      this.waveIdx++;
-      const w = WAVES[this.waveIdx];
-      G.banner(w.name, w.boss ? '#ff6161' : '#ffe48f', 2.4, w.sub);
-      if (w.burst) for (const [type, n] of w.burst) this.spawnBurst(type, n);
-      if (w.boss && !this.bossSpawned) { this.bossSpawned = true; G.spawnBoss(); }
+    if (this.state !== 'fighting') return;
+    const w = this.currentWave(); if (!w) return;
+    const alive = G.enemies.length;
+
+    if (w.boss) {
+      // the boss wave ends with the Chief, not with a body count
+      this.spawnT -= dt;
+      if (this.spawnT <= 0 && alive < w.max) { this.spawnT = w.interval * rand(0.7, 1.3); this.spawnOne(w); }
+      return;
     }
-    const w = WAVES[Math.max(0, this.waveIdx)];
-    if (!w) return;
-    this.spawnT -= dt;
-    const alive = G.enemies.filter(e => !e.dead).length;
-    if (this.spawnT <= 0 && alive < w.max) {
-      this.spawnT = w.interval * rand(0.7, 1.3);
-      const type = this.pickType(w.pool);
-      const pos = this.spawnPos();
-      G.spawnEnemy(type, pos.x, pos.y);
+
+    if (this.remaining > 0) {
+      this.spawnT -= dt;
+      if (this.spawnT <= 0 && alive < w.max) {
+        this.spawnT = w.interval * rand(0.75, 1.25);
+        this.spawnOne(w); this.remaining--;
+      }
+    } else if (alive === 0) {
+      this.clear();
     }
   }
+
+  clear() {
+    this.state = 'cleared'; this.clearedAt = this.time; this.wavesCleared++;
+    G.onWaveCleared(this.waveIdx);
+  }
+
+  spawnOne(w) { const pos = this.spawnPos(); G.spawnEnemy(this.pickType(w.pool), pos.x, pos.y); }
   pickType(pool) { let tot = 0; for (const k in pool) tot += pool[k]; let r = Math.random() * tot; for (const k in pool) { r -= pool[k]; if (r <= 0) return k; } return Object.keys(pool)[0]; }
   spawnPos() {
     const p = G.player;
@@ -7889,15 +7941,14 @@ class Director {
     return { x: clamp(p.x + 260, 30, G.ocean.W - 30), y: clamp(p.y, G.ocean.shoreY + 40, G.ocean.H - 30) };
   }
   spawnBurst(type, n) {
-    const base = rand(0, TAU);
+    const base = rand(0, TAU), p = G.player;
     for (let i = 0; i < n; i++) {
       const a = base + (i - n / 2) * 0.25, r = 270;
-      const p = G.player;
-      const x = clamp(p.x + Math.cos(a) * r, 30, G.ocean.W - 30), y = clamp(p.y + Math.sin(a) * r, G.ocean.shoreY + 20, G.ocean.H - 30);
+      const x = clamp(p.x + Math.cos(a) * r, 30, G.ocean.W - 30);
+      const y = clamp(p.y + Math.sin(a) * r, G.ocean.shoreY + 20, G.ocean.H - 30);
       G.spawnEnemy(type, x, y);
     }
   }
-  currentWave() { return WAVES[Math.max(0, this.waveIdx)]; }
 }
 
 /* ===== src/treescene.js ===== */
@@ -8229,6 +8280,7 @@ const UI = {
     const w0 = G.director.currentWave();
     // before the fight the village's own sign is on screen, so don't repeat it
     const waveLabel = G.director.started ? (w0.boss ? 'BOSS' : w0.name) : null;
+    void waveLabel;
     const cw = Math.max(88, waveLabel ? textWidth(waveLabel, 6) + 20 : 0);
     UIKit.panel(ctx, 320 - cw / 2, 2, cw, waveLabel ? 24 : 18, 'dark');
     pixelTextOutlined(ctx, fmtTime(G.director.time), 320, waveLabel ? 5 : 4, 9, '#ffffff', '#14141c', 'center');
@@ -8296,6 +8348,31 @@ const UI = {
         pixelTextOutlined(ctx, bn.sub, 320, 86, 6, '#ffffff', '#14141c', 'center');
       }
       ctx.globalAlpha = 1;
+    }
+
+    // ---------- between waves ----------
+    const d = G.director;
+    if (d.cleared && !G.boss) {
+      const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+      const pulse = Math.floor(t * 2) % 2;
+      UIKit.panel(ctx, 128, 250, 384, 46, 'gold');
+      pixelTextOutlined(ctx, d.lastWave ? 'THE FLEET IS BROKEN' : 'WAVE CLEARED', 320, 257, 11,
+        pulse ? '#ffffff' : '#ffe48f', '#14141c', 'center');
+      if (d.lastWave) {
+        pixelTextOutlined(ctx, 'Only the Chief is left. Take a breath.', 320, 273, 7, '#e8d9b4', '#14141c', 'center');
+        pixelTextOutlined(ctx, touch ? 'THE DEEP to spend salvage' : '[TAB] THE DEEP to spend salvage', 320, 283, 6, '#c9b890', '#14141c', 'center');
+      } else {
+        pixelTextOutlined(ctx, touch ? 'Open THE DEEP to spend your salvage' : '[TAB] open THE DEEP and spend your salvage', 320, 272, 7, '#e8d9b4', '#14141c', 'center');
+        pixelTextOutlined(ctx, touch ? 'TAP HERE FOR THE NEXT WAVE' : '[ENTER] CALL IN THE NEXT WAVE', 320, 282, 8,
+          pulse ? '#ffe48f' : '#ffffff', '#14141c', 'center');
+      }
+    } else if (d.started && !d.isBossWave) {
+      // a live wave: how much of it is left
+      const w = d.currentWave();
+      const left = d.remaining + G.enemies.length, total = w.count;
+      const k = clamp(1 - left / Math.max(1, total), 0, 1);
+      UIKit.bar(ctx, 250, 28, 140, 7, k, '#ffe48f', '#1b2028');
+      pixelTextOutlined(ctx, `${Math.max(0, left)} LEFT`, 320, 29, 5, '#ffffff', '#14141c', 'center');
     }
 
     if (hpk < 0.3) { ctx.fillStyle = `rgba(200,20,20,${(0.12 + Math.sin(t * 6) * 0.08).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
@@ -9599,7 +9676,7 @@ class Game {
     this.fisherman = this.firstRun ? new Fisherman(this.pier.x, this.pier.y1 - 6) : null;
     this.cam.x = this.player.x - 320; this.cam.y = this.player.y - 180;
     UI.banner = null;
-    if (!this.firstRun) { this.director.started = true; this.banner('REMATCH', '#ffe48f', 2, 'The village heard you were coming.'); }
+    if (!this.firstRun) { this.director.begin(); this.banner('REMATCH', '#ffe48f', 2, 'The village heard you were coming.'); }
   }
   // ---------------------------------------------------------- helpers
   spawnEnemy(type, x, y) { const e = new Enemy(type, x, y); this.enemies.push(e); this.particles.splash(x, y, 0.6); return e; }
@@ -9618,7 +9695,20 @@ class Game {
   }
   banner(text, color, dur = 2, sub = null) { UI.banner = { text, color, dur, sub, t: 0 }; }
   shake(n) { this.shakeAmt = Math.min(20, Math.max(this.shakeAmt, n)); }
-  onFishermanShot() { this.holdFire = false; if (typeof Village !== 'undefined') Village.panicAll(); this.banner('FISHER VILLAGE', '#ff6161', 2.6, 'The otter has spoken. FIGHT!'); setTimeout(() => { if (this.director) this.director.started = true; }, 1200); this.state = 'play'; }
+  onFishermanShot() {
+    this.holdFire = false;
+    if (typeof Village !== 'undefined') Village.panicAll();
+    this.banner('FISHER VILLAGE', '#ff6161', 2.6, 'The otter has spoken. FIGHT!');
+    setTimeout(() => { if (this.director && !this.director.started) this.director.begin(); }, 1200);
+    this.state = 'play';
+  }
+  // a wave is only over when every last boat is on the bottom
+  onWaveCleared(idx) {
+    const d = this.director;
+    this.banner('WAVE CLEARED', '#6fd88e', 2.6, d.lastWave ? 'Nothing left but the Chief.' : 'Spend your salvage, then call the next one in.');
+    Audio_.rampage();
+    this.pickups.forEach(p => { p.life = Math.max(p.life, 30); });
+  }
   onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() { this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0; this.state = 'victory_wait'; }
   onPlayerDeath() { this.particles.blood(this.player.x, this.player.y, 4); this.particles.splash(this.player.x, this.player.y, 3); this.shake(16); this.endT = 0; this.state = 'dead_wait'; }
@@ -9648,8 +9738,15 @@ class Game {
         break;
       case 'play':
         this.updateWorld(dt);
-        if (Input.hit('Tab')) { this.prevState = 'play'; this.state = 'tree'; }
+        if (Input.hit('Tab')) {
+          if (this.upgradesOpen()) { this.prevState = 'play'; this.state = 'tree'; }
+          else { this.banner('SINK THE WAVE FIRST', '#ff6161', 1.6, 'The Deep only opens between waves.'); Audio_.deny(); }
+        }
         else if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'paused';
+        if (this.director.cleared && !this.director.lastWave) {
+          const tap = Input.mouse.clicked && Input.mouse.x > 128 && Input.mouse.x < 512 && Input.mouse.y > 250 && Input.mouse.y < 296;
+          if (Input.hit('Enter') || Input.hit('NumpadEnter') || Input.hit('KeyN') || tap) this.director.next();
+        }
         this.weaponKeys();
         break;
       case 'tree':
@@ -9668,6 +9765,13 @@ class Game {
         if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; }
         break;
     }
+  }
+  // the upgrade screen is available between waves, before the fight starts,
+  // and on the end screens
+  upgradesOpen() {
+    if (this.state === 'gameover' || this.state === 'victory' || this.state === 'dialogue') return true;
+    const d = this.director;
+    return !d.started || d.state === 'cleared';
   }
   weaponKeys() {
     const wl = this.tree.weaponsUnlocked();

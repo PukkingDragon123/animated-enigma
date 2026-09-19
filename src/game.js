@@ -56,7 +56,7 @@ class Game {
     this.fisherman = this.firstRun ? new Fisherman(this.pier.x, this.pier.y1 - 6) : null;
     this.cam.x = this.player.x - 320; this.cam.y = this.player.y - 180;
     UI.banner = null;
-    if (!this.firstRun) { this.director.started = true; this.banner('REMATCH', '#ffe48f', 2, 'The village heard you were coming.'); }
+    if (!this.firstRun) { this.director.begin(); this.banner('REMATCH', '#ffe48f', 2, 'The village heard you were coming.'); }
   }
   // ---------------------------------------------------------- helpers
   spawnEnemy(type, x, y) { const e = new Enemy(type, x, y); this.enemies.push(e); this.particles.splash(x, y, 0.6); return e; }
@@ -75,7 +75,20 @@ class Game {
   }
   banner(text, color, dur = 2, sub = null) { UI.banner = { text, color, dur, sub, t: 0 }; }
   shake(n) { this.shakeAmt = Math.min(20, Math.max(this.shakeAmt, n)); }
-  onFishermanShot() { this.holdFire = false; if (typeof Village !== 'undefined') Village.panicAll(); this.banner('FISHER VILLAGE', '#ff6161', 2.6, 'The otter has spoken. FIGHT!'); setTimeout(() => { if (this.director) this.director.started = true; }, 1200); this.state = 'play'; }
+  onFishermanShot() {
+    this.holdFire = false;
+    if (typeof Village !== 'undefined') Village.panicAll();
+    this.banner('FISHER VILLAGE', '#ff6161', 2.6, 'The otter has spoken. FIGHT!');
+    setTimeout(() => { if (this.director && !this.director.started) this.director.begin(); }, 1200);
+    this.state = 'play';
+  }
+  // a wave is only over when every last boat is on the bottom
+  onWaveCleared(idx) {
+    const d = this.director;
+    this.banner('WAVE CLEARED', '#6fd88e', 2.6, d.lastWave ? 'Nothing left but the Chief.' : 'Spend your salvage, then call the next one in.');
+    Audio_.rampage();
+    this.pickups.forEach(p => { p.life = Math.max(p.life, 30); });
+  }
   onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() { this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0; this.state = 'victory_wait'; }
   onPlayerDeath() { this.particles.blood(this.player.x, this.player.y, 4); this.particles.splash(this.player.x, this.player.y, 3); this.shake(16); this.endT = 0; this.state = 'dead_wait'; }
@@ -105,8 +118,15 @@ class Game {
         break;
       case 'play':
         this.updateWorld(dt);
-        if (Input.hit('Tab')) { this.prevState = 'play'; this.state = 'tree'; }
+        if (Input.hit('Tab')) {
+          if (this.upgradesOpen()) { this.prevState = 'play'; this.state = 'tree'; }
+          else { this.banner('SINK THE WAVE FIRST', '#ff6161', 1.6, 'The Deep only opens between waves.'); Audio_.deny(); }
+        }
         else if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'paused';
+        if (this.director.cleared && !this.director.lastWave) {
+          const tap = Input.mouse.clicked && Input.mouse.x > 128 && Input.mouse.x < 512 && Input.mouse.y > 250 && Input.mouse.y < 296;
+          if (Input.hit('Enter') || Input.hit('NumpadEnter') || Input.hit('KeyN') || tap) this.director.next();
+        }
         this.weaponKeys();
         break;
       case 'tree':
@@ -125,6 +145,13 @@ class Game {
         if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; }
         break;
     }
+  }
+  // the upgrade screen is available between waves, before the fight starts,
+  // and on the end screens
+  upgradesOpen() {
+    if (this.state === 'gameover' || this.state === 'victory' || this.state === 'dialogue') return true;
+    const d = this.director;
+    return !d.started || d.state === 'cleared';
   }
   weaponKeys() {
     const wl = this.tree.weaponsUnlocked();
