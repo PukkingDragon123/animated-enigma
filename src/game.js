@@ -111,7 +111,8 @@ class Game {
       case 'victory_wait': this.updateWorld(dt, false); this.endT += dt; if (this.endT > 3.5) this.state = 'victory'; break;
       case 'gameover': case 'victory':
         this.updateWorld(dt * 0.3, true);
-        if (Input.hit('KeyR')) { this.firstRun = false; this.newRun(); this.state = 'play'; }
+        const tapRestart = typeof MobileUI !== 'undefined' && MobileUI.enabled && Input.mouse.clicked;
+        if (Input.hit('KeyR') || tapRestart) { this.firstRun = false; this.newRun(); this.state = 'play'; }
         if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; }
         break;
     }
@@ -185,7 +186,13 @@ class Game {
     if (this.state === 'dialogue') Dialogue.render(ctx, cam);
     if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree') UI.drawHUD(ctx, t);
     if (this.state === 'tree') UI.drawTree(ctx, t);
-    if (this.state === 'paused') { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, 640, 360); pixelText(ctx, 'PAUSED', 320, 150, 20, '#fff', 'center'); pixelText(ctx, '[ESC] resume   [TAB] workshop   [M] mute', 320, 180, 8, '#aab', 'center'); this.drawControls(ctx, 200); }
+    if (this.state === 'paused') {
+      ctx.fillStyle = 'rgba(2,8,18,0.78)'; ctx.fillRect(0, 0, 640, 360);
+      UIKit.ribbon(ctx, 320, 54, 'PAUSED', 'gold');
+      UIKit.panel(ctx, 120, 96, 400, 150, 'dark');
+      pixelText(ctx, '[ESC] resume    [TAB] the deep    [M] mute', 320, 106, 7, '#ffe48f', 'center');
+      this.drawControls(ctx, 126);
+    }
     if (this.state === 'gameover') drawEndScreen(ctx, t, false);
     if (this.state === 'victory') drawEndScreen(ctx, t, true);
     if (this.state === 'dead_wait') { ctx.fillStyle = `rgba(120,10,20,${Math.min(0.7, this.endT * 0.4).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
@@ -195,8 +202,17 @@ class Game {
     this.blit();
   }
   drawControls(ctx, y) {
-    const lines = ['WASD / arrows: swim', 'SPACE: Manatee Roll (dodge, invulnerable)', 'E / right-click: ABSORB incoming attacks -> fills Otter Rampage', 'Q: unleash OTTER RAMPAGE when the meter is full', 'Left mouse: aim manually (otter auto-aims otherwise)', '1-7 / wheel: switch weapon   TAB: Workshop (skill tree)'];
-    lines.forEach((l, i) => pixelText(ctx, l, 320, y + i * 11, 7, '#dde', 'center'));
+    const lines = [
+      'WASD or arrows       swim',
+      'SPACE                Manatee Roll, invulnerable dash',
+      'E / right-click      raise the SHIELD and absorb a hit',
+      'Q                    unleash OTTER RAMPAGE when full',
+      'Left mouse           aim by hand (the otter auto-aims)',
+      '1-7 or wheel         switch weapon',
+      'SHIFT / F / R        dive, decoy buoy, tidal slam',
+      'TAB                  THE DEEP, spend your salvage',
+    ];
+    lines.forEach((l, i) => pixelText(ctx, l, 150, y + i * 13, 6, '#cfe0ec', 'left'));
   }
   renderVillage(ctx, cam, t) {
     if (cam.y > SHORE_Y + 200) return;

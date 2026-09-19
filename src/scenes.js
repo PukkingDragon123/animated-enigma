@@ -146,36 +146,63 @@ const Dialogue = {
     const sx = Math.round(f.x - cam.x), sy = Math.round(f.y - cam.y);
     if (this.t > 0.6) {
       const n = Math.min(this.text.length, Math.floor((this.t - 0.6) * 30));
-      ctx.font = 'bold 7px monospace'; const w = ctx.measureText(this.text).width + 10;
-      const bx = clamp(sx - w / 2, 4, 636 - w), by = sy - 52;
-      ctx.fillStyle = '#fff'; ctx.fillRect(bx, by, w, 16); ctx.fillStyle = '#14141c'; ctx.fillRect(bx - 1, by + 1, w + 2, 14); ctx.fillStyle = '#fff'; ctx.fillRect(bx, by, w, 16);
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(sx - 4, by + 16); ctx.lineTo(sx + 4, by + 16); ctx.lineTo(sx, by + 22); ctx.fill();
-      pixelText(ctx, this.text.slice(0, n), bx + 5, by + 4, 7, '#14141c', 'left', false);
+      const shown = this.text.slice(0, n);
+      const w = Math.max(60, textWidth(this.text, 7) + 18);
+      const bx = clamp(sx - w / 2, 4, 636 - w), by = sy - 58;
+      UIKit.panel(ctx, bx, by, w, 22, 'parchment');
+      ctx.fillStyle = '#e8dcc0';
+      ctx.beginPath(); ctx.moveTo(sx - 5, by + 21); ctx.lineTo(sx + 5, by + 21); ctx.lineTo(sx, by + 29); ctx.fill();
+      ctx.fillStyle = '#2a2016';
+      ctx.beginPath(); ctx.moveTo(sx - 6, by + 22); ctx.lineTo(sx - 4, by + 22); ctx.lineTo(sx, by + 30); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(sx + 6, by + 22); ctx.lineTo(sx + 4, by + 22); ctx.lineTo(sx, by + 30); ctx.fill();
+      pixelText(ctx, shown, bx + 9, by + 7, 7, '#2a2016', 'left', false);
     }
     if (this.done) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 300, 640, 30);
-      pixelText(ctx, Math.floor(this.t * 2) % 2 ? '[LEFT CLICK]  Let the otter answer.' : '[LEFT CLICK]  Let the otter answer.', 320, 306, 10, '#ffe48f', 'center');
-      pixelText(ctx, 'WASD move   SPACE roll   E / right-click absorb   TAB workshop', 320, 319, 6, '#aab', 'center');
+      const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+      UIKit.panel(ctx, 60, 298, 520, 40, 'dark');
+      pixelTextOutlined(ctx, touch ? 'TAP FIRE. LET THE OTTER ANSWER.' : 'LEFT CLICK. LET THE OTTER ANSWER.',
+        320, 304, 10, Math.floor(this.t * 2) % 2 ? '#ffe48f' : '#ffffff', '#14141c', 'center');
+      pixelText(ctx, touch ? 'Helm to swim   SHIELD to parry   ROLL to dash'
+                           : 'WASD swim   SPACE roll   E / right-click shield   TAB workshop',
+        320, 320, 6, '#9ab0c0', 'center');
     }
   },
 };
 
 function drawEndScreen(ctx, t, win) {
-  ctx.fillStyle = win ? 'rgba(10,30,20,0.85)' : 'rgba(30,5,10,0.85)'; ctx.fillRect(0, 0, 640, 360);
+  ctx.fillStyle = win ? 'rgba(6,26,20,0.88)' : 'rgba(30,5,10,0.88)';
+  ctx.fillRect(0, 0, 640, 360);
   const s = G.stats;
+  UIKit.ribbon(ctx, 320, 18, win ? 'VILLAGE LIBERATED' : 'THE SEA TAKES ANOTHER', win ? 'gold' : 'dark');
   if (win) {
-    pixelText(ctx, 'FISHER VILLAGE', 320, 40, 22, '#ffe48f', 'center');
-    pixelText(ctx, 'LIBERATED', 320, 66, 26, '#6fd88e', 'center');
-    pixelText(ctx, 'The Chief sank with his shark. The boats will not fish here again.', 320, 100, 8, '#fff', 'center');
-    pixelText(ctx, 'Next destination: THE CANNERY  (the manatee is not done)', 320, 114, 7, '#8ac6ff', 'center');
+    pixelTextOutlined(ctx, 'The Chief sank with his shark.', 320, 48, 7, '#ffffff', '#14141c', 'center');
+    pixelTextOutlined(ctx, 'The boats will not fish here again.', 320, 58, 7, '#ffffff', '#14141c', 'center');
+    pixelText(ctx, 'NEXT DESTINATION: THE CANNERY', 320, 72, 6, '#8ac6ff', 'center');
   } else {
-    pixelText(ctx, 'THE SEA TAKES ANOTHER', 320, 50, 22, '#ff6161', 'center');
-    pixelText(ctx, 'The otter drags you back to the reef. Your scrap and upgrades are kept.', 320, 84, 8, '#fff', 'center');
-    pixelText(ctx, 'Spend them wisely. Strategy, not luck.', 320, 98, 7, '#ffe48f', 'center');
+    pixelTextOutlined(ctx, 'The otter drags you back to the reef.', 320, 48, 7, '#ffffff', '#14141c', 'center');
+    pixelText(ctx, 'Your scrap and upgrades are kept. Spend them better.', 320, 60, 6, '#ffe48f', 'center');
+    pixelText(ctx, 'Strategy, not luck.', 320, 72, 6, '#9ab0c0', 'center');
   }
-  const rows = [['Time survived', fmtTime(G.director.time)], ['Boats sunk', s.kills], ['Attacks absorbed', s.absorbs], ['Boss crashes into rocks', s.bossCrashes], ['Damage dealt', Math.round(s.damageDealt)], ['Damage taken', Math.round(s.damageTaken)], ['Scrap collected', s.scrapCollected], ['Upgrades owned', G.tree.unlocked.size + '/' + SKILL_NODES.length]];
-  rows.forEach(([k, v], i) => { pixelText(ctx, k, 250, 140 + i * 13, 8, '#aab', 'right'); pixelText(ctx, v + '', 270, 140 + i * 13, 8, '#fff', 'left'); });
-  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 300, 640, 30);
-  pixelText(ctx, '[R] ' + (win ? 'Play again with your build' : 'Rematch (keep upgrades)') + '        [TAB] Workshop', 320, 306, 10, Math.floor(t * 2) % 2 ? '#fff' : '#ffe48f', 'center');
-  pixelText(ctx, 'Made in the bay. Manatee vs Boats.', 320, 320, 6, '#889', 'center');
+  const rows = [
+    ['Time survived', fmtTime(G.director.time)],
+    ['Boats sunk', s.kills],
+    ['Attacks absorbed', s.absorbs],
+    ['Boss crashes into rock', s.bossCrashes],
+    ['Damage dealt', Math.round(s.damageDealt)],
+    ['Damage taken', Math.round(s.damageTaken)],
+    ['Scrap collected', s.scrapCollected],
+    ['Upgrades taken', G.tree.unlocked.size + '/' + SKILL_NODES.length],
+  ];
+  UIKit.panel(ctx, 150, 88, 340, 196, 'dark');
+  rows.forEach(([k, v], i) => {
+    const y = 102 + i * 21;
+    pixelText(ctx, k, 300, y, 7, '#9ab0c0', 'right');
+    pixelTextOutlined(ctx, v + '', 316, y, 8, '#ffffff', '#14141c', 'left');
+    if (i < rows.length - 1) UIKit.divider(ctx, 166, y + 13, 308);
+  });
+  const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+  UIKit.panel(ctx, 100, 296, 440, 34, 'dark');
+  pixelTextOutlined(ctx, touch ? 'TAP TO FIGHT AGAIN' : '[R] FIGHT AGAIN        [TAB] THE DEEP',
+    320, 302, 10, Math.floor(t * 2) % 2 ? '#ffffff' : '#ffe48f', '#14141c', 'center');
+  pixelText(ctx, win ? 'Your build carries over.' : 'Everything you unlocked carries over.', 320, 317, 6, '#9ab0c0', 'center');
 }
