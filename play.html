@@ -1578,14 +1578,14 @@ function makeRock(seed, size) {
   const f = blobField(W, H, lobes);
 
   // ---- shade it like the rest of the art, then rough it up
-  const ramp = ['#2d3138', '#43484f', '#5c626b', '#7a8089', '#9aa0a9'];
+  const ramp = ['#22262c', '#33373f', '#474d56', '#5f656f', '#787e88'];
   const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: '#14141c', smooth: 2, lift: 0.14 });
   const ox = rng.range(0, 90), oy = rng.range(0, 90);
   for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
     const i = y * W + x; if (f[i] <= 0.03) continue;
     const n = vnoise(x * 0.34 + ox, y * 0.34 + oy);
-    if (n > 0.76) { ctx.fillStyle = '#2a2e35'; ctx.fillRect(x, y, 1, 1); }           // cracks
-    else if (n < 0.20) { ctx.fillStyle = '#a8aeb7'; ctx.fillRect(x, y, 1, 1); }      // chipped facets
+    if (n > 0.84) { ctx.fillStyle = '#1b1f25'; ctx.fillRect(x, y, 1, 1); }           // cracks
+    else if (n < 0.11) { ctx.fillStyle = '#8b919b'; ctx.fillRect(x, y, 1, 1); }      // chipped facets
     // algae only clings to the upper, lit faces
     if (f[i] > 0.12 && f[i - W] <= 0.03 && rng.next() < 0.55) {
       ctx.fillStyle = rng.next() < 0.5 ? '#4f8f5a' : '#3c7047'; ctx.fillRect(x, y, 1, 1);
@@ -1607,20 +1607,37 @@ function makeRock(seed, size) {
 
   // ---- foam fringe: the real silhouette dilated by a few pixels, so the
   //      surf hugs the rock instead of sitting in a floating ellipse
-  const foam = document.createElement('canvas'); foam.width = W + 8; foam.height = H + 8;
-  const fx = foam.getContext('2d'), FW = W + 8;
-  const inside = (x, y) => { const xx = x - 4, yy = y - 4; return xx >= 0 && yy >= 0 && xx < W && yy < H && f[yy * W + xx] > 0.03; };
-  for (let y = 0; y < H + 8; y++) for (let x = 0; x < FW; x++) {
+  const FW = W + 10, FH = H + 10;
+  const inside = (x, y) => { const xx = x - 5, yy = y - 5; return xx >= 0 && yy >= 0 && xx < W && yy < H && f[yy * W + xx] > 0.03; };
+  // distance from the silhouette, 1..4
+  const ring = new Uint8Array(FW * FH);
+  for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) {
     if (inside(x, y)) continue;
-    let near = 0;
-    for (let dy = -3; dy <= 3 && !near; dy++) for (let dx = -3; dx <= 3; dx++) {
-      if (dx * dx + dy * dy > 10) continue;
-      if (inside(x + dx, y + dy)) { near = 1; break; }
+    let best = 99;
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      if (!inside(x + dx, y + dy)) continue;
+      const d = Math.max(Math.abs(dx), Math.abs(dy));
+      if (d < best) best = d;
     }
-    if (near) { fx.fillStyle = '#ffffff'; fx.fillRect(x, y, 1, 1); }
+    if (best <= 4) ring[y * FW + x] = best;
+  }
+  // three dithered variants so the surf churns instead of sitting still
+  const foams = [];
+  for (let v = 0; v < 3; v++) {
+    const fc = document.createElement('canvas'); fc.width = FW; fc.height = FH;
+    const fx = fc.getContext('2d');
+    for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) {
+      const d = ring[y * FW + x]; if (!d) continue;
+      const h = hash2(x * 3 + v * 131, y * 3 + v * 57);
+      const keep = d === 1 ? h < 0.94 : d === 2 ? h < 0.62 : d === 3 ? h < 0.30 : h < 0.12;
+      if (!keep) continue;
+      fx.fillStyle = d <= 1 ? '#ffffff' : d === 2 ? '#e4f6ff' : '#bfe6f5';
+      fx.fillRect(x, y, 1, 1);
+    }
+    foams.push({ c: fc, w: FW, h: FH, ax: cx + 5, ay: cy + 5 });
   }
   const spr = { c, w: W, h: H, ax: cx, ay: cy };
-  spr.foam = { c: foam, w: FW, h: H + 8, ax: cx + 4, ay: cy + 4 };
+  spr.foams = foams; spr.foam = foams[0];
   return spr;
 }
 
@@ -6894,14 +6911,13 @@ class Rock {
     if (sx < -90 || sy < -90 || sy > 460 || sx > 740) return;
     // surf breaking on the rock: the dilated silhouette, dithered so it
     // shimmers, and pulsing with the swell instead of a drawn-on ellipse
-    const fm = this.sprite.foam;
-    if (fm) {
-      const pulse = 0.34 + Math.sin(t * 2.1 + this.x * 0.05) * 0.2;
+    const fms = this.sprite.foams;
+    if (fms) {
+      const fm = fms[Math.floor(t * 7 + this.x * 0.1) % fms.length];
+      const pulse = 0.62 + Math.sin(t * 2.1 + this.x * 0.05) * 0.26;
       ctx.save();
-      ctx.globalAlpha = clamp(pulse, 0.08, 0.6);
-      ctx.drawImage(fm.c, sx - fm.ax, sy - fm.ay);
-      ctx.globalAlpha = clamp(pulse * 0.7, 0.05, 0.4);
-      ctx.drawImage(fm.c, sx - fm.ax, sy - fm.ay + 1);
+      ctx.globalAlpha = clamp(pulse, 0.2, 0.95);
+      ctx.drawImage(fm.c, sx - fm.ax, sy - fm.ay + Math.round(Math.sin(t * 1.7 + this.y * 0.04)));
       ctx.restore();
     }
     if (this.glow > 0) {

@@ -11,14 +11,13 @@ class Rock {
     if (sx < -90 || sy < -90 || sy > 460 || sx > 740) return;
     // surf breaking on the rock: the dilated silhouette, dithered so it
     // shimmers, and pulsing with the swell instead of a drawn-on ellipse
-    const fm = this.sprite.foam;
-    if (fm) {
-      const pulse = 0.34 + Math.sin(t * 2.1 + this.x * 0.05) * 0.2;
+    const fms = this.sprite.foams;
+    if (fms) {
+      const fm = fms[Math.floor(t * 7 + this.x * 0.1) % fms.length];
+      const pulse = 0.62 + Math.sin(t * 2.1 + this.x * 0.05) * 0.26;
       ctx.save();
-      ctx.globalAlpha = clamp(pulse, 0.08, 0.6);
-      ctx.drawImage(fm.c, sx - fm.ax, sy - fm.ay);
-      ctx.globalAlpha = clamp(pulse * 0.7, 0.05, 0.4);
-      ctx.drawImage(fm.c, sx - fm.ax, sy - fm.ay + 1);
+      ctx.globalAlpha = clamp(pulse, 0.2, 0.95);
+      ctx.drawImage(fm.c, sx - fm.ax, sy - fm.ay + Math.round(Math.sin(t * 1.7 + this.y * 0.04)));
       ctx.restore();
     }
     if (this.glow > 0) {
