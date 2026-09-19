@@ -10986,6 +10986,20 @@ const UI = {
       if (this.bubbles.length > 90) this.bubbles.splice(0, this.bubbles.length - 90);
     },
 
+    // a bent two-bone limb: upper arm, forearm, then a clutching paw
+    limb(bx, sx, sy, a1, a2) {
+      bx.save(); bx.translate(sx, sy); bx.rotate(a1);
+      bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
+      bx.translate(8, 0); bx.rotate(a2);
+      bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
+      bx.translate(10, 0);
+      bx.fillStyle = '#1a1220'; bx.fillRect(-3, -4, 6, 8);
+      bx.fillStyle = '#c8703c'; bx.fillRect(-2, -3, 4, 6);
+      bx.fillStyle = '#f0b87e'; bx.fillRect(-2, -3, 2, 3);
+      bx.fillStyle = '#1a1220'; bx.fillRect(2, -4, 2, 2); bx.fillRect(2, 2, 2, 2);
+      bx.restore();
+    },
+
     draw(ctx, sc) {
       this.build();
       if (typeof CH === 'undefined' || !CH.otterTorso) return;
@@ -10994,54 +11008,44 @@ const UI = {
       const bx = this.bufCtx, BW = this.buf.width, BH = this.buf.height;
       bx.clearRect(0, 0, BW, BH);
       bx.save();
-      bx.translate(BW / 2, BH / 2 + 6);
+      bx.translate(BW / 2, BH / 2 + 4);
       bx.scale(S, S);
 
-      // lunging toward a bubble tips his whole body
-      let lean = Math.sin(t * 0.7) * 0.12 + 0.1;
+      // he hangs limp and tipped back; a lunge whips him toward the bubble
+      let lean = -0.26 + Math.sin(t * 0.62) * 0.16;
       let reach = 0;
       if (this.lunge) {
         const k = this.lunge.t / this.lunge.dur;
         reach = k < 0.4 ? k / 0.4 : Math.max(0, 1 - (k - 0.4) / 0.6);
-        const a = angleTo(this.x, this.y, this.lunge.x, this.lunge.y);
-        lean = lerp(lean, a * 0.24, reach);
+        lean = lerp(lean, 0.22, reach);
       }
       bx.rotate(lean);
 
       // chest heaving: a slow, desperate pump
-      const heave = 1 + Math.sin(t * (2.4 + panic * 2.4)) * (0.05 + panic * 0.05);
+      const heave = 1 + Math.sin(t * (2.4 + panic * 2.4)) * (0.06 + panic * 0.06);
+      const fast = t * (3.4 + panic * 3.4);
 
-      // tail thrashing
-      bx.save(); bx.translate(-8, 6);
-      bx.rotate(2.35 + Math.sin(t * (3 + panic * 5)) * (0.4 + panic * 0.45));
+      // tail hanging and thrashing below him
+      bx.save(); bx.translate(-5, 9);
+      bx.rotate(1.95 + Math.sin(fast * 0.75) * (0.34 + panic * 0.4));
       bx.drawImage(CH.otterTail.c, -CH.otterTail.ax, -CH.otterTail.ay);
       bx.restore();
 
-      // far arm, clawing upward
-      const armAngle = i => {
-        const ph = t * (3.6 + panic * 4.2) + i * 2.3;
-        return (i ? -1 : 1) * (1.15 + Math.sin(ph) * (0.55 + panic * 0.5)) + (i ? 0.45 : -0.45);
-      };
-      bx.save(); bx.translate(5, -3); bx.rotate(armAngle(1));
-      bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
-      bx.restore();
+      // far arm, clawing at water that will not hold him
+      this.limb(bx, 5, -4, -1.05 + Math.sin(fast + 1.1) * (0.42 + panic * 0.3), -0.75 + Math.sin(fast * 1.3) * 0.5);
 
       // torso
       bx.save(); bx.scale(1, heave);
       bx.drawImage(CH.otterTorso.c, -CH.otterTorso.ax, -CH.otterTorso.ay);
       bx.restore();
 
-      // near arm — the one that grabs
-      bx.save(); bx.translate(-5, -3);
-      bx.rotate(reach > 0 ? lerp(armAngle(0), -1.5, reach) : armAngle(0));
-      bx.scale(1 + reach * 0.5, 1);
-      bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
-      bx.restore();
+      // near arm — the one that grabs (hidden while the real reach is drawn)
+      if (reach < 0.15) this.limb(bx, -4, -4, -2.15 + Math.sin(fast * 0.9) * (0.42 + panic * 0.3), 0.8 + Math.sin(fast * 1.15) * 0.5);
 
       // head, screwed up in pain — or gasping with relief
       bx.save();
-      bx.translate(0, -10 + Math.sin(t * 2.2) * 0.6);
-      bx.rotate(Math.sin(t * 1.35) * 0.18 - 0.08 - reach * 0.2);
+      bx.translate(1, -11 + Math.sin(t * 2.2) * 0.7);
+      bx.rotate(Math.sin(t * 1.35) * 0.2 - 0.2 + reach * 0.3);
       const exp = this.gasp > 0 ? 'surprised' : this.relief > 0.5 ? 'happy' : 'drown';
       const head = otterHeadWithFace(exp, false, t, false);
       bx.drawImage(head, -CH.otterHead.ax, -CH.otterHead.ay);

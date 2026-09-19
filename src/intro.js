@@ -2075,3 +2075,245 @@ BEATS.push({
     foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 352, set: 'D' });
   },
 });
+
+// ----------------------------------------------------------------- 8. NET
+BEATS.push({
+  name: 'net', dur: 11.0,
+  lines: [[0.6, 'The net came down with weights sewn into it.'], [4.4, 'I found a tear in the mesh.'], [6.4, 'He did not.'], [8.8, 'He reached for me the whole way up.']],
+  enter() {
+    SC.surfY = 64; SC.yX = 336; SC.yY = 64;
+    SC.netY = -180; SC.netX = 300; SC.cinch = 0; SC.free = false;
+    A.you = actor(MAN.you, 268, 208, { beat: 2.6, exp: 'wide' });
+    A.bro = actor(MAN.bro, 322, 232, { beat: 3.0, exp: 'wide' });
+  },
+  update(dt, bt) {
+    Intro.scroll += 10 * dt;
+    SC.yY = SC.surfY + Math.sin(bt * 1.5) * 2;
+    for (const k of ['you', 'bro']) swim(A[k], dt);
+    if (bt < 0.8) {
+      A.you.y = 208 + Math.sin(bt * 1.4) * 5; A.bro.y = 232 + Math.sin(bt * 1.7) * 5;
+    } else if (bt < 3.0) {
+      const k = clamp((bt - 0.8) / 2.2, 0, 1);
+      SC.netY = lerp(-180, 150, k * k);
+      if (k > 0.2 && Math.random() < 10 * dt) FX.bubble(SC.netX + rand(-90, 90), SC.netY + rand(0, 40), 1, 1.6);
+      A.you.beat = 5; A.bro.beat = 5.5;
+      A.you.x = lerp(268, 250, k); A.you.y = lerp(208, 226, k);
+      A.bro.x = lerp(322, 330, k); A.bro.y = lerp(232, 244, k);
+      if (k >= 1 && typeof Audio_ !== 'undefined' && !SC.splashed) { SC.splashed = true; Audio_.splash(2); Audio_.noise(0.5, 0.18, 800, 120); }
+    } else if (bt < 4.8) {
+      const k = clamp((bt - 3.0) / 1.8, 0, 1);
+      SC.cinch = k * 0.86; SC.netY = 150 - k * 14;
+      A.you.beat = 9; A.bro.beat = 9;
+      A.you.x = 250 + Math.sin(bt * 19) * 13; A.you.y = 226 + Math.sin(bt * 14) * 9;
+      A.you.rot = Math.sin(bt * 17) * 0.5;
+      A.bro.x = 330 + Math.sin(bt * 16 + 2) * 12; A.bro.y = 244 + Math.sin(bt * 13 + 1) * 9;
+      A.bro.rot = Math.sin(bt * 15 + 1) * 0.5;
+      if (Math.random() < 40 * dt) { FX.bubble(A.you.x, A.you.y, 1, 2.6); FX.bubble(A.bro.x, A.bro.y, 1, 2.6); }
+      Intro.shake = Math.max(Intro.shake, 2);
+    } else if (bt < 6.0) {
+      const k = clamp((bt - 4.8) / 1.2, 0, 1);
+      SC.cinch = 0.86; SC.netY = 136;
+      A.you.x = lerp(250, 150, k * k); A.you.y = lerp(226, 262, k);
+      A.you.rot = lerp(0.4, -0.1, k); A.you.beat = 8;
+      A.bro.x = 330 + Math.sin(bt * 16 + 2) * 9; A.bro.y = 244 + Math.sin(bt * 13) * 7;
+      A.bro.rot = Math.sin(bt * 15) * 0.45;
+      if (k > 0.25 && !SC.free) { SC.free = true; if (typeof Audio_ !== 'undefined') Audio_.roll(); FX.bubble(A.you.x, A.you.y, 12, 2.4); }
+      if (Math.random() < 25 * dt) FX.bubble(A.bro.x, A.bro.y, 1, 2.4);
+    } else {
+      const k = clamp((bt - 6.0) / 4.4, 0, 1), e = k * k;
+      SC.netY = lerp(136, -250, e);
+      SC.cinch = 0.9;
+      A.bro.x = SC.netX + 26; A.bro.y = SC.netY + 76;
+      A.bro.rot = lerp(0.2, -0.5, clamp(k * 2, 0, 1));
+      A.bro.flip = true;
+      A.bro.beat = lerp(9, 2.2, clamp(k * 1.6, 0, 1));
+      A.bro.exp = 'wide';
+      A.you.x = lerp(150, 176, k); A.you.y = lerp(262, 246, k);
+      A.you.rot = -0.22; A.you.beat = lerp(8, 1.3, clamp(k * 2, 0, 1));
+      A.you.exp = k > 0.4 ? 'sad' : 'wide';
+      if (Math.random() < 6 * dt) FX.bubble(A.bro.x, A.bro.y, 1, 1.6);
+      if (bt > 9.6) Intro.fade = (bt - 9.6) / 1.4 * 0.5;
+    }
+  },
+  render(ctx, bt) {
+    backdrop(ctx, { mood: 'deep', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 354, set: 'D', shafts: 0.45 });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+    ctx.save(); ctx.translate(R(SC.yX), R(SC.yY)); ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
+    // davit rope down to the net
+    drawRope(ctx, SC.yX - 150, SC.yY - 56, SC.netX, SC.netY + 2, 14, '#d8cfae', '#7a6a44');
+    drawManatee(ctx, A.bro, Intro.t);
+    drawManatee(ctx, A.you, Intro.t);
+    // the brother's outstretched flipper, reaching back
+    if (bt > 6.0) {
+      const M = A.bro.set, b = A.bro;
+      const cs = Math.cos(b.rot), sn = Math.sin(b.rot), fxs = b.flip ? -1 : 1;
+      const sx = b.x + (M.shoX * fxs) * cs - M.shoY * sn;
+      const sy = b.y + (M.shoX * fxs) * sn + M.shoY * cs;
+      const a = angleTo(sx, sy, A.you.x, A.you.y);
+      ctx.save(); ctx.translate(R(sx), R(sy)); ctx.rotate(a);
+      ctx.drawImage(M.flip.c, -M.flip.ax, -M.flip.ay);
+      ctx.restore();
+    }
+    drawNet(ctx, { x: SC.netX, y: SC.netY, w: 212, h: 168, cinch: SC.cinch, t: Intro.t, sway: 7, hole: { j: 5, i: 0, w: 3, h: 3 } });
+    FX.render(ctx);
+    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 354, set: 'D' });
+  },
+});
+
+// ------------------------------------------------------------ 9. CAPTURED
+BEATS.push({
+  name: 'captured', dur: 8.5,
+  lines: [[0.4, 'Then the machine came down for me.'], [4.4, 'It did not care that I was screaming.'], [6.8, 'They dropped me in with the rest of the catch.']],
+  enter() {
+    SC.surfY = -40; SC.pvx = 760; SC.pvy = -150; SC.a1 = 2.35; SC.a2 = -0.20;
+    SC.clamped = false; SC.broke = false; SC.dropped = false; SC.tankFish = [];
+    A.you = actor(MAN.you, 430, 216, { beat: 4.0, exp: 'wide' });
+    for (let i = 0; i < 26; i++) SC.tankFish.push({ x: rand(40, 600), y: rand(60, 320), ph: rand(0, TAU), k: randi(0, 3), s: randi(0, 2), dead: i < 6, sp: rand(14, 44) * (Math.random() < 0.5 ? -1 : 1) });
+  },
+  claw() { // forward kinematics for the boom tip
+    const x1 = SC.pvx + Math.cos(SC.a1) * 114, y1 = SC.pvy + Math.sin(SC.a1) * 114;
+    return [x1 + Math.cos(SC.a1 + SC.a2) * 80, y1 + Math.sin(SC.a1 + SC.a2) * 80];
+  },
+  update(dt, bt) {
+    Intro.scroll += 6 * dt;
+    swim(A.you, dt);
+    if (bt < 2.4) {                                   // the arm comes down
+      const k = clamp(bt / 2.2, 0, 1), e = k * k * (3 - 2 * k);
+      SC.pvx = lerp(760, 554, e); SC.pvy = lerp(-150, 68, e);
+      const c = this.claw();
+      if (bt < 1.9) { A.you.x = 430 + Math.sin(bt * 2.2) * 22; A.you.y = 216 + Math.sin(bt * 3) * 12; A.you.rot = Math.sin(bt * 3) * 0.2; }
+      else { A.you.x = lerp(A.you.x, c[0], 8 * dt); A.you.y = lerp(A.you.y, c[1] + 16, 8 * dt); }
+      if (bt >= 2.15 && !SC.clamped) {
+        SC.clamped = true; Intro.shake = 12;
+        FX.bubble(A.you.x, A.you.y, 20, 2.6);
+        if (typeof Audio_ !== 'undefined') { Audio_.tone(150, 0.22, 'square', 0.22, -70); Audio_.noise(0.3, 0.3, 1600, 200); Audio_.hurt(); }
+      }
+      if (Math.random() < 10 * dt) FX.bubble(A.you.x + rand(-14, 14), A.you.y, 1, 1.8);
+    } else if (bt < 4.3) {                            // hauled out of the water
+      const k = clamp((bt - 2.4) / 1.9, 0, 1);
+      SC.pvx = lerp(554, 630, k); SC.pvy = lerp(68, -270, k * k);
+      SC.surfY = lerp(-60, 330, k);
+      const c = this.claw();
+      A.you.x = c[0]; A.you.y = c[1] + 16; A.you.rot = 0.15 + Math.sin(bt * 8) * 0.16 * (1 - k);
+      A.you.beat = 7; A.you.exp = 'pain';
+      if (!SC.broke && A.you.y > SC.surfY) {
+        SC.broke = true; FX.drops(A.you.x, SC.surfY, 70, 1.2); FX.foam(A.you.x, SC.surfY, 30, 1.4);
+        if (typeof Audio_ !== 'undefined') Audio_.splash(3);
+      }
+      if (SC.broke && Math.random() < 30 * dt) FX.drops(A.you.x + rand(-20, 20), A.you.y + 10, 1, 0.4);
+    } else if (bt < 6.7) {                            // swung over the deck
+      const k = clamp((bt - 4.3) / 2.4, 0, 1);
+      SC.deckClawX = lerp(150, 470, k * k * (3 - 2 * k));
+      SC.deckClawY = lerp(96, 120 + k * 40, k);
+      A.you.rot = 0.2 + Math.sin(bt * 5) * 0.12 * (1 - k);
+      A.you.beat = 5;
+      if (Math.random() < 14 * dt) FX.drops(SC.deckClawX + rand(-16, 16), SC.deckClawY + 30, 1, 0.3);
+      if (k > 0.92 && !SC.dropped) {
+        SC.dropped = true;
+        if (typeof Audio_ !== 'undefined') { Audio_.tone(200, 0.15, 'square', 0.2, -90); Audio_.splash(3); }
+      }
+    } else {                                          // inside the tank
+      const k = clamp((bt - 6.7) / 1.8, 0, 1);
+      A.you.x = 300; A.you.y = lerp(40, 190, 1 - Math.pow(1 - k, 2));
+      A.you.rot = lerp(0.9, 0.05, k); A.you.beat = lerp(7, 1.6, k); A.you.exp = k > 0.6 ? 'sad' : 'wide';
+      if (k < 0.3) FX.bubble(A.you.x + rand(-30, 30), A.you.y + rand(-10, 40), 3, 2.4);
+      if (bt > 6.7 && bt < 6.85) Intro.shake = 6;
+    }
+    for (const f of SC.tankFish) { if (!f.dead) { f.x += f.sp * dt; if (f.x > 610) f.sp = -Math.abs(f.sp); if (f.x < 40) f.sp = Math.abs(f.sp); } else f.x += 5 * dt * Math.sin(Intro.t * 0.4 + f.ph); }
+  },
+  render(ctx, bt) {
+    if (bt < 4.3) {
+      backdrop(ctx, { mood: 'deep', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY > 0 ? SC.surfY : null, bedY: 356, set: 'D', shafts: 0.4 });
+      if (SC.surfY > 0) drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+      drawManatee(ctx, A.you, Intro.t);
+      drawCrane(ctx, { x: SC.pvx, y: SC.pvy, a1: SC.a1, a2: SC.a2, a3: -SC.a1 - SC.a2, open: SC.clamped ? 0.12 : 0.85 });
+      FX.render(ctx);
+    } else if (bt < 6.7) {
+      drawDeck(ctx, Intro.t, bt);
+      // the claw carrying you over the deck
+      ctx.save(); ctx.translate(R(SC.deckClawX), R(SC.deckClawY));
+      P(ctx, IP.ink, -3, -260, 6, 260); P(ctx, '#e0a838', -2, -260, 4, 260);
+      ctx.drawImage(CR.clawBody.c, -CR.clawBody.ax, -CR.clawBody.ay);
+      for (const [sx, dir] of [[-9, -1], [0, 0], [9, 1]]) {
+        ctx.save(); ctx.translate(sx, 12); ctx.rotate(dir === 0 ? 1.57 : 1.57 + dir * 0.12 * 0.75); ctx.scale(dir < 0 ? -1 : 1, 1);
+        ctx.drawImage(CR.finger.c, -CR.finger.ax, -CR.finger.ay); ctx.restore();
+      }
+      ctx.restore();
+      const yy = Object.assign({}, A.you, { x: SC.deckClawX, y: SC.deckClawY + 34, set: MAN.you });
+      drawManatee(ctx, yy, Intro.t);
+      FX.render(ctx);
+    } else {
+      drawTankScene(ctx, Intro.t, { deck: true, fish: SC.tankFish });
+      drawManatee(ctx, A.you, Intro.t);
+      FX.render(ctx);
+      ctx.drawImage(TANK.glass, 0, 0);
+      ctx.drawImage(TANK.frame, 0, 0);
+    }
+  },
+});
+// ---- the yacht deck, seen from the side ------------------------------------
+function drawDeck(ctx, t, bt) {
+  if (!LAY.sky) LAY.sky = buildSky();
+  tile(ctx, LAY.sky, t * 4, 26 - LAY.sky.height + 130);
+  P(ctx, '#2d74ab', 0, 150, 640, 22); P(ctx, '#1a4b78', 0, 164, 640, 12);
+  for (let x = 0; x < 640; x += 5) if (hash2(x, Math.floor(t * 2)) > 0.8) P(ctx, '#cfe8f5', x, 152 + R(hash2(x, 3) * 10), 4, 1);
+  // bulwark + rail
+  P(ctx, IP.ink, 0, 172, 640, 4); P(ctx, '#f2f6fa', 0, 176, 640, 26); P(ctx, '#cfd8e2', 0, 196, 640, 6);
+  for (let x = 10; x < 640; x += 46) { P(ctx, IP.ink, x, 140, 5, 34); P(ctx, '#c3ccd8', x + 1, 141, 3, 32); }
+  P(ctx, IP.ink, 0, 138, 640, 4); P(ctx, '#dfe6ee', 0, 139, 640, 2);
+  // deck planks
+  for (let y = 202; y < 360; y++) {
+    const col = ((y % 10) === 0) ? '#8e8572' : ((y % 10) < 5 ? '#d5ccb4' : '#c2b99f');
+    P(ctx, col, 0, y, 640, 1);
+  }
+  for (let x = 0; x < 640; x += 53) P(ctx, '#8e8572', x, 202, 1, 158);
+  P(ctx, IP.ink, 0, 202, 640, 1);
+  // the tank on the right
+  const tx = 412, ty = 186, tw = 196, th = 150;
+  P(ctx, IP.ink, tx - 5, ty - 5, tw + 10, th + 10);
+  P(ctx, '#4b5460', tx - 4, ty - 4, tw + 8, th + 8);
+  P(ctx, '#79838f', tx - 4, ty - 4, tw + 8, 3);
+  P(ctx, '#3f5a2c', tx, ty, tw, th);
+  for (let y = 0; y < th; y++) for (let x = 0; x < tw; x += 1) {
+    if (hash2(x + y * 7, y) > 0.86) P(ctx, hash2(x, y) > 0.5 ? '#4e6f36' : '#32491f', tx + x, ty + y);
+  }
+  P(ctx, '#6f8f4a', tx, ty, tw, 5); P(ctx, '#d8f0a0', tx, ty, tw, 1);
+  for (let i = 0; i < 14; i++) {
+    const fx2 = tx + R(hash2(i * 7, 3) * (tw - 20)) + 8, fy = ty + 14 + R(hash2(i, 9) * (th - 30));
+    const sp = FISHSPR[i % 4][i % 3];
+    ctx.save(); ctx.translate(fx2, fy + R(Math.sin(t * 2 + i) * 3)); if (i & 1) ctx.scale(-1, 1); ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore();
+  }
+  for (let i = 0; i < 3; i++) { const sp = FISHDEAD[i]; ctx.save(); ctx.translate(tx + 30 + i * 60, ty + 8); ctx.scale(1, -1); ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore(); }
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = rgbaq('#f2fff0', 0.07); ctx.fillRect(tx + 12 + i * 38, ty + 4, 9, th - 8); }
+  P(ctx, IP.ink, tx - 5, ty + th + 5, tw + 10, 6); P(ctx, '#2a3038', tx - 4, ty + th + 5, tw + 8, 5);
+  // crates and a winch on the left
+  P(ctx, IP.ink, 40, 236, 74, 54); P(ctx, '#8a5f2f', 41, 237, 72, 52); P(ctx, '#b5813f', 41, 237, 72, 5);
+  for (let i = 0; i < 5; i++) P(ctx, '#5c3a1c', 41, 244 + i * 11, 72, 2);
+  P(ctx, IP.ink, 130, 250, 54, 40); P(ctx, '#4a525e', 131, 251, 52, 38); P(ctx, '#767f8d', 131, 251, 52, 6);
+  // a couple of deck hands watching
+  figure(ctx, 240, 300, 40, { facing: 1, lean: -0.05, armA: 2.6, foreA: 2.9, armB: 2.7, foreB: 3.0, legA: 0.2, legB: -0.18, head: 0.1 }, '#243044', '#5a7290');
+  figure(ctx, 300, 302, 38, { facing: 1, lean: 0.08, armA: 2.2, foreA: 2.6, armB: 2.5, foreB: 2.8, legA: -0.16, legB: 0.2, head: 0.16 }, '#2b2436', '#6a6280');
+  void bt;
+}
+// ---- inside the tank -------------------------------------------------------
+function drawTankScene(ctx, t, o) {
+  ctx.drawImage(TANK.bg, 0, 0);
+  if (o.deck) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(366, 22, 254, 316); ctx.clip();
+    ctx.drawImage(TANK.deck, 352, 34);
+    ctx.fillStyle = rgbaq('#3f5a2c', 0.42); ctx.fillRect(366, 22, 254, 316);
+    ctx.fillStyle = rgbaq('#0e1a0a', 0.18); ctx.fillRect(366, 22, 254, 316);
+    ctx.restore();
+    P(ctx, IP.ink, 366, 22, 1, 316);
+  }
+  caustics(ctx, 30, t, 5, 0.12, '#dcffb0');
+  if (o.fish) for (const f of o.fish) {
+    const sy = f.y + Math.sin(t * (f.dead ? 0.5 : 2.2) + f.ph) * (f.dead ? 2 : 4);
+    ctx.save(); ctx.translate(R(f.x), R(sy));
+    if (f.dead) { ctx.scale(1, -1); const sp = FISHDEAD[f.k]; ctx.drawImage(sp.c, -sp.ax, -sp.ay); }
+    else { if (f.sp < 0) ctx.scale(-1, 1); const sp = FISHSPR[f.k][f.s]; ctx.rotate(Math.sin(t * 2.2 + f.ph) * 0.14); ctx.drawImage(sp.c, -sp.ax, -sp.ay); }
+    ctx.restore();
+  }
+  motes(ctx, t * 12, t, 50, '#c8e08a', 0.3);
+}

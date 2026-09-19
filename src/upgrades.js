@@ -579,8 +579,8 @@
   //  THE OTTER — sinking, clawing, out of air
   // ===========================================================================
   const Otter = {
-    x: 76, y: 168, vy: 8, breath: 0.62, relief: 0, gasp: 0, lunge: null,
-    buf: null, bufCtx: null, bubbles: [], t: 0, scale: 3,
+    x: 76, y: 150, vy: 8, breath: 0.62, relief: 0, gasp: 0, lunge: null,
+    buf: null, bufCtx: null, bubbles: [], t: 0, scale: 2.5,
 
     build() {
       if (this.buf) return;
@@ -631,6 +631,20 @@
       if (this.bubbles.length > 90) this.bubbles.splice(0, this.bubbles.length - 90);
     },
 
+    // a bent two-bone limb: upper arm, forearm, then a clutching paw
+    limb(bx, sx, sy, a1, a2) {
+      bx.save(); bx.translate(sx, sy); bx.rotate(a1);
+      bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
+      bx.translate(8, 0); bx.rotate(a2);
+      bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
+      bx.translate(10, 0);
+      bx.fillStyle = '#1a1220'; bx.fillRect(-3, -4, 6, 8);
+      bx.fillStyle = '#c8703c'; bx.fillRect(-2, -3, 4, 6);
+      bx.fillStyle = '#f0b87e'; bx.fillRect(-2, -3, 2, 3);
+      bx.fillStyle = '#1a1220'; bx.fillRect(2, -4, 2, 2); bx.fillRect(2, 2, 2, 2);
+      bx.restore();
+    },
+
     draw(ctx, sc) {
       this.build();
       if (typeof CH === 'undefined' || !CH.otterTorso) return;
@@ -639,54 +653,44 @@
       const bx = this.bufCtx, BW = this.buf.width, BH = this.buf.height;
       bx.clearRect(0, 0, BW, BH);
       bx.save();
-      bx.translate(BW / 2, BH / 2 + 6);
+      bx.translate(BW / 2, BH / 2 + 4);
       bx.scale(S, S);
 
-      // lunging toward a bubble tips his whole body
-      let lean = Math.sin(t * 0.7) * 0.12 + 0.1;
+      // he hangs limp and tipped back; a lunge whips him toward the bubble
+      let lean = -0.26 + Math.sin(t * 0.62) * 0.16;
       let reach = 0;
       if (this.lunge) {
         const k = this.lunge.t / this.lunge.dur;
         reach = k < 0.4 ? k / 0.4 : Math.max(0, 1 - (k - 0.4) / 0.6);
-        const a = angleTo(this.x, this.y, this.lunge.x, this.lunge.y);
-        lean = lerp(lean, a * 0.24, reach);
+        lean = lerp(lean, 0.22, reach);
       }
       bx.rotate(lean);
 
       // chest heaving: a slow, desperate pump
-      const heave = 1 + Math.sin(t * (2.4 + panic * 2.4)) * (0.05 + panic * 0.05);
+      const heave = 1 + Math.sin(t * (2.4 + panic * 2.4)) * (0.06 + panic * 0.06);
+      const fast = t * (3.4 + panic * 3.4);
 
-      // tail thrashing
-      bx.save(); bx.translate(-8, 6);
-      bx.rotate(2.35 + Math.sin(t * (3 + panic * 5)) * (0.4 + panic * 0.45));
+      // tail hanging and thrashing below him
+      bx.save(); bx.translate(-5, 9);
+      bx.rotate(1.95 + Math.sin(fast * 0.75) * (0.34 + panic * 0.4));
       bx.drawImage(CH.otterTail.c, -CH.otterTail.ax, -CH.otterTail.ay);
       bx.restore();
 
-      // far arm, clawing upward
-      const armAngle = i => {
-        const ph = t * (3.6 + panic * 4.2) + i * 2.3;
-        return (i ? -1 : 1) * (1.15 + Math.sin(ph) * (0.55 + panic * 0.5)) + (i ? 0.45 : -0.45);
-      };
-      bx.save(); bx.translate(5, -3); bx.rotate(armAngle(1));
-      bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
-      bx.restore();
+      // far arm, clawing at water that will not hold him
+      this.limb(bx, 5, -4, -1.05 + Math.sin(fast + 1.1) * (0.42 + panic * 0.3), -0.75 + Math.sin(fast * 1.3) * 0.5);
 
       // torso
       bx.save(); bx.scale(1, heave);
       bx.drawImage(CH.otterTorso.c, -CH.otterTorso.ax, -CH.otterTorso.ay);
       bx.restore();
 
-      // near arm — the one that grabs
-      bx.save(); bx.translate(-5, -3);
-      bx.rotate(reach > 0 ? lerp(armAngle(0), -1.5, reach) : armAngle(0));
-      bx.scale(1 + reach * 0.5, 1);
-      bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
-      bx.restore();
+      // near arm — the one that grabs (hidden while the real reach is drawn)
+      if (reach < 0.15) this.limb(bx, -4, -4, -2.15 + Math.sin(fast * 0.9) * (0.42 + panic * 0.3), 0.8 + Math.sin(fast * 1.15) * 0.5);
 
       // head, screwed up in pain — or gasping with relief
       bx.save();
-      bx.translate(0, -10 + Math.sin(t * 2.2) * 0.6);
-      bx.rotate(Math.sin(t * 1.35) * 0.18 - 0.08 - reach * 0.2);
+      bx.translate(1, -11 + Math.sin(t * 2.2) * 0.7);
+      bx.rotate(Math.sin(t * 1.35) * 0.2 - 0.2 + reach * 0.3);
       const exp = this.gasp > 0 ? 'surprised' : this.relief > 0.5 ? 'happy' : 'drown';
       const head = otterHeadWithFace(exp, false, t, false);
       bx.drawImage(head, -CH.otterHead.ax, -CH.otterHead.ay);
@@ -724,7 +728,7 @@
       if (!this.lunge) return;
       const g = this.lunge, k = g.t / g.dur;
       const out = k < 0.4 ? k / 0.4 : 1, back = k > 0.55 ? (k - 0.55) / 0.45 : 0;
-      const ox = this.x + 6, oy = this.y - 8;
+      const ox = this.x - 4, oy = this.y - 14;
       const p = (1 - back) * out;
       const hx = Math.round(lerp(ox, g.x, p)), hy = Math.round(lerp(oy, g.y, p));
       const a = angleTo(ox, oy, g.x, g.y);
@@ -932,7 +936,7 @@
       this.labels.length = 0; this.bursts.length = 0;
       this.flash = {};
       this.lastCount = -1;
-      Otter.reset(LAY.stage.x + LAY.stage.w / 2, LAY.stage.y + 120);
+      Otter.reset(LAY.stage.x + LAY.stage.w / 2 + 2, LAY.stage.y + 110);
       Otter.breath = clamp(Otter.breath, 0.28, 1);
     },
 
@@ -984,7 +988,7 @@
       this.T += dt;
       const T = this.T;
       Deep.update(dt, T);
-      Otter.update(dt, { y0: LAY.stage.y + 56, y1: LAY.stage.y + LAY.stage.h - 96 });
+      Otter.update(dt, { y0: LAY.stage.y + 62, y1: LAY.stage.y + LAY.stage.h - 108 });
       this.glow = (this.glow + dt) % 100;
 
       const tree = this.tree();
@@ -1127,7 +1131,7 @@
       Deep.render(ctx, { wreckX: 250 });
 
       // --- the otter, sinking in the open water on the left ---
-      Otter.draw(ctx, 3);
+      Otter.draw(ctx, 2.5);
 
       // --- board: strands, then bubbles ---
       const nodes = tree ? this.branchNodes(this.tab) : [];
@@ -1266,38 +1270,46 @@
 
     // ------------------------------------------------------------- header
     drawHeader(ctx, tree, T) {
-      pixelTextOutlined(ctx, 'THE DEEP', 10, 7, 18, '#ffe48f', '#2a1d08');
-      pixelText(ctx, 'out of air', 10, 23, 5, '#7fb8cf');
+      pixelTextOutlined(ctx, 'THE DEEP', 8, 2, 18, '#ffe48f', '#2a1d08');
+      pixelText(ctx, 'OUT OF AIR', 9, 18, 5, '#7fb8cf');
 
       // scrap tray
       if (tree) {
         const need = this.hover && !tree.has(this.hover.id) ? this.hover.cost : null;
         SCRAP_TYPES.forEach((k, i) => {
-          const x = 128 + i * 48, y = 4;
+          const x = 112 + i * 47, y = 2, w = 44, h = 22;
           const want = need && need[k] ? need[k] : 0;
           const ok = !want || tree.scrap[k] >= want;
-          R(ctx, '#0a0e18', x, y, 44, 22);
-          box(ctx, want ? (ok ? '#6fd88e' : '#ff6161') : '#2b3548', x, y, 44, 22);
+          R(ctx, '#080c16', x, y, w, h);
+          R(ctx, '#050810', x, y, w, 1); R(ctx, '#151e30', x, y + h - 1, w, 1);
+          box(ctx, want ? (ok ? '#6fd88e' : '#ff6161') : '#2b3548', x, y, w, h);
           drawSprite(ctx, SP.scrap[k], x + 10, y + 11);
-          pixelText(ctx, String(tree.scrap[k]), x + 19, y + 4, 8, SCRAP_COLORS[k]);
-          if (want) pixelText(ctx, '/' + want, x + 19, y + 14, 5, ok ? '#9ff0d8' : '#ff6161');
+          pixelText(ctx, String(tree.scrap[k]), x + 19, y + 3, 8, SCRAP_COLORS[k]);
+          if (want) pixelText(ctx, 'NEED ' + want, x + 19, y + 14, 5, ok ? '#9ff0d8' : '#ff6161');
+          else pixelText(ctx, SCRAP_NAMES[k].split(' ')[0].toUpperCase().slice(0, 7), x + 19, y + 14, 5, '#5d7488');
         });
+      }
+
+      // overall progress
+      if (tree) {
+        const px0 = 352, pw = 120;
+        pixelText(ctx, 'TAKEN', px0, 3, 6, '#7fb8cf');
+        pixelText(ctx, tree.unlocked.size + '/' + SKILL_NODES.length, px0 + pw, 2, 8, '#ffffff', 'right');
+        UIKit.bar(ctx, px0, 14, pw, 8, tree.unlocked.size / SKILL_NODES.length, '#3f7fd6', '#9ff0d8');
       }
 
       // affordable-only toggle
       const m = Input.mouse;
-      const aHov = hit(m, 480, 6, 74, 20);
-      UIKit.button(ctx, 480, 6, 74, 20, null, this.affordOnly ? 'hover' : aHov ? 'hover' : 'normal');
-      R(ctx, this.affordOnly ? '#6fd88e' : '#2c3440', 485, 12, 7, 7);
-      box(ctx, '#14141c', 485, 12, 7, 7);
-      pixelText(ctx, 'AFFORD', 496, 11, 6, this.affordOnly ? '#ffffff' : '#d8c9a0');
+      const aHov = hit(m, 480, 4, 74, 20);
+      UIKit.button(ctx, 480, 4, 74, 20, null, this.affordOnly || aHov ? 'hover' : 'normal');
+      R(ctx, '#14141c', 485, 9, 9, 9);
+      R(ctx, this.affordOnly ? '#6fd88e' : '#2c3440', 486, 10, 7, 7);
+      if (this.affordOnly) { R(ctx, '#0d3a20', 488, 14, 1, 2); R(ctx, '#0d3a20', 489, 15, 1, 1); R(ctx, '#0d3a20', 490, 13, 1, 1); R(ctx, '#0d3a20', 491, 12, 1, 1); }
+      pixelText(ctx, 'AFFORD', 497, 9, 6, this.affordOnly ? '#ffffff' : '#d8c9a0');
 
       // back
-      const bHov = hit(m, 566, 5, 68, 22);
-      UIKit.button(ctx, 566, 5, 68, 22, 'BACK', bHov ? 'hover' : 'normal');
-
-      // taken counter
-      if (tree) pixelText(ctx, 'TAKEN ' + tree.unlocked.size + '/' + SKILL_NODES.length, 476, 27, 5, '#9fd8ee');
+      const bHov = hit(m, 566, 3, 68, 22);
+      UIKit.button(ctx, 566, 3, 68, 22, 'BACK', bHov ? 'hover' : 'normal');
     },
 
     // --------------------------------------------------------------- tabs
