@@ -615,6 +615,11 @@ class Enemy {
       if (c.ram && this.ramCd <= 0 && spd > 30 && !pl.rolling) { this.ramCd = 1.0; pl.damage(c.ram * (1 + (this.diff - 1) * 0.8), this.x, this.y); this.kx -= Math.cos(this.angle) * 80; this.ky -= Math.sin(this.angle) * 80; G.particles.splash((this.x + pl.x) / 2, (this.y + pl.y) / 2, 1.2); }
       else if (pl.rolling && !pl.stats.rollDmg) { const a = angleTo(pl.x, pl.y, this.x, this.y); this.kx += Math.cos(a) * 120; this.ky += Math.sin(a) * 120; }
     }
+    // crew bail out and swim at you when their boat closes in
+    if (typeof Hazards !== 'undefined' && Hazards.boardFrom && !this.boarded && !c.kamikaze && !pl.dead
+        && dp < 150 && this.age > 2 && Math.random() < 0.5 * dt * (this.cfg.big ? 1.6 : 1)) {
+      this.boarded = true; Hazards.boardFrom(this);
+    }
     // decoy buoy ram
     if (G.buoy && !G.buoy.dead && dist(this.x, this.y, G.buoy.x, G.buoy.y) < this.radius + 8 && this.ramCd <= 0) { this.ramCd = 0.8; G.buoy.hp -= 15; G.particles.splash(G.buoy.x, G.buoy.y, 0.8); }
     this.slowT -= dt;

@@ -39,7 +39,10 @@ class Director {
     this.remaining = w.count;
     this.spawnT = 0.8;
     G.banner(w.name, w.boss ? '#ff6161' : '#ffe48f', 2.4, w.sub);
-    if (typeof Hazards !== 'undefined' && Hazards.difficulty !== undefined) Hazards.difficulty = this.difficulty;
+    if (typeof Hazards !== 'undefined') {
+      Hazards.difficulty = this.difficulty;
+      if (Hazards.applyWaveScaling) Hazards.applyWaveScaling(this.waveIdx, this.difficulty);
+    }
     if (w.burst) for (const [type, n] of w.burst) { this.spawnBurst(type, n); this.remaining -= n; }
     if (w.boss && !this.bossSpawned) { this.bossSpawned = true; G.spawnBoss(); }
   }

@@ -19,6 +19,7 @@ class Game {
     if (typeof MobileUI !== 'undefined') MobileUI.init(this.display);
     window.addEventListener('resize', () => this.resize()); this.resize();
     buildCharacters();
+    if (typeof Hazards !== 'undefined') Hazards.init();
     this.tree = new SkillTree();
     this.state = 'intro'; Intro.reset();
     this.firstRun = true; this.muted = false;
@@ -51,6 +52,7 @@ class Game {
       this.rocks.push(new Rock(x, y, r, rng.int(1, 99999)));
     }
     if (typeof Village !== 'undefined') Village.build(this.pier.x, SHORE_Y, WORLD_W);
+    if (typeof Hazards !== 'undefined') { Hazards.reset(); Hazards.difficulty = 1; Hazards.populate(WORLD_W, WORLD_H, SHORE_Y); }
     this.player = new Player(this.pier.x, SHORE_Y + 168, this.tree);
     this.director = new Director();
     this.fisherman = this.firstRun ? new Fisherman(this.pier.x, this.pier.y1 - 6) : null;
@@ -171,6 +173,7 @@ class Game {
     for (const w of this.wrecks) w.update(dt);
     if (this.buoy) { this.buoy.update(dt); if (this.buoy.dead) this.buoy = null; }
     if (typeof Village !== 'undefined') Village.update(dt, t);
+    if (typeof Hazards !== 'undefined') Hazards.update(dt, t);
     if (typeof Gore !== 'undefined') Gore.update(dt);
     this.particles.update(dt, (x, y) => this.ocean.flow(x, y));
     Toon.update(dt);
@@ -229,6 +232,7 @@ class Game {
     this.particles.renderUnder(W, cam);
     for (const w of this.wrecks) w.render(W, cam);
     for (const p of this.pickups) p.render(W, cam, t);
+    if (typeof Hazards !== 'undefined') Hazards.render(W, cam, t);
     if (this.buoy) this.buoy.render(W, cam, t);
     if (this.player.diving) this.player.render(W, cam, t);
     for (const e of this.enemies) e.render(W, cam, t);
@@ -238,6 +242,7 @@ class Game {
     for (const p of this.projectiles) p.render(W, cam);
     this.particles.render(W, cam);
     if (typeof Gore !== 'undefined') Gore.render(W, cam);
+    if (typeof Hazards !== 'undefined') Hazards.renderOver(W, cam, t);
     Toon.render(W, cam);
     this.ocean.renderRipples(W, cam);
     // sun sheen and swell ribbons pass OVER the entities so they read as submerged
