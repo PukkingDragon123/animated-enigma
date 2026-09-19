@@ -1593,6 +1593,643 @@ const Wildlife = (function () {
       }
     }
 
-    return REST2();
+    // ====================================================================
+    //  WHALE — enormous, friendly, and rideable
+    // ====================================================================
+    const SADDLE = -18;        // local offset of the rider's seat, from the anchor
+    const WIND_DUR = 1.9;      // wind-up before the breach
+    const BREACH_DUR = 0.95;
+
+    function makeWhale(x, y) {
+      return {
+        x: x, y: y, a: rng.range(0, TAU), sp: 15, base: 15, z: 0,
+        state: 'deep', t: 0, ph: rng.range(0, TAU), wa: rng.range(0, TAU), waT: 0,
+        sub: 1,                 // 1 = fully submerged silhouette, 0 = at the surface
+        blowT: rand(4, 9), windT: 0, breachT: 0, launched: false,
+        stateT: rand(8, 16), distT: 0, cool: 0, dead: false,
+      };
+    }
+    function saddleOf(w) { return { x: w.x + Math.cos(w.a) * SADDLE, y: w.y + Math.sin(w.a) * SADDLE }; }
+    function headOf(w) { return { x: w.x + Math.cos(w.a) * 86, y: w.y + Math.sin(w.a) * 86 }; }
+
+    function updWhale(w, dt, t) {
+      w.t += dt; w.stateT -= dt; w.cool -= dt;
+      const riding = API.riding === w;
+
+      // ---- surfacing cycle ------------------------------------------------
+      if (!riding && w.state !== 'wind' && w.state !== 'breach' && w.state !== 'crash') {
+        if (w.stateT <= 0) {
+          if (w.state === 'deep') { w.state = 'surface'; w.stateT = rand(26, 40); }
+          else { w.state = 'deep'; w.stateT = rand(10, 18); }
+        }
+      }
+      const wantSub = (w.state === 'deep') ? 1 : 0;
+      w.sub = approach(w.sub, wantSub, dt * 0.45);
+
+      // ---- heading --------------------------------------------------------
+      let ta;
+      w.waT -= dt;
+      if (w.waT <= 0) { w.waT = rand(7, 14); w.wa = rand(0, TAU); }
+      ta = w.wa + Math.sin(t * 0.13 + w.ph) * 0.3;
+      if (w.x < 280) ta = angleLerp(ta, 0, 0.8); else if (w.x > W - 280) ta = angleLerp(ta, Math.PI, 0.8);
+      if (w.y < SH + 300) ta = angleLerp(ta, Math.PI / 2, 0.8); else if (w.y > H - 260) ta = angleLerp(ta, -Math.PI / 2, 0.8);
+      const turnK = (w.state === 'breach') ? 0.25 : (riding ? 0.5 : 1);
+      w.a = angleLerp(w.a, ta, Math.min(1, dt * 0.36 * turnK));
+      w.a = ((w.a % TAU) + TAU) % TAU;
+
+      // ---- states ---------------------------------------------------------
+      let targetSp = w.base * (w.state === 'deep' ? 1.15 : 1);
+      if (w.state === 'wind') {
+        w.windT += dt;
+        // slow dip, then the surge
+        const k = w.windT / WIND_DUR;
+        targetSp = k < 0.45 ? w.base * 0.25 : w.base * (1 + (k - 0.45) * 5.5);
+        w.sub = approach(w.sub, 0.18, dt * 2);
+        const p = PT();
+        if (p && Math.random() < dt * 30) p.bubbles(w.x + rand(-70, 70), w.y + rand(-26, 26), 2);
+        const T = TN();
+        if (T && Math.random() < dt * 14) T.speed(w.x + rand(-80, 80), w.y + rand(-26, 26), w.a, 1);
+        shakeCam(k * 3);
+        if (w.windT >= WIND_DUR) { w.state = 'breach'; w.breachT = 0; w.launched = false; const A = AU(); if (A && A.roar) A.roar(); }
+      } else if (w.state === 'breach') {
+        w.breachT += dt;
+        const k = Math.min(1, w.breachT / BREACH_DUR);
+        w.z = Math.sin(k * Math.PI) * 34;
+        w.sub = 0;
+        targetSp = w.base * 3.4;
+        const p = PT();
+        if (p) {
+          if (Math.random() < dt * 40) p.splash(w.x + rand(-90, 90), w.y + rand(-30, 30), 1.4);
+          if (Math.random() < dt * 24) p.spray(w.x + rand(-80, 80), w.y + rand(-30, 30), w.a, 3, 150);
+        }
+        disturb(w.x, w.y, 6, Math.cos(w.a) * 200, Math.sin(w.a) * 200);
+        foam(w.x, w.y, 0.9);
+        shakeCam(5);
+        if (!w.launched && k > 0.36) {
+          w.launched = true;
+          launchRider(w);
+        }
+        if (k >= 1) { w.state = 'crash'; w.breachT = 0; }
+      } else if (w.state === 'crash') {
+        w.breachT += dt;
+        w.z = Math.max(0, w.z - dt * 90);
+        targetSp = w.base * 1.4;
+        if (w.breachT > 0.35 && !w.crashed) {
+          w.crashed = true;
+          const p = PT();
+          if (p) { for (let i = 0; i < 9; i++) p.splash(w.x + rand(-90, 90), w.y + rand(-30, 30), 2.6); }
+          const T = TN(); if (T) { T.shock(w.x, w.y, 190, 0.55); T.burst(w.x, w.y, 3, '#eaf8ff'); }
+          disturb(w.x, w.y, 8, 0, 0); ripple(w.x, w.y, 190, 200, 0.7);
+          shakeCam(10);
+          splashHit(w.x, w.y, 120, 26);
+          const A = AU(); if (A) A.splash(2.4);
+          scare(w.x, w.y, 260, 1.5);
+        }
+        if (w.breachT > 1.6) { w.state = 'deep'; w.stateT = rand(16, 26); w.cool = 22; w.crashed = false; }
+      }
+      w.sp = lerp(w.sp, targetSp, Math.min(1, dt * 1.6));
+
+      // ---- move -----------------------------------------------------------
+      const f = flow(w.x, w.y);
+      w.x += (Math.cos(w.a) * w.sp + f.x * 0.2) * dt;
+      w.y += (Math.sin(w.a) * w.sp + f.y * 0.2) * dt;
+      w.x = clamp(w.x, 150, W - 150); w.y = clamp(w.y, SH + 200, H - 150);
+
+      // ---- the surface knows a whale went past ----------------------------
+      w.distT -= dt;
+      if (w.distT <= 0) {
+        w.distT = 0.09;
+        const st = (1 - w.sub) * 2.6 + 0.5;
+        for (let i = -2; i <= 2; i++) {
+          const ox = Math.cos(w.a) * i * 42, oy = Math.sin(w.a) * i * 42;
+          disturb(w.x + ox, w.y + oy, st, Math.cos(w.a) * w.sp * 2, Math.sin(w.a) * w.sp * 2);
+        }
+        if (w.sub < 0.4) { foam(w.x, w.y, 0.14); ripple(w.x + Math.cos(w.a) * 60, w.y + Math.sin(w.a) * 60, 40, 55, 0.3); }
+      }
+      // ---- blow ------------------------------------------------------------
+      if (w.sub < 0.5) {
+        w.blowT -= dt;
+        if (w.blowT <= 0) {
+          w.blowT = rand(7, 14);
+          const h = headOf(w), p = PT(), T = TN();
+          if (p) { p.spray(h.x, h.y, -Math.PI / 2, 26, 200); p.splash(h.x, h.y, 1.6); }
+          if (T) { T.puff(h.x, h.y - 6, 7, '#f0fbff'); T.shock(h.x, h.y, 46, 0.5); }
+          ripple(h.x, h.y, 60, 90, 0.6);
+          const A = AU(); if (A) A.splash(1.5);
+        }
+      }
+      // ---- carry the rider --------------------------------------------------
+      if (riding) {
+        const p = P(), s = saddleOf(w);
+        if (!p) { API.riding = null; w.state = 'surface'; w.stateT = rand(10, 20); }
+        else {
+          p.x = s.x; p.y = s.y - w.z;
+          p.vx = Math.cos(w.a) * w.sp; p.vy = Math.sin(w.a) * w.sp;
+          if (p.invuln !== undefined) p.invuln = Math.max(p.invuln, 0.2);
+          if (p.roll) { p.roll.active = false; }
+        }
+      }
+    }
+    function canRide(w) {
+      return !w.launched && w.cool <= 0 && w.sub < 0.55 &&
+        (w.state === 'surface' || w.state === 'deep');
+    }
+    function mountWhale(w) {
+      API.riding = w;
+      w.state = 'wind'; w.windT = 0; w.launched = false;
+      const T = TN(); if (T) { T.impact(w.x, w.y, 2.4, '#eaf8ff'); T.emote(w.x, w.y - 30, '!'); }
+      floatText(w.x, w.y - 40, 'HOLD ON!', '#eaf8ff', 9);
+      const A = AU(); if (A && A.roar) A.roar();
+      const p = PT(); if (p) p.bubbles(w.x, w.y, 12);
+      scare(w.x, w.y, 180, 0.8);
+    }
+
+    // ---- the rider's flight -------------------------------------------------
+    const fly = { on: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, trail: 0 };
+    function launchRider(w) {
+      if (API.riding !== w) return;
+      const s = saddleOf(w);
+      API.riding = null;
+      fly.on = true; fly.t = 0;
+      fly.x = s.x; fly.y = s.y; fly.z = w.z + 8;
+      fly.vx = Math.cos(w.a) * 120; fly.vy = Math.sin(w.a) * 120; fly.vz = 175;
+      const T = TN();
+      if (T) { T.burst(s.x, s.y, 2.6, '#ffe48f'); T.impact(s.x, s.y, 2.2, '#ffffff'); T.shock(s.x, s.y, 120, 0.5); }
+      floatText(s.x, s.y - 26, 'LAUNCH!', '#ffe48f', 10);
+      const p = PT(); if (p) p.splash(s.x, s.y, 3);
+      shakeCam(9);
+      const A = AU(); if (A) A.splash(2);
+    }
+    function updFly(dt) {
+      if (!fly.on) return;
+      fly.t += dt;
+      // a little air steering so the player picks where the wave lands
+      try {
+        if (typeof Input !== 'undefined' && Input.axis) {
+          const ax = Input.axis();
+          fly.vx += ax.x * 110 * dt; fly.vy += ax.y * 110 * dt;
+        }
+      } catch (e) { }
+      fly.x += fly.vx * dt; fly.y += fly.vy * dt;
+      fly.z += fly.vz * dt; fly.vz -= 300 * dt;
+      fly.x = clamp(fly.x, 30, W - 30); fly.y = clamp(fly.y, SH + 40, H - 30);
+      const p = P();
+      if (p) { p.x = fly.x; p.y = fly.y - fly.z; p.vx = fly.vx * 0.2; p.vy = fly.vy * 0.2; if (p.invuln !== undefined) p.invuln = Math.max(p.invuln, 0.2); }
+      fly.trail -= dt;
+      if (fly.trail <= 0) {
+        fly.trail = 0.05;
+        const T = TN(); if (T) T.speed(fly.x, fly.y - fly.z, Math.atan2(fly.vy, fly.vx), 1);
+        const pp = PT(); if (pp && Math.random() < 0.5) pp.spray(fly.x, fly.y - fly.z, Math.atan2(-fly.vy, -fly.vx), 1, 40);
+      }
+      if (fly.z <= 0 && fly.vz < 0) {
+        fly.on = false;
+        if (p) { p.x = fly.x; p.y = fly.y; }
+        const T = TN();
+        if (T) { T.shock(fly.x, fly.y, 200, 0.6); T.shock(fly.x, fly.y, 130, 0.42); T.burst(fly.x, fly.y, 3.4, '#eaf8ff'); T.impact(fly.x, fly.y, 3, '#ffffff'); }
+        const pp = PT();
+        if (pp) { for (let i = 0; i < 10; i++) pp.splash(fly.x + rand(-40, 40), fly.y + rand(-26, 26), 2.6); }
+        disturb(fly.x, fly.y, 8, 0, 0);
+        ripple(fly.x, fly.y, 180, 220, 0.85); ripple(fly.x, fly.y, 110, 150, 0.7);
+        for (let i = 0; i < 16; i++) foam(fly.x + rand(-80, 80), fly.y + rand(-60, 60), 0.5);
+        shakeCam(14);
+        floatText(fly.x, fly.y - 26, 'WAVE SLAM!', '#eaf8ff', 11);
+        const A = AU(); if (A) { A.splash(3); if (A.explosion) A.explosion(1.4); }
+        splashHit(fly.x, fly.y, 108, 70);
+        scare(fly.x, fly.y, 260, 1.8);
+      }
+    }
+    function drawWhale(ctx, cam, t, w) {
+      const sx = w.x - cam.x, sy = w.y - cam.y - w.z;
+      const art = sp.whale;
+      const deep = w.sub > 0.55;
+      const body = deep ? art.deep : art.body;
+      const flukeS = deep ? art.deepFluke : art.fluke;
+      const pump = Math.sin(t * (1.05 + (w.state === 'breach' ? 2.4 : w.state === 'wind' ? 1.8 : 0)) * 2 + w.ph);
+      const ca = Math.cos(w.a), sa = Math.sin(w.a);
+      // the whale's own shadow, much darker and wider than anything else
+      if (w.z > 0.5) {
+        ctx.globalAlpha = 0.34;
+        blitRot(ctx, art.deep, w.x - cam.x + 6, w.y - cam.y + 8, w.a, 1, 1);
+        ctx.globalAlpha = 1;
+      }
+      // flukes hinge at the peduncle
+      const fx0 = sx + ca * -102, fy0 = sy + sa * -102;
+      blitRot(ctx, flukeS, fx0, fy0, w.a + pump * 0.3);
+      blitRot(ctx, body, sx, sy, w.a);
+      // waterline foam when it is up at the surface
+      if (w.sub < 0.45) {
+        ctx.fillStyle = 'rgba(238,250,255,' + (0.5 * (1 - w.sub / 0.45)).toFixed(2) + ')';
+        for (let i = -5; i <= 5; i++) {
+          const q = i / 5;
+          const ox = ca * q * 96, oy = sa * q * 96;
+          const beam = 26 * Math.sqrt(Math.max(0, 1 - q * q * 0.85));
+          const nx = -sa, ny = ca;
+          if (((t * 7 + i * 2) | 0) % 3 !== 0) continue;
+          ctx.fillRect(Math.round(sx + ox + nx * beam), Math.round(sy + oy + ny * beam), 2, 1);
+          ctx.fillRect(Math.round(sx + ox - nx * beam), Math.round(sy + oy - ny * beam), 2, 1);
+        }
+      }
+    }
+
+    // ====================================================================
+    //  DOLPHIN POD — chirps, leads, waits, loops back, points at the goal
+    // ====================================================================
+    function makePod(x, y, goal) {
+      const pod = {
+        d: [], state: 'appear', t: 0, goal: goal, chirp: 0, life: 0,
+        lead: { x: x, y: y }, markT: 0, jumpT: 1.2, arrow: 0,
+      };
+      const n = randi(3, 5);
+      for (let i = 0; i < n; i++) {
+        pod.d.push({
+          x: x + rand(-30, 30), y: y + rand(-24, 24), a: rand(0, TAU), sp: 60,
+          z: 0, vz: 0, ph: rand(0, TAU), off: { x: rand(-22, 22), y: rand(-18, 18) },
+          jumpCd: rand(1, 5), lead: i === 0,
+        });
+      }
+      return pod;
+    }
+    function updPod(pod, dt, t) {
+      pod.t += dt; pod.life += dt;
+      const p = P();
+      const goal = pod.goal;
+      const gx = goal ? goal.x : pod.lead.x, gy = goal ? goal.y : pod.lead.y;
+      pod.chirp -= dt;
+      if (pod.chirp <= 0) {
+        pod.chirp = rand(2.2, 4.5);
+        const A = AU();
+        if (A && A.tone) { A.tone(1500, 0.06, 'sine', 0.09, 900); setTimeout(() => { try { A.tone(2100, 0.05, 'sine', 0.07, -700); } catch (e) { } }, 70); }
+        const T = TN();
+        if (T && pod.d.length) T.emote(pod.d[0].x, pod.d[0].y - 16, '!');
+      }
+
+      switch (pod.state) {
+        case 'appear': {
+          if (p) { pod.lead.x = lerp(pod.lead.x, p.x, Math.min(1, dt * 1.6)); pod.lead.y = lerp(pod.lead.y, p.y, Math.min(1, dt * 1.6)); }
+          if (pod.t > 2.4) {
+            pod.state = 'lead'; pod.t = 0;
+            floatText(pod.lead.x, pod.lead.y - 26, 'FOLLOW US!', '#8ff0ff', 8);
+          }
+          break;
+        }
+        case 'lead': {
+          if (!goal || goal.state === 'open' || goal.state === 'spent') { pod.state = 'leave'; pod.t = 0; break; }
+          const toGoal = dist(pod.lead.x, pod.lead.y, gx, gy);
+          const behind = p ? dist(p.x, p.y, pod.lead.x, pod.lead.y) : 0;
+          if (p && behind > 220) { pod.state = 'back'; pod.t = 0; break; }
+          if (p && behind > 120) { pod.state = 'wait'; pod.t = 0; break; }
+          if (toGoal < 26) { pod.state = 'arrive'; pod.t = 0; if (goal) goal.revealed = true; break; }
+          const ang = angleTo(pod.lead.x, pod.lead.y, gx, gy);
+          const weave = Math.sin(pod.life * 1.1) * 0.35;
+          const spd = 66;
+          pod.lead.x += Math.cos(ang + weave) * spd * dt;
+          pod.lead.y += Math.sin(ang + weave) * spd * dt;
+          // bubble breadcrumbs
+          pod.markT -= dt;
+          if (pod.markT <= 0) {
+            pod.markT = 0.2;
+            S.marks.push({ x: pod.lead.x + rand(-4, 4), y: pod.lead.y + rand(-4, 4), life: 6, max0: 6, r: rand(1.4, 3.2), ph: rand(0, TAU) });
+            if (S.marks.length > 260) S.marks.shift();
+          }
+          break;
+        }
+        case 'wait': {
+          const behind = p ? dist(p.x, p.y, pod.lead.x, pod.lead.y) : 0;
+          if (p && behind > 240) { pod.state = 'back'; pod.t = 0; break; }
+          if (p && behind < 86) { pod.state = 'lead'; pod.t = 0; break; }
+          pod.arrow += dt;
+          // one of them leaps and points its body at the treasure
+          pod.jumpT -= dt;
+          if (pod.jumpT <= 0) {
+            pod.jumpT = 1.7;
+            const d0 = pod.d[0];
+            if (d0 && d0.z <= 0) { d0.z = 0.01; d0.vz = 78; d0.point = angleTo(d0.x, d0.y, gx, gy); }
+          }
+          break;
+        }
+        case 'back': {
+          if (!p) { pod.state = 'leave'; pod.t = 0; break; }
+          const ang = angleTo(pod.lead.x, pod.lead.y, p.x, p.y);
+          pod.lead.x += Math.cos(ang) * 110 * dt;
+          pod.lead.y += Math.sin(ang) * 110 * dt;
+          if (dist(pod.lead.x, pod.lead.y, p.x, p.y) < 50) { pod.state = 'lead'; pod.t = 0; }
+          break;
+        }
+        case 'arrive': {
+          pod.lead.x = lerp(pod.lead.x, gx, Math.min(1, dt * 2));
+          pod.lead.y = lerp(pod.lead.y, gy, Math.min(1, dt * 2));
+          if (goal) goal.revealed = true;
+          if (pod.t > 1 && !pod.hurrah) {
+            pod.hurrah = true;
+            floatText(gx, gy - 30, 'HERE!', '#8ff0ff', 9);
+            const T = TN(); if (T) T.burst(gx, gy, 1.6, '#8ff0ff');
+            for (const d of pod.d) { d.z = 0.01; d.vz = rand(60, 95); d.point = angleTo(d.x, d.y, gx, gy); }
+          }
+          if (pod.t > 11 || (goal && (goal.state === 'open' || goal.state === 'spent'))) { pod.state = 'leave'; pod.t = 0; }
+          break;
+        }
+        case 'leave': {
+          const ang = Math.atan2(pod.lead.y - (H * 0.5), pod.lead.x - (W * 0.5));
+          pod.lead.x += Math.cos(ang) * 150 * dt;
+          pod.lead.y += Math.sin(ang) * 150 * dt;
+          if (pod.t > 9) pod.gone = true;
+          break;
+        }
+      }
+
+      // ---- individual dolphins chase the lead point in formation -----------
+      for (let i = 0; i < pod.d.length; i++) {
+        const d = pod.d[i];
+        const spin = pod.state === 'wait' || pod.state === 'arrive';
+        let tx, ty;
+        if (spin) {
+          const a = pod.life * 1.5 + i * (TAU / pod.d.length);
+          tx = pod.lead.x + Math.cos(a) * 34; ty = pod.lead.y + Math.sin(a) * 26;
+        } else {
+          const ca = Math.cos(d.a), sa = Math.sin(d.a);
+          tx = pod.lead.x + d.off.x * 0.6 - ca * 8 * (i ? 1 : 0);
+          ty = pod.lead.y + d.off.y * 0.6 - sa * 8 * (i ? 1 : 0);
+        }
+        const want = angleTo(d.x, d.y, tx, ty);
+        const far = dist(d.x, d.y, tx, ty);
+        d.a = angleLerp(d.a, d.z > 0 && d.point !== undefined ? d.point : want, Math.min(1, dt * 5));
+        d.a = ((d.a % TAU) + TAU) % TAU;
+        const spd = clamp(far * 2.4, 20, 165);
+        d.sp = lerp(d.sp, spd, Math.min(1, dt * 4));
+        d.x += Math.cos(d.a) * d.sp * dt;
+        d.y += Math.sin(d.a) * d.sp * dt;
+        // leaps
+        if (d.z > 0) {
+          d.z += d.vz * dt; d.vz -= 220 * dt;
+          if (d.z <= 0) {
+            d.z = 0; d.vz = 0; d.point = undefined;
+            const pp = PT(); if (pp) pp.splash(d.x, d.y, 1.1);
+            disturb(d.x, d.y, 2.2, 0, 0);
+          }
+        } else {
+          d.jumpCd -= dt;
+          if (d.jumpCd <= 0 && (pod.state === 'lead' || pod.state === 'back')) {
+            d.jumpCd = rand(2.5, 6);
+            d.z = 0.01; d.vz = rand(55, 85);
+            d.point = goal ? angleTo(d.x, d.y, gx, gy) : d.a;
+            const pp = PT(); if (pp) pp.splash(d.x, d.y, 0.9);
+          }
+          if (Math.random() < dt * 3) disturb(d.x, d.y, 1.1, Math.cos(d.a) * d.sp, Math.sin(d.a) * d.sp);
+        }
+      }
+    }
+    function drawPod(ctx, cam, t, pod) {
+      for (let i = 0; i < pod.d.length; i++) {
+        const d = pod.d[i];
+        const sx = d.x - cam.x, sy = d.y - cam.y - d.z;
+        if (sx < -60 || sy < -60 || sx > VIEW_W + 60 || sy > VIEW_H + 60) continue;
+        if (d.z > 0.5) ellipsePx(ctx, d.x - cam.x + 2, d.y - cam.y + 3, 15, 6, 'rgba(6,18,40,0.28)');
+        else ellipsePx(ctx, sx + 2, sy + 4, 15, 6, 'rgba(6,18,40,0.20)');
+        const pump = Math.sin(t * 6.4 + d.ph);
+        const ca = Math.cos(d.a), sa = Math.sin(d.a);
+        blitRot(ctx, sp.dolphin.fluke, sx + ca * -32, sy + sa * -32, d.a + pump * 0.38);
+        blitRot(ctx, sp.dolphin.body, sx, sy, d.a);
+        if (d.z > 4) { const spdw = ((t * 12) | 0) % 2; if (spdw) { ctx.fillStyle = 'rgba(240,252,255,0.6)'; ctx.fillRect(Math.round(sx - ca * 26), Math.round(sy - sa * 26), 2, 2); } }
+      }
+    }
+    function drawMarks(ctx, cam, t) {
+      for (let i = 0; i < S.marks.length; i++) {
+        const m = S.marks[i];
+        const sx = m.x - cam.x, sy = m.y - cam.y - (m.max0 - m.life) * 2.2;
+        if (sx < -8 || sy < -8 || sx > VIEW_W + 8 || sy > VIEW_H + 8) continue;
+        const a = clamp(m.life / m.max0, 0, 1);
+        ctx.globalAlpha = a * 0.8;
+        ringPx(ctx, sx, sy + Math.sin(t * 3 + m.ph) * 1.2, m.r, m.r * 0.85, '#bfeeff');
+        ctx.globalAlpha = 1;
+      }
+    }
+    function updMarks(dt) {
+      for (let i = S.marks.length - 1; i >= 0; i--) {
+        const m = S.marks[i]; m.life -= dt;
+        if (m.life <= 0) S.marks.splice(i, 1);
+      }
+    }
+
+    // ====================================================================
+    //  TREASURE
+    // ====================================================================
+    const TKIND = ['clam', 'chest', 'hoard', 'wreck'];
+    function rollLoot(tier) {
+      const types = scrapTypes(), out = [];
+      const pickT = () => types[randi(0, types.length - 1)];
+      if (tier === 0) {
+        out.push({ rare: 'pearl' });
+        out.push({ type: pickT(), n: randi(3, 5) });
+      } else if (tier === 1) {
+        const a = pickT(), b = pickT();
+        out.push({ type: a, n: randi(4, 7) });
+        out.push({ type: b, n: randi(3, 6) });
+        if (Math.random() < 0.7) out.push({ rare: pick(['doubloon', 'ruby', 'pearl']) });
+      } else if (tier === 2) {
+        for (let i = 0; i < 3; i++) out.push({ type: pickT(), n: randi(4, 8) });
+        out.push({ rare: pick(['doubloon', 'ruby', 'pearl', 'amber']) });
+        if (Math.random() < 0.5) out.push({ rare: pick(['ingot', 'core']) });
+      } else {
+        for (const ty of types) out.push({ type: ty, n: randi(4, 9) });
+        out.push({ rare: pick(['ingot', 'core', 'amber']) });
+        out.push({ rare: pick(['doubloon', 'ruby', 'pearl']) });
+        if (Math.random() < 0.3) out.push({ rare: 'crown' });
+      }
+      return out;
+    }
+    function makeTreasure(x, y, tier) {
+      tier = clamp(tier | 0, 0, 3);
+      return {
+        x: x, y: y, tier: tier, kind: TKIND[tier], state: 'idle', t: 0,
+        dig: 0, digMax: tier === 2 ? 3 : 1, loot: rollLoot(tier), spill: null,
+        revealed: tier !== 2, readout: null, readT: 0, ph: rand(0, TAU),
+        r: tier === 3 ? 26 : tier === 2 ? 22 : 18, seed: randi(1, 99999),
+        glow: 0, shake: 0,
+      };
+    }
+    function openTreasure(tr) {
+      if (tr.state !== 'idle') return false;
+      const A = AU();
+      if (tr.kind === 'hoard' && tr.dig < tr.digMax) {
+        tr.dig++;
+        tr.shake = 0.3;
+        const p = PT();
+        if (p) { p.debris(tr.x + rand(-8, 8), tr.y + rand(-6, 6), 7, ['#d2bf86', '#bfa972', '#a8925f']); p.smoke(tr.x, tr.y, 3, 'rgba(190,172,128,', 4); }
+        const T = TN(); if (T) T.puff(tr.x, tr.y, 4, '#e4d49c');
+        if (A) A.hit();
+        floatText(tr.x, tr.y - 16, 'DIG ' + tr.dig + '/' + tr.digMax, '#e4d49c', 7);
+        if (tr.dig < tr.digMax) return true;
+      }
+      tr.state = 'opening'; tr.t = 0; tr.revealed = true;
+      tr.shake = 0.5;
+      if (A) { A.hit(); if (A.buy) A.buy(); }
+      const T = TN(); if (T) { T.impact(tr.x, tr.y, 1.4, '#ffe48f'); T.puff(tr.x, tr.y, 5, '#e6d7b0'); }
+      return true;
+    }
+    function burstTreasure(tr) {
+      tr.state = 'open'; tr.t = 0; tr.glow = 1;
+      const g = _G;
+      const A = AU(); if (A) { A.explosion(0.5); if (A.rampage) A.rampage(); }
+      const T = TN();
+      if (T) { T.burst(tr.x, tr.y, 3.2, '#ffe48f'); T.impact(tr.x, tr.y, 2.4, '#ffffff'); T.shock(tr.x, tr.y, 90, 0.55); }
+      const p = PT();
+      if (p) { p.sparks(tr.x, tr.y, 26); p.splash(tr.x, tr.y, 1.4); p.bubbles(tr.x, tr.y, 14); }
+      disturb(tr.x, tr.y, 3.4, 0, 0); ripple(tr.x, tr.y, 70, 120, 0.7);
+      shakeCam(5);
+      // stagger the fountain so it reads as a spill, not a dump
+      tr.spill = [];
+      let delay = 0;
+      const readout = [];
+      for (const L of tr.loot) {
+        if (L.rare) {
+          tr.spill.push({ t: delay + 0.12, rare: L.rare });
+          delay += 0.16;
+          readout.push({ s: RARE[L.rare].name, c: RARE[L.rare].col });
+        } else {
+          for (let i = 0; i < L.n; i++) { tr.spill.push({ t: delay, type: L.type }); delay += 0.045; }
+          readout.push({ s: L.n + ' x ' + L.type.toUpperCase(), c: scrapColor(L.type) });
+        }
+      }
+      tr.readout = readout; tr.readT = 4.2;
+    }
+    function updTreasure(tr, dt, t) {
+      tr.t += dt;
+      if (tr.shake > 0) tr.shake -= dt;
+      if (tr.glow > 0) tr.glow -= dt * 0.7;
+      if (tr.readT > 0) tr.readT -= dt;
+      if (tr.state === 'opening') {
+        const dur = tr.kind === 'clam' ? 1.15 : 0.55;
+        if (Math.random() < dt * 22) { const p = PT(); if (p) p.bubbles(tr.x + rand(-8, 8), tr.y + rand(-6, 6), 1); }
+        if (tr.t >= dur) burstTreasure(tr);
+      } else if (tr.state === 'open') {
+        const g = _G;
+        if (tr.spill && g && g.pickups) {
+          for (let i = tr.spill.length - 1; i >= 0; i--) {
+            const s = tr.spill[i];
+            if (tr.t < s.t) continue;
+            tr.spill.splice(i, 1);
+            if (s.rare) {
+              g.pickups.push(new RareDrop(tr.x + rand(-4, 4), tr.y + rand(-3, 3), s.rare));
+            } else {
+              const pk = makePickup(tr.x + rand(-3, 3), tr.y + rand(-3, 3), s.type);
+              if (pk) {
+                const a = rand(0, TAU), sp2 = rand(26, 74);
+                pk.vx = Math.cos(a) * sp2; pk.vy = Math.sin(a) * sp2 * 0.7; pk.vz = rand(120, 215);
+                g.pickups.push(pk);
+              }
+            }
+            const p = PT(); if (p) p.sparks(tr.x, tr.y, 2);
+          }
+          if (!tr.spill.length) tr.spill = null;
+        }
+        if (!tr.spill && tr.readT <= 0) tr.state = 'spent';
+      }
+    }
+    // the seabed part: chest bodies, coral X, clam
+    function drawTreasureUnder(ctx, cam, t, tr) {
+      const jit = tr.shake > 0 ? Math.round(rand(-1, 1)) : 0;
+      const sx = Math.round(tr.x - cam.x) + jit, sy = Math.round(tr.y - cam.y);
+      // contact shadow
+      ellipsePx(ctx, sx + 2, sy + 5, tr.r * 0.6, tr.r * 0.32, 'rgba(6,18,40,0.32)');
+      if (tr.kind === 'hoard') {
+        // an X of coral scrawled on the sand, plus the dug pit
+        const dug = tr.dig / tr.digMax;
+        if (dug > 0) ellipsePx(ctx, sx, sy, 9 + dug * 5, 6 + dug * 4, '#6e5f3c');
+        if (dug > 0.6) ellipsePx(ctx, sx, sy + 1, 6, 4, '#4a3f26');
+        const arms = [[-1, -1], [1, 1], [-1, 1], [1, -1]];
+        for (let i = 0; i < 4; i++) {
+          const a = arms[i];
+          for (let s = 3; s < 15; s++) {
+            const q = s / 15;
+            const px0 = sx + a[0] * s, py0 = sy + a[1] * s * 0.72;
+            ctx.fillStyle = (s & 1) ? '#e2574c' : '#ffa599';
+            ctx.fillRect(px0, py0, 2, 2);
+            if (s % 4 === 0) { ctx.fillStyle = '#ffd79a'; ctx.fillRect(px0 + a[0], py0, 1, 1); }
+          }
+        }
+        if (tr.state === 'open' || tr.state === 'spent') {
+          ellipsePx(ctx, sx, sy, 11, 7, '#3a3122');
+          for (let i = 0; i < 7; i++) {
+            const a = hash2(tr.seed, i) * TAU;
+            ctx.fillStyle = '#c89152';
+            ctx.fillRect(Math.round(sx + Math.cos(a) * 7), Math.round(sy + Math.sin(a) * 4.6), 2, 1);
+          }
+        }
+        return;
+      }
+      if (tr.kind === 'clam') {
+        const s2 = (tr.state === 'idle' || tr.state === 'opening') && tr.t < 0.5 ? sp.clam[0] : sp.clam[1];
+        // a bed of weed around it
+        ctx.fillStyle = '#2f7d4a';
+        for (let i = 0; i < 10; i++) {
+          const a = hash2(tr.seed, i) * TAU, d = 9 + hash2(i, tr.seed) * 5;
+          ctx.fillRect(Math.round(sx + Math.cos(a) * d), Math.round(sy + Math.sin(a) * d * 0.6), 1, 3);
+        }
+        blit(ctx, s2, sx, sy);
+        if (tr.state === 'idle') {
+          // the pearl glimmers between the shells
+          if (((t * 3 + tr.ph) | 0) % 3 === 0) { ctx.fillStyle = '#ffffff'; ctx.fillRect(sx - 1, sy, 2, 1); }
+        }
+        return;
+      }
+      if (tr.kind === 'wreck') {
+        blit(ctx, sp.wreck, sx, sy);
+        if (tr.state === 'open' || tr.state === 'spent') {
+          ctx.fillStyle = '#ffeeb4';
+          for (let i = 0; i < 9; i++) {
+            const a = hash2(tr.seed, i) * TAU, d = hash2(i, 3) * 9;
+            ctx.fillRect(Math.round(sx + Math.cos(a) * d), Math.round(sy + 2 + Math.sin(a) * d * 0.5), 1, 1);
+          }
+        }
+        return;
+      }
+      // chest
+      const fi = tr.state === 'idle' ? 0 : (tr.state === 'opening' ? 1 : 2);
+      blit(ctx, sp.chest[fi], sx, sy);
+      // barnacles and weed so it looks sunk, not placed
+      ctx.fillStyle = '#4c7f3b';
+      for (let i = 0; i < 6; i++) {
+        const a = hash2(tr.seed, i + 20) * TAU;
+        ctx.fillRect(Math.round(sx + Math.cos(a) * 9), Math.round(sy + 5 + Math.sin(a) * 2), 1, 2);
+      }
+    }
+    // the mid-water part: light beam and the glitter fountain
+    function drawTreasureOver(ctx, cam, t, tr) {
+      const sx = Math.round(tr.x - cam.x), sy = Math.round(tr.y - cam.y);
+      if (tr.state === 'open' && tr.glow > 0) {
+        // a hard-edged shaft of light, stepped in three bands
+        const a = clamp(tr.glow, 0, 1);
+        const bands = [[0.34, 26, 46], [0.22, 17, 60], [0.12, 9, 74]];
+        for (let i = 0; i < 3; i++) {
+          ctx.globalAlpha = bands[i][0] * a;
+          ctx.fillStyle = '#fff3c4';
+          const halfTop = bands[i][1], hgt = bands[i][2];
+          for (let y = 0; y < hgt; y += 2) {
+            const q = y / hgt;
+            const hw = Math.round(lerp(4, halfTop, q));
+            ctx.fillRect(sx - hw, sy - y, hw * 2, 2);
+          }
+        }
+        ctx.globalAlpha = 1;
+        // rising glints
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 12; i++) {
+          const q = ((t * 0.7 + i * 0.13 + tr.ph) % 1);
+          const a2 = hash2(tr.seed, i) * TAU;
+          ctx.globalAlpha = (1 - q) * a;
+          ctx.fillRect(Math.round(sx + Math.cos(a2) * (4 + q * 22)), Math.round(sy - q * 56), 1, 1);
+        }
+        ctx.globalAlpha = 1;
+      }
+      if (tr.revealed && tr.state === 'idle') {
+        // a soft marker halo so a revealed site is findable
+        const a = 0.35 + Math.sin(t * 3 + tr.ph) * 0.18;
+        ctx.globalAlpha = a;
+        ringPx(ctx, sx, sy, tr.r, tr.r * 0.6, '#ffe48f');
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    return REST3();
   }
 })();
