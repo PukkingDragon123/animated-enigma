@@ -189,12 +189,33 @@ class Boss {
       ctx.setLineDash([]);
     }
     const bob = Math.sin(t * 2 + 1) * 1.5;
-    const spr = this.flash > 0 ? SP.sharkHurt : this.stunned && Math.floor(t * 8) % 2 === 0 ? SP.sharkHurt : p2 ? SP.sharkRage : SP.shark;
+    const hurtF = this.flash > 0 || (this.stunned && Math.floor(t * 8) % 2 === 0);
+    const spr = hurtF ? (p2 ? CH.sharkRageHurt : CH.sharkHurt) : (p2 ? CH.sharkRage : CH.shark);
     const thrash = this.state === 'windup' ? Math.sin(t * 40) * 0.06 : 0;
-    // shark body undulates when swimming
     const spd = Math.hypot(this.vx, this.vy);
     const wig = Math.sin(t * (8 + spd / 40)) * Math.min(0.12, spd / 3000);
-    drawSprite(ctx, spr, sx, sy + bob, this.angle + thrash + wig);
+    const ang = this.angle + thrash + wig;
+    ctx.save();
+    ctx.translate(Math.round(sx), Math.round(sy + bob));
+    ctx.rotate(ang);
+    // the shark lengthens as it lunges
+    const lunge = this.state === 'charge' ? 1.10 : 1;
+    ctx.scale(lunge, 2 - lunge);
+    ctx.drawImage(spr.c, -spr.ax, -spr.ay);
+    // the Chief rides just behind the dorsal, leaning with the turn
+    const chief = hurtF ? CH.chiefHurt : CH.chief;
+    ctx.save();
+    ctx.translate(6, 0);
+    ctx.rotate(this.stunned ? Math.sin(t * 7) * 0.5 : -wig * 2.2);
+    if (this.stunned) ctx.translate(0, Math.sin(t * 9) * 2);
+    ctx.drawImage(chief.c, -chief.ax, -chief.ay);
+    // his spear, raised in windup and levelled in the charge
+    const raise = this.state === 'windup' ? Math.sin(t * 26) * 0.35 - 0.9 : this.charging ? 0.05 : -0.35;
+    ctx.save(); ctx.translate(2, -2); ctx.rotate(raise);
+    ctx.drawImage(SP.spear.c, -4, -SP.spear.ay);
+    ctx.restore();
+    ctx.restore();
+    ctx.restore();
     if (this.stunned) {
       for (let i = 0; i < 3; i++) { const a = t * 5 + i * TAU / 3; drawSprite(ctx, SP.star, sx + Math.cos(a) * 22, sy - 26 + Math.sin(a) * 6); }
     }

@@ -420,17 +420,31 @@ class Player {
       ctx.strokeStyle = 'rgba(255,200,60,0.4)';
       ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), 30 + 14 * (1 - k), 22 + 12 * (1 - k), 0, 0, TAU); ctx.stroke();
     }
-    // ---- absorb shield bubble
+    // ---- parry shield: an octagonal energy shield that snaps up and spins
     if (this.absorb.active) {
       const k = this.absorb.t / st.absorbWindow;
-      ctx.strokeStyle = `rgba(140,200,255,${(0.9 - k * 0.5).toFixed(2)})`; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(36 - k * 8), Math.round(28 - k * 6), 0, 0, TAU); ctx.stroke();
-      ctx.strokeStyle = 'rgba(220,240,255,0.5)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(22 + k * 10), Math.round(17 + k * 8), 0, 0, TAU); ctx.stroke();
+      const pop = k < 0.18 ? k / 0.18 : 1;                 // snap-in
+      const sc = (0.55 + pop * 0.45) * (1 - k * 0.10);
+      ctx.save();
+      ctx.translate(Math.round(sx), Math.round(sy));
+      ctx.rotate(this.absorb.t * 2.2);
+      ctx.globalAlpha = 0.55 + (1 - k) * 0.45;
+      ctx.scale(sc, sc * 0.8);
+      const spr = st.perfectParry && (st.absorbWindow - this.absorb.t) < 0.1 ? CH.shieldGold : CH.shield;
+      ctx.drawImage(spr.c, -spr.ax, -spr.ay);
+      ctx.restore();
+      ctx.globalAlpha = 1;
     }
     if (this.absorb.flash > 0) {
-      ctx.strokeStyle = `rgba(255,255,255,${(this.absorb.flash * 3).toFixed(2)})`; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(32 + (0.25 - this.absorb.flash) * 200), Math.round(24 + (0.25 - this.absorb.flash) * 150), 0, 0, TAU); ctx.stroke();
+      const f = this.absorb.flash / 0.25;
+      ctx.save();
+      ctx.translate(Math.round(sx), Math.round(sy));
+      ctx.globalAlpha = f;
+      const sc = 1 + (1 - f) * 1.5;
+      ctx.scale(sc, sc * 0.8);
+      ctx.drawImage(CH.shieldHot.c, -CH.shieldHot.ax, -CH.shieldHot.ay);
+      ctx.restore();
+      ctx.globalAlpha = 1;
     }
 
     const bob = Math.sin(t * 2.5) * 1.2;

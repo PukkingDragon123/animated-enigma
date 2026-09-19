@@ -507,6 +507,8 @@ function buildCharacters() {
   CH.headBuf = newCan(CH.otterHead.w, CH.otterHead.h);
   CH.headBufCtx = CH.headBuf.getContext('2d');
   buildBoats();
+  buildShields();
+  buildBossArt();
 }
 
 // ---- live head with expression --------------------------------------------
@@ -863,4 +865,209 @@ function buildBoats() {
     SP.boats[k] = buildBoat(defs[k]);
     SP.boatsHurt[k] = tintSprite(SP.boats[k], '#ffffff', 0.8);
   }
+}
+
+// ===========================================================================
+//  PARRY SHIELD — the Absorb ability reads as a real shield, not a ring
+// ===========================================================================
+function buildShieldSprite(R, rim, face, glow) {
+  const D = R * 2 + 3, c = newCan(D, D), ctx = c.getContext('2d'), o = R + 1;
+  const SIDES = 8, step = TAU / SIDES;
+  const rAt = ang => { // octagon radius at an angle
+    const a = ((ang % step) + step) % step - step / 2;
+    return R * Math.cos(step / 2) / Math.cos(a);
+  };
+  for (let y = 0; y < D; y++) for (let x = 0; x < D; x++) {
+    const dx = x - o, dy = y - o, d = Math.hypot(dx, dy);
+    if (d < 1) continue;
+    const rr = rAt(Math.atan2(dy, dx));
+    if (d > rr) continue;
+    if (d > rr - 1.6) { px(ctx, rim, x, y); continue; }
+    if (d > rr - 3.0) { px(ctx, face, x, y); continue; }
+    // faceted interior: radial spokes + a hex weave, mostly transparent
+    const ang = Math.atan2(dy, dx);
+    const spoke = Math.abs(((ang % step) + step) % step - step / 2) < 0.055;
+    if (spoke) px(ctx, face, x, y);
+    else if ((((x + y) & 7) === 0) || (((x - y + 64) & 7) === 0)) px(ctx, glow, x, y);
+  }
+  // shield emblem dead centre
+  stamp(ctx, [
+    '.kkkkk.',
+    'kWWWWWk',
+    'kWwwwWk',
+    'kWwwwWk',
+    '.kWwWk.',
+    '..kWk..',
+    '...k...',
+  ], o - 3, o - 3, { k: rim, W: face, w: glow });
+  return spriteFrom(c, o, o);
+}
+function buildShields() {
+  CH.shield     = buildShieldSprite(30, 'rgba(150,215,255,0.95)', 'rgba(120,195,250,0.55)', 'rgba(200,238,255,0.30)');
+  CH.shieldHot  = buildShieldSprite(30, 'rgba(255,255,255,0.98)', 'rgba(220,245,255,0.8)',  'rgba(255,255,255,0.5)');
+  CH.shieldGold = buildShieldSprite(30, 'rgba(255,228,143,0.98)', 'rgba(255,200,90,0.7)',   'rgba(255,240,190,0.45)');
+}
+
+
+// hard-edged triangle fill — canvas fill() antialiases, which ruins pixel art
+function triFill(ctx, col, ax, ay, bx, by, cx2, cy2) {
+  const minY = Math.floor(Math.min(ay, by, cy2)), maxY = Math.ceil(Math.max(ay, by, cy2));
+  const edges = [[ax, ay, bx, by], [bx, by, cx2, cy2], [cx2, cy2, ax, ay]];
+  ctx.fillStyle = col;
+  for (let y = minY; y <= maxY; y++) {
+    let lo = Infinity, hi = -Infinity;
+    for (const [x0, y0, x1, y1] of edges) {
+      if ((y0 <= y && y1 > y) || (y1 <= y && y0 > y)) {
+        const x = x0 + (x1 - x0) * (y - y0) / (y1 - y0);
+        if (x < lo) lo = x; if (x > hi) hi = x;
+      }
+    }
+    if (lo > hi) continue;
+    const xs = Math.round(lo), xe = Math.round(hi);
+    ctx.fillRect(xs, y, Math.max(1, xe - xs + 1), 1);
+  }
+}
+function triOutlined(ctx, fill, outline, a, b, c2) {
+  const mx = (a[0] + b[0] + c2[0]) / 3, my = (a[1] + b[1] + c2[1]) / 3;
+  const grow = p => [mx + (p[0] - mx) * 1.14, my + (p[1] - my) * 1.14];
+  const A = grow(a), B = grow(b), C = grow(c2);
+  triFill(ctx, outline, A[0], A[1], B[0], B[1], C[0], C[1]);
+  triFill(ctx, fill, a[0], a[1], b[0], b[1], c2[0], c2[1]);
+}
+
+// ===========================================================================
+//  THE VILLAGE CHIEF'S SHARK — procedural, top-down, bow... er, snout right
+// ===========================================================================
+const SHK_W = 92, SHK_H = 44, SHK_CX = 46, SHK_CY = 22;
+function buildShark(rage) {
+  const lobes = [
+    { x: 19, y: 22, rx: 5.5,  ry: 3.4 },              // peduncle (fins drawn separately)
+    { x: 27, y: 22, rx: 8.5,  ry: 6.5 },
+    { x: 39, y: 22, rx: 12.5, ry: 10.0 },             // thickest
+    { x: 52, y: 22, rx: 12.0, ry: 9.5 },
+    { x: 64, y: 22, rx: 9.0,  ry: 7.5 },              // head
+    { x: 74, y: 22, rx: 6.4,  ry: 5.0 },
+    { x: 82, y: 22, rx: 3.6,  ry: 2.8 },              // snout
+  ];
+  const f = blobField(SHK_W, SHK_H, lobes);
+  const ramp0 = rage
+    ? ['#23161d', '#3e2029', '#5c3138', '#7d4c4c', '#9e6d66']
+    : ['#1b2433', '#2b374d', '#42526d', '#5e7291', '#8093b0'];
+  const ramp = ramp0;
+  const body = shadeBlob(SHK_W, SHK_H, f, ramp, { outline: CPAL.out, smooth: 3, lift: 0.14 });
+  // fins first, on their own layer, so the body overlaps their roots cleanly
+  const c = newCan(SHK_W, SHK_H), ctx = c.getContext('2d');
+  const finF = ramp[2], finD = ramp[1], finO = CPAL.out;
+  // pectorals: broad deltas, swept back from just behind the gills
+  triOutlined(ctx, finF, finO, [58, 18], [47, 12], [38, 6]);
+  triOutlined(ctx, finF, finO, [58, 18], [38, 6], [46, 18]);
+  triOutlined(ctx, finF, finO, [58, 26], [47, 32], [38, 38]);
+  triOutlined(ctx, finF, finO, [58, 26], [38, 38], [46, 26]);
+  // pelvic fins, small, further aft
+  triOutlined(ctx, finD, finO, [34, 19], [27, 17], [23, 12]);
+  triOutlined(ctx, finD, finO, [34, 25], [27, 27], [23, 32]);
+  // caudal: a tall swept upper lobe over a shorter lower one
+  triOutlined(ctx, finF, finO, [26, 18], [23, 26], [8, 5]);
+  triOutlined(ctx, finF, finO, [26, 18], [8, 5], [17, 16]);
+  triOutlined(ctx, finD, finO, [26, 26], [23, 20], [12, 38]);
+  ctx.drawImage(body.c, 0, 0);
+
+  const pale = rage ? '#d8b2a8' : '#aebed6';
+  const mid  = rage ? '#7d4c4c' : '#5e7291';
+  const dark = rage ? '#3e2029' : '#2b374d';
+
+  // countershading: sharks are pale underneath (lower half here)
+  for (let y = 24; y < SHK_H - 2; y++) for (let x = 12; x < 86; x++) {
+    const i = y * SHK_W + x; if (f[i] <= 0.06) continue;
+    if (f[i + SHK_W] <= 0.06 || ((x + y) & 3) === 0) px(ctx, mid, x, y);
+  }
+  // dorsal ridge running down the spine
+  for (let x = 24; x < 62; x++) {
+    const i = 22 * SHK_W + x; if (f[i] <= 0.1) continue;
+    px(ctx, pale, x, 21); px(ctx, dark, x, 23);
+  }
+  // dorsal fin: a swept triangle standing proud of the back
+  for (let i = 0; i < 16; i++) {
+    const u = i / 15;
+    const w = Math.round(1 + Math.sin(Math.pow(u, 0.7) * Math.PI) * 5.5);
+    const x = 34 + i;
+    px(ctx, CPAL.out, x, 22 - w - 1, 1, 1); px(ctx, CPAL.out, x, 22 + w, 1, 1);
+    px(ctx, mid, x, 22 - w, 1, w * 2);
+    px(ctx, pale, x, 22 - w, 1, Math.max(1, w));
+    if (i > 11) px(ctx, dark, x, 22 - w, 1, w * 2);
+  }
+  // gill slits
+  for (let g = 0; g < 5; g++) {
+    const gx = 62 - g * 3;
+    for (let y = 16; y <= 28; y++) { const i = y * SHK_W + gx; if (f[i] > 0.25) px(ctx, dark, gx, y); }
+  }
+  // eyes — small, black, mean
+  px(ctx, CPAL.out, 73, 14, 4, 4); px(ctx, rage ? '#ff3a2a' : '#0f1318', 74, 15, 2, 2); px(ctx, CPAL.shine, 74, 15);
+  px(ctx, CPAL.out, 73, 26, 4, 4); px(ctx, rage ? '#ff3a2a' : '#0f1318', 74, 27, 2, 2); px(ctx, CPAL.shine, 74, 27);
+  // jaws under the snout, full of teeth
+  for (let x = 78; x < 88; x++) {
+    const i = 22 * SHK_W + x; if (f[i] <= 0.05) continue;
+    px(ctx, '#2a0d12', x, 20, 1, 5);
+  }
+  for (let i = 0; i < 5; i++) {
+    px(ctx, CPAL.bone, 79 + i * 2, 20); px(ctx, CPAL.bone, 79 + i * 2, 24);
+  }
+  // battle scars
+  for (let i = 0; i < 4; i++) px(ctx, pale, 44 + i * 2, 12 + i);
+  for (let i = 0; i < 3; i++) px(ctx, pale, 30 + i * 2, 31 - i);
+  return spriteFrom(c, SHK_CX, SHK_CY);
+}
+
+// ---- the Chief himself, straddling the shark ------------------------------
+function buildChief() {
+  const c = newCan(26, 26), ctx = c.getContext('2d');
+  const M = {
+    k: CPAL.out, s: '#d9a06a', S: '#a9713f', d: '#7a4a22',
+    r: CPAL.cape, R: CPAL.capeL, b: CPAL.leaD, B: CPAL.lea, L: CPAL.leaL,
+    g: CPAL.gold, G: CPAL.goldL, w: CPAL.white, m: CPAL.met, M2: CPAL.metL,
+  };
+  // feathered headdress / chief's crown
+  stamp(ctx, [
+    '..k..k..k..k..',
+    '.kRk.kRk.kRk..',
+    '.kRkkkRkkkRk..',
+    '..kRRRRRRRk...',
+    '.kkkkkkkkkkk..',
+  ], 6, 0, M);
+  // head + face paint
+  stamp(ctx, [
+    '..kkkkkkk..',
+    '.kssssssssk',
+    'kssssssssssk',
+    'ksdsssssdsk',
+    'kssssssssssk',
+    '.kSssssssSk',
+    '..kkSSSSkk.',
+    '....kkkk...',
+  ], 7, 5, M);
+  px(ctx, CPAL.blood, 10, 9, 2, 1); px(ctx, CPAL.blood, 15, 9, 2, 1);
+  px(ctx, CPAL.out, 11, 10, 2, 2); px(ctx, CPAL.out, 14, 10, 2, 2);
+  px(ctx, CPAL.white, 11, 13, 5, 1);
+  // bare torso with a bone necklace and a leather harness
+  stamp(ctx, [
+    '.kkkkkkkkk.',
+    'kSssssssssk',
+    'ksssssssssk',
+    'ksssssssssk',
+    'kSssssssssk',
+    '.kkkkkkkkk.',
+  ], 7, 13, M);
+  for (let i = 0; i < 5; i++) px(ctx, CPAL.bone, 9 + i * 2, 14 + (i & 1));
+  px(ctx, CPAL.lea, 8, 16, 11, 2); px(ctx, CPAL.leaL, 8, 16, 11, 1);
+  return spriteFrom(c, 13, 14);
+}
+function buildBossArt() {
+  CH.shark     = buildShark(false);
+  CH.sharkRage = buildShark(true);
+  CH.sharkHurt = tintSprite(CH.shark, '#ffffff', 0.82);
+  CH.sharkRageHurt = tintSprite(CH.sharkRage, '#ffffff', 0.82);
+  CH.chief     = buildChief();
+  CH.chiefHurt = tintSprite(CH.chief, '#ffffff', 0.8);
+  // keep the old sprite keys alive for the HUD's off-screen fin marker
+  SP.shark = CH.shark; SP.sharkHurt = CH.sharkHurt; SP.sharkRage = CH.sharkRage;
 }
