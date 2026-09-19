@@ -43,7 +43,40 @@ const Input = {
     if (this.down('KeyW') || this.down('ArrowUp')) y -= 1;
     if (this.down('KeyS') || this.down('ArrowDown')) y += 1;
     const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
+    // the ship's wheel takes over when the player is steering by touch
+    if (typeof MobileUI !== 'undefined' && MobileUI.enabled) {
+      const m = MobileUI.axis();
+      if (Math.hypot(m.x, m.y) > 0.06) return m;
+    }
     return { x, y };
   },
-  endFrame() { this.pressed = {}; this.mouse.clicked = false; this.mouse.rclicked = false; this.wheel = 0; this.anyKey = false; },
+  // a named action, however it was triggered (key, mouse or touch button)
+  act(name) {
+    if (typeof MobileUI !== 'undefined' && MobileUI.enabled && MobileUI.held(name)) return true;
+    switch (name) {
+      case 'fire':    return this.mouse.down;
+      case 'shield':  return this.mouse.rdown || this.down('KeyE');
+      case 'roll':    return this.down('Space');
+      case 'rampage': return this.down('KeyQ');
+      case 'dive':    return this.down('ShiftLeft') || this.down('ShiftRight');
+      case 'decoy':   return this.down('KeyF');
+      case 'tidal':   return this.down('KeyR');
+    }
+    return false;
+  },
+  actHit(name) {
+    if (typeof MobileUI !== 'undefined' && MobileUI.enabled && MobileUI.pressed(name)) return true;
+    switch (name) {
+      case 'fire':    return this.mouse.clicked;
+      case 'shield':  return this.mouse.rclicked || this.hit('KeyE');
+      case 'roll':    return this.hit('Space');
+      case 'rampage': return this.hit('KeyQ');
+      case 'dive':    return this.hit('ShiftLeft') || this.hit('ShiftRight');
+      case 'decoy':   return this.hit('KeyF');
+      case 'tidal':   return this.hit('KeyR');
+    }
+    return false;
+  },
+  endFrame() { if (typeof MobileUI !== 'undefined' && MobileUI.enabled) MobileUI.endFrame();
+    this.pressed = {}; this.mouse.clicked = false; this.mouse.rclicked = false; this.wheel = 0; this.anyKey = false; },
 };

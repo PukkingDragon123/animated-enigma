@@ -93,6 +93,7 @@ class Boss {
     if (this.state !== 'charge') for (const r of G.rocks) { const dr = dist(this.x, this.y, r.x, r.y); if (dr < r.r + this.radius) { const a = angleTo(r.x, r.y, this.x, this.y); this.x = r.x + Math.cos(a) * (r.r + this.radius); this.y = r.y + Math.sin(a) * (r.r + this.radius); } }
     // wake
     const spd = Math.hypot(this.vx, this.vy);
+    if (G.ocean.disturb && spd > 20) G.ocean.disturb(this.x, this.y, Math.min(3, spd / 90), this.vx, this.vy);
     const stx = this.x - Math.cos(this.angle) * 30, sty = this.y - Math.sin(this.angle) * 30;
     const last = this.wake.pts[this.wake.pts.length - 1];
     if (spd > 30 && (!last || dist(last.x, last.y, stx, sty) > 5)) { this.wake.pts.push({ x: stx, y: sty, t }); G.ocean.addFoam(stx, sty, 0.1 + spd / 2000); }

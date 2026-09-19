@@ -4,6 +4,7 @@ class Particles {
   add(p) { if (this.list.length < this.max) this.list.push(p); }
   // water splash: droplets go up (z) and fall back, leaving foam
   splash(x, y, size = 1, color = null) {
+    if (this.ocean.disturb) this.ocean.disturb(x, y, size * 1.6, 0, 0);
     const n = Math.round(8 * size + 4);
     for (let i = 0; i < n; i++) {
       const a = rand(0, TAU), sp = rand(20, 90) * size;
@@ -53,6 +54,7 @@ class Particles {
     for (let i = 0; i < n; i++) this.add({ type: 'bubble', x: x + rand(-6, 6), y: y + rand(-6, 6), vx: rand(-5, 5), vy: rand(-20, -8), life: rand(0.5, 1.2), maxLife: 1.2, size: randi(1, 2) });
   }
   explode(x, y, r = 30, opts = {}) {
+    if (this.ocean.disturb) this.ocean.disturb(x, y, r / 8, 0, 0);
     this.explosions.push({ x, y, r: 2, maxR: r, life: 0, dur: 0.35 + r / 120, big: r > 40, water: opts.water !== false });
     this.fire(x, y, Math.round(r / 4));
     this.smoke(x, y, Math.round(r / 6), 'rgba(35,32,40,', r / 6);

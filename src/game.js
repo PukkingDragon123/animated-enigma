@@ -8,6 +8,7 @@ class Game {
     this.g = document.createElement('canvas'); this.g.width = 640; this.g.height = 360;
     this.ctx = this.g.getContext('2d'); this.ctx.imageSmoothingEnabled = false;
     Input.init(this.display);
+    if (typeof MobileUI !== 'undefined') MobileUI.init(this.display);
     window.addEventListener('resize', () => this.resize()); this.resize();
     buildCharacters();
     this.tree = new SkillTree();
@@ -77,12 +78,14 @@ class Game {
     requestAnimationFrame(t2 => this.frame(t2));
   }
   update(dt) {
+    if (typeof MobileUI !== 'undefined' && MobileUI.enabled) MobileUI.update(dt, this.time);
     if (Input.hit('KeyM')) { Audio_.muted = !Audio_.muted; }
     switch (this.state) {
       case 'intro': Intro.update(dt); if (Intro.done) { this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; } break;
       case 'dialogue':
         Dialogue.update(dt); this.updateWorld(dt);
-        if (Dialogue.done && Input.mouse.clicked && this.fisherman && this.fisherman.alive && !Dialogue.shotFired) {
+        const tapOk = !(typeof MobileUI !== 'undefined' && MobileUI.enabled && MobileUI.consumedTouch(Input.mouse.x, Input.mouse.y));
+        if (Dialogue.done && (Input.mouse.clicked || (typeof MobileUI !== 'undefined' && MobileUI.enabled && MobileUI.pressed('fire'))) && tapOk && this.fisherman && this.fisherman.alive && !Dialogue.shotFired) {
           Dialogue.shotFired = true; const p = this.player, f = this.fisherman;
           const a = angleTo(p.x, p.y, f.x, f.y - 8), d = dist(p.x, p.y, f.x, f.y - 8);
           p.aim = a; p.recoil.primary = 0.12; p.flash.primary = 0.08; Audio_.shot('revolver'); this.shake(4);
@@ -187,6 +190,7 @@ class Game {
     if (this.state === 'victory') drawEndScreen(ctx, t, true);
     if (this.state === 'dead_wait') { ctx.fillStyle = `rgba(120,10,20,${Math.min(0.7, this.endT * 0.4).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
     if (this.state === 'dialogue' && !this.director.started) { /* controls hint in dialogue */ }
+    if (typeof MobileUI !== 'undefined' && MobileUI.enabled && (this.state === 'play' || this.state === 'dialogue' || this.state === 'dead_wait' || this.state === 'victory_wait')) MobileUI.render(ctx, t);
     if (Audio_.muted) pixelText(ctx, 'MUTED [M]', 634, 350, 6, '#889', 'right');
     this.blit();
   }

@@ -208,12 +208,12 @@ class Player {
     if (this.roll.charges < st.rollCharges) { this.roll.rechargeT -= dt; if (this.roll.rechargeT <= 0) { this.roll.charges++; this.roll.rechargeT = this.cd(2.4 * st.rollCd); } }
     if (st.regen > 0) { this.hp = Math.min(st.maxHp, this.hp + st.regen * dt); }
     // ---- abilities
-    if ((Input.hit('Space')) && !this.roll.active && this.roll.charges > 0 && !this.dive.active) this.startRoll(inp);
-    if ((Input.mouse.rclicked || Input.hit('KeyE')) && !this.absorb.active && this.absorb.cd <= 0 && !this.roll.active) { this.absorb.active = true; this.absorb.t = 0; G.ocean.ripple(this.x, this.y, 40, 120, 0.6); }
-    if ((Input.hit('KeyQ')) && this.rampage.meter >= 100 && !this.rampage.active) this.startRampage();
-    if (st.dive && (Input.hit('ShiftLeft') || Input.hit('ShiftRight')) && !this.dive.active && this.dive.cd <= 0 && !this.roll.active) { this.dive.active = true; this.dive.t = 0; G.particles.splash(this.x, this.y, 1.6); G.particles.bubbles(this.x, this.y, 8); Audio_.splash(1.2); }
-    if (st.decoy && Input.hit('KeyF') && this.decoyCd <= 0) { this.decoyCd = this.cd(14); G.buoy = new Buoy(this.x - this.facing * 30, this.y); G.particles.splash(G.buoy.x, G.buoy.y, 0.8); G.particles.text(this.x, this.y - 20, 'DECOY!', '#8ac6ff'); }
-    if (st.tidal && Input.hit('KeyR') && this.tidalCd <= 0) this.tidalSlam();
+    if (Input.actHit('roll') && !this.roll.active && this.roll.charges > 0 && !this.dive.active) this.startRoll(inp);
+    if (Input.actHit('shield') && !this.absorb.active && this.absorb.cd <= 0 && !this.roll.active) { this.absorb.active = true; this.absorb.t = 0; G.ocean.ripple(this.x, this.y, 40, 120, 0.6); }
+    if (Input.actHit('rampage') && this.rampage.meter >= 100 && !this.rampage.active) this.startRampage();
+    if (st.dive && Input.actHit('dive') && !this.dive.active && this.dive.cd <= 0 && !this.roll.active) { this.dive.active = true; this.dive.t = 0; G.particles.splash(this.x, this.y, 1.6); G.particles.bubbles(this.x, this.y, 8); Audio_.splash(1.2); }
+    if (st.decoy && Input.actHit('decoy') && this.decoyCd <= 0) { this.decoyCd = this.cd(14); G.buoy = new Buoy(this.x - this.facing * 30, this.y); G.particles.splash(G.buoy.x, G.buoy.y, 0.8); G.particles.text(this.x, this.y - 20, 'DECOY!', '#8ac6ff'); }
+    if (st.tidal && Input.actHit('tidal') && this.tidalCd <= 0) this.tidalSlam();
     if (this.absorb.active) { this.absorb.t += dt; if (this.absorb.t > st.absorbWindow) { this.absorb.active = false; this.absorb.cd = this.cd(st.absorbCd); } }
     if (this.dive.active) { this.dive.t += dt; if (Math.random() < 0.3) G.particles.bubbles(this.x + rand(-8, 8), this.y + rand(-6, 6), 1); if (this.dive.t > 1.5) { this.dive.active = false; this.dive.cd = this.cd(7); G.particles.splash(this.x, this.y, 1.8); Audio_.splash(1.3); } }
     // ---- movement
@@ -250,6 +250,8 @@ class Player {
       this.tilt = lerp(this.tilt, clamp(rel, -0.7, 0.7), 1 - Math.pow(0.001, dt));
     } else this.tilt = lerp(this.tilt, 0, 1 - Math.pow(0.01, dt));
     this.swimPhase += dt * (3 + sp / 40);
+    // shove the water aside as we swim — the jelly surface reacts
+    if (G.ocean.disturb && sp > 12) G.ocean.disturb(this.x, this.y, Math.min(1.4, sp / 170) * (this.roll.active ? 3 : 1), this.vx, this.vy);
     // wake
     if (sp > 40 && !this.dive.active) { const last = this.wake.pts[this.wake.pts.length - 1]; if (!last || dist(last.x, last.y, this.x, this.y) > 6) this.wake.pts.push({ x: this.x - this.vx / sp * 10, y: this.y - this.vy / sp * 10, t }); if (Math.random() < sp / 500) G.ocean.addFoam(this.x - this.vx / sp * 12, this.y - this.vy / sp * 12, 0.06); }
     // ---- otter: aiming & shooting
@@ -342,7 +344,11 @@ class Player {
     const mouseWorld = { x: Input.mouse.x + G.cam.x, y: Input.mouse.y + G.cam.y };
     this.target = G.nearestEnemy(this.x, this.y, 420, null, true);
     let wantFire = false;
-    if (Input.mouse.down) { this.aim = angleTo(this.x, this.y, mouseWorld.x, mouseWorld.y); wantFire = true; }
+    const manualFire = Input.act('fire');
+    const touchAim = (typeof MobileUI !== 'undefined' && MobileUI.enabled) ? MobileUI.aimAt() : null;
+    if (touchAim) { this.aim = angleTo(this.x, this.y, touchAim.x + G.cam.x, touchAim.y + G.cam.y); wantFire = manualFire || !G.holdFire; }
+    else if (Input.mouse.down) { this.aim = angleTo(this.x, this.y, mouseWorld.x, mouseWorld.y); wantFire = true; }
+    else if (manualFire && this.target) { this.aim = angleTo(this.x, this.y, this.target.x, this.target.y); wantFire = true; }
     else if (this.target) { const lead = 0.15; this.aim = angleTo(this.x, this.y, this.target.x + (this.target.vx || 0) * lead, this.target.y + (this.target.vy || 0) * lead); wantFire = !G.holdFire; }
     else this.aim = angleLerp(this.aim, this.facing === 1 ? 0 : Math.PI, dt * 3);
     if (G.fisherman && G.fisherman.alive) { this.aim = angleTo(this.x, this.y, G.fisherman.x, G.fisherman.y - 8); this.target = null; return; }
@@ -550,6 +556,7 @@ class Enemy {
     this.x = clamp(this.x, 10, G.ocean.W - 10); this.y = clamp(this.y, G.ocean.shoreY - 4, G.ocean.H - 10);
     // wake & spray
     const spd = Math.hypot(this.vx, this.vy);
+    if (G.ocean.disturb && spd > 20) G.ocean.disturb(this.x, this.y, Math.min(1.6, spd / 150) * (this.cfg.big ? 1.8 : 1), this.vx, this.vy);
     const last = this.wake.pts[this.wake.pts.length - 1];
     const stx = this.x - Math.cos(this.angle) * this.radius * 0.9, sty = this.y - Math.sin(this.angle) * this.radius * 0.9;
     if (!last || dist(last.x, last.y, stx, sty) > 5) { this.wake.pts.push({ x: stx, y: sty, t }); G.ocean.addFoam(stx, sty, 0.05 + spd / 3000); }

@@ -66,3 +66,12 @@ function wrapText(ctx, text, maxWidth, size) {
   if (cur) lines.push(cur);
   return lines;
 }
+
+// Truncate a label to fit a pixel width, using the real measured font.
+function fitLabel(text, maxW, size) {
+  if (typeof textWidth !== 'function') return text;
+  if (textWidth(text, size) <= maxW) return text;
+  let s = text;
+  while (s.length > 1 && textWidth(s + '.', size) > maxW) s = s.slice(0, -1);
+  return s + '.';
+}

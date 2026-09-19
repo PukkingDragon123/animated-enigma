@@ -30,97 +30,136 @@ const UI = {
   // ------------------------------------------------------------- HUD
   drawHUD(ctx, t) {
     const p = G.player, st = p.stats;
-    // HP
-    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(4, 4, 150, 40);
-    drawSprite(ctx, SP.heart, 12, 12);
+    const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+
+    // ---------- top-left: vitals ----------
+    const PW = 186, PH = touch ? 44 : 60;
+    UIKit.panel(ctx, 2, 2, PW, PH, 'dark');
+    drawSprite(ctx, SP.heart, 16, 15);
     const hpk = clamp(p.hp / st.maxHp, 0, 1);
-    ctx.fillStyle = '#14141c'; ctx.fillRect(20, 8, 128, 9);
-    ctx.fillStyle = hpk > 0.5 ? '#6fd88e' : hpk > 0.25 ? '#ffe48f' : '#ff6161'; ctx.fillRect(21, 9, Math.round(126 * hpk), 7);
-    if (p.hurt > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(21, 9, Math.round(126 * hpk), 7); }
-    pixelText(ctx, `${Math.ceil(p.hp)}/${st.maxHp}`, 84, 9, 7, '#fff', 'center');
-    // Rampage meter
-    ctx.fillStyle = '#14141c'; ctx.fillRect(20, 20, 128, 7);
-    const rk = p.rampage.active ? 1 - p.rampage.t / p.rampage.dur : p.rampage.meter / 100;
+    UIKit.bar(ctx, 26, 10, 150, 10, hpk, hpk > 0.5 ? '#6fd88e' : hpk > 0.25 ? '#ffe48f' : '#ff6161', '#1b2028');
+    if (p.hurt > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(28, 12, Math.round(146 * hpk), 6); }
+    pixelTextOutlined(ctx, `${Math.ceil(p.hp)}/${st.maxHp}`, 101, 11, 6, '#ffffff', '#14141c', 'center');
+
+    drawSprite(ctx, GLYPH_SP.rampage, 16, 28);
     const full = p.rampage.meter >= 100 && !p.rampage.active;
-    ctx.fillStyle = p.rampage.active ? (Math.floor(t * 10) % 2 ? '#ff6161' : '#ffe48f') : full ? (Math.floor(t * 4) % 2 ? '#ff6161' : '#ff9a3c') : '#c8302e';
-    ctx.fillRect(21, 21, Math.round(126 * clamp(rk, 0, 1)), 5);
-    drawSprite(ctx, GLYPH_SP.rampage, 12, 24);
-    pixelText(ctx, p.rampage.active ? 'RAMPAGE!!' : full ? 'RAMPAGE READY [Q]' : 'OTTER RAMPAGE', 84, 20, 6, '#fff', 'center');
-    // roll charges + absorb cd
-    drawSprite(ctx, GLYPH_SP.roll, 12, 36);
-    for (let i = 0; i < st.rollCharges; i++) { ctx.fillStyle = i < p.roll.charges ? '#6fd88e' : '#3a3a48'; ctx.fillRect(20 + i * 8, 33, 6, 6); }
-    if (p.roll.charges < st.rollCharges) { const k = 1 - p.roll.rechargeT / p.cd(2.4 * st.rollCd); ctx.fillStyle = '#6fd88e'; ctx.fillRect(20 + p.roll.charges * 8, 38, Math.round(6 * clamp(k, 0, 1)), 1); }
-    pixelText(ctx, 'SPACE', 20 + st.rollCharges * 8 + 3, 33, 6, '#aab', 'left');
-    drawSprite(ctx, GLYPH_SP.absorb, 82, 36);
-    const acd = p.absorb.cd > 0 ? 1 - p.absorb.cd / p.cd(st.absorbCd) : 1;
-    ctx.fillStyle = '#14141c'; ctx.fillRect(90, 33, 30, 6); ctx.fillStyle = acd >= 1 ? '#8ac6ff' : '#3f6f9f'; ctx.fillRect(91, 34, Math.round(28 * clamp(acd, 0, 1)), 4);
-    pixelText(ctx, 'E/RMB', 122, 33, 6, '#aab');
-    // extra abilities
-    let ax = 4, ay = 46;
-    const ab = [];
-    if (st.dive) ab.push(['DIVE', 'SHIFT', p.dive.cd, p.cd(7), '#8ac6ff']);
-    if (st.decoy) ab.push(['DECOY', 'F', p.decoyCd, p.cd(14), '#ffe48f']);
-    if (st.tidal) ab.push(['TIDAL', 'R', p.tidalCd, p.cd(12), '#6fd88e']);
-    for (const [name, key, cd, max, col] of ab) {
-      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(ax, ay, 48, 12);
-      const k = cd > 0 ? 1 - cd / max : 1;
-      ctx.fillStyle = k >= 1 ? col : '#3a3a48'; ctx.fillRect(ax + 1, ay + 9, Math.round(46 * clamp(k, 0, 1)), 2);
-      pixelText(ctx, `${name} [${key}]`, ax + 2, ay + 1, 6, k >= 1 ? '#fff' : '#889');
-      ax += 50;
+    const rk = p.rampage.active ? 1 - p.rampage.t / p.rampage.dur : p.rampage.meter / 100;
+    UIKit.bar(ctx, 26, 23, 150, 9, clamp(rk, 0, 1),
+      p.rampage.active ? (Math.floor(t * 10) % 2 ? '#ff6161' : '#ffe48f') : full ? (Math.floor(t * 4) % 2 ? '#ff6161' : '#ff9a3c') : '#c8302e', '#1b2028');
+    pixelTextOutlined(ctx, p.rampage.active ? 'RAMPAGE!' : full ? 'RAMPAGE READY' : 'OTTER RAMPAGE', 101, 24, 5, '#ffffff', '#14141c', 'center');
+
+    // roll charges + shield, keyboard prompts only on desktop
+    drawSprite(ctx, GLYPH_SP.roll, 16, 41);
+    for (let i = 0; i < st.rollCharges; i++) {
+      const on = i < p.roll.charges;
+      ctx.fillStyle = '#14141c'; ctx.fillRect(25 + i * 9, 37, 8, 8);
+      ctx.fillStyle = on ? '#6fd88e' : '#2c3440'; ctx.fillRect(26 + i * 9, 38, 6, 6);
+      if (on) { ctx.fillStyle = '#b6f5cd'; ctx.fillRect(26 + i * 9, 38, 6, 2); }
     }
-    // Timer / wave
-    const w = G.director.currentWave();
-    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(272, 4, 96, 20);
-    pixelText(ctx, fmtTime(G.director.time), 320, 6, 9, '#fff', 'center');
-    pixelText(ctx, G.director.started ? (w.boss ? 'BOSS' : w.name) : 'FISHER VILLAGE', 320, 16, 6, '#ffe48f', 'center');
-    // Boss bar
-    const b = G.boss;
-    if (b && !b.dead) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(170, 28, 300, 14);
-      ctx.fillStyle = '#14141c'; ctx.fillRect(174, 36, 292, 4);
-      const k = clamp(b.hp / b.maxHp, 0, 1);
-      ctx.fillStyle = b.phase === 2 ? '#ff6161' : '#c8302e'; ctx.fillRect(175, 37, Math.round(290 * k), 2);
-      ctx.fillStyle = '#ffe48f'; ctx.fillRect(174 + 146, 35, 1, 6); // phase 2 marker
-      pixelText(ctx, `${b.name}${b.phase === 2 ? ' - BLOOD FRENZY' : ''}${b.stunned ? '  [STUNNED]' : ''}`, 320, 29, 7, b.stunned ? '#ffe48f' : '#fff', 'center');
-      // off-screen indicator
-      const sx = b.x - G.cam.x, sy = b.y - G.cam.y;
-      if (sx < 0 || sy < 0 || sx > 640 || sy > 360) {
-        const a = angleTo(320, 180, sx, sy), ex = clamp(320 + Math.cos(a) * 400, 10, 630), ey = clamp(180 + Math.sin(a) * 400, 50, 350);
-        ctx.fillStyle = '#ff6161'; ctx.beginPath(); ctx.moveTo(ex + Math.cos(a) * 7, ey + Math.sin(a) * 7); ctx.lineTo(ex + Math.cos(a + 2.4) * 6, ey + Math.sin(a + 2.4) * 6); ctx.lineTo(ex + Math.cos(a - 2.4) * 6, ey + Math.sin(a - 2.4) * 6); ctx.fill();
-        drawSprite(ctx, SP.sharkFin, ex - Math.cos(a) * 10, ey - Math.sin(a) * 10);
+    if (p.roll.charges < st.rollCharges) {
+      const k = 1 - p.roll.rechargeT / p.cd(2.4 * st.rollCd);
+      ctx.fillStyle = '#6fd88e'; ctx.fillRect(26 + p.roll.charges * 9, 44, Math.round(6 * clamp(k, 0, 1)), 1);
+    }
+    const shx = 30 + st.rollCharges * 9;
+    drawSprite(ctx, GLYPH_SP.absorb, shx + 5, 41);
+    const acd = p.absorb.cd > 0 ? 1 - p.absorb.cd / p.cd(st.absorbCd) : 1;
+    UIKit.bar(ctx, shx + 12, 37, 48, 8, clamp(acd, 0, 1), p.absorb.active ? '#ffffff' : acd >= 1 ? '#8ac6ff' : '#3f6f9f', '#1b2028');
+
+    if (!touch) {
+      pixelText(ctx, 'SPACE', 26, 49, 5, '#8fa6b8');
+      pixelText(ctx, 'E / RMB', shx + 12, 49, 5, '#8fa6b8');
+      let ax = 2, ay = PH + 6;
+      const ab = [];
+      if (st.dive) ab.push(['DIVE', 'SHIFT', p.dive.cd, p.cd(7), '#8ac6ff']);
+      if (st.decoy) ab.push(['DECOY', 'F', p.decoyCd, p.cd(14), '#ffe48f']);
+      if (st.tidal) ab.push(['TIDAL', 'R', p.tidalCd, p.cd(12), '#6fd88e']);
+      for (const [name, key, cd, max, col] of ab) {
+        const label = `${name} [${key}]`;
+        const w = Math.max(50, textWidth(label, 5) + 8);
+        UIKit.panel(ctx, ax, ay, w, 14, 'dark');
+        const k = cd > 0 ? 1 - cd / max : 1;
+        ctx.fillStyle = k >= 1 ? col : '#2c3440'; ctx.fillRect(ax + 3, ay + 10, Math.round((w - 6) * clamp(k, 0, 1)), 2);
+        pixelText(ctx, label, ax + 4, ay + 3, 5, k >= 1 ? '#fff' : '#7d8fa0');
+        ax += w + 3;
       }
     }
-    // Scrap (top right)
-    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(462, 4, 174, 26);
-    SCRAP_TYPES.forEach((k, i) => { const x = 468 + i * 34; drawSprite(ctx, SP.scrap[k], x + 4, 11); pixelText(ctx, G.tree.scrap[k] + '', x + 11, 7, 8, SCRAP_COLORS[k]); });
+
+    // ---------- top-centre: clock & wave ----------
+    const w0 = G.director.currentWave();
+    const waveLabel = G.director.started ? (w0.boss ? 'BOSS' : w0.name) : 'FISHER VILLAGE';
+    const cw = Math.max(104, textWidth(waveLabel, 6) + 20);
+    UIKit.panel(ctx, 320 - cw / 2, 2, cw, 24, 'dark');
+    pixelTextOutlined(ctx, fmtTime(G.director.time), 320, 5, 9, '#ffffff', '#14141c', 'center');
+    pixelTextOutlined(ctx, waveLabel, 320, 16, 6, '#ffe48f', '#14141c', 'center');
+
+    // ---------- boss bar ----------
+    const b = G.boss;
+    if (b && !b.dead) {
+      UIKit.panel(ctx, 150, 28, 340, 22, 'dark');
+      UIKit.bar(ctx, 156, 40, 328, 7, clamp(b.hp / b.maxHp, 0, 1), b.phase === 2 ? '#ff6161' : '#c8302e', '#1b2028');
+      ctx.fillStyle = '#ffe48f'; ctx.fillRect(156 + 164, 39, 1, 9);
+      const nm = `${b.name}${b.phase === 2 ? ' - BLOOD FRENZY' : ''}${b.stunned ? '  [STUNNED]' : ''}`;
+      pixelTextOutlined(ctx, nm, 320, 30, 7, b.stunned ? '#ffe48f' : '#ffffff', '#14141c', 'center');
+      const sx = b.x - G.cam.x, sy = b.y - G.cam.y;
+      if (sx < 0 || sy < 0 || sx > 640 || sy > 360) {
+        const a = angleTo(320, 180, sx, sy), ex = clamp(320 + Math.cos(a) * 400, 12, 628), ey = clamp(180 + Math.sin(a) * 400, 56, 348);
+        ctx.fillStyle = '#ff6161'; ctx.beginPath();
+        ctx.moveTo(ex + Math.cos(a) * 8, ey + Math.sin(a) * 8);
+        ctx.lineTo(ex + Math.cos(a + 2.4) * 7, ey + Math.sin(a + 2.4) * 7);
+        ctx.lineTo(ex + Math.cos(a - 2.4) * 7, ey + Math.sin(a - 2.4) * 7); ctx.fill();
+      }
+    }
+
+    // ---------- top-right: salvage ----------
+    const SW = 210, SX = 640 - SW - 2;
+    UIKit.panel(ctx, SX, 2, SW, 28, 'dark');
+    SCRAP_TYPES.forEach((k, i) => {
+      const x = SX + 12 + i * 38;
+      drawSprite(ctx, SP.scrap[k], x + 4, 15);
+      pixelTextOutlined(ctx, G.tree.scrap[k] + '', x + 12, 11, 7, SCRAP_COLORS[k], '#14141c');
+    });
     const canBuy = SKILL_NODES.some(n => !G.tree.has(n.id) && G.tree.available(n) && G.tree.canAfford(n));
-    pixelText(ctx, canBuy ? '[TAB] WORKSHOP - upgrades available!' : '[TAB] WORKSHOP', 634, 20, 6, canBuy && Math.floor(t * 2) % 2 ? '#6fd88e' : '#aab', 'right');
-    // Weapon (bottom left)
-    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(4, 330, 170, 26);
-    const wp = WEAPONS[G.tree.primary];
-    drawSprite(ctx, SP.guns[G.tree.primary], 10, 338);
-    pixelText(ctx, wp.name, 34, 333, 7, '#fff');
-    const wl = G.tree.weaponsUnlocked();
-    pixelText(ctx, wl.length > 1 ? `[1-${wl.length}] switch  (${wl.indexOf(G.tree.primary) + 1}/${wl.length})` : 'unlock more in the Workshop', 34, 344, 6, '#aab');
-    if (st.sidearm && G.tree.sidearm && G.tree.sidearm !== G.tree.primary) { drawSprite(ctx, SP.guns[G.tree.sidearm], 10, 350); pixelText(ctx, '+ ' + WEAPONS[G.tree.sidearm].name, 34, 351, 6, '#ffe48f'); }
-    // kills (bottom right)
-    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(560, 330, 76, 14);
-    drawSprite(ctx, SP.skull, 568, 337); pixelText(ctx, `${G.stats.kills} sunk`, 578, 333, 7, '#fff');
-    // banner
+    if (!touch) pixelTextOutlined(ctx, canBuy ? '[TAB] WORKSHOP - upgrades ready' : '[TAB] WORKSHOP', 636, 33, 5,
+      canBuy && Math.floor(t * 2) % 2 ? '#6fd88e' : '#9ab0c0', '#14141c', 'right');
+
+    // ---------- bottom-left: weapon ----------
+    if (!touch) {
+      const wp = WEAPONS[G.tree.primary];
+      const side = st.sidearm && G.tree.sidearm && G.tree.sidearm !== G.tree.primary;
+      UIKit.panel(ctx, 2, 326, 200, 32, 'dark');
+      drawSprite(ctx, SP.guns[G.tree.primary], 16, 338);
+      pixelText(ctx, wp.name, 42, 332, 6, '#ffffff');
+      const wl = G.tree.weaponsUnlocked();
+      pixelText(ctx, wl.length > 1 ? `[1-${wl.length}] switch  (${wl.indexOf(G.tree.primary) + 1}/${wl.length})` : 'unlock more in the Workshop', 42, 341, 5, '#8fa6b8');
+      if (side) { drawSprite(ctx, SP.guns[G.tree.sidearm], 16, 350); pixelText(ctx, '+ ' + WEAPONS[G.tree.sidearm].name, 42, 349, 5, '#ffe48f'); }
+    }
+
+    // ---------- bottom-right: tally ----------
+    const tally = `${G.stats.kills} SUNK`;
+    const tw = textWidth(tally, 6) + 40;
+    UIKit.panel(ctx, 638 - tw, 328, tw, 20, 'dark');
+    drawSprite(ctx, SP.skull, 652 - tw, 338);
+    pixelText(ctx, tally, 659 - tw, 335, 6, '#ffffff');
+
+    // ---------- banner ----------
     if (this.banner) {
-      const bn = this.banner; const k = bn.t / bn.dur;
+      const bn = this.banner, k = bn.t / bn.dur;
       const alpha = k < 0.1 ? k / 0.1 : k > 0.8 ? (1 - k) / 0.2 : 1;
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 60, 640, bn.sub ? 34 : 24);
-      pixelText(ctx, bn.text, 320, 64, 14, bn.color, 'center');
-      if (bn.sub) pixelText(ctx, bn.sub, 320, 82, 7, '#fff', 'center');
+      UIKit.ribbon(ctx, 320, 62, bn.text, 'gold');
+      if (bn.sub) {
+        ctx.fillStyle = 'rgba(6,14,26,0.72)';
+        const sw = textWidth(bn.sub, 6) + 16;
+        ctx.fillRect(320 - sw / 2, 84, sw, 12);
+        pixelTextOutlined(ctx, bn.sub, 320, 86, 6, '#ffffff', '#14141c', 'center');
+      }
       ctx.globalAlpha = 1;
     }
-    // low hp vignette
+
     if (hpk < 0.3) { ctx.fillStyle = `rgba(200,20,20,${(0.12 + Math.sin(t * 6) * 0.08).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
-    // slowed indicator
-    if (p.slowed > 0) pixelText(ctx, 'NETTED! (roll to break free faster)', 320, 300, 7, '#6fd88e', 'center');
+    if (p.slowed > 0) pixelTextOutlined(ctx, 'NETTED! ROLL TO BREAK FREE', 320, 296, 7, '#6fd88e', '#14141c', 'center');
   },
+
   // ------------------------------------------------------------- Skill tree
   nodeXY(node) {
     const bi = BRANCHES.findIndex(b => b.id === node.branch);
@@ -145,6 +184,7 @@ const UI = {
     if (m.rclicked && m.x > 4 && m.x < 158 && m.y > 300 && m.y < 316 && G.player.stats.sidearm) { tree.sidearm = tree.sidearm === 'revolver' ? null : 'revolver'; Audio_.buy(); }
   },
   drawTree(ctx, t) {
+    TreeScene.build();
     const tree = G.tree;
     // ---- the deep: he is drowning, and every upgrade is a gulp of air
     TreeScene.renderBackdrop(ctx, t);
@@ -174,7 +214,7 @@ const UI = {
       ctx.fillStyle = b.color; ctx.fillRect(px0, 30, 154, 1); ctx.fillRect(px0, 51, 154, 1);
       drawSprite(ctx, SP[b.icon], px0 + 4, 34);
       pixelText(ctx, b.name, px0 + 14, 33, 8, b.color);
-      pixelText(ctx, b.blurb, px0 + 4, 43, 5.5, '#9dc3d8');
+      pixelText(ctx, fitLabel(b.blurb, 146, 5), px0 + 6, 43, 5, '#9dc3d8');
     });
 
     // ---- nodes as air bubbles
@@ -203,8 +243,8 @@ const UI = {
         if (tree.primary === n.weapon) pixelText(ctx, 'P', x + 9, y - 12, 6, '#fff');
         if (tree.sidearm === n.weapon) pixelText(ctx, 'S', x + 9, y - 12, 6, '#ffe48f');
       }
-      const label = n.name.length > 13 ? n.name.slice(0, 12) + '.' : n.name;
-      pixelText(ctx, label, x, y + 13, 5, owned ? '#ffe9b0' : avail ? '#cfe9f5' : '#6d8598', 'center', true);
+      pixelTextOutlined(ctx, fitLabel(n.name, 42, 5), x, y + 13, 5,
+        owned ? '#ffe9b0' : avail ? '#cfe9f5' : '#6d8598', '#08131f', 'center');
     }
 
     TreeScene.renderFx(ctx, t);
@@ -212,7 +252,7 @@ const UI = {
     // ---- header
     ctx.fillStyle = 'rgba(4,14,26,0.72)'; ctx.fillRect(0, 0, 640, 28);
     pixelText(ctx, 'THE DEEP', 8, 4, 12, '#ffe48f');
-    pixelText(ctx, 'He is out of air. Every upgrade is a bubble — reach out and take it.', 8, 18, 6, '#9fd8ee');
+    pixelText(ctx, 'He is out of air. Every upgrade is a bubble of air. Reach out and take it.', 8, 18, 6, '#9fd8ee');
     SCRAP_TYPES.forEach((k, i) => {
       const x = 390 + i * 46;
       drawSprite(ctx, SP.scrap[k], x + 4, 11); pixelText(ctx, tree.scrap[k] + '', x + 11, 6, 9, SCRAP_COLORS[k]);
@@ -228,8 +268,8 @@ const UI = {
     if (n) {
       const owned = tree.has(n.id), avail = tree.available(n);
       pixelText(ctx, n.name, 8, 309, 9, BRANCHES.find(b => b.id === n.branch).color);
-      const lines = wrapText(ctx, n.desc, 380, 6.5);
-      lines.slice(0, 2).forEach((l, i) => pixelText(ctx, l, 8, 320 + i * 8, 6.5, '#dceef7'));
+      const lines = wrapText(ctx, n.desc, 400, 6);
+      lines.slice(0, 2).forEach((l, i) => pixelText(ctx, l, 8, 320 + i * 9, 6, '#dceef7'));
       let cx = 430;
       pixelText(ctx, 'COST', cx, 309, 6, '#9fd8ee'); cx += 26;
       for (const k in n.cost) {
@@ -237,14 +277,15 @@ const UI = {
         pixelText(ctx, n.cost[k] + '', cx + 10, 309, 8, owned ? '#7a8c98' : tree.scrap[k] >= n.cost[k] ? '#9ff0d8' : '#ff6161');
         cx += 30;
       }
-      const status = owned ? (n.weapon ? 'TAKEN — click to equip, right-click for sidearm' : 'TAKEN')
-        : !avail ? 'OUT OF REACH — needs ' + n.req.map(r => SKILL_BY_ID[r].name).join(n.reqAny ? ' or ' : ' + ')
+      const status = owned ? (n.weapon ? 'TAKEN - click to equip, right-click for sidearm' : 'TAKEN')
+        : !avail ? 'OUT OF REACH - needs ' + n.req.map(r => SKILL_BY_ID[r].name).join(n.reqAny ? ' or ' : ' + ')
         : tree.canAfford(n) ? 'CLICK TO GRAB IT' : 'NOT ENOUGH SCRAP';
       pixelText(ctx, status, 430, 328, 6, owned ? '#ffe48f' : !avail ? '#ff6161' : tree.canAfford(n) ? '#9ff0d8' : '#ff6161');
     } else {
-      pixelText(ctx, 'Hover a bubble to inspect it. Boats drop different scrap: dinghies=wood, harpooners/gunboats=metal, speedboats/jetskis=fuel, skiffs=powder, netters/trawlers=electronics.', 8, 310, 6, '#9fd8ee');
-      pixelText(ctx, `Sunk: ${G.stats.kills}   Absorbs: ${G.stats.absorbs}   Scrap: ${G.stats.scrapCollected}   Taken: ${tree.unlocked.size}/${SKILL_NODES.length}`, 8, 322, 6, '#dceef7');
-      pixelText(ctx, 'The fight is paused while you plan.', 8, 332, 6, '#6f93a8');
+      pixelText(ctx, 'Hover a bubble to inspect it.', 8, 310, 6, '#9fd8ee');
+      pixelText(ctx, 'Scrap: dinghies=wood  harpooners/gunboats=metal  speedboats/jetskis=fuel', 8, 320, 5, '#7fb8cf');
+      pixelText(ctx, 'skiffs=powder  netters/trawlers=electronics', 8, 328, 5, '#7fb8cf');
+      pixelText(ctx, `Sunk ${G.stats.kills}   Absorbs ${G.stats.absorbs}   Scrap ${G.stats.scrapCollected}   Taken ${tree.unlocked.size}/${SKILL_NODES.length}   (paused)`, 380, 328, 5, '#9fd8ee');
     }
   },
 };

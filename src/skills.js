@@ -88,9 +88,9 @@ const SKILL_NODES = [
 ];
 const SKILL_BY_ID = {}; for (const n of SKILL_NODES) SKILL_BY_ID[n.id] = n;
 const BRANCHES = [
-  { id: 'weapons', name: 'WEAPONS', color: '#ffb347', icon: 'iconWeapon', blurb: 'Guns, firing styles, ammo upgrades' },
-  { id: 'utility', name: 'UTILITY', color: '#8ac6ff', icon: 'iconUtil', blurb: 'Absorb, Rampage, scrap, abilities' },
-  { id: 'mobility', name: 'MOBILITY', color: '#6fd88e', icon: 'iconMob', blurb: 'Roll, speed, new movement' },
+  { id: 'weapons', name: 'WEAPONS', color: '#ffb347', icon: 'iconWeapon', blurb: 'Guns, firing styles, ammo' },
+  { id: 'utility', name: 'UTILITY', color: '#8ac6ff', icon: 'iconUtil', blurb: 'Absorb, Rampage, abilities' },
+  { id: 'mobility', name: 'MOBILITY', color: '#6fd88e', icon: 'iconMob', blurb: 'Roll, speed, movement' },
   { id: 'general', name: 'GENERAL', color: '#ff6161', icon: 'iconStat', blurb: 'HP, armor, damage, cooldowns' },
 ];
 
