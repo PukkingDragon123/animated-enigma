@@ -1,6 +1,6 @@
 // ---- Game: state machine, world, render ---------------------------------
 const WORLD_W = 3200, WORLD_H = 2400, SHORE_Y = 300;
-const RIG_SCALE = 0.58;   // the rig is drawn large for detail, scaled to play size
+const RIG_SCALE = 0.64;   // the rig is drawn large for detail, scaled to play size
 
 class Game {
   constructor() {
