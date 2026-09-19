@@ -1,16 +1,28 @@
 // ---- Game: state machine, world, render ---------------------------------
-const WORLD_W = 3200, WORLD_H = 2400, SHORE_Y = 300;
+const WORLD_W = 6400, WORLD_H = 3000, SHORE_Y = 300;
+// the village stands out over the water down to about SHORE_Y+150, so nothing
+// that swims is allowed above this line
+const WATER_TOP = SHORE_Y + 152;
 const RIG_SCALE = 0.64;   // the rig is drawn large for detail, scaled to play size
 // The world is drawn at 1:1 into an offscreen 640x360 canvas, then a centred
 // 320x180 crop of it is blown up to fill the screen. That is a clean 2x pixel
 // zoom: everything doubles in size and the pixels stay square.
-const ZOOM = 1.6, VIEW_W = 400, VIEW_H = 225;
+// The presentation canvas is 1280x720 so text, interface and the upscale to the
+// browser are all twice as sharp. Every interface coordinate stays in a 640x360
+// logical space, drawn through a 2x transform. The world is still authored at
+// one pixel per world unit in a 640x360 layer; a 426x240 window of it is blown
+// up to fill the screen, which is very close to a clean 3x magnification.
+const OUT_W = 1280, OUT_H = 720;      // presentation resolution
+const HUD_W = 640, HUD_H = 360;       // logical interface space
+const HUD_SCALE = OUT_W / HUD_W;      // 2
+const VIEW_W = 426, VIEW_H = 240;     // world units visible
 const CROP_X = Math.floor((640 - VIEW_W) / 2), CROP_Y = Math.floor((360 - VIEW_H) / 2);
+const ZOOM = HUD_W / VIEW_W;          // world units -> logical interface units
 
 class Game {
   constructor() {
     this.display = document.getElementById('screen'); this.dctx = this.display.getContext('2d');
-    this.g = document.createElement('canvas'); this.g.width = 640; this.g.height = 360;
+    this.g = document.createElement('canvas'); this.g.width = OUT_W; this.g.height = OUT_H;
     this.ctx = this.g.getContext('2d'); this.ctx.imageSmoothingEnabled = false;
     // the world layer, drawn at 1:1 and then cropped + magnified
     this.world = document.createElement('canvas'); this.world.width = 640; this.world.height = 360;
@@ -36,9 +48,8 @@ class Game {
   }
   resize() {
     const ww = window.innerWidth, wh = window.innerHeight;
-    let scale = Math.min(ww / 640, wh / 360);
-    if (scale > 1) scale = Math.max(1, Math.floor(scale * 2) / 2);
-    this.display.style.width = Math.floor(640 * scale) + 'px'; this.display.style.height = Math.floor(360 * scale) + 'px';
+    const scale = Math.min(ww / OUT_W, wh / OUT_H);
+    this.display.style.width = Math.floor(OUT_W * scale) + 'px'; this.display.style.height = Math.floor(OUT_H * scale) + 'px';
   }
   newRun() {
     G = this;
@@ -60,12 +71,18 @@ class Game {
       this.rocks.push(new Rock(x, y, r, rng.int(1, 99999)));
     }
     if (typeof Village !== 'undefined') Village.build(this.pier.x, SHORE_Y, WORLD_W);
-    if (typeof Hazards !== 'undefined') { Hazards.reset(); Hazards.difficulty = 1; Hazards.populate(WORLD_W, WORLD_H, SHORE_Y); }
+    if (typeof Hazards !== 'undefined') {
+      Hazards.reset(); Hazards.difficulty = 1;
+      // the boats already encircle via their own slot logic in entities.js, and
+      // the wave director owns the spawn budget, so switch those off here
+      if (Hazards.tune) { Hazards.tune.flank = 0; Hazards.tune.waveMax = 1; Hazards.tune.waveRate = 1; Hazards.tune.autoSpawn = false; }
+      Hazards.populate(WORLD_W, WORLD_H, SHORE_Y);
+    }
     if (typeof Wildlife !== 'undefined') { Wildlife.reset(); Wildlife.populate(WORLD_W, WORLD_H, SHORE_Y); }
-    this.player = new Player(this.pier.x, SHORE_Y + 168, this.tree);
+    this.player = new Player(this.pier.x, WATER_TOP + 34, this.tree);
     this.director = new Director();
     this.fisherman = this.firstRun ? new Fisherman(this.pier.x, this.pier.y1 - 6) : null;
-    this.cam.x = this.player.x - 320; this.cam.y = this.player.y - 180;
+    this.cam.x = this.player.x - (CROP_X + VIEW_W / 2); this.cam.y = this.player.y - (CROP_Y + VIEW_H / 2);
     UI.banner = null;
     if (!this.firstRun) { this.director.begin(); this.banner('REMATCH', '#ffe48f', 2, 'The village heard you were coming.'); }
   }
@@ -207,7 +224,10 @@ class Game {
     for (const w of this.wrecks) w.update(dt);
     if (this.buoy) { this.buoy.update(dt); if (this.buoy.dead) this.buoy = null; }
     if (typeof Village !== 'undefined') Village.update(dt, t);
-    if (typeof Hazards !== 'undefined') Hazards.update(dt, t);
+    if (typeof Hazards !== 'undefined') {
+      if (Hazards.tune) Hazards.tune.autoSpawn = this.director.state === 'fighting';
+      Hazards.update(dt, t);
+    }
     if (typeof Wildlife !== 'undefined') Wildlife.update(dt, t);
     if (typeof Gore !== 'undefined') Gore.update(dt);
     this.particles.update(dt, (x, y) => this.ocean.flow(x, y));
@@ -234,7 +254,7 @@ class Game {
     const p = this.player;
     // bias the camera toward the shore when close to it, so the village stays in view
     const shoreBias = Math.max(0, (SHORE_Y + 220 - p.y)) * 0.6;
-    const tx = p.x - 320 + p.vx * 0.12, ty = p.y - 180 + p.vy * 0.12 - shoreBias;
+    const tx = p.x - (CROP_X + VIEW_W / 2) + p.vx * 0.12, ty = p.y - (CROP_Y + VIEW_H / 2) + p.vy * 0.12 - shoreBias;
     const k = 1 - Math.pow(0.002, dt);
     // the visible window is cam + CROP .. cam + CROP + VIEW, so clamp to that
     this.cam.x = lerp(this.cam.x, clamp(tx, -CROP_X, WORLD_W - CROP_X - VIEW_W), k);
@@ -244,11 +264,14 @@ class Game {
   }
   // ---------------------------------------------------------- render
   // screen (640x360 HUD space) <-> world, across the 2x crop
-  screenToWorld(sx, sy) { return { x: this.cam.x + CROP_X + sx / ZOOM, y: this.cam.y + CROP_Y + sy / ZOOM }; }
-  worldToScreen(wx, wy) { return { x: (wx - this.cam.x - CROP_X) * ZOOM, y: (wy - this.cam.y - CROP_Y) * ZOOM }; }
+  screenToWorld(sx, sy) { return { x: this.cam.x + CROP_X + sx * (VIEW_W / HUD_W), y: this.cam.y + CROP_Y + sy * (VIEW_H / HUD_H) }; }
+  worldToScreen(wx, wy) { return { x: (wx - this.cam.x - CROP_X) * (HUD_W / VIEW_W), y: (wy - this.cam.y - CROP_Y) * (HUD_H / VIEW_H) }; }
 
   render() {
     const ctx = this.ctx, t = this.time;
+    this.full(ctx);
+    ctx.clearRect(0, 0, OUT_W, OUT_H);
+    this.hud(ctx);
     if (this.state === 'menu') {
       MainMenu.render(ctx, t);
       if (this.showControls) {
@@ -263,6 +286,7 @@ class Game {
       this.blit(); return;
     }
     if (this.state === 'intro') { Intro.render(ctx); this.blit(); return; }
+    this.full(ctx);
     const cam = { x: Math.round(this.cam.x + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)), y: Math.round(this.cam.y + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)) };
     const W = this.wctx;
     W.clearRect(0, 0, 640, 360);
@@ -301,7 +325,10 @@ class Game {
 
     // magnify the centred crop of the world onto the presentation canvas
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.world, CROP_X, CROP_Y, VIEW_W, VIEW_H, 0, 0, 640, 360);
+    this.full(ctx);
+    ctx.drawImage(this.world, CROP_X, CROP_Y, VIEW_W, VIEW_H, 0, 0, OUT_W, OUT_H);
+    // every interface pass below draws in 640x360 logical units
+    this.hud(ctx);
     // overlays
     if (this.state === 'dialogue') Dialogue.renderHUD(ctx);
     if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree') UI.drawHUD(ctx, t);
@@ -364,7 +391,11 @@ class Game {
   }
   blit() {
     this.dctx.imageSmoothingEnabled = false;
+    this.dctx.setTransform(1, 0, 0, 1, 0, 0);
     this.dctx.drawImage(this.g, 0, 0, this.display.width, this.display.height);
   }
+  // everything that is not the world draws in 640x360 logical units
+  hud(ctx) { ctx.setTransform(HUD_SCALE, 0, 0, HUD_SCALE, 0, 0); }
+  full(ctx) { ctx.setTransform(1, 0, 0, 1, 0, 0); }
 }
 window.addEventListener('load', () => { window.game = new Game(); });

@@ -31,8 +31,9 @@ const Input = {
   wheel: 0, anyKey: false,
   updateMouse(e) {
     const r = this.canvas.getBoundingClientRect();
-    this.mouse.x = (e.clientX - r.left) / r.width * this.canvas.width;
-    this.mouse.y = (e.clientY - r.top) / r.height * this.canvas.height;
+    // the canvas is high-res, but all interface coordinates are a fixed 640x360
+    this.mouse.x = (e.clientX - r.left) / r.width * 640;
+    this.mouse.y = (e.clientY - r.top) / r.height * 360;
   },
   down(code) { return !!this.keys[code]; },
   hit(code) { return !!this.pressed[code]; },

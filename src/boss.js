@@ -88,7 +88,7 @@ class Boss {
     if (this.state !== 'charge' && this.state !== 'windup' && this.state !== 'stunned' && this.state !== 'enrage') this.angle = angleLerp(this.angle, desired, Math.min(1, dt * (p2 ? 2.6 : 2)));
     if (speed > 0) { this.vx = lerp(this.vx, Math.cos(this.angle) * speed, Math.min(1, dt * (this.state === 'charge' ? 12 : 3))); this.vy = lerp(this.vy, Math.sin(this.angle) * speed, Math.min(1, dt * (this.state === 'charge' ? 12 : 3))); }
     this.x += this.vx * dt; this.y += this.vy * dt;
-    this.x = clamp(this.x, 30, G.ocean.W - 30); this.y = clamp(this.y, G.ocean.shoreY + 20, G.ocean.H - 30);
+    this.x = clamp(this.x, 30, G.ocean.W - 30); this.y = clamp(this.y, WATER_TOP + 10, G.ocean.H - 30);
     // rocks (non-charging): slide around
     if (this.state !== 'charge') for (const r of G.rocks) { const dr = dist(this.x, this.y, r.x, r.y); if (dr < r.r + this.radius) { const a = angleTo(r.x, r.y, this.x, this.y); this.x = r.x + Math.cos(a) * (r.r + this.radius); this.y = r.y + Math.sin(a) * (r.r + this.radius); } }
     // wake

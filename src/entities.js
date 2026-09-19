@@ -253,7 +253,7 @@ class Player {
     else { this.vx += f.x * dt * 0.6; this.vy += f.y * dt * 0.6; }
     this.x += this.vx * dt; this.y += this.vy * dt;
     // bounds & rocks
-    this.x = clamp(this.x, 16, G.ocean.W - 16); this.y = clamp(this.y, G.ocean.shoreY + 14, G.ocean.H - 16);
+    this.x = clamp(this.x, 16, G.ocean.W - 16); this.y = clamp(this.y, WATER_TOP, G.ocean.H - 16);
     for (const r of G.rocks) { const d = dist(this.x, this.y, r.x, r.y); if (d < r.r + 8) { const a = angleTo(r.x, r.y, this.x, this.y); this.x = r.x + Math.cos(a) * (r.r + 8); this.y = r.y + Math.sin(a) * (r.r + 8); if (this.roll.active) { this.endRoll(); G.particles.splash(this.x, this.y, 1.2); } this.vx *= 0.5; this.vy *= 0.5; } }
     // facing & tilt
     const sp = Math.hypot(this.vx, this.vy);
@@ -585,7 +585,7 @@ class Enemy {
     const f = G.ocean.flow(this.x, this.y);
     this.x += (this.vx + this.kx + f.x * 0.4) * dt; this.y += (this.vy + this.ky + f.y * 0.4) * dt;
     this.kx *= Math.pow(0.02, dt); this.ky *= Math.pow(0.02, dt);
-    this.x = clamp(this.x, 10, G.ocean.W - 10); this.y = clamp(this.y, G.ocean.shoreY - 4, G.ocean.H - 10);
+    this.x = clamp(this.x, 10, G.ocean.W - 10); this.y = clamp(this.y, WATER_TOP - 6, G.ocean.H - 10);
     // wake & spray
     const spd = Math.hypot(this.vx, this.vy);
     if (G.ocean.disturb && spd > 20) G.ocean.disturb(this.x, this.y, Math.min(4.5, spd / 55) * (this.cfg.big ? 1.6 : 1), this.vx, this.vy);

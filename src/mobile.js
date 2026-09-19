@@ -510,7 +510,8 @@ const MobileUI = {
     const c = this.canvas;
     if (!c) return { x: cx, y: cy };
     const r = c.getBoundingClientRect();
-    return { x: (cx - r.left) / (r.width || 1) * c.width, y: (cy - r.top) / (r.height || 1) * c.height };
+    // interface space is a fixed 640x360 regardless of the canvas resolution
+    return { x: (cx - r.left) / (r.width || 1) * 640, y: (cy - r.top) / (r.height || 1) * 360 };
   },
 
   onDown(e, id, cx, cy, pe) {

@@ -2355,7 +2355,7 @@
       this.trees.sort((a, b) => a.y - b.y);
 
       // ---- main boardwalk: platforms from left to right
-      const startX = X - 1020, endX = X + 1020;
+      const startX = X - 2400, endX = X + 2400;
       let x = startX;
       const platforms = [];
       while (x < endX) {
@@ -2422,8 +2422,8 @@
       this.add(makeBoat({ x: X - 46, y: S + 96, len: 28, seed: seed++ }), 5);
       this.add(makeBoat({ x: X + 26, y: S + 60, len: 24, seed: seed++ }), 5);
       // buoys bobbing around
-      for (let i = 0; i < 7; i++) this.props.push({ s: P.buoyProp, x: X + rng.range(-520, 520), y: S + rng.range(30, 150), ph: rng.range(0, TAU), amp: 1.8 });
-      for (let i = 0; i < 5; i++) this.props.push({ s: P.buoyBall, x: X + rng.range(-620, 620), y: S + rng.range(20, 120), ph: rng.range(0, TAU), amp: 1.4 });
+      for (let i = 0; i < 18; i++) this.props.push({ s: P.buoyProp, x: X + rng.range(-2200, 2200), y: S + rng.range(30, 150), ph: rng.range(0, TAU), amp: 1.8 });
+      for (let i = 0; i < 14; i++) this.props.push({ s: P.buoyBall, x: X + rng.range(-2300, 2300), y: S + rng.range(20, 120), ph: rng.range(0, TAU), amp: 1.4 });
 
       // ---- the sign
       const sc = cv(96, 26);
@@ -2451,7 +2451,7 @@
       this.signX = X; this.signY = S - 52;
 
       // ---- gulls
-      for (let i = 0; i < 6; i++) this.gulls.push({ x: X + rng.range(-600, 600), y: S - rng.range(70, 170), vx: rng.range(-16, 16), ph: rng.range(0, TAU), up: 0 });
+      for (let i = 0; i < 16; i++) this.gulls.push({ x: X + rng.range(-2200, 2200), y: S - rng.range(70, 170), vx: rng.range(-16, 16), ph: rng.range(0, TAU), up: 0 });
 
       // ---- villagers
       this.populate(platforms, rng, rowF, S, X, jw, jEnd);
@@ -2636,8 +2636,8 @@
         gl.x += gl.vx * dt; gl.ph += dt * (this.hostile ? 16 : 9);
         gl.y += Math.sin(gl.ph * 0.2) * 6 * dt;
         if (this.hostile) { gl.y -= 12 * dt; gl.vx = approach(gl.vx, sign(gl.vx) * 70, 30 * dt); }
-        if (gl.x < this.pierX - 900) gl.vx = Math.abs(gl.vx);
-        if (gl.x > this.pierX + 900) gl.vx = -Math.abs(gl.vx);
+        if (gl.x < this.pierX - 2200) gl.vx = Math.abs(gl.vx);
+        if (gl.x > this.pierX + 2200) gl.vx = -Math.abs(gl.vx);
       }
       Puffs.update(dt);
       Gore.update(dt);
