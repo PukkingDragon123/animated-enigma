@@ -36,6 +36,7 @@ class Game {
     this.viewW = VIEW_W; this.viewH = VIEW_H; this.cropX = CROP_X; this.cropY = CROP_Y;
     if (typeof Wildlife !== 'undefined') { Wildlife.init(); Wildlife.keyLabel = 'G'; }
     if (typeof Upgrades !== 'undefined') Upgrades.init();
+    if (typeof WorldMap !== 'undefined') WorldMap.init();
     if (typeof MainMenu !== 'undefined') MainMenu.init();
     this.tree = new SkillTree();
     this.state = (typeof MainMenu !== 'undefined') ? 'menu' : 'intro';
@@ -147,7 +148,23 @@ class Game {
         }
         break;
       }
-      case 'intro': Intro.update(dt); if (Intro.done) { this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; } break;
+      case 'intro':
+        Intro.update(dt);
+        if (Intro.done) {
+          if (typeof WorldMap !== 'undefined') { WorldMap.open(1); this.state = 'worldmap'; }
+          else { this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; }
+        }
+        break;
+      case 'worldmap': {
+        WorldMap.update(dt, this.time); this.time += dt;
+        const wa = WorldMap.action;
+        if (wa) {
+          WorldMap.consume();
+          if (wa === 'launch') { this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; }
+          else if (wa === 'back') this.state = 'menu';
+        }
+        break;
+      }
       case 'dialogue':
         Dialogue.update(dt); this.updateWorld(dt);
         const tapOk = !(typeof MobileUI !== 'undefined' && MobileUI.enabled && MobileUI.consumedTouch(Input.mouse.x, Input.mouse.y));
@@ -286,6 +303,7 @@ class Game {
       this.blit(); return;
     }
     if (this.state === 'intro') { Intro.render(ctx); this.blit(); return; }
+    if (this.state === 'worldmap') { WorldMap.render(ctx, t); this.blit(); return; }
     this.full(ctx);
     const cam = { x: Math.round(this.cam.x + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)), y: Math.round(this.cam.y + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)) };
     const W = this.wctx;

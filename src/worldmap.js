@@ -120,7 +120,7 @@
   const ISLES = [
     {
       name: "MOTHER'S REACH", x: 114, y: 202, rx: 82, ry: 46, seed: 1101, rough: 1.15,
-      hills: 8, woods: 7, label: [106, 208], ls: 6,
+      hills: 13, woods: 11, label: [106, 208], ls: 6,
       lobes: [
         { dx: 52, dy: -22, rx: 40, ry: 24 }, { dx: -54, dy: 4, rx: 30, ry: 26 },
         { dx: 10, dy: 30, rx: 46, ry: 18 }, { dx: -14, dy: -30, rx: 32, ry: 18 },
@@ -129,7 +129,7 @@
     },
     {
       name: 'SALT PIER', x: 246, y: 86, rx: 54, ry: 32, seed: 2207, rough: 1.05,
-      hills: 4, woods: 4, label: [244, 74], ls: 5,
+      hills: 7, woods: 6, label: [244, 74], ls: 5,
       lobes: [{ dx: -34, dy: 14, rx: 26, ry: 16 }, { dx: 30, dy: 16, rx: 26, ry: 14 }, { dx: 6, dy: -22, rx: 28, ry: 14 }],
     },
     { name: 'THE SISTERS', x: 298, y: 182, rx: 16, ry: 11, seed: 3301, rough: 1.2, hills: 1, woods: 1, label: [300, 170], ls: 4, lobes: [{ dx: 10, dy: 6, rx: 8, ry: 6 }] },
@@ -137,19 +137,19 @@
     { name: '', x: 264, y: 220, rx: 14, ry: 10, seed: 3313, rough: 1.2, hills: 1, woods: 1, lobes: [{ dx: -9, dy: 4, rx: 7, ry: 5 }] },
     {
       name: 'MARROW ISLE', x: 408, y: 178, rx: 52, ry: 36, seed: 4409, rough: 1.1,
-      hills: 6, woods: 5, label: [404, 176], ls: 5,
+      hills: 9, woods: 8, label: [404, 176], ls: 5,
       lobes: [{ dx: -32, dy: -14, rx: 26, ry: 18 }, { dx: 30, dy: 14, rx: 26, ry: 16 }, { dx: -6, dy: 26, rx: 30, ry: 12 }],
     },
     {
       name: 'BLACKBONE', x: 494, y: 78, rx: 42, ry: 26, seed: 5501, rough: 1.15,
-      hills: 5, woods: 2, label: [492, 66], ls: 5,
+      hills: 7, woods: 3, label: [492, 66], ls: 5,
       lobes: [{ dx: 24, dy: 10, rx: 22, ry: 13 }, { dx: -26, dy: 6, rx: 20, ry: 14 }],
     },
     { name: 'THE FANGS', x: 562, y: 114, rx: 11, ry: 8, seed: 6607, rough: 1.3, hills: 1, woods: 0, label: [572, 126], ls: 4, lobes: [{ dx: 14, dy: 12, rx: 7, ry: 5 }] },
   ];
 
   // ------------------------------------------------------- destinations ---
-  const HOME = { x: 44, y: 220 };
+  const HOME = { x: 34, y: 238 };
   const DEST = [
     {
       name: 'FISHER VILLAGE', chapter: 'I', x: 164, y: 230, lab: 'below', threat: 0.22,
@@ -167,17 +167,17 @@
       foes: ['speedboat', 'harpooner', 'gunboat'], need: 'SALT PIER CANNERY',
     },
     {
-      name: 'BLACKBONE STATION', chapter: 'IV', x: 508, y: 100, lab: 'right', threat: 0.74,
+      name: 'BLACKBONE STATION', chapter: 'IV', x: 508, y: 100, lab: 'below', threat: 0.74,
       blurb: 'A flensing deck, a winch built for whales, and the pens where they keep the big ones alive until the buyer comes.',
       foes: ['trawler', 'harpooner', 'gunboat'], need: 'PORT MARROW',
     },
     {
-      name: 'THE GREY SHOALS', chapter: 'V', x: 546, y: 196, lab: 'below', threat: 0.87,
+      name: 'THE GREY SHOALS', chapter: 'V', x: 548, y: 190, lab: 'below', threat: 0.87, open: true,
       blurb: 'Open water and drift nets out to the horizon. No rocks to hide in, no shore to run for, and the tide against you.',
       foes: ['trawler', 'speedboat', 'netter'], need: 'BLACKBONE STATION',
     },
     {
-      name: 'THE DEEP ROADS', chapter: 'VI', x: 596, y: 56, lab: 'left', threat: 1,
+      name: 'THE DEEP ROADS', chapter: 'VI', x: 598, y: 38, lab: 'left', threat: 1, open: true,
       blurb: 'Past the last light on the chart. The Chief runs these roads, and the fleet that took her family runs with him.',
       foes: ['gunboat', 'dynaboat', 'chief'], need: 'THE GREY SHOALS',
     },
@@ -205,7 +205,7 @@
     { k: 'serpent', x: 44, y: 112, f: 1 },
     { k: 'whale', x: 146, y: 100, f: -1 },
     { k: 'kraken', x: 600, y: 96 },
-    { k: 'ray', x: 352, y: 246 },
+    { k: 'ray', x: 472, y: 240 },
     { k: 'whale', x: 470, y: 60, f: 1 },
   ];
 
@@ -214,8 +214,8 @@
     { x: 546, y: 198, rx: 50, ry: 30, seed: 91, n: 46, label: 'THE GREY SHOALS' },
     { x: 216, y: 142, rx: 26, ry: 12, seed: 77, n: 16, label: '' },
     { x: 350, y: 206, rx: 22, ry: 13, seed: 61, n: 14, label: '' },
-    { x: 34, y: 176, rx: 17, ry: 13, seed: 53, n: 11, label: '' },
-    { x: 470, y: 214, rx: 20, ry: 11, seed: 41, n: 12, label: '' },
+    { x: 30, y: 128, rx: 16, ry: 13, seed: 53, n: 11, label: '' },
+    { x: 468, y: 206, rx: 20, ry: 11, seed: 41, n: 12, label: '' },
   ];
 
   // rhumb-line nodes (portolan style: every node throws 16 lines to the edges)
@@ -455,52 +455,64 @@
 
   // sea doodles ------------------------------------------------------------
   function drawSerpent(ctx, x, y, f) {
-    const hum = [0, 16, 32];
-    for (const h of hum) {
-      for (let i = -6; i <= 6; i++) {
-        const u = i / 6;
-        const ty = Math.round(y - 6 * Math.cos(u * Math.PI * 0.5));
-        D1(ctx, P.ink, x + f * (h + i), ty);
-        if (Math.abs(i) < 5) D1(ctx, P.inkL, x + f * (h + i), ty + 1);
-        if (i % 3 === 0 && Math.abs(i) < 5) D1(ctx, P.ink2, x + f * (h + i), ty - 1);
+    // three coils breaking the surface, a head at one end, a fluked tail at the other
+    for (const h of [0, 17, 34]) {
+      for (let i = -7; i <= 7; i++) {
+        const u = i / 7;
+        const ty = Math.round(y - 8 * Math.cos(u * Math.PI * 0.5));
+        const cx = x + f * (h + i);
+        D1(ctx, P.ink, cx, ty);
+        D1(ctx, P.ink, cx, ty + 4);                       // underside of the coil
+        for (let k = ty + 1; k < ty + 4; k++) if (((cx + k) & 1) === 0) D1(ctx, P.inkL, cx, k);
+        if (i % 4 === 0 && Math.abs(i) < 6) { D1(ctx, P.ink2, cx, ty - 1); D1(ctx, P.ink2, cx + f, ty - 2); }   // dorsal spines
       }
-      R(ctx, P.ink2, x + f * (h - 6), y + 1, 1, 1);
     }
-    // water line the humps sit in
-    for (let i = -10; i < 46; i += 3) { D1(ctx, P.inkL, x + f * i, y + 2); D1(ctx, P.inkL, x + f * (i + 1), y + 2); }
-    // head
-    const hx = x + f * 44;
-    R(ctx, P.ink, hx, y - 12, 2, 7);
-    R(ctx, P.ink, hx + f, y - 14, 7 * f, 1);
-    R(ctx, P.ink, hx + f * 6, y - 13, 1, 3);
-    R(ctx, P.ink, hx + f, y - 10, 6 * f, 1);
-    D1(ctx, P.sand, hx + f * 4, y - 13);
-    D1(ctx, P.ink, hx + f * 7, y - 12); D1(ctx, P.ink, hx + f * 8, y - 11);
-    D1(ctx, P.ink, hx + f * 2, y - 16); D1(ctx, P.ink, hx + f * 3, y - 17);
-    // tail fin
-    R(ctx, P.ink, x - f * 12, y - 3, 1, 4);
-    D1(ctx, P.ink, x - f * 13, y - 5); D1(ctx, P.ink, x - f * 14, y - 6);
-    D1(ctx, P.ink, x - f * 13, y + 1); D1(ctx, P.ink, x - f * 14, y + 2);
+    for (let i = -12; i < 50; i += 3) { D1(ctx, P.inkL, x + f * i, y + 6); D1(ctx, P.inkL, x + f * (i + 1), y + 6); }
+    // head, reared up on a neck
+    const hx = x + f * 47, hy = y - 16;
+    for (let k = 0; k < 10; k++) { D1(ctx, P.ink, hx - f * 2, y - 5 - k); D1(ctx, P.ink, hx + f, y - 5 - k); }
+    R(ctx, P.ink, hx - f * 2, hy - 5, 8 * f, 1);
+    R(ctx, P.ink, hx - f * 2, hy + 1, 8 * f, 1);
+    R(ctx, P.ink, hx + f * 6, hy - 5, 1, 7);
+    for (let k = -4; k <= 0; k++) if ((k & 1) === 0) D1(ctx, P.inkL, hx + f * 3, hy + k);
+    D1(ctx, P.sand, hx + f * 3, hy - 3); D1(ctx, P.ink, hx + f * 4, hy - 3);     // eye
+    D1(ctx, P.ink, hx + f * 7, hy - 2); D1(ctx, P.ink, hx + f * 8, hy - 1);      // open jaw
+    D1(ctx, P.ink, hx + f * 7, hy + 2); D1(ctx, P.ink, hx + f * 8, hy + 3);
+    D1(ctx, P.ink, hx - f, hy - 8); D1(ctx, P.ink, hx, hy - 9); D1(ctx, P.ink, hx + f, hy - 8);   // horns
+    // tail
+    for (let k = 0; k < 6; k++) { D1(ctx, P.ink, x - f * (8 + k), y - 2 - k); D1(ctx, P.ink, x - f * (8 + k), y + 1 + k); }
+    D1(ctx, P.ink, x - f * 14, y - 8); D1(ctx, P.ink, x - f * 14, y + 7);
   }
   function drawWhale(ctx, x, y, f) {
-    const W = 26;
+    const W = 34;
     for (let i = 0; i < W; i++) {
       const u = i / (W - 1);
-      const th = Math.round(3 + 4 * Math.sin(Math.PI * Math.pow(u, 0.8)));
-      const cx = x + f * (i - W / 2);
-      D1(ctx, P.ink, cx, y - th); D1(ctx, P.ink, cx, y + th - 1);
-      if (i % 2 === 0) for (let k = -th + 1; k < th - 1; k += 3) D1(ctx, P.inkL, cx, y + k);
+      const th = 2 + 7.2 * Math.sin(Math.PI * Math.pow(u, 0.55)) * (1 - u * 0.25);
+      const t0 = Math.round(th), b0 = Math.round(th * 0.82);
+      const cx = x + f * Math.round(i - W * 0.62);
+      D1(ctx, P.ink, cx, y - t0); D1(ctx, P.ink, cx, y + b0);
+      if (i % 2 === 0) for (let k = -t0 + 2; k < b0 - 1; k += 3) D1(ctx, P.inkL, cx, y + k);
+      if (i > W * 0.55 && i % 3 === 0) D1(ctx, P.ink2, cx, y + b0 - 1);   // belly pleats
     }
-    // fluke + fin + eye + spout
-    const tx = x - f * (W / 2 + 1);
-    D1(ctx, P.ink, tx, y - 1); D1(ctx, P.ink, tx - f, y - 4); D1(ctx, P.ink, tx - f * 2, y - 6);
-    D1(ctx, P.ink, tx - f, y + 2); D1(ctx, P.ink, tx - f * 2, y + 4);
-    R(ctx, P.ink, tx - f * 3, y - 6, 1, 3); R(ctx, P.ink, tx - f * 3, y + 3, 1, 3);
-    D1(ctx, P.ink, x + f * 8, y - 2); D1(ctx, P.ink, x + f * 9, y - 2);
-    R(ctx, P.ink, x + f * 2, y + 4, 3, 1); D1(ctx, P.ink, x + f * 4, y + 5);
-    for (let i = 0; i < 7; i++) {
-      D1(ctx, P.inkL, x + f * (9 - (i >> 1)), y - 9 - i);
-      if (i > 2) D1(ctx, P.inkL, x + f * (12 - (i >> 1)), y - 9 - i);
+    // blunt head, jaw line and eye
+    const hx = x + f * Math.round(W * 0.37);
+    for (let k = -5; k <= 4; k++) D1(ctx, P.ink, hx + f * (k < 0 ? 1 : 0), y + k);
+    R(ctx, P.ink, hx - f * 7, y + 1, 8, 1);
+    D1(ctx, P.ink, hx - f * 5, y - 2); D1(ctx, P.ink, hx - f * 4, y - 2);
+    // fluke
+    const tx = x - f * Math.round(W * 0.64);
+    for (let k = 0; k < 7; k++) {
+      D1(ctx, P.ink, tx - f * k, y - 1 - k); D1(ctx, P.ink, tx - f * k, y + 1 + Math.round(k * 0.8));
+      if (k > 2) { D1(ctx, P.inkL, tx - f * k, y - k); D1(ctx, P.inkL, tx - f * k, y + Math.round(k * 0.8)); }
+    }
+    D1(ctx, P.ink, tx - f * 7, y - 8); D1(ctx, P.ink, tx - f * 7, y + 7);
+    // flipper
+    for (let k = 0; k < 5; k++) D1(ctx, P.ink, hx - f * (5 + k), y + 5 + (k >> 1));
+    // spout
+    for (let i = 0; i < 9; i++) {
+      D1(ctx, P.inkL, hx - f * (2 + (i >> 1)), y - 10 - i);
+      if (i > 2) D1(ctx, P.inkL, hx + f * (2 + (i >> 2)), y - 10 - i);
+      if (i > 5) D1(ctx, P.faint, hx - f * (6 + (i >> 1)), y - 9 - i);
     }
   }
   function drawKraken(ctx, x, y) {
@@ -529,13 +541,16 @@
 
   // ships on the lanes -----------------------------------------------------
   const SHIP_ROWS = [
-    '...k....',
-    '..kwk...',
-    '..kwwk..',
-    '.kkwwwk.',
-    '...k....',
-    'kkkkkkkk',
-    '.kkkkkk.',
+    '....k......',
+    '....kwk....',
+    '....k......',
+    '...kwk.....',
+    '..kkwwk....',
+    '.kkwwwwk...',
+    '....k......',
+    'kkkkkkkkkkk',
+    '.kkkkkkkkk.',
+    '..kkkkkkk..',
   ];
 
   function laneLen(pts) {
@@ -585,15 +600,15 @@
     for (let i = 0; i < MER.length; i++) {
       const lab = String(64 - i * 1);
       const w = mText(lab, 5);
-      txt(ctx, lab, MER[i] - w / 2 - 3, IN.y0 + 2, 5, { color: P.ink2, align: 'left' });
-      degRing(ctx, P.ink2, MER[i] - w / 2 + w - 2, IN.y0 + 1);
-      txt(ctx, 'W', MER[i] - w / 2 + w + 2, IN.y0 + 2, 5, { color: P.ink2 });
+      txt(ctx, lab, MER[i] - w / 2 - 3, IN.y0 + 4, 5, { color: P.ink2, align: 'left' });
+      degRing(ctx, P.ink2, MER[i] - w / 2 + w - 2, IN.y0 + 3);
+      txt(ctx, 'W', MER[i] - w / 2 + w + 2, IN.y0 + 4, 5, { color: P.ink2 });
     }
     for (let i = 0; i < PAR.length; i++) {
       const lab = String(19 - i);
-      txt(ctx, lab, IN.x0 + 2, PAR[i] - 3, 5, { color: P.ink2 });
-      degRing(ctx, P.ink2, IN.x0 + 2 + mText(lab, 5) + 1, PAR[i] - 4);
-      txt(ctx, 'N', IN.x0 + 2 + mText(lab, 5) + 6, PAR[i] - 3, 5, { color: P.ink2 });
+      txt(ctx, lab, IN.x0 + 4, PAR[i] - 3, 5, { color: P.ink2 });
+      degRing(ctx, P.ink2, IN.x0 + 4 + mText(lab, 5) + 1, PAR[i] - 4);
+      txt(ctx, 'N', IN.x0 + 4 + mText(lab, 5) + 6, PAR[i] - 3, 5, { color: P.ink2 });
     }
   }
 
@@ -725,7 +740,7 @@
   function buildSprites() {
     if (S.ready) return; S.ready = true;
     const pal = { k: P.ink, w: P.sand, r: P.red, g: P.gold, d: P.ink2, l: P.inkL };
-    S.ship = makeSprite(SHIP_ROWS, { ax: 4, ay: 4, pal: pal });
+    S.ship = makeSprite(SHIP_ROWS, { ax: 5, ay: 7, pal: pal });
     // the pair, as a chart token: manatee with the otter riding, facing right
     S.token = makeSprite([
       '.........p......',
@@ -967,12 +982,13 @@
     const snapHome = snapCoast(mask, dOut0, oc, HOME.x, HOME.y, 26);
     HOME.x = snapHome[0]; HOME.y = snapHome[1];
     for (const d of DEST) {
+      if (d.open) continue;                       // shoals and open sea stay put
       const p = snapCoast(mask, dOut0, oc, d.x, d.y, 26);
       d.x = p[0]; d.y = p[1];
     }
     // then bite a small basin out of the shore behind each one
     carve(mask, HOME.x, HOME.y, 6, 3.1);
-    for (const d of DEST) carve(mask, d.x, d.y, 5, d.x * 0.01 + 1.7);
+    for (const d of DEST) if (!d.open) carve(mask, d.x, d.y, 5, d.x * 0.01 + 1.7);
     const dIn = distField(mask, 0), dOut = distField(mask, 1);
     oc = oceanFill(mask);
     const land = paintLand(mask, dIn, dOut);
@@ -992,7 +1008,8 @@
       if (dist(HOME.x, HOME.y, x, y) < 22) clash = true;
       if (dist(ROSE.x, ROSE.y, x, y) < ROSE.r + 14) clash = true;
       if (x > 16 && x < 186 && y > 16 && y < 86) clash = true;        // cartouche
-      if (x > 462 && x < 622 && y > 224 && y < 256) clash = true;     // scale bar
+      if (x > 292 && x < 452 && y > 224 && y < 256) clash = true;     // scale bar
+      if (x > 556 && x < 624 && y > 224 && y < 250) clash = true;     // open-sea note
       if (clash) continue;
       const v = Math.max(2, Math.round(cl * 1.1 + rng.range(0, 14)));
       txt(cx, String(v), x, y, 5, { color: P.ink2, align: 'center' });
@@ -1014,14 +1031,14 @@
       if (!is.name || !is.label) continue;
       txt(cx, is.name, is.label[0], is.label[1], is.ls || 5, { color: P.ink, align: 'center', tracking: 2 });
     }
-    txt(cx, 'THE GREY SHOALS', 546, 168, 5, { color: P.ink2, align: 'center', tracking: 2 });
-    txt(cx, 'OPEN SEA', 606, 208, 5, { color: P.ink2, align: 'center', tracking: 2 });
-    txt(cx, 'HERE THE CHART ENDS', 590, 232, 5, { color: P.ink2, align: 'center' });
+    txt(cx, 'OPEN SEA', 590, 232, 6, { color: P.ink2, align: 'center', tracking: 3 });
+    txt(cx, 'HERE THE CHART ENDS', 590, 242, 5, { color: P.ink2, align: 'center' });
     txt(cx, 'THE NARROWS', 232, 166, 5, { color: P.ink2, align: 'center', tracking: 1 });
+    txt(cx, 'MOTHER DEEP', 106, 130, 5, { color: P.ink2, align: 'center', tracking: 1 });
 
     // ---- furniture on top
     drawRose(cx, ROSE.x, ROSE.y, ROSE.r);
-    drawScale(cx, 470, 240);
+    drawScale(cx, 300, 240);
     drawCartouche(cx, 20, 20, 156, 62);
     drawBorder(cx);
 
@@ -1306,11 +1323,11 @@
       drawSprite(ctx, S.anchor, x, y - 1);
       const k = (Math.sin(T * 2.4) * 0.5 + 0.5);
       ring(ctx, P.ink2, x, y, 7 + Math.round(k * 2), 3);
-      const w = 6 + mText('THE LAGOON', 5);
-      R(ctx, P.sand, x - 2, y + 8, w, 10);
-      box(ctx, P.ink, x - 2, y + 8, w, 10);
-      txt(ctx, 'THE LAGOON', x + 1, y + 11, 5, { color: P.ink });
-      txt(ctx, 'YOU ARE HERE', x - 2, y + 20, 5, { color: P.red });
+      const w = 7 + mText('THE LAGOON', 6);
+      R(ctx, P.sand, x + 8, y - 5, w, 11);
+      box(ctx, P.ink, x + 8, y - 5, w, 11);
+      txt(ctx, 'THE LAGOON', x + 12, y - 2, 6, { color: P.ink });
+      txt(ctx, 'YOU ARE HERE', x + 8, y - 14, 5, { color: P.red, tracking: 1 });
     },
 
     drawRoute(ctx, T) {
@@ -1372,8 +1389,8 @@
       // ---- name + standing
       pixelTextOutlined(ctx, d.name, X, 278, 18, d.unlocked ? '#ffe48f' : '#b8c6d4', '#14141c');
       const st = d.unlocked
-        ? 'CHAPTER ' + d.chapter + '  ·  THE WAY IS OPEN'
-        : 'CHAPTER ' + d.chapter + '  ·  LOCKED';
+        ? 'CHAPTER ' + d.chapter + '   -   THE WAY IS OPEN'
+        : 'CHAPTER ' + d.chapter + '   -   LOCKED';
       pixelText(ctx, st, X, 296, 6, d.unlocked ? '#6fd88e' : '#8ea6bc', 'left', false);
       UIKit.divider(ctx, X, 307, 288);
       let y = 313;
@@ -1418,7 +1435,7 @@
         UIKit.button(ctx, BTN_SAIL.x + shake, BTN_SAIL.y, BTN_SAIL.w, BTN_SAIL.h, 'LOCKED', 'disabled');
         drawSprite(ctx, S.lock, BTN_SAIL.x + 18 + shake, BTN_SAIL.y + 19);
       }
-      pixelText(ctx, 'ARROWS CHOOSE  ·  ENTER SETS SAIL  ·  ESC GOES BACK', 320, 343, 5, '#7f93a6', 'center', false);
+      pixelText(ctx, 'ARROWS CHOOSE   -   ENTER SETS SAIL   -   ESC GOES BACK', 320, 343, 5, '#7f93a6', 'center', false);
     },
   };
 
