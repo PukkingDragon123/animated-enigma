@@ -23,11 +23,23 @@
   // buffer size: the cull box is read off whatever canvas we are handed, which
   // is correct both for the 640x360 world layer and for a bare 320x180 target.
   const CULL = 88;
-  let _vw = 640, _vh = 360;
-  function setView(ctx) { const c = ctx && ctx.canvas; if (c) { _vw = c.width || 640; _vh = c.height || 360; } }
+  let _vx0 = 0, _vy0 = 0, _vw = 640, _vh = 360;
+  function setView(ctx) {
+    const c = ctx && ctx.canvas;
+    _vx0 = 0; _vy0 = 0;
+    _vw = c && c.width ? c.width : 640;
+    _vh = c && c.height ? c.height : 360;
+    // the renderer draws the world at 1:1 and magnifies a centred crop of it,
+    // so only that crop is ever seen: cull against the crop, not the buffer
+    try {
+      if (typeof VIEW_W !== 'undefined' && typeof CROP_X !== 'undefined' && VIEW_W > 0 && VIEW_W < _vw) {
+        _vx0 = CROP_X; _vw = VIEW_W; _vy0 = CROP_Y; _vh = VIEW_H;
+      }
+    } catch (e) { }
+  }
 
   function gg() { try { return (typeof G !== 'undefined' && G) ? G : null; } catch (e) { return null; } }
-  function onScreen(sx, sy, m) { m = m || CULL; return sx > -m && sy > -m && sx < _vw + m && sy < _vh + m; }
+  function onScreen(sx, sy, m) { m = m || CULL; return sx > _vx0 - m && sy > _vy0 - m && sx < _vx0 + _vw + m && sy < _vy0 + _vh + m; }
 
   let TOON = null, GORE = null, AUD = null;
   function bindFx() {
@@ -70,7 +82,7 @@
   function pline(ctx, x0, y0, x1, y1, th, col) {
     const dx = x1 - x0, dy = y1 - y0;
     const len = Math.abs(dx) > Math.abs(dy) ? Math.abs(dx) : Math.abs(dy);
-    const n = len < 1 ? 1 : Math.ceil(len / (th * 0.62 < 1 ? 1 : th * 0.62));
+    const n = len < 1 ? 1 : Math.ceil(len / (th * 0.85 < 1 ? 1 : th * 0.85));
     const h = th >> 1;
     ctx.fillStyle = col;
     for (let i = 0; i <= n; i++) ctx.fillRect(Math.round(x0 + dx * i / n) - h, Math.round(y0 + dy * i / n) - h, th, th);
@@ -98,6 +110,14 @@
     const ax = LX(x0, y0), ay = LY(x0, y0), bx = LX(x1, y1), by = LY(x1, y1);
     if (ink) pline(ctx, ax, ay, bx, by, th + 2, ink);
     pline(ctx, ax, ay, bx, by, th, col);
+  }
+  // a chunky 3-band oval: crisper than ctx.ellipse (which antialiases) and cheaper
+  function shadowBlob(ctx, x, y, rx, ry, col) {
+    ctx.fillStyle = col;
+    const w = rx * 2, h = ry * 2;
+    ctx.fillRect(x - rx, y - ry + (ry >> 1), w, h - (ry & ~1));
+    ctx.fillRect(x - rx + (rx >> 1), y - ry, w - (rx & ~1), h);
+    ctx.fillRect(x - rx + 1, y - ry + 1, w - 2, h - 2);
   }
   function ldot(ctx, x, y, s, col) { ctx.fillStyle = col; ctx.fillRect(Math.round(LX(x, y)) - (s >> 1), Math.round(LY(x, y)) - (s >> 1), s, s); }
   // a two-bone limb: outline the whole chain first so the elbow has no black seam
@@ -176,6 +196,7 @@
     harpoonPull: 190,       // rope drag on the player, px/s^2
     harpoonBite: 0.9,       // seconds between rope-burn ticks
     corpseLife: 7,
+    maxCorpses: 14,       // floating bodies are atmosphere, not a memory leak
 
     // ---- boarding ------------------------------------------------------
     boarders: true,
@@ -692,8 +713,7 @@
         if (u < 0.45) { ctx.fillStyle = HP.chainL; ctx.fillRect(cxp - 1, cyp, 1, 1); }
       }
       // ---- underwater shadow
-      ctx.fillStyle = 'rgba(6,18,48,0.34)';
-      ctx.beginPath(); ctx.ellipse(sx + 3, sy + 6, 8, 5, 0, 0, TAU); ctx.fill();
+      shadowBlob(ctx, sx + 3, sy + 6, 8, 4, 'rgba(6,18,48,0.30)');
       // ---- the mine itself, half out of the water
       const lit = (m.blink % 2) < 1 || m.fuse >= 0 && (m.blink % 1) < 0.55;
       const sprite = S.mine[m.kind][lit ? 1 : 0];
@@ -820,6 +840,7 @@
     }
     if (TOON) { TOON.impact(s.x, s.y, 1.2, '#ff6161'); TOON.burst(s.x, s.y, 0.55, '#c8302e'); TOON.emote(s.x + 7, s.y - 16, 'skull'); }
     snd('hurt');
+    if (corpses.length >= TUNE.maxCorpses) corpses.shift();
     corpses.push({ x: s.x, y: s.y, ang: s.ang, look: s.look, t: 0, life: TUNE.corpseLife, rot: rand(-0.3, 0.3), vx: Math.cos(ang) * 40, vy: Math.sin(ang) * 40 });
     if (s.tethered) snapTether(s, false);
   }
@@ -1073,11 +1094,9 @@
 
     // ---- shadow / submerged smudge
     if (leap) {
-      ctx.fillStyle = 'rgba(6,18,48,0.42)';
-      ctx.beginPath(); ctx.ellipse(sx + 2, sy + 4, Math.max(3, 8 - z * 0.07), Math.max(2, 4 - z * 0.035), 0, 0, TAU); ctx.fill();
+      shadowBlob(ctx, sx + 2, sy + 4, Math.max(3, Math.round(8 - z * 0.07)), Math.max(2, Math.round(4 - z * 0.035)), 'rgba(6,18,48,0.38)');
     } else {
-      ctx.fillStyle = 'rgba(6,18,48,0.22)';
-      ctx.beginPath(); ctx.ellipse(sx + 2, sy + 4, 8, 4, 0, 0, TAU); ctx.fill();
+      shadowBlob(ctx, sx + 2, sy + 4, 7, 3, 'rgba(6,18,48,0.22)');
     }
 
     const ph = s.ph;
@@ -1237,8 +1256,7 @@
       if (!onScreen(sx, sy, 40)) continue;
       const k = c.t / c.life;
       ctx.globalAlpha = k > 0.75 ? clamp((1 - k) * 4, 0, 1) : 1;
-      ctx.fillStyle = 'rgba(6,18,48,0.28)';
-      ctx.beginPath(); ctx.ellipse(sx + 3, sy + 4, 8, 4, 0, 0, TAU); ctx.fill();
+      shadowBlob(ctx, sx + 3, sy + 4, 7, 3, 'rgba(6,18,48,0.26)');
       drawSprite(ctx, S.corpse[c.look], sx, sy + Math.sin(t * 2 + c.x) * 0.6, c.ang + c.rot, 1, 1 - k * 0.35);
       ctx.globalAlpha = 1;
     }
@@ -1342,8 +1360,7 @@
       const sx = Math.round(s.x - cam.x), sy = Math.round(s.y - cam.y);
       if (!onScreen(sx, sy, 60)) continue;
       const k = clamp(1 - s.z / 90, 0.25, 1);
-      ctx.fillStyle = 'rgba(6,18,48,' + (0.42 * k).toFixed(2) + ')';
-      ctx.beginPath(); ctx.ellipse(sx + 2, sy + 3, Math.round(3 + 4 * k), Math.round(2 + 2 * k), 0, 0, TAU); ctx.fill();
+      shadowBlob(ctx, sx + 2, sy + 3, Math.round(3 + 4 * k), Math.round(2 + 2 * k), 'rgba(6,18,48,' + (0.42 * k).toFixed(2) + ')');
     }
   }
 

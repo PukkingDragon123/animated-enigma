@@ -917,7 +917,7 @@
 
   const Upgrades = {
     ready: false, wantsClose: false, tab: 0, scroll: 0, scrollTo: 0, hover: null, hoverW: null,
-    T: 0, drag: null, affordOnly: false, chrome: null, labels: [], bursts: [],
+    T: 0, drag: null, affordOnly: false, chrome: null, labels: [], bursts: [], slotMode: 'primary',
     flash: {}, summary: null, effectCache: { id: null, rows: null }, lastCount: -1, glow: 0,
 
     init() {
@@ -946,6 +946,7 @@
       this.labels.length = 0; this.bursts.length = 0;
       this.flash = {};
       this.lastCount = -1;
+      this.slotMode = 'primary';
       Otter.reset(LAY.stage.x + LAY.stage.w / 2 + 2, LAY.stage.y + 116);
       Otter.breath = clamp(Otter.breath, 0.28, 1);
     },
@@ -1070,6 +1071,12 @@
       if (this.hover && m.rclicked) this.rclick(this.hover, tree);
 
       // ---- loadout strip ----
+      const canSide = tree.stats().sidearm;
+      if (!canSide) this.slotMode = 'primary';
+      if (canSide && m.clicked && hit(m, 226, 314, 72, 26)) {
+        this.slotMode = this.slotMode === 'sidearm' ? 'primary' : 'sidearm';
+        Audio_.tone(this.slotMode === 'sidearm' ? 680 : 420, 0.07, 'square', 0.12);
+      }
       this.hoverW = null;
       for (let i = 0; i < WEAPON_ORDER.length; i++) {
         const sx = 8 + i * 31, sy = 314;
@@ -1078,13 +1085,10 @@
           const unlocked = tree.weaponsUnlocked().indexOf(this.hoverW) >= 0;
           if (m.clicked) {
             if (!unlocked) Audio_.deny();
-            else if (touch && tree.primary === this.hoverW && tree.stats().sidearm) {
-              tree.sidearm = tree.sidearm === this.hoverW ? null : this.hoverW; Audio_.buy();
-            } else { tree.primary = this.hoverW; if (tree.sidearm === this.hoverW) tree.sidearm = null; Audio_.buy(); }
+            else this.equip(tree, this.hoverW, this.slotMode === 'sidearm');
           }
           if (m.rclicked) {
-            if (unlocked && tree.stats().sidearm) { tree.sidearm = tree.sidearm === this.hoverW ? null : this.hoverW; Audio_.buy(); }
-            else Audio_.deny();
+            if (unlocked) this.equip(tree, this.hoverW, true); else Audio_.deny();
           }
         }
       }
@@ -1103,9 +1107,7 @@
 
     click(n, tree) {
       if (tree.has(n.id)) {
-        const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
-        if (n.weapon && touch && tree.primary === n.weapon && tree.stats().sidearm) { tree.sidearm = tree.sidearm === n.weapon ? null : n.weapon; Audio_.buy(); }
-        else if (n.weapon) { tree.primary = n.weapon; if (tree.sidearm === n.weapon) tree.sidearm = null; Audio_.buy(); }
+        if (n.weapon) this.equip(tree, n.weapon, this.slotMode === 'sidearm');
         else Audio_.tone(300, 0.05, 'square', 0.08);
         return;
       }
@@ -1124,8 +1126,26 @@
     },
     rclick(n, tree) {
       if (!n.weapon || !tree.has(n.id)) return;
-      if (!tree.stats().sidearm) { Audio_.deny(); return; }
-      tree.sidearm = tree.sidearm === n.weapon ? null : n.weapon;
+      this.equip(tree, n.weapon, true);
+    },
+    // one place decides what a click on a weapon means
+    equip(tree, w, asSide) {
+      if (asSide) {
+        if (!tree.stats().sidearm) { Audio_.deny(); return; }
+        if (tree.sidearm === w) tree.sidearm = null;
+        else {
+          if (tree.primary === w) {                       // free the primary slot first
+            const other = tree.weaponsUnlocked().filter(x => x !== w);
+            if (!other.length) { Audio_.deny(); return; }
+            tree.primary = other[0];
+          }
+          tree.sidearm = w;
+        }
+        Audio_.buy(); return;
+      }
+      if (tree.primary === w) { Audio_.tone(300, 0.05, 'square', 0.08); return; }
+      tree.primary = w;
+      if (tree.sidearm === w) tree.sidearm = null;
       Audio_.buy();
     },
     burst(x, y, col) {
@@ -1609,10 +1629,19 @@
       const shown = this.hoverW || tree.primary;
       pixelText(ctx, WEAPONS[shown].name.toUpperCase(), 8, 343, 6, this.hoverW ? '#ffffff' : '#9fd8ee');
       const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+      const canSide = tree.stats().sidearm;
       const sub = this.hoverW && unlocked.indexOf(this.hoverW) < 0 ? 'locked - unlock it in the tree'
-        : (touch ? 'tap = primary   tap again = sidearm' : 'click = primary   right-click = sidearm')
-        + (tree.stats().sidearm ? '' : ' (needs Sidearm Slot)');
-      pixelText(ctx, fitLabel(sub, 290, 5), 8, 351, 5, '#7fa0b4');
+        : !canSide ? (touch ? 'tap to carry it' : 'click to carry it - Sidearm Slot lets you hold two')
+          : this.slotMode === 'sidearm' ? 'tap a gun to make it the SIDEARM'
+            : (touch ? 'tap a gun to carry it' : 'click to carry   right-click for sidearm');
+      pixelText(ctx, fitLabel(sub, 214, 5), 8, 351, 5, this.slotMode === 'sidearm' ? '#8ac6ff' : '#7fa0b4');
+      if (canSide) {
+        const side = this.slotMode === 'sidearm';
+        const hv = hit(m, 226, 314, 72, 26);
+        UIKit.button(ctx, 226, 314, 72, 26, null, side || hv ? 'hover' : 'normal');
+        pixelText(ctx, 'ASSIGN', 262, 318, 5, side ? '#fff6d2' : '#d8c9a0', 'center');
+        pixelText(ctx, side ? 'SIDEARM' : 'PRIMARY', 262, 326, 6, side ? '#8ac6ff' : '#6fd88e', 'center');
+      }
 
       // divider
       R(ctx, '#0a0e18', 306, 306, 1, 48); R(ctx, '#2b3548', 307, 306, 1, 48);

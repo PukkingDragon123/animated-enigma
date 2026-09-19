@@ -1096,7 +1096,7 @@ const Wildlife = (function () {
       thN = 0;
       const g = _G;
       const p = P();
-      if (p) { const t = TH[thN++]; t.x = p.x; t.y = p.y; t.r = 46; t.w = (p.rolling ? 1.1 : 0.5); }
+      if (p) { const t = TH[thN++]; t.x = p.x; t.y = p.y; t.r = 40; t.w = (p.rolling ? 1.0 : 0.34); }
       if (g && g.enemies) {
         for (let i = 0; i < g.enemies.length && thN < 11; i++) {
           const e = g.enemies[i]; if (!e || e.dead) continue;
@@ -1137,7 +1137,7 @@ const Wildlife = (function () {
         swirl: rng.range(0.5, 1.15), swSp: rng.range(0.7, 1.5), species: species, m: [],
         seed: rng.int(1, 9999), tone: rng.range(0.8, 1.2),
       };
-      const rad = Math.sqrt(n) * rng.range(3.4, 5.0);
+      const rad = Math.sqrt(n) * rng.range(7.5, 10.5);
       sc.r = rad;
       for (let i = 0; i < n; i++) {
         const a = rng.range(0, TAU), d = Math.sqrt(rng.next()) * rad;
@@ -1178,21 +1178,21 @@ const Wildlife = (function () {
       // bait-ball: the school tightens and splits around whatever is chasing it
       const wantSplit = (sc.fear > 0.8 && tot > 0.75) ? 1 : 0;
       sc.split = approach(sc.split, wantSplit, dt * (wantSplit ? 3.4 : 1.1));
-      sc.spread = lerp(sc.spread, 1 - clamp(sc.fear, 0, 1) * 0.42, Math.min(1, dt * 4));
+      sc.spread = lerp(sc.spread, 1 - clamp(sc.fear, 0, 1) * 0.22, Math.min(1, dt * 4));
       sc.swirl = lerp(sc.swirl, 0.6 + sc.fear * 1.5, Math.min(1, dt * 2));
     }
     function drawSchool(ctx, cam, t, sc) {
       const set = sp.fish[sc.species]; if (!set) return;
       const ca = Math.cos(sc.a), sa = Math.sin(sc.a);
       const bx = sc.x - cam.x, by = sc.y - cam.y;
-      const swirl = sc.swirl, spread = sc.spread, split = sc.split * sc.r * 0.95;
+      const swirl = sc.swirl, spread = sc.spread, split = sc.split * sc.r * 0.55;
       const beat = 1 + sc.fear * 1.4;
       const m = sc.m;
       for (let i = 0; i < m.length; i++) {
         const q = m[i];
         const s1 = Math.sin(t * sc.swSp * (1 + sc.fear) + q.ph);
         const lx = (q.ox + q.tx * s1 * swirl * 3.4) * spread;
-        const ly = (q.oy + q.ty * s1 * swirl * 3.4 + q.side * split) * spread;
+        const ly = (q.oy + q.ty * s1 * swirl * 3.4) * spread + q.side * split;
         const px0 = bx + ca * lx - sa * ly;
         const py0 = by + sa * lx + ca * ly + Math.sin(t * 2.7 + q.ph * 1.7) * 0.7;
         if (px0 < -10 || py0 < -10 || px0 > VIEW_W + 10 || py0 > VIEW_H + 10) continue;
@@ -2384,8 +2384,15 @@ const Wildlife = (function () {
     }
 
     function txt(ctx, s, x, y, size, col, align, outline) {
-      if (typeof drawText === 'function') { drawText(ctx, s, x, y, size, { color: col, align: align || 'left', outline: outline === false ? null : (outline || '#0a0f18') }); return; }
-      if (typeof pixelText === 'function') { pixelText(ctx, s, x, y, size, col, align || 'left'); return; }
+      const PF = (typeof PixelFont !== 'undefined' && PixelFont) ? PixelFont : null;
+      if (PF && PF.drawText) {
+        PF.drawText(ctx, s, Math.round(x), Math.round(y), size, {
+          color: col, align: align || 'left',
+          outline: outline === false ? null : (outline || '#0a0f18'),
+        });
+        return;
+      }
+      if (typeof pixelText === 'function') { pixelText(ctx, s, Math.round(x), Math.round(y), size, col, align || 'left', outline !== false); return; }
       ctx.fillStyle = col; ctx.font = 'bold ' + size + 'px monospace'; ctx.textAlign = align || 'left'; ctx.fillText(s, x, y);
     }
     function measure(s, size) { if (typeof textWidth === 'function') return textWidth(s, size); return s.length * (size * 0.6); }
@@ -2446,8 +2453,8 @@ const Wildlife = (function () {
       rng = new SeededRandom(9137 + ((Math.random() * 100000) | 0));
 
       for (let i = 0; i < 15; i++) {
-        const s = spotIn(0.05, 0.85, SH + 180, H - 140);
-        S.schools.push(makeSchool(s.x, s.y, SCHOOL_SPECIES[rng.int(0, 2)], rng.int(16, 34)));
+        const s = spotIn(0.05, 0.62, SH + 180, H - 140);
+        S.schools.push(makeSchool(s.x, s.y, SCHOOL_SPECIES[rng.int(0, 2)], rng.int(14, 28)));
       }
       for (let i = 0; i < 16; i++) { const s = reefSpot(); S.reefs.push(makeReefGroup(s.x, s.y)); }
       for (let i = 0; i < 9; i++) { const s = spotIn(0.15, 0.8, SH + 220, H - 120); S.rays.push(makeRay(s.x, s.y)); }
