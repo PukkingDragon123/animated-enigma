@@ -5959,7 +5959,7 @@ function buildBossArt() {
     }
     if (TOON) {
       TOON.burst(x, y, 1.4 + r / 44); TOON.shock(x, y, r * 3.1, 0.55);
-      for (let i = 0; i < 3; i++) TOON.puff(x + rand(-r, r) * 0.5, y + rand(-r, r) * 0.5, 1, '#dfe9f2');
+      for (let i = 0; i < 3; i++) TOON.speed(x, y, rand(0, TAU), 1);
     }
     if (g.shake) g.shake(Math.min(18, 6 + r / 5));
     const push = TUNE.shellPush;
@@ -6294,7 +6294,8 @@ function buildBossArt() {
     s.tethered = false;
     if (!fx) return;
     const g = gg(); const p = g && g.player;
-    if (p && TOON) { TOON.impact(p.x, p.y, 1.1, '#ffe48f'); TOON.puff(p.x, p.y, 3, '#e8eef5'); }
+    if (p && TOON) TOON.impact(p.x, p.y, 1.1, '#ffe48f');
+    if (p && g && g.particles) g.particles.spray(p.x, p.y, rand(0, TAU), 5, 90);
     if (g && g.particles) g.particles.sparks(p ? p.x : s.x, p ? p.y : s.y, 6);
     snd('tone', 320, 0.12, 'square', 0.1, -180);
   }
@@ -6337,7 +6338,7 @@ function buildBossArt() {
           s.vx = Math.cos(a) * 240; s.vy = Math.sin(a) * 240;
           hurtSwimmer(s, 6 + (p.stats && p.stats.rollDmg ? p.stats.rollDmg : 0), 0, 0, a);
           if (g.particles) g.particles.splash(s.x, s.y, 1.2);
-          if (TOON) { TOON.impact(s.x, s.y, 1.2, '#8ac6ff'); TOON.puff(s.x, s.y, 3); }
+          if (TOON) { TOON.impact(s.x, s.y, 1.2, '#8ac6ff'); TOON.shock(s.x, s.y, 34, 0.3, '#8ac6ff'); }
           continue;
         }
         s.clingA += dt * 0.7 * s.side;
@@ -6496,7 +6497,7 @@ function buildBossArt() {
     harpoons.push({ x: s.x + Math.cos(a) * 9, y: s.y + Math.sin(a) * 9, vx: Math.cos(a) * TUNE.harpoonSpeed, vy: Math.sin(a) * TUNE.harpoonSpeed, life: 1.5, owner: s, hit: false });
     const g = gg();
     if (g && g.particles) { g.particles.sparks(s.x + Math.cos(a) * 9, s.y + Math.sin(a) * 9, 3, a, 0.5); g.particles.spray(s.x, s.y, a + Math.PI, 2, 50); }
-    if (TOON) TOON.puff(s.x + Math.cos(a) * 9, s.y + Math.sin(a) * 9, 1, '#e8eef5');
+    if (g && g.particles) g.particles.smoke(s.x + Math.cos(a) * 9, s.y + Math.sin(a) * 9, 1, 'rgba(210,225,235,', 2);
     snd('shot', 'harpoon');
   }
 
@@ -6897,7 +6898,8 @@ function buildBossArt() {
       s.vx = (lx2 - sx) / flight; s.vy = (ly2 - sy) / flight;
       s.vz = 0.5 * 340 * flight;
       s.ang = Math.atan2(s.vy, s.vx);
-      if (TOON) { TOON.puff(sx, sy, 2, '#dfe9f2'); TOON.emote(sx + 6, sy - 20, '!'); }
+      if (TOON) TOON.emote(sx + 6, sy - 20, '!');
+      if (g.particles) g.particles.spray(sx, sy, off, 3, 60);
     }
     if (g.particles) g.particles.spray(e.x, e.y, base, 5, 70);
     if (g.ocean && g.ocean.disturb) g.ocean.disturb(e.x, e.y, 2.4, 0, 0);
@@ -14649,20 +14651,38 @@ const UI = {
           const k = kids[i];
           pixelText(ctx, '> ' + fitLabel(k.name, Wd - 8, 5), X, y, 5, tree.has(k.id) ? '#ffe9b0' : '#b9d2e2'); y += 8;
         }
+        y += 3;
+      }
+
+      // what it needed
+      if (y < bottomLimit - 18) {
+        pixelText(ctx, 'REQUIRES', X, y, 6, '#8ac6ff'); y += 10;
+        if (!n.req.length) { pixelText(ctx, 'nothing - the root of the branch', X, y, 5, '#8fa6b8'); y += 8; }
+        else for (let i = 0; i < n.req.length && y < bottomLimit - 8; i++) {
+          const r = SKILL_BY_ID[n.req[i]]; if (!r) continue;
+          const got = tree.has(r.id);
+          R(ctx, '#14141c', X, y, 7, 7);
+          R(ctx, got ? '#6fd88e' : '#4a515a', X + 1, y + 1, 5, 5);
+          if (got) { R(ctx, '#0d3a20', X + 2, y + 3, 1, 2); R(ctx, '#0d3a20', X + 3, y + 4, 1, 1); R(ctx, '#0d3a20', X + 4, y + 2, 1, 2); }
+          pixelText(ctx, fitLabel(r.name, Wd - 12, 5) + (i < n.req.length - 1 ? (n.reqAny ? '  (or)' : '  (and)') : ''), X + 10, y, 5, got ? '#cfe6f2' : '#8fa6b8');
+          y += 9;
+        }
       }
 
       // cost + action footer, pinned to the bottom of the card
       const fy = c.y + c.h - 24;
-      R(ctx, '#0a0e18', X, fy - 14, Wd, 13);
-      box(ctx, '#2b3548', X, fy - 14, Wd, 13);
-      pixelText(ctx, 'COST', X + 3, fy - 12, 6, '#9fd8ee');
-      let cx = X + 30;
+      R(ctx, '#0a0e18', X, fy - 15, Wd, 14);
+      box(ctx, '#2b3548', X, fy - 15, Wd, 14);
       const costKeys = Object.keys(n.cost);
+      const cs = costKeys.length > 3 ? 5 : 6;
+      pixelText(ctx, 'COST', X + 3, fy - 12, 6, '#9fd8ee');
+      let cx = X + 27;
       for (const k of costKeys) {
         drawSprite(ctx, SP.scrap[k], cx + 4, fy - 8);
-        const have = tree.scrap[k] || 0, ok = have >= n.cost[k];
-        pixelText(ctx, String(n.cost[k]), cx + 10, fy - 12, 7, owned ? '#7a8c98' : ok ? '#9ff0d8' : '#ff6161');
-        cx += 14 + textWidth(String(n.cost[k]), 7);
+        const have = tree.scrap[k] || 0, need = n.cost[k], ok = have >= need;
+        const txt = (have > 99 ? 99 : have) + '/' + need;
+        pixelText(ctx, txt, cx + 9, fy - 12, cs, owned ? '#7a8c98' : ok ? '#9ff0d8' : '#ff6161');
+        cx += 12 + textWidth(txt, cs) + 3;
       }
       const act = owned ? (n.weapon ? 'CLICK EQUIP - RMB SIDEARM' : 'ALREADY YOURS') :
         !avail ? 'NEEDS ' + n.req.map(r => (SKILL_BY_ID[r] || { name: '?' }).name).join(n.reqAny ? ' OR ' : ' + ') :
@@ -14891,7 +14911,7 @@ const UI = {
 
       // ---- the hero: war manatee + armed otter, bobbing in the current ----
       if (typeof CH !== 'undefined' && CH.manatee && typeof Rig !== 'undefined') {
-        const hx = 296 + Math.sin(T * 0.4) * 10, hy = 240 + Math.sin(T * 0.8) * 4;
+        const hx = 312 + Math.sin(T * 0.4) * 9, hy = 238 + Math.sin(T * 0.8) * 4;
         ctx.save();
         ctx.translate(Math.round(hx), Math.round(hy));
         ctx.scale(2, 2);

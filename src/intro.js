@@ -123,6 +123,18 @@ function buildShafts(w, h, tint) {
   return c;
 }
 
+function drawChurn(ctx, px, py, t, inten) {
+  for (let i = 0; i < 24; i++) {
+    const d = i * 5.5, k = i / 24;
+    const hgt = 7 + k * 40 + Math.sin(t * 9 + i * 0.7) * 4;
+    const yy = py - hgt / 2 + Math.sin(t * 5 + i * 0.5) * 3;
+    ctx.fillStyle = rgbaq('#bcdcea', qa((0.30 - k * 0.26) * inten));
+    ctx.fillRect(R(px + d), R(yy), 6, R(hgt));
+    ctx.fillStyle = rgbaq('#eaf8ff', qa((0.34 - k * 0.32) * inten));
+    ctx.fillRect(R(px + d), R(yy + hgt * 0.22), 6, R(hgt * 0.46));
+    if (hash2(i, Math.floor(t * 12)) > 0.55) { ctx.fillStyle = rgbaq('#ffffff', qa(0.5 - k * 0.45)); ctx.fillRect(R(px + d), R(yy + hash2(i, 3) * hgt), 4, 2); }
+  }
+}
 // ============================================================== VEGETATION ==
 function kelpStalk(x, rng, baseY, hgt, ramp, thick, lean) {
   // returns a draw function so the same stalk can be stamped on several layers
@@ -138,9 +150,9 @@ function kelpStalk(x, rng, baseY, hgt, ramp, thick, lean) {
       P(ctx, IP.ink, R(px) - 1, y, 1, 1);
       P(ctx, IP.ink, R(px) + tw, y, 1, 1);
       // blades
-      if (i > 6 && i % 9 === (x | 0) % 9) {
+      if (i > 5 && i % 6 === (x | 0) % 6) {
         const side = (i % 18 < 9) ? 1 : -1;
-        const bl = R(rng.range(5, 11));
+        const bl = R(rng.range(7, 14));
         for (let b = 0; b < bl; b++) {
           const by = y + R(b * 0.55), bxx = R(px) + side * (b + tw);
           P(ctx, ramp[2], bxx, by, 1, 2);
@@ -435,8 +447,8 @@ function addPropGash(b, L) {
   const ctx = cx2(b.c), f = b.f, W = b.W;
   const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < b.H && f[y * W + x] > 0;
   for (let i = 0; i < 3; i++) {
-    const x0 = R(b.U(0.30 + i * 0.115)), y0 = R(b.V(-0.19));
-    const len = R(L * 0.24);
+    const x0 = R(b.U(0.34 + i * 0.10)), y0 = R(b.V(-0.20));
+    const len = R(L * 0.13);
     for (let j = 0; j < len; j++) {
       const x = x0 + R(j * 0.55), y = y0 + j;
       if (!inside(x, y)) continue;
@@ -533,8 +545,8 @@ function manateeFace(ctx, M, exp, blink, t) {
   // mouth
   const open = exp === 'wide' || exp === 'pain' || (exp === 'talk' && (Math.floor(t * 7) & 1));
   if (open) {
-    P(ctx, ink, mx - 1, my - 1, 2 * k + 1, 2 * k + 1);
-    P(ctx, '#4a1420', mx, my, Math.max(1, 2 * k - 1), Math.max(1, 2 * k - 1));
+    P(ctx, ink, mx - 1, my - 1, 2 * k, R(1.6 * k) + 1);
+    P(ctx, '#2a1218', mx, my, Math.max(1, 2 * k - 2), Math.max(1, R(1.6 * k) - 1));
   } else {
     P(ctx, ink, mx - 1, my, 2 * k, 1);
     if (exp === 'sad') P(ctx, ink, mx - 2, my - 1, 1, 1);
@@ -726,7 +738,7 @@ function cap(ctx, col, x0, y0, x1, y1, w) {
 function figure(ctx, x, y, s, p, col, rim) {
   const f = p.facing === undefined ? -1 : p.facing;
   const pass = (ox, oy, c) => {
-    ctx.save(); ctx.translate(R(x + ox), R(y + oy));
+    ctx.save(); ctx.translate(R(x + ox), R(y + oy - s * 0.47));
     const lean = p.lean || 0;
     const shX = Math.sin(lean) * -s * 0.40, shY = -s * 0.44;
     const limb = Math.max(3, R(s * 0.095));
@@ -806,20 +818,21 @@ function curveAt(pts, x) {
 const BOAT_WL = 54;   // waterline inside the boat sprite
 function buildFishingBoat() {
   const W = 268, H = 132, c = can(W, H), x = cx2(c);
-  const sheer = [[16, 14], [46, 26], [110, 31], [180, 29], [244, 21]];
-  const keel = [[36, 62], [90, 82], [150, 90], [200, 88], [244, 76]];
+  const sheer = [[16, 20], [46, 31], [110, 36], [180, 34], [244, 26]];
+  const keel = [[36, 66], [90, 88], [150, 96], [200, 94], [244, 82]];
   const topAt = xx => curveAt(sheer, xx);
-  const botAt = xx => Math.min(14 + (xx - 16) * 2.45, curveAt(keel, xx));
+  const botAt = xx => Math.min(20 + (xx - 16) * 2.35, curveAt(keel, xx));
   for (let xx = 16; xx <= 244; xx++) {
     const t0 = R(topAt(xx)), b0 = R(botAt(xx));
     if (b0 <= t0) continue;
     for (let y = t0; y <= b0; y++) {
       let col;
-      if (y < BOAT_WL - 8) col = ((y % 7) === 0) ? '#8e968c' : '#b9c0b2';        // dirty white topsides
-      else if (y < BOAT_WL - 4) col = '#2c3a4e';                                  // sheer stripe
-      else if (y < BOAT_WL) col = '#e2e6d8';
-      else if (y < BOAT_WL + 4) col = '#3a5a3e';                                  // growth at the boot top
-      else col = ((y % 6) === 0) ? '#4a1d1c' : '#5f2724';                         // antifouling
+      const d0 = y - t0;
+      if (y < BOAT_WL - 9) col = d0 < 2 ? '#d4dac9' : ((y % 6) === 0) ? '#8e968c' : '#b9c0b2';
+      else if (y < BOAT_WL - 5) col = '#2c3a4e';
+      else if (y < BOAT_WL - 1) col = '#e2e6d8';
+      else if (y < BOAT_WL + 3) col = '#3a5a3e';
+      else col = ((y % 7) === 0) ? '#42191a' : ((y % 7) === 3) ? '#54211f' : '#5f2724';
       if (y === t0 || y === b0) col = IP.ink;
       P(x, col, xx, y);
     }
@@ -856,13 +869,23 @@ function buildFishingBoat() {
   P(x, IP.ink, 88, deckY(100) - 22, 34, 16); P(x, '#3f4a3a', 89, deckY(100) - 21, 32, 14);
   for (let i = 0; i < 16; i++) for (let j = 0; j < 7; j++) if (((i + j) & 1) === 0) P(x, '#8fa88a', 90 + i * 2, deckY(100) - 20 + j * 2);
   for (let i = 0; i < 4; i++) { P(x, IP.ink, 48 + i * 9, deckY(60) - 14, 8, 8); P(x, '#c4202c', 49 + i * 9, deckY(60) - 13, 6, 6); P(x, '#ff6161', 49 + i * 9, deckY(60) - 13, 6, 2); }
-  // tyre fenders over the side
-  for (const fx of [70, 104, 160]) {
-    P(x, IP.ink, fx - 1, R(topAt(fx)) + 1, 11, 12);
-    P(x, '#20242c', fx, R(topAt(fx)) + 2, 9, 10);
-    P(x, '#3c424c', fx + 3, R(topAt(fx)) + 5, 3, 4);
-    P(x, '#6d7568', fx + 2, R(topAt(fx)) - 2, 1, 4);
+  // round tyre fenders slung over the side on short ropes
+  for (const fx of [66, 100, 156]) {
+    const fy = R(topAt(fx)) + 7;
+    P(x, '#c9bda0', fx + 4, R(topAt(fx)) - 8, 1, 9);
+    for (let yy = -6; yy <= 6; yy++) for (let xx2 = -5; xx2 <= 5; xx2++) {
+      const d = Math.hypot(xx2, yy * 1.05);
+      if (d > 6) continue;
+      P(x, d > 5 ? IP.ink : d > 2.6 ? ((xx2 + yy) & 1 ? '#232833' : '#2e3440') : d > 2.0 ? IP.ink : '#7c8496', fx + 4 + xx2, fy + yy);
+    }
+    P(x, '#4a5260', fx + 1, fy - 4, 2, 2);
   }
+  // hull planking seams + a name board
+  for (let xx = 20; xx < 240; xx++) {
+    if (xx % 24 === 0) for (let y = R(topAt(xx)) + 2; y < BOAT_WL - 10; y++) P(x, '#98a096', xx, y);
+  }
+  P(x, IP.ink, 188, BOAT_WL - 24, 46, 10); P(x, '#22303f', 189, BOAT_WL - 23, 44, 8);
+  for (let i = 0; i < 6; i++) P(x, '#c8a63a', 193 + i * 7, BOAT_WL - 21, 4, 4);
   // ---- stern gear: shaft, A-bracket, rudder
   LN(x, IP.ink, 232, 74, 254, 92); LN(x, IP.ink, 233, 74, 255, 92);
   P(x, '#5d6675', 233, 75, 2, 2); P(x, '#5d6675', 240, 81, 2, 2); P(x, '#5d6675', 247, 87, 2, 2);
@@ -898,7 +921,7 @@ function buildYacht() {
   const W = 392, H = 156, c = can(W, H), x = cx2(c);
   // hull: bow at the RIGHT, transom at the LEFT
   const sheer = [[22, 36], [120, 30], [250, 22], [340, 10], [368, 4]];
-  const keel = [[22, 96], [120, 104], [240, 100], [320, 84], [356, 62]];
+  const keel = [[22, 88], [120, 102], [240, 98], [320, 82], [356, 62]];
   const stem = xx => 4 + (368 - xx) * 2.9;
   for (let xx = 22; xx <= 368; xx++) {
     const t0 = R(curveAt(sheer, xx)), b0 = R(Math.min(stem(xx), curveAt(keel, xx)));
@@ -915,7 +938,15 @@ function buildYacht() {
     }
   }
   // bulbous bow
-  P(x, IP.ink, 344, 58, 20, 14); P(x, '#1b2636', 345, 59, 18, 12); P(x, '#2c3a52', 345, 59, 18, 3);
+  for (let yy = -7; yy <= 7; yy++) for (let xx = -11; xx <= 11; xx++) {
+    const d = Math.hypot(xx / 11, yy / 7);
+    if (d > 1) continue;
+    P(x, d > 0.86 ? IP.ink : yy < -2 ? '#2c3a52' : '#1b2636', 352 + xx, 66 + yy);
+  }
+  // skeg, shaft and rudder aft
+  P(x, IP.ink, 92, 100, 40, 10); P(x, '#141c2a', 93, 101, 38, 8);
+  LN(x, IP.ink, 60, 94, 96, 104); LN(x, '#4a5568', 61, 94, 97, 104);
+  P(x, IP.ink, 50, 88, 6, 20); P(x, '#222c3e', 51, 89, 4, 18); P(x, '#4a5568', 51, 89, 1, 18);
   // long tinted window band
   for (let xx = 60; xx <= 300; xx++) {
     const t0 = R(curveAt(sheer, xx));
@@ -1137,14 +1168,14 @@ function drawCrane(ctx, o) {
 
 // =================================================================== NET ====
 function drawNet(ctx, o) {
-  const N = 9, M = 12;
-  const WS = [1.00, 1.06, 1.08, 1.04, 0.96, 0.84, 0.70, 0.52, 0.30, 0.12];
+  const N = 12, M = 18;
+  const WS = [1.00, 1.05, 1.08, 1.08, 1.05, 1.00, 0.94, 0.86, 0.77, 0.66, 0.53, 0.38, 0.22];
   const cinch = o.cinch || 0, t = o.t || 0;
   const pts = [];
   for (let j = 0; j <= N; j++) {
     const row = [];
     let wj = o.w * 0.5 * WS[j];
-    if (j < 4) wj *= (1 - 0.86 * cinch * (1 - j / 5));
+    if (j < 5) wj *= (1 - 0.86 * cinch * (1 - j / 6));
     const cxj = o.x + Math.sin(t * 1.4 + j * 0.5) * (o.sway || 0) * (j / N);
     const yj = o.y + (j / N) * o.h + Math.sin(t * 1.9 + j) * (o.sway || 0) * 0.25;
     for (let i = 0; i <= M; i++) {
@@ -1164,7 +1195,7 @@ function drawNet(ctx, o) {
     LN(ctx, (j & 1) ? knot : dk, R(pts[j][i][0]), R(pts[j][i][1]), R(pts[j + 1][i][0]), R(pts[j + 1][i][1]));
   }
   // lead weights on the mouth rim
-  for (let i = 0; i <= M; i += 2) {
+  for (let i = 0; i <= M; i += 3) {
     const p = pts[0][i];
     P(ctx, IP.ink, R(p[0]) - 2, R(p[1]) - 2, 5, 5);
     P(ctx, '#3c424c', R(p[0]) - 1, R(p[1]) - 1, 3, 3);
@@ -1571,7 +1602,7 @@ function titleCard(ctx, k, t) {
 
 // ================================================================== SKY =====
 function buildSky() {
-  const H = 130, c = can(LW, H), x = cx2(c), cols = IP.sky;
+  const H = 96, c = can(LW, H), x = cx2(c), cols = IP.sky;
   for (let y = 0; y < H; y++) {
     const k = Math.pow(y / (H - 1), 0.8) * (cols.length - 1);
     let i0 = Math.floor(k), fr = k - i0; i0 = clamp(i0, 0, cols.length - 1);
@@ -1579,7 +1610,7 @@ function buildSky() {
   }
   const rng = new SeededRandom(6161);
   for (let i = 0; i < 9; i++) {
-    const cxx = R(rng.range(0, LW)), cyy = R(rng.range(8, 60)), w = R(rng.range(30, 90)), h = R(rng.range(6, 14));
+    const cxx = R(rng.range(0, LW)), cyy = R(rng.range(6, 52)), w = R(rng.range(30, 90)), h = R(rng.range(6, 14));
     for (let j = 0; j < 5; j++) {
       const ox = R(rng.range(-w * 0.4, w * 0.4)), oy = R(rng.range(-h * 0.3, h * 0.3));
       P(x, '#f6f8ee', cxx + ox, cyy + oy, R(w * rng.range(0.3, 0.6)), h);
@@ -1588,7 +1619,7 @@ function buildSky() {
     }
   }
   for (let i = 0; i < 7; i++) {
-    const gx = R(rng.range(0, LW)), gy = R(rng.range(10, 50));
+    const gx = R(rng.range(0, LW)), gy = R(rng.range(8, 44));
     P(x, '#20303c', gx, gy, 3, 1); P(x, '#20303c', gx + 2, gy - 1, 2, 1); P(x, '#20303c', gx + 4, gy, 3, 1);
   }
   return c;
@@ -1598,7 +1629,15 @@ function drawAir(ctx, surfY, scroll, t) {
   const sy = R(surfY);
   if (sy <= 0) return;
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 640, sy); ctx.clip();
-  tile(ctx, LAY.sky, scroll * 0.10, sy - LAY.sky.height);
+  tile(ctx, LAY.sky, scroll * 0.10, sy - LAY.sky.height - 10);
+  // far sea, sitting on the horizon
+  const hz = sy - 12;
+  for (let x = 0; x < 640; x++) {
+    const w2 = Math.sin(x * 0.035 + t * 0.4) * 1.4;
+    P(ctx, '#2a6f9c', x, hz + R(w2), 1, 12);
+    P(ctx, '#1d5580', x, hz + 4 + R(w2), 1, 8);
+    if (hash2(x, 17) > 0.90) P(ctx, '#bcdcec', x, hz + 1 + R(w2), 3, 1);
+  }
   // chop + whitecaps at the waterline
   for (let x = 0; x < 640; x++) {
     const w = Math.sin(x * 0.07 + t * 2.2) * 2 + Math.sin(x * 0.021 - t * 1.3) * 1.6;
@@ -1744,13 +1783,7 @@ BEATS.push({
     ctx.restore();
     // churned white water trailing aft of the prop
     const px = SC.boatX + BOAT.prop[0], py = SC.boatY + BOAT.prop[1];
-    for (let i = 0; i < 26; i++) {
-      const d = i * 5, a = qa(0.40 - i * 0.014);
-      if (a <= 0) break;
-      ctx.fillStyle = rgbaq('#e6f6ff', a);
-      const hgt = R(6 + i * 1.5 + Math.sin(Intro.t * 9 + i) * 3);
-      ctx.fillRect(R(px + d), R(py - hgt / 2 + Math.sin(Intro.t * 7 + i * 0.7) * 3), 5, hgt);
-    }
+    drawChurn(ctx, px, py, Intro.t, 1);
     drawManatee(ctx, A.dad, Intro.t);
     drawManatee(ctx, A.mom, Intro.t);
     drawManatee(ctx, A.you, Intro.t);
@@ -2180,7 +2213,7 @@ BEATS.push({
       ctx.drawImage(M.flip.c, -M.flip.ax, -M.flip.ay);
       ctx.restore();
     }
-    drawNet(ctx, { x: SC.netX, y: SC.netY, w: 212, h: 168, cinch: SC.cinch, t: Intro.t, sway: 7, hole: { j: 5, i: 0, w: 3, h: 3 } });
+    drawNet(ctx, { x: SC.netX, y: SC.netY, w: 212, h: 168, cinch: SC.cinch, t: Intro.t, sway: 7, hole: { j: 7, i: 0, w: 4, h: 4 } });
     FX.render(ctx);
     foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 354, set: 'D' });
   },

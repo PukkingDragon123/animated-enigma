@@ -319,7 +319,7 @@ const Wildlife = (function () {
     function buildRay() {
       const W2 = 42, H2 = 56, CX = 20, CY = 28;
       const frames = [];
-      const ramp = ['#0d161f', '#16242f', '#20343f', '#2d4a57', '#456c7c'];
+      const ramp = ['#1b2b36', '#243a48', '#2f4d5e', '#406779', '#5d8a9e'];
       for (let fr = 0; fr < 4; fr++) {
         const curl = [0, 0.9, 0, -0.9][fr];
         const f = shapeField(W2, H2, (x, y) => {
@@ -330,7 +330,7 @@ const Wildlife = (function () {
           if (wing <= 0) return 0;
           return wing * (0.5 + 0.5 * Math.exp(-(v * v) * 7));
         });
-        const b = blobOf(W2, H2, f, ramp, { outline: '#070b10', smooth: 3, lift: 0.2, contrast: 0.58 });
+        const b = blobOf(W2, H2, f, ramp, { outline: '#070b10', smooth: 3, lift: 0.30, contrast: 0.62 });
         const x = b.ctx;
         // spots + spine ridge
         for (let i = 0; i < 90; i++) {
@@ -1018,7 +1018,7 @@ const Wildlife = (function () {
       if (combo.n >= 5 && combo.n % 5 === 0) {
         const g = _G, list = scrapTypes(), ty = list[randi(0, list.length - 1)];
         if (g && g.tree && g.tree.addScrap) g.tree.addScrap(ty, 2);
-        floatText(x, y - 20, 'STREAK BONUS +2', '#ffe48f', 8);
+        floatText(x + rand(-10, 10), y - 20 - (combo.n % 3) * 7, 'STREAK x' + combo.n + ' +2', '#ffe48f', 8);
         const T = TN(); if (T) T.burst(x, y - 8, 1.3, '#ffe48f');
       }
     }
@@ -1713,7 +1713,7 @@ const Wildlife = (function () {
           w.crashed = true;
           const p = PT();
           if (p) { for (let i = 0; i < 9; i++) p.splash(w.x + rand(-90, 90), w.y + rand(-30, 30), 2.6); }
-          const T = TN(); if (T) { T.shock(w.x, w.y, 190, 0.55); T.burst(w.x, w.y, 3, '#eaf8ff'); }
+          const T = TN(); if (T) { T.shock(w.x, w.y, 190, 0.55); T.burst(w.x, w.y, 1.8, '#eaf8ff'); }
           disturb(w.x, w.y, 8, 0, 0); ripple(w.x, w.y, 190, 200, 0.7);
           shakeCam(10);
           splashHit(w.x, w.y, 120, 26);
@@ -1820,9 +1820,9 @@ const Wildlife = (function () {
         fly.on = false;
         if (p) { p.x = fly.x; p.y = fly.y; }
         const T = TN();
-        if (T) { T.shock(fly.x, fly.y, 200, 0.6); T.shock(fly.x, fly.y, 130, 0.42); T.burst(fly.x, fly.y, 3.4, '#eaf8ff'); T.impact(fly.x, fly.y, 3, '#ffffff'); }
+        if (T) { T.shock(fly.x, fly.y, 200, 0.6); T.shock(fly.x, fly.y, 130, 0.42); T.burst(fly.x, fly.y, 1.9, '#eaf8ff'); T.impact(fly.x, fly.y, 2.2, '#ffffff'); }
         const pp = PT();
-        if (pp) { for (let i = 0; i < 10; i++) pp.splash(fly.x + rand(-40, 40), fly.y + rand(-26, 26), 2.6); }
+        if (pp) { for (let i = 0; i < 8; i++) pp.splash(fly.x + rand(-46, 46), fly.y + rand(-30, 30), 1.9); }
         disturb(fly.x, fly.y, 8, 0, 0);
         ripple(fly.x, fly.y, 180, 220, 0.85); ripple(fly.x, fly.y, 110, 150, 0.7);
         for (let i = 0; i < 16; i++) foam(fly.x + rand(-80, 80), fly.y + rand(-60, 60), 0.5);
@@ -1979,11 +1979,12 @@ const Wildlife = (function () {
         let tx, ty;
         if (spin) {
           const a = pod.life * 1.5 + i * (TAU / pod.d.length);
-          tx = pod.lead.x + Math.cos(a) * 34; ty = pod.lead.y + Math.sin(a) * 26;
+          tx = pod.lead.x + Math.cos(a) * 46; ty = pod.lead.y + Math.sin(a) * 34;
         } else {
-          const ca = Math.cos(d.a), sa = Math.sin(d.a);
-          tx = pod.lead.x + d.off.x * 0.6 - ca * 8 * (i ? 1 : 0);
-          ty = pod.lead.y + d.off.y * 0.6 - sa * 8 * (i ? 1 : 0);
+          const la = Math.atan2(pod.lead.y - d.y, pod.lead.x - d.x);
+          const back = i * 26, side = d.off.x * 1.15;
+          tx = pod.lead.x - Math.cos(la) * back - Math.sin(la) * side;
+          ty = pod.lead.y - Math.sin(la) * back + Math.cos(la) * side;
         }
         const want = angleTo(d.x, d.y, tx, ty);
         const far = dist(d.x, d.y, tx, ty);
@@ -2033,8 +2034,9 @@ const Wildlife = (function () {
         const sx = m.x - cam.x, sy = m.y - cam.y - (m.max0 - m.life) * 2.2;
         if (sx < -8 || sy < -8 || sx > VIEW_W + 8 || sy > VIEW_H + 8) continue;
         const a = clamp(m.life / m.max0, 0, 1);
-        ctx.globalAlpha = a * 0.8;
-        ringPx(ctx, sx, sy + Math.sin(t * 3 + m.ph) * 1.2, m.r, m.r * 0.85, '#bfeeff');
+        ctx.globalAlpha = a;
+        ringPx(ctx, sx, sy + Math.sin(t * 3 + m.ph) * 1.2, m.r, m.r * 0.85, '#d8f6ff');
+        if (m.r > 2.4) { ctx.globalAlpha = a * 0.6; pxr(ctx, '#ffffff', sx - 1, sy - 1, 1, 1); }
         ctx.globalAlpha = 1;
       }
     }
@@ -2356,7 +2358,7 @@ const Wildlife = (function () {
       if (API.riding) {
         const w = API.riding;
         const s = saddleOf(w);
-        prompt = { kind: 'hold', obj: w, x: s.x, y: s.y - w.z - 30, label: 'HOLD ON', key: null };
+        prompt = null;
         return;
       }
       if (fly.on) return;
@@ -2382,7 +2384,7 @@ const Wildlife = (function () {
     }
 
     function txt(ctx, s, x, y, size, col, align, outline) {
-      if (typeof drawText === 'function') { drawText(ctx, s, x, y, size, { color: col, align: align || 'left', outline: outline || '#0a0f18' }); return; }
+      if (typeof drawText === 'function') { drawText(ctx, s, x, y, size, { color: col, align: align || 'left', outline: outline === false ? null : (outline || '#0a0f18') }); return; }
       if (typeof pixelText === 'function') { pixelText(ctx, s, x, y, size, col, align || 'left'); return; }
       ctx.fillStyle = col; ctx.font = 'bold ' + size + 'px monospace'; ctx.textAlign = align || 'left'; ctx.fillText(s, x, y);
     }
@@ -2402,7 +2404,7 @@ const Wildlife = (function () {
       if (key) {
         pxr(ctx, '#0a0f18', tx0 - 1, y + 1, 10, 11);
         pxr(ctx, col, tx0, y + 2, 8, 9);
-        txt(ctx, key, tx0 + 4, y + 3, 6, '#10161f', 'center', null);
+        txt(ctx, key, tx0 + 4, y + 3, 6, '#231a08', 'center', false);
         tx0 += 12;
       }
       txt(ctx, label, tx0, y + 4, size, '#f2f8ff', 'left');
@@ -2608,7 +2610,7 @@ const Wildlife = (function () {
           const q = i / bw;
           pxr(ctx, q > 0.82 ? '#fff3c4' : q > 0.5 ? '#ffd27a' : '#8ff0ff', sx - bw / 2 + i, sy, 1, 5);
         }
-        if (k > 0.85 && ((t * 12) | 0) % 2 === 0) txt(ctx, 'BREACH!', sx, sy - 10, 7, '#fff3c4', 'center');
+        txt(ctx, k > 0.85 ? (((t * 12) | 0) % 2 === 0 ? 'BREACH!' : '') : 'HOLD ON', sx, sy - 11, 7, k > 0.85 ? '#fff3c4' : '#8ff0ff', 'center');
       }
       // ---- treasure readout ----------------------------------------------
       for (let i = 0; i < S.treasures.length; i++) {

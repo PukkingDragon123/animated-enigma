@@ -505,8 +505,8 @@
       g.particles.splash(x, y, Math.min(3.4, r / 20));
     }
     if (TOON) {
-      TOON.burst(x, y, 1.4 + r / 44); TOON.shock(x, y, r * 3.1, 0.55);
-      for (let i = 0; i < 3; i++) TOON.puff(x + rand(-r, r) * 0.5, y + rand(-r, r) * 0.5, 1, '#dfe9f2');
+      TOON.burst(x, y, 0.85 + r / 90); TOON.shock(x, y, r * 1.7, 0.5);
+      for (let i = 0; i < 3; i++) TOON.speed(x, y, rand(0, TAU), 1);
     }
     if (g.shake) g.shake(Math.min(18, 6 + r / 5));
     const push = TUNE.shellPush;
@@ -634,7 +634,7 @@
           } else if (d < m.trigger) {
             if (m.fuse < 0) {
               m.fuse = TUNE.proxFuse / Math.pow(DF.d, 0.3);
-              if (TOON) { TOON.emote(m.x + 8, m.y - 16, '!'); TOON.shock(m.x, m.y, m.trigger * 2, 0.35, '#ffe48f'); }
+              if (TOON) { TOON.emote(m.x + 8, m.y - 16, '!'); TOON.shock(m.x, m.y, m.trigger * 1.15, 0.3, '#ffe48f'); }
               snd('tone', 900, 0.08, 'square', 0.1, 200);
             }
           }
@@ -738,15 +738,15 @@
       const armed = m.fuse >= 0;
       if (m.kind === 'proximity' && (m.alert > 0.03 || armed)) {
         // dashed trigger ring, drawn as marching pixel dashes
-        const r = m.trigger, n = 26;
+        const r = m.trigger, n = 44;
         const a0 = armed ? t * 5 : t * 1.4;
         const bright = armed ? (Math.sin(t * 34) > 0 ? '#ffffff' : HP.warn) : (m.alert > 0.55 ? HP.warn : HP.warn2);
         ctx.fillStyle = bright;
-        ctx.globalAlpha = armed ? 1 : clamp(0.25 + m.alert * 0.75, 0, 1);
+        ctx.globalAlpha = armed ? 1 : clamp(0.3 + m.alert * 0.7, 0, 1);
         for (let k = 0; k < n; k++) {
-          if ((k & 1) === 0) continue;
+          if ((k % 3) === 2) continue;
           const a = a0 + k / n * TAU;
-          ctx.fillRect(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r * 0.72), 2, 1);
+          ctx.fillRect(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r * 0.72), 1, 1);
         }
         ctx.globalAlpha = 1;
       }
@@ -818,7 +818,7 @@
         for (let i = 0; i < n; i++) g.pickups.push(new Pickup(s.x, s.y, Math.random() < 0.5 ? 'metal' : 'wood'));
       }
     }
-    if (TOON) { TOON.impact(s.x, s.y, 1.5, '#ff6161'); TOON.burst(s.x, s.y, 0.9, '#c8302e'); TOON.emote(s.x + 7, s.y - 16, 'skull'); }
+    if (TOON) { TOON.impact(s.x, s.y, 1.2, '#ff6161'); TOON.burst(s.x, s.y, 0.55, '#c8302e'); TOON.emote(s.x + 7, s.y - 16, 'skull'); }
     snd('hurt');
     corpses.push({ x: s.x, y: s.y, ang: s.ang, look: s.look, t: 0, life: TUNE.corpseLife, rot: rand(-0.3, 0.3), vx: Math.cos(ang) * 40, vy: Math.sin(ang) * 40 });
     if (s.tethered) snapTether(s, false);
@@ -841,7 +841,8 @@
     s.tethered = false;
     if (!fx) return;
     const g = gg(); const p = g && g.player;
-    if (p && TOON) { TOON.impact(p.x, p.y, 1.1, '#ffe48f'); TOON.puff(p.x, p.y, 3, '#e8eef5'); }
+    if (p && TOON) TOON.impact(p.x, p.y, 1.1, '#ffe48f');
+    if (p && g && g.particles) g.particles.spray(p.x, p.y, rand(0, TAU), 5, 90);
     if (g && g.particles) g.particles.sparks(p ? p.x : s.x, p ? p.y : s.y, 6);
     snd('tone', 320, 0.12, 'square', 0.1, -180);
   }
@@ -884,7 +885,7 @@
           s.vx = Math.cos(a) * 240; s.vy = Math.sin(a) * 240;
           hurtSwimmer(s, 6 + (p.stats && p.stats.rollDmg ? p.stats.rollDmg : 0), 0, 0, a);
           if (g.particles) g.particles.splash(s.x, s.y, 1.2);
-          if (TOON) { TOON.impact(s.x, s.y, 1.2, '#8ac6ff'); TOON.puff(s.x, s.y, 3); }
+          if (TOON) { TOON.impact(s.x, s.y, 1.2, '#8ac6ff'); TOON.shock(s.x, s.y, 34, 0.3, '#8ac6ff'); }
           continue;
         }
         s.clingA += dt * 0.7 * s.side;
@@ -1043,7 +1044,7 @@
     harpoons.push({ x: s.x + Math.cos(a) * 9, y: s.y + Math.sin(a) * 9, vx: Math.cos(a) * TUNE.harpoonSpeed, vy: Math.sin(a) * TUNE.harpoonSpeed, life: 1.5, owner: s, hit: false });
     const g = gg();
     if (g && g.particles) { g.particles.sparks(s.x + Math.cos(a) * 9, s.y + Math.sin(a) * 9, 3, a, 0.5); g.particles.spray(s.x, s.y, a + Math.PI, 2, 50); }
-    if (TOON) TOON.puff(s.x + Math.cos(a) * 9, s.y + Math.sin(a) * 9, 1, '#e8eef5');
+    if (g && g.particles) g.particles.smoke(s.x + Math.cos(a) * 9, s.y + Math.sin(a) * 9, 1, 'rgba(210,225,235,', 2);
     snd('shot', 'harpoon');
   }
 
@@ -1308,7 +1309,7 @@
     if (g) {
       if (g.particles) { g.particles.sparks(x, y, 12, Math.atan2(sh.vy, sh.vx), 0.6); g.particles.smoke(x, y, 5, 'rgba(60,58,66,', 4); g.particles.spray(x, y, Math.atan2(sh.vy, sh.vx), 3, 70); }
       if (g.ocean && g.ocean.disturb) g.ocean.disturb(x, y, 3, sh.vx, sh.vy);
-      if (g.shake) g.shake(opts.kind === 'mortar' ? 3 : 5);
+      if (g.shake) g.shake(opts.kind === 'mortar' ? 2.5 : 4);
     }
     if (TOON) { TOON.burst(x, y, 0.75, '#ffe48f'); TOON.speed(x, y, Math.atan2(sh.vy, sh.vx), 2); }
     snd('explosion', opts.kind === 'mortar' ? 0.5 : 0.75);
@@ -1330,7 +1331,7 @@
         if (g.particles) { g.particles.splash(s.x, s.y, 3.2); g.particles.splash(s.x + rand(-10, 10), s.y + rand(-8, 8), 1.6); }
         if (g.ocean && g.ocean.ripple) { g.ocean.ripple(s.x, s.y, s.blast * 3.4, 300, 1); }
         blast(s.x, s.y, s.blast, s.dmg * DF.dmg, { debris: 8, debrisColors: ['#7d858f', '#4a515a', '#aeb6c1'] });
-        if (TOON) { TOON.shock(s.x, s.y, s.blast * 4.2, 0.6, '#eaf8ff'); TOON.shock(s.x, s.y, s.blast * 2.4, 0.4); }
+        if (TOON) { TOON.shock(s.x, s.y, s.blast * 2.4, 0.6, '#eaf8ff'); TOON.shock(s.x, s.y, s.blast * 1.4, 0.4); }
       }
     }
   }
@@ -1444,7 +1445,8 @@
       s.vx = (lx2 - sx) / flight; s.vy = (ly2 - sy) / flight;
       s.vz = 0.5 * 340 * flight;
       s.ang = Math.atan2(s.vy, s.vx);
-      if (TOON) { TOON.puff(sx, sy, 2, '#dfe9f2'); TOON.emote(sx + 6, sy - 20, '!'); }
+      if (TOON) TOON.emote(sx + 6, sy - 20, '!');
+      if (g.particles) g.particles.spray(sx, sy, off, 3, 60);
     }
     if (g.particles) g.particles.spray(e.x, e.y, base, 5, 70);
     if (g.ocean && g.ocean.disturb) g.ocean.disturb(e.x, e.y, 2.4, 0, 0);

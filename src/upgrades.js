@@ -1033,9 +1033,9 @@
       if (Input.wheel) this.scrollTo += Input.wheel * 34;
 
       // ---- header buttons ----
-      const backX = 566, backW = 68;
-      if (m.clicked && hit(m, backX, 5, backW, 22)) { this.wantsClose = true; Audio_.tone(420, 0.08, 'square', 0.12, -120); }
-      if (m.clicked && hit(m, 480, 6, 74, 20)) { this.affordOnly = !this.affordOnly; Audio_.tone(this.affordOnly ? 700 : 400, 0.07, 'square', 0.12); }
+      const backX = 566, backW = 68;   // always on screen, so touch has a way out
+      if (m.clicked && hit(m, backX, 3, backW, 22)) { this.wantsClose = true; Audio_.tone(420, 0.08, 'square', 0.12, -120); }
+      if (m.clicked && hit(m, 480, 4, 74, 20)) { this.affordOnly = !this.affordOnly; Audio_.tone(this.affordOnly ? 700 : 400, 0.07, 'square', 0.12); }
 
       // ---- tabs ----
       for (let i = 0; i < 4; i++) {
@@ -1077,8 +1077,10 @@
           this.hoverW = WEAPON_ORDER[i];
           const unlocked = tree.weaponsUnlocked().indexOf(this.hoverW) >= 0;
           if (m.clicked) {
-            if (unlocked) { tree.primary = this.hoverW; if (tree.sidearm === this.hoverW) tree.sidearm = null; Audio_.buy(); }
-            else Audio_.deny();
+            if (!unlocked) Audio_.deny();
+            else if (touch && tree.primary === this.hoverW && tree.stats().sidearm) {
+              tree.sidearm = tree.sidearm === this.hoverW ? null : this.hoverW; Audio_.buy();
+            } else { tree.primary = this.hoverW; if (tree.sidearm === this.hoverW) tree.sidearm = null; Audio_.buy(); }
           }
           if (m.rclicked) {
             if (unlocked && tree.stats().sidearm) { tree.sidearm = tree.sidearm === this.hoverW ? null : this.hoverW; Audio_.buy(); }
@@ -1086,7 +1088,6 @@
           }
         }
       }
-      if (touch && m.clicked && hit(m, backX, 5, backW, 22)) this.wantsClose = true;
 
       // scrolling easing
       this.scrollTo = clamp(this.scrollTo, 0, this.maxScroll(this.tab));
@@ -1102,7 +1103,9 @@
 
     click(n, tree) {
       if (tree.has(n.id)) {
-        if (n.weapon) { tree.primary = n.weapon; if (tree.sidearm === n.weapon) tree.sidearm = null; Audio_.buy(); }
+        const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+        if (n.weapon && touch && tree.primary === n.weapon && tree.stats().sidearm) { tree.sidearm = tree.sidearm === n.weapon ? null : n.weapon; Audio_.buy(); }
+        else if (n.weapon) { tree.primary = n.weapon; if (tree.sidearm === n.weapon) tree.sidearm = null; Audio_.buy(); }
         else Audio_.tone(300, 0.05, 'square', 0.08);
         return;
       }
@@ -1201,6 +1204,7 @@
       this.drawBottom(ctx, tree, T);
 
       Deep.renderForeground(ctx);
+      ctx.globalAlpha = 1;
     },
 
     strand(ctx, x0, y0, x1, y1, t, col, bead) {
@@ -1466,20 +1470,49 @@
           const k = kids[i];
           pixelText(ctx, '> ' + fitLabel(k.name, Wd - 8, 5), X, y, 5, tree.has(k.id) ? '#ffe9b0' : '#b9d2e2'); y += 8;
         }
+        y += 3;
+      }
+
+      // what it needed
+      if (y < bottomLimit - 18) {
+        pixelText(ctx, 'REQUIRES', X, y, 6, '#8ac6ff'); y += 10;
+        if (!n.req.length) { pixelText(ctx, 'nothing - the root of the branch', X, y, 5, '#8fa6b8'); y += 8; }
+        else for (let i = 0; i < n.req.length && y < bottomLimit - 8; i++) {
+          const r = SKILL_BY_ID[n.req[i]]; if (!r) continue;
+          const got = tree.has(r.id);
+          R(ctx, '#14141c', X, y, 7, 7);
+          R(ctx, got ? '#6fd88e' : '#4a515a', X + 1, y + 1, 5, 5);
+          if (got) { R(ctx, '#0d3a20', X + 2, y + 3, 1, 2); R(ctx, '#0d3a20', X + 3, y + 4, 1, 1); R(ctx, '#0d3a20', X + 4, y + 2, 1, 2); }
+          pixelText(ctx, fitLabel(r.name, Wd - 12, 5) + (i < n.req.length - 1 ? (n.reqAny ? '  (or)' : '  (and)') : ''), X + 10, y, 5, got ? '#cfe6f2' : '#8fa6b8');
+          y += 9;
+        }
+      }
+
+      // fill dead space with a dim emblem of the upgrade itself
+      const fy = c.y + c.h - 24;
+      const gap = (fy - 18) - y;
+      if (gap > 42) {
+        const art2 = nodeArt(n), sc2 = n.weapon ? 3 : 4;
+        ctx.globalAlpha = 0.13;
+        ctx.drawImage(art2.c, 0, 0, art2.w, art2.h,
+          Math.round(X + Wd / 2 - art2.w * sc2 / 2), Math.round(y + gap / 2 - art2.h * sc2 / 2),
+          art2.w * sc2, art2.h * sc2);
+        ctx.globalAlpha = 1;
       }
 
       // cost + action footer, pinned to the bottom of the card
-      const fy = c.y + c.h - 24;
-      R(ctx, '#0a0e18', X, fy - 14, Wd, 13);
-      box(ctx, '#2b3548', X, fy - 14, Wd, 13);
-      pixelText(ctx, 'COST', X + 3, fy - 12, 6, '#9fd8ee');
-      let cx = X + 30;
+      R(ctx, '#0a0e18', X, fy - 15, Wd, 14);
+      box(ctx, '#2b3548', X, fy - 15, Wd, 14);
       const costKeys = Object.keys(n.cost);
+      const cs = costKeys.length > 3 ? 5 : 6;
+      pixelText(ctx, 'COST', X + 3, fy - 12, 6, '#9fd8ee');
+      let cx = X + 27;
       for (const k of costKeys) {
         drawSprite(ctx, SP.scrap[k], cx + 4, fy - 8);
-        const have = tree.scrap[k] || 0, ok = have >= n.cost[k];
-        pixelText(ctx, String(n.cost[k]), cx + 10, fy - 12, 7, owned ? '#7a8c98' : ok ? '#9ff0d8' : '#ff6161');
-        cx += 14 + textWidth(String(n.cost[k]), 7);
+        const have = tree.scrap[k] || 0, need = n.cost[k], ok = have >= need;
+        const txt = (have > 99 ? 99 : have) + '/' + need;
+        pixelText(ctx, txt, cx + 9, fy - 12, cs, owned ? '#7a8c98' : ok ? '#9ff0d8' : '#ff6161');
+        cx += 12 + textWidth(txt, cs) + 3;
       }
       const act = owned ? (n.weapon ? 'CLICK EQUIP - RMB SIDEARM' : 'ALREADY YOURS') :
         !avail ? 'NEEDS ' + n.req.map(r => (SKILL_BY_ID[r] || { name: '?' }).name).join(n.reqAny ? ' OR ' : ' + ') :
@@ -1575,8 +1608,10 @@
       }
       const shown = this.hoverW || tree.primary;
       pixelText(ctx, WEAPONS[shown].name.toUpperCase(), 8, 343, 6, this.hoverW ? '#ffffff' : '#9fd8ee');
-      const sub = this.hoverW && unlocked.indexOf(this.hoverW) < 0 ? 'locked - buy it in the tree'
-        : 'click = primary   right-click = sidearm' + (tree.stats().sidearm ? '' : ' (needs Sidearm Slot)');
+      const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+      const sub = this.hoverW && unlocked.indexOf(this.hoverW) < 0 ? 'locked - unlock it in the tree'
+        : (touch ? 'tap = primary   tap again = sidearm' : 'click = primary   right-click = sidearm')
+        + (tree.stats().sidearm ? '' : ' (needs Sidearm Slot)');
       pixelText(ctx, fitLabel(sub, 290, 5), 8, 351, 5, '#7fa0b4');
 
       // divider
@@ -1708,7 +1743,7 @@
 
       // ---- the hero: war manatee + armed otter, bobbing in the current ----
       if (typeof CH !== 'undefined' && CH.manatee && typeof Rig !== 'undefined') {
-        const hx = 296 + Math.sin(T * 0.4) * 10, hy = 240 + Math.sin(T * 0.8) * 4;
+        const hx = 312 + Math.sin(T * 0.4) * 9, hy = 238 + Math.sin(T * 0.8) * 4;
         ctx.save();
         ctx.translate(Math.round(hx), Math.round(hy));
         ctx.scale(2, 2);
