@@ -86,11 +86,12 @@ const UI = {
 
     // ---------- top-centre: clock & wave ----------
     const w0 = G.director.currentWave();
-    const waveLabel = G.director.started ? (w0.boss ? 'BOSS' : w0.name) : 'FISHER VILLAGE';
-    const cw = Math.max(104, textWidth(waveLabel, 6) + 20);
-    UIKit.panel(ctx, 320 - cw / 2, 2, cw, 24, 'dark');
-    pixelTextOutlined(ctx, fmtTime(G.director.time), 320, 5, 9, '#ffffff', '#14141c', 'center');
-    pixelTextOutlined(ctx, waveLabel, 320, 16, 6, '#ffe48f', '#14141c', 'center');
+    // before the fight the village's own sign is on screen, so don't repeat it
+    const waveLabel = G.director.started ? (w0.boss ? 'BOSS' : w0.name) : null;
+    const cw = Math.max(88, waveLabel ? textWidth(waveLabel, 6) + 20 : 0);
+    UIKit.panel(ctx, 320 - cw / 2, 2, cw, waveLabel ? 24 : 18, 'dark');
+    pixelTextOutlined(ctx, fmtTime(G.director.time), 320, waveLabel ? 5 : 4, 9, '#ffffff', '#14141c', 'center');
+    if (waveLabel) pixelTextOutlined(ctx, waveLabel, 320, 16, 6, '#ffe48f', '#14141c', 'center');
 
     // ---------- boss bar ----------
     const b = G.boss;

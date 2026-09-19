@@ -62,6 +62,7 @@ class Particles {
     if (opts.debris) this.debris(x, y, opts.debris, opts.debrisColors);
     if (opts.water !== false) this.splash(x, y, Math.min(3, r / 25));
     if (opts.oil) this.ocean.addOil(x, y, opts.oil * 0.5);
+    if (typeof Village !== 'undefined' && Village.built) Village.explode(x, y, r * 1.2, r * 0.9);
     for (let i = 0; i < 5; i++) this.ocean.addFoam(x + rand(-r, r) * 0.5, y + rand(-r, r) * 0.5, 0.4);
     Audio_.explosion(Math.min(2, r / 30));
   }

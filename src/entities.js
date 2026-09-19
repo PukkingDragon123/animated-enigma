@@ -644,6 +644,8 @@ class Enemy {
     }
     if (!silentBoom) G.particles.explode(this.x, this.y, r * 2.2, { debris: Math.round(r * 1.2), oil: 0.6 + r / 15, debrisColors: this.type === 'gunboat' || this.type === 'harpooner' ? ['#7d858f', '#4a515a', '#aeb6c1'] : undefined });
     G.particles.blood(this.x, this.y, 1.2 + r / 12);
+    // the crew goes with the boat
+    if (typeof Gore !== 'undefined') { Gore.burst(this.x, this.y, 1.1 + r / 14, rand(0, TAU)); if (r > 18) Gore.burst(this.x + rand(-r, r) * 0.5, this.y + rand(-r, r) * 0.5, 0.8, rand(0, TAU)); }
     G.shake(Math.min(14, 4 + r / 3));
     G.wrecks.push(new Wreck(this.sprite, this.x, this.y, this.angle, r));
     if (this.type === 'dynaboat') { // chain reaction
@@ -689,6 +691,8 @@ class Fisherman {
     if (!this.alive) return; this.alive = false; this.deadT = 0;
     G.particles.blood(this.x, this.y - 10, 2.5, Math.atan2(proj.vy, proj.vx));
     G.particles.sparks(this.x, this.y - 10, 8); G.shake(6); Audio_.hurt();
+    if (typeof Gore !== 'undefined') { const a = Math.atan2(proj.vy, proj.vx); Gore.burst(this.x, this.y - 12, 2.2, a); Gore.spray(this.x, this.y - 12, a, 2.4); Gore.mist(this.x, this.y - 12, 8); }
+    Toon.impact(this.x, this.y - 12, 1.8, '#ff6161');
     this.fallVx = Math.cos(Math.atan2(proj.vy, proj.vx)) * 40; this.fallVy = -60; this.fallZ = 0;
     G.onFishermanShot();
   }

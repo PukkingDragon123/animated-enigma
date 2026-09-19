@@ -42,6 +42,7 @@ class Game {
       if (this.rocks.some(o => dist(o.x, o.y, x, y) < o.r + r + 110)) continue;
       this.rocks.push(new Rock(x, y, r, rng.int(1, 99999)));
     }
+    if (typeof Village !== 'undefined') Village.build(this.pier.x, SHORE_Y, WORLD_W);
     this.player = new Player(this.pier.x, SHORE_Y + 230, this.tree);
     this.director = new Director();
     this.fisherman = this.firstRun ? new Fisherman(this.pier.x, this.pier.y1 - 6) : null;
@@ -66,7 +67,7 @@ class Game {
   }
   banner(text, color, dur = 2, sub = null) { UI.banner = { text, color, dur, sub, t: 0 }; }
   shake(n) { this.shakeAmt = Math.min(20, Math.max(this.shakeAmt, n)); }
-  onFishermanShot() { this.holdFire = false; this.banner('FISHER VILLAGE', '#ff6161', 2.6, 'The otter has spoken. FIGHT!'); setTimeout(() => { if (this.director) this.director.started = true; }, 1200); this.state = 'play'; }
+  onFishermanShot() { this.holdFire = false; if (typeof Village !== 'undefined') Village.panicAll(); this.banner('FISHER VILLAGE', '#ff6161', 2.6, 'The otter has spoken. FIGHT!'); setTimeout(() => { if (this.director) this.director.started = true; }, 1200); this.state = 'play'; }
   onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() { this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0; this.state = 'victory_wait'; }
   onPlayerDeath() { this.particles.blood(this.player.x, this.player.y, 4); this.particles.splash(this.player.x, this.player.y, 3); this.shake(16); this.endT = 0; this.state = 'dead_wait'; }
@@ -134,6 +135,8 @@ class Game {
     for (const p of this.pickups) p.update(dt);
     for (const w of this.wrecks) w.update(dt);
     if (this.buoy) { this.buoy.update(dt); if (this.buoy.dead) this.buoy = null; }
+    if (typeof Village !== 'undefined') Village.update(dt, t);
+    if (typeof Gore !== 'undefined') Gore.update(dt);
     this.particles.update(dt, (x, y) => this.ocean.flow(x, y));
     Toon.update(dt);
     Rig.updateBlink(dt);
@@ -160,7 +163,7 @@ class Game {
     if (this.state === 'intro') { Intro.render(ctx); this.blit(); return; }
     const cam = { x: Math.round(this.cam.x + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)), y: Math.round(this.cam.y + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)) };
     this.ocean.render(ctx, cam, t);
-    this.renderVillage(ctx, cam, t);
+    if (typeof Village !== 'undefined') Village.render(ctx, cam, t); else this.renderVillage(ctx, cam, t);
     // underwater shadows
     for (const e of this.enemies) this.ocean.shadow(ctx, cam, e.x, e.y, e.radius * 2.6, e.radius * 1.5, t, 1.15);
     if (this.boss && !this.boss.dead) this.ocean.shadow(ctx, cam, this.boss.x, this.boss.y, 92, 40, t, 1.4);
@@ -180,6 +183,7 @@ class Game {
     if (!this.player.diving) this.player.render(ctx, cam, t);
     for (const p of this.projectiles) p.render(ctx, cam);
     this.particles.render(ctx, cam);
+    if (typeof Gore !== 'undefined') Gore.render(ctx, cam);
     Toon.render(ctx, cam);
     this.ocean.renderRipples(ctx, cam);
     // sun sheen and swell ribbons pass OVER the entities so they read as submerged
