@@ -15315,11 +15315,11 @@ const UI = {
       lobes: [{ dx: -32, dy: -14, rx: 26, ry: 18 }, { dx: 30, dy: 14, rx: 26, ry: 16 }, { dx: -6, dy: 26, rx: 30, ry: 12 }],
     },
     {
-      name: 'BLACKBONE', x: 494, y: 78, rx: 42, ry: 26, seed: 5501, rough: 1.15,
-      hills: 7, woods: 3, label: [492, 66], ls: 5,
+      name: 'BLACKBONE', x: 470, y: 80, rx: 42, ry: 26, seed: 5501, rough: 1.15,
+      hills: 7, woods: 3, label: [466, 78], ls: 5,
       lobes: [{ dx: 24, dy: 10, rx: 22, ry: 13 }, { dx: -26, dy: 6, rx: 20, ry: 14 }],
     },
-    { name: 'THE FANGS', x: 562, y: 114, rx: 11, ry: 8, seed: 6607, rough: 1.3, hills: 1, woods: 0, label: [572, 126], ls: 4, lobes: [{ dx: 14, dy: 12, rx: 7, ry: 5 }] },
+    { name: 'THE FANGS', x: 560, y: 118, rx: 11, ry: 8, seed: 6607, rough: 1.3, hills: 1, woods: 0, label: [566, 138], ls: 4, lobes: [{ dx: 14, dy: 12, rx: 7, ry: 5 }] },
   ];
 
   // ------------------------------------------------------- destinations ---
@@ -15341,7 +15341,7 @@ const UI = {
       foes: ['speedboat', 'harpooner', 'gunboat'], need: 'SALT PIER CANNERY',
     },
     {
-      name: 'BLACKBONE STATION', chapter: 'IV', x: 508, y: 100, lab: 'below', threat: 0.74,
+      name: 'BLACKBONE STATION', chapter: 'IV', x: 484, y: 106, lab: 'below', threat: 0.74,
       blurb: 'A flensing deck, a winch built for whales, and the pens where they keep the big ones alive until the buyer comes.',
       foes: ['trawler', 'harpooner', 'gunboat'], need: 'PORT MARROW',
     },
@@ -15351,7 +15351,7 @@ const UI = {
       foes: ['trawler', 'speedboat', 'netter'], need: 'BLACKBONE STATION',
     },
     {
-      name: 'THE DEEP ROADS', chapter: 'VI', x: 598, y: 38, lab: 'left', threat: 1, open: true,
+      name: 'THE DEEP ROADS', chapter: 'VI', x: 598, y: 58, lab: 'left', threat: 1, open: true,
       blurb: 'Past the last light on the chart. The Chief runs these roads, and the fleet that took her family runs with him.',
       foes: ['gunboat', 'dynaboat', 'chief'], need: 'THE GREY SHOALS',
     },
@@ -15372,7 +15372,7 @@ const UI = {
   ];
 
   // decorative wrecks (chart symbol: masts standing out of the water)
-  const WRECKS = [[238, 196], [216, 140], [332, 98], [462, 150], [556, 240], [86, 88]];
+  const WRECKS = [[238, 196], [216, 140], [332, 98], [462, 150], [520, 248], [86, 88]];
 
   // sea doodles: kind, x, y, facing
   const DOODLES = [
@@ -15393,7 +15393,7 @@ const UI = {
   ];
 
   // rhumb-line nodes (portolan style: every node throws 16 lines to the edges)
-  const ROSE = { x: 378, y: 46, r: 27 };
+  const ROSE = { x: 378, y: 62, r: 27 };
   const RHUMB = [[ROSE.x, ROSE.y], [104, 128], [560, 170], [300, 240]];
 
   // =========================================================================
@@ -15690,17 +15690,24 @@ const UI = {
     }
   }
   function drawKraken(ctx, x, y) {
-    for (let a = 0; a < 3; a++) {
-      const base = x - 8 + a * 8, dir = a === 1 ? 0 : a === 0 ? -1 : 1;
-      let px2 = base, py = y + 8;
-      for (let i = 0; i < 16; i++) {
+    // a knot of tentacles coming up out of the swell, suckers and all
+    for (let a = 0; a < 5; a++) {
+      const dir = a - 2;
+      let px2 = x + dir * 5, py = y + 7;
+      const curl = 0.30 + a * 0.07;
+      for (let i = 0; i < 18; i++) {
         py -= 1;
-        px2 += Math.round(Math.sin(i * 0.42 + a * 2) * 1.2) + dir * (i > 8 ? 1 : 0);
-        D1(ctx, P.ink, px2, py);
-        if (i % 3 === 0) D1(ctx, P.inkL, px2 + 1, py);
+        px2 += Math.sin(i * curl + a * 1.7) * 1.15 + dir * 0.28;
+        const ix = Math.round(px2), iy = Math.round(py);
+        D1(ctx, P.ink, ix, iy);
+        if (i < 11) D1(ctx, P.ink, ix + (dir >= 0 ? 1 : -1), iy);      // thicker near the water
+        if (i % 4 === 1 && i < 13) D1(ctx, P.sand, ix + (dir >= 0 ? 1 : -1), iy);   // suckers
       }
+      D1(ctx, P.ink, Math.round(px2) + (dir >= 0 ? 1 : -1), Math.round(py) + 1);
     }
-    for (let i = -8; i < 10; i += 3) { D1(ctx, P.inkL, x + i, y + 9); D1(ctx, P.inkL, x + i + 1, y + 9); }
+    // the swell it comes out of
+    for (let i = -13; i < 14; i += 3) { D1(ctx, P.inkL, x + i, y + 8); D1(ctx, P.inkL, x + i + 1, y + 8); }
+    for (let i = -9; i < 10; i += 4) D1(ctx, P.faint, x + i, y + 10);
   }
   function drawRay(ctx, x, y) {
     for (let i = -10; i <= 10; i++) {
@@ -15894,9 +15901,9 @@ const UI = {
       D1(ctx, P.ink, sx, sy); D1(ctx, P.ink, sx + fx, sy + fy); D1(ctx, P.ink, sx + fx * 2, sy);
       D1(ctx, P.ink, sx, sy + fy * 2); D1(ctx, P.ink2, sx + fx, sy);
     }
-    let ty = y + 8;
-    txt(ctx, 'THE BAY OF', x + w / 2, ty, 12, { color: P.ink, align: 'center', tracking: 2 }); ty += 11;
-    txt(ctx, 'BROKEN NETS', x + w / 2, ty, 12, { color: P.ink, align: 'center', tracking: 2 }); ty += 12;
+    let ty = y + 7;
+    txt(ctx, 'THE BAY OF', x + w / 2, ty, 12, { color: P.ink, align: 'center', tracking: 1 }); ty += 15;
+    txt(ctx, 'BROKEN NETS', x + w / 2, ty, 12, { color: P.ink, align: 'center', tracking: 1 }); ty += 15;
     // a hairline rule with a lozenge
     R(ctx, P.ink2, x + 16, ty, w - 32, 1);
     R(ctx, P.sand, x + w / 2 - 4, ty - 1, 9, 3);
@@ -16181,9 +16188,9 @@ const UI = {
       for (const d of DEST) if (dist(d.x, d.y, x, y) < 26) clash = true;
       if (dist(HOME.x, HOME.y, x, y) < 22) clash = true;
       if (dist(ROSE.x, ROSE.y, x, y) < ROSE.r + 14) clash = true;
-      if (x > 16 && x < 186 && y > 16 && y < 86) clash = true;        // cartouche
+      if (x > 14 && x < 206 && y > 14 && y < 90) clash = true;        // cartouche
       if (x > 292 && x < 452 && y > 224 && y < 256) clash = true;     // scale bar
-      if (x > 556 && x < 624 && y > 224 && y < 250) clash = true;     // open-sea note
+      if (x > 512 && x < 624 && y > 222 && y < 252) clash = true;     // open-sea note
       if (clash) continue;
       const v = Math.max(2, Math.round(cl * 1.1 + rng.range(0, 14)));
       txt(cx, String(v), x, y, 5, { color: P.ink2, align: 'center' });
@@ -16203,17 +16210,17 @@ const UI = {
     // ---- island names, letter-spaced like a real chart
     for (const is of ISLES) {
       if (!is.name || !is.label) continue;
-      txt(cx, is.name, is.label[0], is.label[1], is.ls || 5, { color: P.ink, align: 'center', tracking: 2 });
+      txt(cx, is.name, is.label[0], is.label[1], is.ls || 5, { color: P.ink, align: 'center', tracking: 2, outline: P.sand });
     }
-    txt(cx, 'OPEN SEA', 590, 232, 6, { color: P.ink2, align: 'center', tracking: 3 });
-    txt(cx, 'HERE THE CHART ENDS', 590, 242, 5, { color: P.ink2, align: 'center' });
-    txt(cx, 'THE NARROWS', 232, 166, 5, { color: P.ink2, align: 'center', tracking: 1 });
-    txt(cx, 'MOTHER DEEP', 106, 130, 5, { color: P.ink2, align: 'center', tracking: 1 });
+    txt(cx, 'OPEN SEA', 568, 230, 6, { color: P.ink2, align: 'center', tracking: 3, outline: P.seaL });
+    txt(cx, 'HERE THE CHART ENDS', 566, 241, 5, { color: P.ink2, align: 'center', outline: P.seaL });
+    txt(cx, 'THE NARROWS', 232, 166, 5, { color: P.ink2, align: 'center', tracking: 1, outline: P.seaL });
+    txt(cx, 'MOTHER DEEP', 104, 132, 5, { color: P.ink2, align: 'center', tracking: 1, outline: P.seaL });
 
     // ---- furniture on top
     drawRose(cx, ROSE.x, ROSE.y, ROSE.r);
     drawScale(cx, 300, 240);
-    drawCartouche(cx, 20, 20, 156, 62);
+    drawCartouche(cx, 18, 18, 184, 68);
     drawBorder(cx);
 
     ctx.drawImage(chart, 0, 0);
