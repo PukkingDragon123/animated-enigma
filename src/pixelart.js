@@ -382,37 +382,80 @@ SP.crate = makeSprite(['kkkkkkk', 'kTtttTk', 'ktTtTtk', 'kttTttk', 'ktTtTtk', 'k
 // ============================ PROCEDURAL ROCKS =========================
 function makeRock(seed, size) {
   const rng = new SeededRandom(seed);
-  const w = size * 2 + 4, h = Math.round(size * 1.6) + 4;
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  const ctx = c.getContext('2d');
-  const cx = w / 2, cy = h / 2;
-  const ox = rng.range(0, 100), oy = rng.range(0, 100);
-  const mask = [];
-  for (let y = 0; y < h; y++) { mask.push([]); for (let x = 0; x < w; x++) {
-    const nx = (x - cx) / (size), ny = (y - cy) / (size * 0.8);
-    const ang = Math.atan2(ny, nx);
-    const bump = Math.sin(ang * 3 + ox) * 0.08 + Math.sin(ang * 5 + oy) * 0.06 + Math.sin(ang * 7 + ox * 2) * 0.04;
-    const r = Math.hypot(nx, ny) + bump + (vnoise(x * 0.09 + ox, y * 0.09 + oy) - 0.5) * 0.22;
-    mask[y].push(r < 0.93);
-  } }
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    if (!mask[y][x]) continue;
-    const edge = !(mask[y - 1]?.[x] && mask[y + 1]?.[x] && mask[y][x - 1] && mask[y][x + 1]);
-    let col;
-    if (edge) col = PAL.k;
-    else {
-      const shade = vnoise(x * 0.18 + ox, y * 0.18 + oy) * 0.7 + (cy - y) / h * 0.7 + (cx - x) / w * 0.35;
-      col = shade > 0.78 ? '#9a9ea8' : shade > 0.55 ? '#7c818b' : shade > 0.32 ? '#5e636d' : '#454a53';
-      // cracks & moss
-      if (vnoise(x * 0.6 + oy, y * 0.6 + ox) > 0.78) col = '#3a3e46';
-      if (shade > 0.6 && vnoise(x * 0.3 + ox * 3, y * 0.3 + oy * 3) > 0.72) col = '#4f8f5a';
-      // wet dark base near the waterline (bottom edge)
-      const below = mask[y + 2]?.[x] === false || mask[y + 1]?.[x] === false;
-      if (below) col = '#33373f';
+  const kind = rng.next();
+  const W = Math.round(size * 2.6) + 8, H = Math.round(size * 2.2) + 8;
+  const cx = W / 2, cy = H / 2;
+
+  // ---- silhouette: a few overlapping lobes, varied by type
+  const lobes = [];
+  if (kind < 0.34) {                       // squat boulder
+    const n = rng.int(3, 5);
+    for (let i = 0; i < n; i++) {
+      const a = rng.range(0, TAU), d = rng.range(0, size * 0.42);
+      lobes.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d * 0.72,
+                   rx: rng.range(size * 0.52, size * 0.88), ry: rng.range(size * 0.44, size * 0.74) });
     }
-    ctx.fillStyle = col; ctx.fillRect(x, y, 1, 1);
+  } else if (kind < 0.67) {                // a stack of two or three
+    let y = cy + size * 0.42, r = size * 0.95;
+    for (let i = 0; i < 3; i++) {
+      lobes.push({ x: cx + rng.range(-size * 0.2, size * 0.2), y, rx: r, ry: r * rng.range(0.5, 0.68) });
+      y -= r * 0.52; r *= rng.range(0.6, 0.78);
+      if (r < size * 0.28) break;
+    }
+  } else {                                 // long low reef shelf
+    const n = rng.int(3, 5);
+    for (let i = 0; i < n; i++) {
+      lobes.push({ x: cx + (i / (n - 1) - 0.5) * size * 1.7, y: cy + rng.range(-size * 0.16, size * 0.16),
+                   rx: rng.range(size * 0.45, size * 0.7), ry: rng.range(size * 0.4, size * 0.62) });
+    }
   }
-  return { c, w, h, ax: cx, ay: cy };
+  const f = blobField(W, H, lobes);
+
+  // ---- shade it like the rest of the art, then rough it up
+  const ramp = ['#2d3138', '#43484f', '#5c626b', '#7a8089', '#9aa0a9'];
+  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: '#14141c', smooth: 2, lift: 0.14 });
+  const ox = rng.range(0, 90), oy = rng.range(0, 90);
+  for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
+    const i = y * W + x; if (f[i] <= 0.03) continue;
+    const n = vnoise(x * 0.34 + ox, y * 0.34 + oy);
+    if (n > 0.76) { ctx.fillStyle = '#2a2e35'; ctx.fillRect(x, y, 1, 1); }           // cracks
+    else if (n < 0.20) { ctx.fillStyle = '#a8aeb7'; ctx.fillRect(x, y, 1, 1); }      // chipped facets
+    // algae only clings to the upper, lit faces
+    if (f[i] > 0.12 && f[i - W] <= 0.03 && rng.next() < 0.55) {
+      ctx.fillStyle = rng.next() < 0.5 ? '#4f8f5a' : '#3c7047'; ctx.fillRect(x, y, 1, 1);
+      if (rng.next() < 0.4) ctx.fillRect(x, y + 1, 1, 1);
+    }
+    // a wet dark band low down where the water keeps it soaked
+    if (f[i] > 0.05 && f[i + W * 2] <= 0.03) { ctx.fillStyle = '#23262c'; ctx.fillRect(x, y, 1, 1); }
+  }
+  // barnacles + a limpet or two
+  const nb = Math.round(size / 5);
+  for (let i = 0; i < nb; i++) {
+    const a = rng.range(0, TAU), d = rng.range(0, size * 0.7);
+    const bx = Math.round(cx + Math.cos(a) * d), by = Math.round(cy + Math.sin(a) * d * 0.8);
+    if (bx < 2 || by < 2 || bx >= W - 2 || by >= H - 2 || f[by * W + bx] <= 0.15) continue;
+    ctx.fillStyle = '#cfd4da'; ctx.fillRect(bx, by, 2, 2);
+    ctx.fillStyle = '#7d838c'; ctx.fillRect(bx, by + 1, 2, 1);
+    ctx.fillStyle = '#14141c'; ctx.fillRect(bx, by, 1, 1);
+  }
+
+  // ---- foam fringe: the real silhouette dilated by a few pixels, so the
+  //      surf hugs the rock instead of sitting in a floating ellipse
+  const foam = document.createElement('canvas'); foam.width = W + 8; foam.height = H + 8;
+  const fx = foam.getContext('2d'), FW = W + 8;
+  const inside = (x, y) => { const xx = x - 4, yy = y - 4; return xx >= 0 && yy >= 0 && xx < W && yy < H && f[yy * W + xx] > 0.03; };
+  for (let y = 0; y < H + 8; y++) for (let x = 0; x < FW; x++) {
+    if (inside(x, y)) continue;
+    let near = 0;
+    for (let dy = -3; dy <= 3 && !near; dy++) for (let dx = -3; dx <= 3; dx++) {
+      if (dx * dx + dy * dy > 10) continue;
+      if (inside(x + dx, y + dy)) { near = 1; break; }
+    }
+    if (near) { fx.fillStyle = '#ffffff'; fx.fillRect(x, y, 1, 1); }
+  }
+  const spr = { c, w: W, h: H, ax: cx, ay: cy };
+  spr.foam = { c: foam, w: FW, h: H + 8, ax: cx + 4, ay: cy + 4 };
+  return spr;
 }
 
 // ============================ UI ICONS ================================

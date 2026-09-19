@@ -141,31 +141,32 @@ const Dialogue = {
   t: 0, text: 'Oh, a manatee! Free meat for tonight!', done: false, shotFired: false,
   reset() { this.t = 0; this.done = false; this.shotFired = false; },
   update(dt) { this.t += dt; if (this.t > 3) this.done = true; },
-  render(ctx, cam) {
+  renderWorld(ctx, cam) { /* the bubble is drawn in HUD space so the text stays crisp */ },
+  renderHUD(ctx) {
     const f = G.fisherman; if (!f || !f.alive) return;
-    const sx = Math.round(f.x - cam.x), sy = Math.round(f.y - cam.y);
+    // anchor the bubble to his screen position through the zoom
     if (this.t > 0.6) {
+      const sp = G.worldToScreen(f.x, f.y - 34);
+      const sx = Math.round(sp.x), sy = Math.round(sp.y);
       const n = Math.min(this.text.length, Math.floor((this.t - 0.6) * 30));
-      const shown = this.text.slice(0, n);
-      const w = Math.max(60, textWidth(this.text, 7) + 18);
-      const bx = clamp(sx - w / 2, 4, 636 - w), by = sy - 58;
-      UIKit.panel(ctx, bx, by, w, 22, 'parchment');
+      const w = Math.max(70, textWidth(this.text, 7) + 20);
+      const bx = clamp(sx - w / 2, 6, 634 - w), by = clamp(sy - 26, 44, 300);
+      UIKit.panel(ctx, bx, by, w, 24, 'parchment');
       ctx.fillStyle = '#e8dcc0';
-      ctx.beginPath(); ctx.moveTo(sx - 5, by + 21); ctx.lineTo(sx + 5, by + 21); ctx.lineTo(sx, by + 29); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(sx - 6, by + 23); ctx.lineTo(sx + 6, by + 23); ctx.lineTo(sx, by + 33); ctx.fill();
       ctx.fillStyle = '#2a2016';
-      ctx.beginPath(); ctx.moveTo(sx - 6, by + 22); ctx.lineTo(sx - 4, by + 22); ctx.lineTo(sx, by + 30); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(sx + 6, by + 22); ctx.lineTo(sx + 4, by + 22); ctx.lineTo(sx, by + 30); ctx.fill();
-      pixelText(ctx, shown, bx + 9, by + 7, 7, '#2a2016', 'left', false);
+      ctx.beginPath(); ctx.moveTo(sx - 7, by + 24); ctx.lineTo(sx - 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(sx + 7, by + 24); ctx.lineTo(sx + 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
+      pixelText(ctx, this.text.slice(0, n), bx + 10, by + 8, 7, '#2a2016', 'left', false);
     }
-    if (this.done) {
-      const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
-      UIKit.panel(ctx, 60, 298, 520, 40, 'dark');
-      pixelTextOutlined(ctx, touch ? 'TAP FIRE. LET THE OTTER ANSWER.' : 'LEFT CLICK. LET THE OTTER ANSWER.',
-        320, 304, 10, Math.floor(this.t * 2) % 2 ? '#ffe48f' : '#ffffff', '#14141c', 'center');
-      pixelText(ctx, touch ? 'Helm to swim   SHIELD to parry   ROLL to dash'
-                           : 'WASD swim   SPACE roll   E / right-click shield   TAB workshop',
-        320, 320, 6, '#9ab0c0', 'center');
-    }
+    if (!this.done) return;
+    const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+    UIKit.panel(ctx, 60, 298, 520, 40, 'dark');
+    pixelTextOutlined(ctx, touch ? 'TAP FIRE. LET THE OTTER ANSWER.' : 'LEFT CLICK. LET THE OTTER ANSWER.',
+      320, 304, 10, Math.floor(this.t * 2) % 2 ? '#ffe48f' : '#ffffff', '#14141c', 'center');
+    pixelText(ctx, touch ? 'Helm to swim   SHIELD to parry   ROLL to dash'
+                         : 'WASD swim   SPACE roll   E / right-click shield   TAB workshop',
+      320, 320, 6, '#9ab0c0', 'center');
   },
 };
 

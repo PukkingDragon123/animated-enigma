@@ -1,12 +1,20 @@
 // ---- Game: state machine, world, render ---------------------------------
 const WORLD_W = 3200, WORLD_H = 2400, SHORE_Y = 300;
 const RIG_SCALE = 0.64;   // the rig is drawn large for detail, scaled to play size
+// The world is drawn at 1:1 into an offscreen 640x360 canvas, then a centred
+// 320x180 crop of it is blown up to fill the screen. That is a clean 2x pixel
+// zoom: everything doubles in size and the pixels stay square.
+const ZOOM = 2, VIEW_W = 640 / ZOOM, VIEW_H = 360 / ZOOM;
+const CROP_X = (640 - VIEW_W) / 2, CROP_Y = (360 - VIEW_H) / 2;
 
 class Game {
   constructor() {
     this.display = document.getElementById('screen'); this.dctx = this.display.getContext('2d');
     this.g = document.createElement('canvas'); this.g.width = 640; this.g.height = 360;
     this.ctx = this.g.getContext('2d'); this.ctx.imageSmoothingEnabled = false;
+    // the world layer, drawn at 1:1 and then cropped + magnified
+    this.world = document.createElement('canvas'); this.world.width = 640; this.world.height = 360;
+    this.wctx = this.world.getContext('2d'); this.wctx.imageSmoothingEnabled = false;
     Input.init(this.display);
     if (typeof MobileUI !== 'undefined') MobileUI.init(this.display);
     window.addEventListener('resize', () => this.resize()); this.resize();
@@ -43,10 +51,10 @@ class Game {
       this.rocks.push(new Rock(x, y, r, rng.int(1, 99999)));
     }
     if (typeof Village !== 'undefined') Village.build(this.pier.x, SHORE_Y, WORLD_W);
-    this.player = new Player(this.pier.x, SHORE_Y + 230, this.tree);
+    this.player = new Player(this.pier.x, SHORE_Y + 168, this.tree);
     this.director = new Director();
     this.fisherman = this.firstRun ? new Fisherman(this.pier.x, this.pier.y1 - 6) : null;
-    this.cam.x = this.player.x - 320; this.cam.y = this.player.y - 200;
+    this.cam.x = this.player.x - 320; this.cam.y = this.player.y - 180;
     UI.banner = null;
     if (!this.firstRun) { this.director.started = true; this.banner('REMATCH', '#ffe48f', 2, 'The village heard you were coming.'); }
   }
@@ -150,46 +158,59 @@ class Game {
     // camera
     const p = this.player;
     // bias the camera toward the shore when close to it, so the village stays in view
-    const shoreBias = Math.max(0, (SHORE_Y + 420 - p.y)) * 0.8;
-    const tx = p.x - 320 + p.vx * 0.22, ty = p.y - 180 + p.vy * 0.22 - shoreBias;
+    const shoreBias = Math.max(0, (SHORE_Y + 220 - p.y)) * 0.6;
+    const tx = p.x - 320 + p.vx * 0.12, ty = p.y - 180 + p.vy * 0.12 - shoreBias;
     const k = 1 - Math.pow(0.002, dt);
-    this.cam.x = lerp(this.cam.x, clamp(tx, 0, WORLD_W - 640), k); this.cam.y = lerp(this.cam.y, clamp(ty, 0, WORLD_H - 360), k);
+    // the visible window is cam + CROP .. cam + CROP + VIEW, so clamp to that
+    this.cam.x = lerp(this.cam.x, clamp(tx, -CROP_X, WORLD_W - CROP_X - VIEW_W), k);
+    this.cam.y = lerp(this.cam.y, clamp(ty, -CROP_Y, WORLD_H - CROP_Y - VIEW_H), k);
     this.shakeAmt = Math.max(0, this.shakeAmt - dt * 30);
     if (UI.banner) { UI.banner.t += dt; if (UI.banner.t > UI.banner.dur) UI.banner = null; }
   }
   // ---------------------------------------------------------- render
+  // screen (640x360 HUD space) <-> world, across the 2x crop
+  screenToWorld(sx, sy) { return { x: this.cam.x + CROP_X + sx / ZOOM, y: this.cam.y + CROP_Y + sy / ZOOM }; }
+  worldToScreen(wx, wy) { return { x: (wx - this.cam.x - CROP_X) * ZOOM, y: (wy - this.cam.y - CROP_Y) * ZOOM }; }
+
   render() {
     const ctx = this.ctx, t = this.time;
     if (this.state === 'intro') { Intro.render(ctx); this.blit(); return; }
     const cam = { x: Math.round(this.cam.x + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)), y: Math.round(this.cam.y + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)) };
-    this.ocean.render(ctx, cam, t);
-    if (typeof Village !== 'undefined') Village.render(ctx, cam, t); else this.renderVillage(ctx, cam, t);
+    const W = this.wctx;
+    W.clearRect(0, 0, 640, 360);
+    this.ocean.render(W, cam, t);
+    if (this.state === 'dialogue') Dialogue.renderWorld(W, cam);
+    if (typeof Village !== 'undefined') Village.render(W, cam, t); else this.renderVillage(W, cam, t);
     // underwater shadows
-    for (const e of this.enemies) this.ocean.shadow(ctx, cam, e.x, e.y, e.radius * 2.6, e.radius * 1.5, t, 1.15);
-    if (this.boss && !this.boss.dead) this.ocean.shadow(ctx, cam, this.boss.x, this.boss.y, 92, 40, t, 1.4);
-    if (!this.player.dead) this.ocean.shadow(ctx, cam, this.player.x, this.player.y, 48, 24, t, this.player.diving ? 1.7 : 1.25);
-    for (const w of this.wrecks) this.ocean.shadow(ctx, cam, w.x, w.y, w.radius * 2, w.radius, t, 0.6);
-    this.ocean.renderTempCurrents(ctx, cam, t);
-    for (const r of this.rocks) r.render(ctx, cam, t);
-    this.ocean.renderWakes(ctx, cam, t);
-    this.particles.renderUnder(ctx, cam);
-    for (const w of this.wrecks) w.render(ctx, cam);
-    for (const p of this.pickups) p.render(ctx, cam, t);
-    if (this.buoy) this.buoy.render(ctx, cam, t);
-    if (this.player.diving) this.player.render(ctx, cam, t);
-    for (const e of this.enemies) e.render(ctx, cam, t);
-    if (this.boss) this.boss.render(ctx, cam, t);
-    if (this.fisherman) this.fisherman.render(ctx, cam, t);
-    if (!this.player.diving) this.player.render(ctx, cam, t);
-    for (const p of this.projectiles) p.render(ctx, cam);
-    this.particles.render(ctx, cam);
-    if (typeof Gore !== 'undefined') Gore.render(ctx, cam);
-    Toon.render(ctx, cam);
-    this.ocean.renderRipples(ctx, cam);
+    for (const e of this.enemies) this.ocean.shadow(W, cam, e.x, e.y, e.radius * 2.6, e.radius * 1.5, t, 1.15);
+    if (this.boss && !this.boss.dead) this.ocean.shadow(W, cam, this.boss.x, this.boss.y, 92, 40, t, 1.4);
+    if (!this.player.dead) this.ocean.shadow(W, cam, this.player.x, this.player.y, 48, 24, t, this.player.diving ? 1.7 : 1.25);
+    for (const w of this.wrecks) this.ocean.shadow(W, cam, w.x, w.y, w.radius * 2, w.radius, t, 0.6);
+    this.ocean.renderTempCurrents(W, cam, t);
+    for (const r of this.rocks) r.render(W, cam, t);
+    this.ocean.renderWakes(W, cam, t);
+    this.particles.renderUnder(W, cam);
+    for (const w of this.wrecks) w.render(W, cam);
+    for (const p of this.pickups) p.render(W, cam, t);
+    if (this.buoy) this.buoy.render(W, cam, t);
+    if (this.player.diving) this.player.render(W, cam, t);
+    for (const e of this.enemies) e.render(W, cam, t);
+    if (this.boss) this.boss.render(W, cam, t);
+    if (this.fisherman) this.fisherman.render(W, cam, t);
+    if (!this.player.diving) this.player.render(W, cam, t);
+    for (const p of this.projectiles) p.render(W, cam);
+    this.particles.render(W, cam);
+    if (typeof Gore !== 'undefined') Gore.render(W, cam);
+    Toon.render(W, cam);
+    this.ocean.renderRipples(W, cam);
     // sun sheen and swell ribbons pass OVER the entities so they read as submerged
-    if (this.ocean.renderSurfaceOverlay) this.ocean.renderSurfaceOverlay(ctx, cam, t);
+    if (this.ocean.renderSurfaceOverlay) this.ocean.renderSurfaceOverlay(W, cam, t);
+
+    // magnify the centred crop of the world onto the presentation canvas
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.world, CROP_X, CROP_Y, VIEW_W, VIEW_H, 0, 0, 640, 360);
     // overlays
-    if (this.state === 'dialogue') Dialogue.render(ctx, cam);
+    if (this.state === 'dialogue') Dialogue.renderHUD(ctx);
     if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree') UI.drawHUD(ctx, t);
     if (this.state === 'tree') UI.drawTree(ctx, t);
     if (this.state === 'paused') {

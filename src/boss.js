@@ -100,7 +100,7 @@ class Boss {
     // fin cuts the water: ripples
     if (spd > 60 && Math.random() < 0.3) G.ocean.ripple(this.x, this.y, 30, 60, 0.4);
     // phase 2 bleeding trail
-    if (p2) { this.bleedT -= dt; if (this.bleedT <= 0) { this.bleedT = 0.25; G.ocean.addBlood(this.x + rand(-8, 8), this.y + rand(-8, 8), 0.25); } }
+    if (p2) { this.bleedT -= dt; if (this.bleedT <= 0) { this.bleedT = 0.3; G.ocean.addBlood(this.x + rand(-8, 8), this.y + rand(-8, 8), 0.10); } }
     // sweep shockwave
     if (this.sweep) {
       this.sweep.r += dt * 260; this.sweep.life -= dt;
@@ -129,7 +129,7 @@ class Boss {
   }
   summon() {
     G.banner('THE CHIEF CALLS FOR BACKUP', '#ff6161', 1.5);
-    for (let i = 0; i < 3; i++) { const a = rand(0, TAU); G.spawnEnemy(i < 2 ? 'jetski' : 'dinghy', G.player.x + Math.cos(a) * 420, G.player.y + Math.sin(a) * 420); }
+    for (let i = 0; i < 3; i++) { const a = rand(0, TAU); G.spawnEnemy(i < 2 ? 'jetski' : 'dinghy', G.player.x + Math.cos(a) * 270, G.player.y + Math.sin(a) * 270); }
   }
   tailSweep() {
     this.sweep = { x: this.x, y: this.y, r: 20, life: 0.7, hit: false };
@@ -170,7 +170,7 @@ class Boss {
   die() {
     this.dead = true; this.wake.dead = true;
     G.particles.explode(this.x, this.y, 90, { debris: 30, oil: 2, debrisColors: ['#b57d3f', '#5b6f8c', '#f2c744'] });
-    G.particles.blood(this.x, this.y, 8); G.ocean.splatBlood(this.x, this.y, 14, 60); G.shake(24);
+    G.particles.blood(this.x, this.y, 4); G.ocean.splatBlood(this.x, this.y, 5, 70); G.shake(24);
     Toon.burst(this.x, this.y, 5); Toon.shock(this.x, this.y, 260, 0.9);
     for (let i = 0; i < 3; i++) setTimeout(() => { if (G) { G.particles.explode(this.x + rand(-40, 40), this.y + rand(-30, 30), 50); G.particles.blood(this.x + rand(-30, 30), this.y + rand(-30, 30), 3); } }, 250 + i * 300);
     const drops = { metal: 14, wood: 12, fuel: 10, powder: 10, tech: 12 };

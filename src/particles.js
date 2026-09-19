@@ -27,7 +27,7 @@ class Particles {
       const a = ang === null ? rand(0, TAU) : ang + rand(-0.7, 0.7), sp = rand(30, 120) * Math.sqrt(amount);
       this.add({ type: 'blood', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, z: 0, vz: rand(40, 130), life: 2, maxLife: 2, size: rand(1, 2) | 0 || 1, color: Math.random() < 0.5 ? '#c8302e' : '#7c1414', amt: 0.35 * amount / n });
     }
-    this.ocean.splatBlood(x, y, amount * 2.4, 16);
+    this.ocean.splatBlood(x, y, amount * 0.9, 18);
   }
   debris(x, y, n = 8, colors = ['#b57d3f', '#8f5c2c', '#5c3a1c']) {
     for (let i = 0; i < n; i++) {

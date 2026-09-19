@@ -101,7 +101,7 @@ const UI = {
       ctx.fillStyle = '#ffe48f'; ctx.fillRect(156 + 164, 39, 1, 9);
       const nm = `${b.name}${b.phase === 2 ? ' - BLOOD FRENZY' : ''}${b.stunned ? '  [STUNNED]' : ''}`;
       pixelTextOutlined(ctx, nm, 320, 30, 7, b.stunned ? '#ffe48f' : '#ffffff', '#14141c', 'center');
-      const sx = b.x - G.cam.x, sy = b.y - G.cam.y;
+      const bp = G.worldToScreen(b.x, b.y), sx = bp.x, sy = bp.y;
       if (sx < 0 || sy < 0 || sx > 640 || sy > 360) {
         const a = angleTo(320, 180, sx, sy), ex = clamp(320 + Math.cos(a) * 400, 12, 628), ey = clamp(180 + Math.sin(a) * 400, 56, 348);
         ctx.fillStyle = '#ff6161'; ctx.beginPath();

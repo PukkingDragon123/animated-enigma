@@ -1548,37 +1548,80 @@ SP.crate = makeSprite(['kkkkkkk', 'kTtttTk', 'ktTtTtk', 'kttTttk', 'ktTtTtk', 'k
 // ============================ PROCEDURAL ROCKS =========================
 function makeRock(seed, size) {
   const rng = new SeededRandom(seed);
-  const w = size * 2 + 4, h = Math.round(size * 1.6) + 4;
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  const ctx = c.getContext('2d');
-  const cx = w / 2, cy = h / 2;
-  const ox = rng.range(0, 100), oy = rng.range(0, 100);
-  const mask = [];
-  for (let y = 0; y < h; y++) { mask.push([]); for (let x = 0; x < w; x++) {
-    const nx = (x - cx) / (size), ny = (y - cy) / (size * 0.8);
-    const ang = Math.atan2(ny, nx);
-    const bump = Math.sin(ang * 3 + ox) * 0.08 + Math.sin(ang * 5 + oy) * 0.06 + Math.sin(ang * 7 + ox * 2) * 0.04;
-    const r = Math.hypot(nx, ny) + bump + (vnoise(x * 0.09 + ox, y * 0.09 + oy) - 0.5) * 0.22;
-    mask[y].push(r < 0.93);
-  } }
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    if (!mask[y][x]) continue;
-    const edge = !(mask[y - 1]?.[x] && mask[y + 1]?.[x] && mask[y][x - 1] && mask[y][x + 1]);
-    let col;
-    if (edge) col = PAL.k;
-    else {
-      const shade = vnoise(x * 0.18 + ox, y * 0.18 + oy) * 0.7 + (cy - y) / h * 0.7 + (cx - x) / w * 0.35;
-      col = shade > 0.78 ? '#9a9ea8' : shade > 0.55 ? '#7c818b' : shade > 0.32 ? '#5e636d' : '#454a53';
-      // cracks & moss
-      if (vnoise(x * 0.6 + oy, y * 0.6 + ox) > 0.78) col = '#3a3e46';
-      if (shade > 0.6 && vnoise(x * 0.3 + ox * 3, y * 0.3 + oy * 3) > 0.72) col = '#4f8f5a';
-      // wet dark base near the waterline (bottom edge)
-      const below = mask[y + 2]?.[x] === false || mask[y + 1]?.[x] === false;
-      if (below) col = '#33373f';
+  const kind = rng.next();
+  const W = Math.round(size * 2.6) + 8, H = Math.round(size * 2.2) + 8;
+  const cx = W / 2, cy = H / 2;
+
+  // ---- silhouette: a few overlapping lobes, varied by type
+  const lobes = [];
+  if (kind < 0.34) {                       // squat boulder
+    const n = rng.int(3, 5);
+    for (let i = 0; i < n; i++) {
+      const a = rng.range(0, TAU), d = rng.range(0, size * 0.42);
+      lobes.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d * 0.72,
+                   rx: rng.range(size * 0.52, size * 0.88), ry: rng.range(size * 0.44, size * 0.74) });
     }
-    ctx.fillStyle = col; ctx.fillRect(x, y, 1, 1);
+  } else if (kind < 0.67) {                // a stack of two or three
+    let y = cy + size * 0.42, r = size * 0.95;
+    for (let i = 0; i < 3; i++) {
+      lobes.push({ x: cx + rng.range(-size * 0.2, size * 0.2), y, rx: r, ry: r * rng.range(0.5, 0.68) });
+      y -= r * 0.52; r *= rng.range(0.6, 0.78);
+      if (r < size * 0.28) break;
+    }
+  } else {                                 // long low reef shelf
+    const n = rng.int(3, 5);
+    for (let i = 0; i < n; i++) {
+      lobes.push({ x: cx + (i / (n - 1) - 0.5) * size * 1.7, y: cy + rng.range(-size * 0.16, size * 0.16),
+                   rx: rng.range(size * 0.45, size * 0.7), ry: rng.range(size * 0.4, size * 0.62) });
+    }
   }
-  return { c, w, h, ax: cx, ay: cy };
+  const f = blobField(W, H, lobes);
+
+  // ---- shade it like the rest of the art, then rough it up
+  const ramp = ['#2d3138', '#43484f', '#5c626b', '#7a8089', '#9aa0a9'];
+  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: '#14141c', smooth: 2, lift: 0.14 });
+  const ox = rng.range(0, 90), oy = rng.range(0, 90);
+  for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
+    const i = y * W + x; if (f[i] <= 0.03) continue;
+    const n = vnoise(x * 0.34 + ox, y * 0.34 + oy);
+    if (n > 0.76) { ctx.fillStyle = '#2a2e35'; ctx.fillRect(x, y, 1, 1); }           // cracks
+    else if (n < 0.20) { ctx.fillStyle = '#a8aeb7'; ctx.fillRect(x, y, 1, 1); }      // chipped facets
+    // algae only clings to the upper, lit faces
+    if (f[i] > 0.12 && f[i - W] <= 0.03 && rng.next() < 0.55) {
+      ctx.fillStyle = rng.next() < 0.5 ? '#4f8f5a' : '#3c7047'; ctx.fillRect(x, y, 1, 1);
+      if (rng.next() < 0.4) ctx.fillRect(x, y + 1, 1, 1);
+    }
+    // a wet dark band low down where the water keeps it soaked
+    if (f[i] > 0.05 && f[i + W * 2] <= 0.03) { ctx.fillStyle = '#23262c'; ctx.fillRect(x, y, 1, 1); }
+  }
+  // barnacles + a limpet or two
+  const nb = Math.round(size / 5);
+  for (let i = 0; i < nb; i++) {
+    const a = rng.range(0, TAU), d = rng.range(0, size * 0.7);
+    const bx = Math.round(cx + Math.cos(a) * d), by = Math.round(cy + Math.sin(a) * d * 0.8);
+    if (bx < 2 || by < 2 || bx >= W - 2 || by >= H - 2 || f[by * W + bx] <= 0.15) continue;
+    ctx.fillStyle = '#cfd4da'; ctx.fillRect(bx, by, 2, 2);
+    ctx.fillStyle = '#7d838c'; ctx.fillRect(bx, by + 1, 2, 1);
+    ctx.fillStyle = '#14141c'; ctx.fillRect(bx, by, 1, 1);
+  }
+
+  // ---- foam fringe: the real silhouette dilated by a few pixels, so the
+  //      surf hugs the rock instead of sitting in a floating ellipse
+  const foam = document.createElement('canvas'); foam.width = W + 8; foam.height = H + 8;
+  const fx = foam.getContext('2d'), FW = W + 8;
+  const inside = (x, y) => { const xx = x - 4, yy = y - 4; return xx >= 0 && yy >= 0 && xx < W && yy < H && f[yy * W + xx] > 0.03; };
+  for (let y = 0; y < H + 8; y++) for (let x = 0; x < FW; x++) {
+    if (inside(x, y)) continue;
+    let near = 0;
+    for (let dy = -3; dy <= 3 && !near; dy++) for (let dx = -3; dx <= 3; dx++) {
+      if (dx * dx + dy * dy > 10) continue;
+      if (inside(x + dx, y + dy)) { near = 1; break; }
+    }
+    if (near) { fx.fillStyle = '#ffffff'; fx.fillRect(x, y, 1, 1); }
+  }
+  const spr = { c, w: W, h: H, ax: cx, ay: cy };
+  spr.foam = { c: foam, w: FW, h: H + 8, ax: cx + 4, ay: cy + 4 };
+  return spr;
 }
 
 // ============================ UI ICONS ================================
@@ -5933,7 +5976,7 @@ class Ocean {
     });
     this.currents.push({ x: this.W / 2, y: this.H * 0.62, r: 9999, s: 18, type: 'drift', ang: rng.range(0, TAU) });
     this.streaks = [];
-    for (let i = 0; i < 300; i++) this.streaks.push({ x: rng.range(0, this.W), y: rng.range(this.shoreY, this.H), life: rng.range(0, 3), vx: 0, vy: 0 });
+    for (let i = 0; i < 120; i++) this.streaks.push({ x: rng.range(0, this.W), y: rng.range(this.shoreY, this.H), life: rng.range(0, 3), vx: 0, vy: 0 });
   }
 
   // =====================================================================
@@ -6034,7 +6077,7 @@ class Ocean {
   update(dt, t) {
     this.frame++;
     for (let i = this.currents.length - 1; i >= 0; i--) { const c = this.currents[i]; if (c.life !== undefined) { c.life -= dt; if (c.life <= 0) this.currents.splice(i, 1); } }
-    if (this.frame % 2 === 0) { if (this.bloodOn) this.bloodOn = this.diffuse(this.blood, this._blood2, 0.16, 0.9975) > 0.004; }
+    if (this.frame % 2 === 0) { if (this.bloodOn) this.bloodOn = this.diffuse(this.blood, this._blood2, 0.19, 0.9915) > 0.004; }
     else { if (this.foamOn) this.foamOn = this.diffuse(this.foam, this._foam2, 0.22, 0.93) > 0.01; }
     if (this.frame % 3 === 0 && this.oilOn) this.oilOn = this.diffuse(this.oil, this._oil2, 0.08, 0.996) > 0.01;
     // jelly: fixed timestep so it stays buttery regardless of framerate
@@ -6261,9 +6304,14 @@ class Ocean {
         // --- drifting fields ---------------------------------------------
         if (bloodOn) {
           const bl = rB[px];
-          if (bl > 0.015) {
-            let a = bl * 1.6 * (1 + wv * 0.15); if (a > 1) a = 1;
-            const bc = a > 0.7 ? bloodC : bloodB, mm = Math.min(0.95, a * 1.1);
+          if (bl > 0.03) {
+            // a thinning, dithered cloud rather than a flat carpet of red: the
+            // edges break up into speckle and it never fully hides the water
+            let a = bl * 0.62; if (a > 0.78) a = 0.78;
+            const dith = ((wx >> 1) + (wy >> 1)) & 1;
+            if (a < 0.30 && dith) a *= 0.35;
+            const bc = a > 0.52 ? bloodC : bloodB;
+            const mm = a * (0.94 + wv * 0.10);
             r += (bc[0] - r) * mm; g += (bc[1] - g) * mm; b += (bc[2] - b) * mm;
           }
         }
@@ -6392,7 +6440,7 @@ class Ocean {
       g.fillRect(Math.round(lx - cx * (L + 1) - sy * flick), Math.round(ly - sy * (L + 1) + cx * flick), 1, 1);
     }
     // current streaks: crisp 1px dashes riding the flow
-    g.fillStyle = 'rgba(206,238,255,0.30)';
+    g.fillStyle = 'rgba(206,238,255,0.17)';
     for (let i = 0; i < this.streaks.length; i++) {
       const s = this.streaks[i];
       const lx = (s.x - cx2) >> 1, ly = (s.y - cy2) >> 1;
@@ -6413,9 +6461,9 @@ class Ocean {
     const K = _OS_K, M = _OS_M, S = _OS;
     const sparkT = Math.floor(t * 8) * 13;
     // 1. broad drifting sun sheen -- two very faint slabs that slide across
-    ctx.fillStyle = 'rgba(190,244,255,0.030)';
-    for (let i = 0; i < 3; i++) {
-      const w = 150 + i * 40;
+    ctx.fillStyle = 'rgba(190,244,255,0.014)';
+    for (let i = 0; i < 2; i++) {
+      const w = 240 + i * 90;
       let bx = ((i * 430 + t * 17 + Math.sin(t * 0.21 + i * 2.1) * 90 - camX * 0.3) % 1100 + 1100) % 1100 - 240;
       const top = Math.max(0, shore + 10 - camY);
       if (top > 360) break;
@@ -6440,24 +6488,6 @@ class Ocean {
         const h = hash2(wx >> 2, (wy >> 2) + sparkT);
         if (h > 0.88) ctx.fillRect(sx + ((h * 5) | 0), sy + ((h * 37) % 5 | 0), 2, 2);
         else if (h > 0.83 && wv > 0.92) ctx.fillRect(sx + 3, sy + 1, 1, 1);
-      }
-    }
-    // 3. swell ribbons that ride OVER the sprites, so entities read as sitting
-    //    under the surface film rather than pasted on top
-    ctx.fillStyle = 'rgba(146,226,240,0.055)';
-    const top = shore + 14 - camY;
-    for (let row = 0; row < 9; row++) {
-      const by = row * 44 - ((t * 26) % 44);
-      if (by < top - 30 || by > 372) continue;
-      let a = (camY * 0.031 - camX * 0.012 - t * 0.62) * K;
-      let c = (camX * 0.060 + (camY + by) * 0.050 + t * 2.00) * K;
-      const da = -0.012 * 4 * K, dc = 0.060 * 4 * K;
-      for (let sx = 0; sx < 640; sx += 4) {
-        const wv2 = S[(a | 0) & M] * 9 + S[(c | 0) & M] * 5;
-        a += da; c += dc;
-        const yy = Math.round(by + wv2);
-        if (yy < top || yy > 358) continue;
-        ctx.fillRect(sx, yy, 4, 3);
       }
     }
   }
@@ -6584,7 +6614,7 @@ class Particles {
       const a = ang === null ? rand(0, TAU) : ang + rand(-0.7, 0.7), sp = rand(30, 120) * Math.sqrt(amount);
       this.add({ type: 'blood', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, z: 0, vz: rand(40, 130), life: 2, maxLife: 2, size: rand(1, 2) | 0 || 1, color: Math.random() < 0.5 ? '#c8302e' : '#7c1414', amt: 0.35 * amount / n });
     }
-    this.ocean.splatBlood(x, y, amount * 2.4, 16);
+    this.ocean.splatBlood(x, y, amount * 0.9, 18);
   }
   debris(x, y, n = 8, colors = ['#b57d3f', '#8f5c2c', '#5c3a1c']) {
     for (let i = 0; i < n; i++) {
@@ -6860,14 +6890,26 @@ function circleHit(ax, ay, ar, bx, by, br) { const dx = bx - ax, dy = by - ay; c
 class Rock {
   constructor(x, y, r, seed) { this.x = x; this.y = y; this.r = r; this.sprite = makeRock(seed, r); this.glow = 0; }
   render(ctx, cam, t) {
-    const sx = this.x - cam.x, sy = this.y - cam.y;
-    if (sx < -80 || sy < -80 || sx > 720 || sy > 440) return;
-    // foam ring where waves break on the rock
-    ctx.strokeStyle = `rgba(230,246,255,${(0.35 + Math.sin(t * 3 + this.x) * 0.15).toFixed(2)})`; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy + 2), Math.round(this.r + 3 + Math.sin(t * 2 + this.y) * 1.5), Math.round(this.r * 0.8 + 3), 0, 0, TAU); ctx.stroke();
+    const sx = Math.round(this.x - cam.x), sy = Math.round(this.y - cam.y);
+    if (sx < -90 || sy < -90 || sy > 460 || sx > 740) return;
+    // surf breaking on the rock: the dilated silhouette, dithered so it
+    // shimmers, and pulsing with the swell instead of a drawn-on ellipse
+    const fm = this.sprite.foam;
+    if (fm) {
+      const pulse = 0.34 + Math.sin(t * 2.1 + this.x * 0.05) * 0.2;
+      ctx.save();
+      ctx.globalAlpha = clamp(pulse, 0.08, 0.6);
+      ctx.drawImage(fm.c, sx - fm.ax, sy - fm.ay);
+      ctx.globalAlpha = clamp(pulse * 0.7, 0.05, 0.4);
+      ctx.drawImage(fm.c, sx - fm.ax, sy - fm.ay + 1);
+      ctx.restore();
+    }
     if (this.glow > 0) {
-      ctx.strokeStyle = `rgba(255,220,80,${(this.glow * (0.6 + Math.sin(t * 12) * 0.3)).toFixed(2)})`; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(this.r + 8), Math.round(this.r * 0.8 + 8), 0, 0, TAU); ctx.stroke();
+      if (!this.glowSprite) this.glowSprite = tintSprite(this.sprite, '#ffe48f', 0.9);
+      ctx.save();
+      ctx.globalAlpha = clamp(this.glow * (0.5 + Math.sin(t * 12) * 0.3), 0, 1);
+      ctx.drawImage(this.glowSprite.c, sx - this.glowSprite.ax, sy - this.glowSprite.ay);
+      ctx.restore();
     }
     drawSprite(ctx, this.sprite, sx, sy);
   }
@@ -7194,12 +7236,12 @@ class Player {
   // ---- weapons ----------------------------------------------------------
   updateWeapons(dt, t) {
     const st = this.stats;
-    const mouseWorld = { x: Input.mouse.x + G.cam.x, y: Input.mouse.y + G.cam.y };
-    this.target = G.nearestEnemy(this.x, this.y, 420, null, true);
+    const mouseWorld = G.screenToWorld(Input.mouse.x, Input.mouse.y);
+    this.target = G.nearestEnemy(this.x, this.y, 300, null, true);
     let wantFire = false;
     const manualFire = Input.act('fire');
     const touchAim = (typeof MobileUI !== 'undefined' && MobileUI.enabled) ? MobileUI.aimAt() : null;
-    if (touchAim) { this.aim = angleTo(this.x, this.y, touchAim.x + G.cam.x, touchAim.y + G.cam.y); wantFire = manualFire || !G.holdFire; }
+    if (touchAim) { const w = G.screenToWorld(touchAim.x, touchAim.y); this.aim = angleTo(this.x, this.y, w.x, w.y); wantFire = manualFire || !G.holdFire; }
     else if (Input.mouse.down) { this.aim = angleTo(this.x, this.y, mouseWorld.x, mouseWorld.y); wantFire = true; }
     else if (manualFire && this.target) { this.aim = angleTo(this.x, this.y, this.target.x, this.target.y); wantFire = true; }
     else if (this.target) { const lead = 0.15; this.aim = angleTo(this.x, this.y, this.target.x + (this.target.vx || 0) * lead, this.target.y + (this.target.vy || 0) * lead); wantFire = !G.holdFire; }
@@ -7496,7 +7538,7 @@ class Enemy {
       for (let i = 0; i < 3; i++) Toon.puff(this.x + rand(-r, r), this.y + rand(-r, r), 2, '#d8e4ee');
     }
     if (!silentBoom) G.particles.explode(this.x, this.y, r * 2.2, { debris: Math.round(r * 1.2), oil: 0.6 + r / 15, debrisColors: this.type === 'gunboat' || this.type === 'harpooner' ? ['#7d858f', '#4a515a', '#aeb6c1'] : undefined });
-    G.particles.blood(this.x, this.y, 1.2 + r / 12);
+    G.particles.blood(this.x, this.y, 0.8 + r / 22);
     // the crew goes with the boat
     if (typeof Gore !== 'undefined') { Gore.burst(this.x, this.y, 1.1 + r / 14, rand(0, TAU)); if (r > 18) Gore.burst(this.x + rand(-r, r) * 0.5, this.y + rand(-r, r) * 0.5, 0.8, rand(0, TAU)); }
     G.shake(Math.min(14, 4 + r / 3));
@@ -7674,7 +7716,7 @@ class Boss {
     // fin cuts the water: ripples
     if (spd > 60 && Math.random() < 0.3) G.ocean.ripple(this.x, this.y, 30, 60, 0.4);
     // phase 2 bleeding trail
-    if (p2) { this.bleedT -= dt; if (this.bleedT <= 0) { this.bleedT = 0.25; G.ocean.addBlood(this.x + rand(-8, 8), this.y + rand(-8, 8), 0.25); } }
+    if (p2) { this.bleedT -= dt; if (this.bleedT <= 0) { this.bleedT = 0.3; G.ocean.addBlood(this.x + rand(-8, 8), this.y + rand(-8, 8), 0.10); } }
     // sweep shockwave
     if (this.sweep) {
       this.sweep.r += dt * 260; this.sweep.life -= dt;
@@ -7703,7 +7745,7 @@ class Boss {
   }
   summon() {
     G.banner('THE CHIEF CALLS FOR BACKUP', '#ff6161', 1.5);
-    for (let i = 0; i < 3; i++) { const a = rand(0, TAU); G.spawnEnemy(i < 2 ? 'jetski' : 'dinghy', G.player.x + Math.cos(a) * 420, G.player.y + Math.sin(a) * 420); }
+    for (let i = 0; i < 3; i++) { const a = rand(0, TAU); G.spawnEnemy(i < 2 ? 'jetski' : 'dinghy', G.player.x + Math.cos(a) * 270, G.player.y + Math.sin(a) * 270); }
   }
   tailSweep() {
     this.sweep = { x: this.x, y: this.y, r: 20, life: 0.7, hit: false };
@@ -7744,7 +7786,7 @@ class Boss {
   die() {
     this.dead = true; this.wake.dead = true;
     G.particles.explode(this.x, this.y, 90, { debris: 30, oil: 2, debrisColors: ['#b57d3f', '#5b6f8c', '#f2c744'] });
-    G.particles.blood(this.x, this.y, 8); G.ocean.splatBlood(this.x, this.y, 14, 60); G.shake(24);
+    G.particles.blood(this.x, this.y, 4); G.ocean.splatBlood(this.x, this.y, 5, 70); G.shake(24);
     Toon.burst(this.x, this.y, 5); Toon.shock(this.x, this.y, 260, 0.9);
     for (let i = 0; i < 3; i++) setTimeout(() => { if (G) { G.particles.explode(this.x + rand(-40, 40), this.y + rand(-30, 30), 50); G.particles.blood(this.x + rand(-30, 30), this.y + rand(-30, 30), 3); } }, 250 + i * 300);
     const drops = { metal: 14, wood: 12, fuel: 10, powder: 10, tech: 12 };
@@ -7840,16 +7882,16 @@ class Director {
   spawnPos() {
     const p = G.player;
     for (let i = 0; i < 12; i++) {
-      const a = rand(0, TAU), r = rand(400, 480);
+      const a = rand(0, TAU), r = rand(230, 300);
       const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
       if (x > 30 && x < G.ocean.W - 30 && y > G.ocean.shoreY + 10 && y < G.ocean.H - 30) return { x, y };
     }
-    return { x: clamp(p.x + 450, 30, G.ocean.W - 30), y: clamp(p.y, G.ocean.shoreY + 40, G.ocean.H - 30) };
+    return { x: clamp(p.x + 260, 30, G.ocean.W - 30), y: clamp(p.y, G.ocean.shoreY + 40, G.ocean.H - 30) };
   }
   spawnBurst(type, n) {
     const base = rand(0, TAU);
     for (let i = 0; i < n; i++) {
-      const a = base + (i - n / 2) * 0.25, r = 440;
+      const a = base + (i - n / 2) * 0.25, r = 270;
       const p = G.player;
       const x = clamp(p.x + Math.cos(a) * r, 30, G.ocean.W - 30), y = clamp(p.y + Math.sin(a) * r, G.ocean.shoreY + 20, G.ocean.H - 30);
       G.spawnEnemy(type, x, y);
@@ -8200,7 +8242,7 @@ const UI = {
       ctx.fillStyle = '#ffe48f'; ctx.fillRect(156 + 164, 39, 1, 9);
       const nm = `${b.name}${b.phase === 2 ? ' - BLOOD FRENZY' : ''}${b.stunned ? '  [STUNNED]' : ''}`;
       pixelTextOutlined(ctx, nm, 320, 30, 7, b.stunned ? '#ffe48f' : '#ffffff', '#14141c', 'center');
-      const sx = b.x - G.cam.x, sy = b.y - G.cam.y;
+      const bp = G.worldToScreen(b.x, b.y), sx = bp.x, sy = bp.y;
       if (sx < 0 || sy < 0 || sx > 640 || sy > 360) {
         const a = angleTo(320, 180, sx, sy), ex = clamp(320 + Math.cos(a) * 400, 12, 628), ey = clamp(180 + Math.sin(a) * 400, 56, 348);
         ctx.fillStyle = '#ff6161'; ctx.beginPath();
@@ -9431,31 +9473,32 @@ const Dialogue = {
   t: 0, text: 'Oh, a manatee! Free meat for tonight!', done: false, shotFired: false,
   reset() { this.t = 0; this.done = false; this.shotFired = false; },
   update(dt) { this.t += dt; if (this.t > 3) this.done = true; },
-  render(ctx, cam) {
+  renderWorld(ctx, cam) { /* the bubble is drawn in HUD space so the text stays crisp */ },
+  renderHUD(ctx) {
     const f = G.fisherman; if (!f || !f.alive) return;
-    const sx = Math.round(f.x - cam.x), sy = Math.round(f.y - cam.y);
+    // anchor the bubble to his screen position through the zoom
     if (this.t > 0.6) {
+      const sp = G.worldToScreen(f.x, f.y - 34);
+      const sx = Math.round(sp.x), sy = Math.round(sp.y);
       const n = Math.min(this.text.length, Math.floor((this.t - 0.6) * 30));
-      const shown = this.text.slice(0, n);
-      const w = Math.max(60, textWidth(this.text, 7) + 18);
-      const bx = clamp(sx - w / 2, 4, 636 - w), by = sy - 58;
-      UIKit.panel(ctx, bx, by, w, 22, 'parchment');
+      const w = Math.max(70, textWidth(this.text, 7) + 20);
+      const bx = clamp(sx - w / 2, 6, 634 - w), by = clamp(sy - 26, 44, 300);
+      UIKit.panel(ctx, bx, by, w, 24, 'parchment');
       ctx.fillStyle = '#e8dcc0';
-      ctx.beginPath(); ctx.moveTo(sx - 5, by + 21); ctx.lineTo(sx + 5, by + 21); ctx.lineTo(sx, by + 29); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(sx - 6, by + 23); ctx.lineTo(sx + 6, by + 23); ctx.lineTo(sx, by + 33); ctx.fill();
       ctx.fillStyle = '#2a2016';
-      ctx.beginPath(); ctx.moveTo(sx - 6, by + 22); ctx.lineTo(sx - 4, by + 22); ctx.lineTo(sx, by + 30); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(sx + 6, by + 22); ctx.lineTo(sx + 4, by + 22); ctx.lineTo(sx, by + 30); ctx.fill();
-      pixelText(ctx, shown, bx + 9, by + 7, 7, '#2a2016', 'left', false);
+      ctx.beginPath(); ctx.moveTo(sx - 7, by + 24); ctx.lineTo(sx - 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(sx + 7, by + 24); ctx.lineTo(sx + 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
+      pixelText(ctx, this.text.slice(0, n), bx + 10, by + 8, 7, '#2a2016', 'left', false);
     }
-    if (this.done) {
-      const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
-      UIKit.panel(ctx, 60, 298, 520, 40, 'dark');
-      pixelTextOutlined(ctx, touch ? 'TAP FIRE. LET THE OTTER ANSWER.' : 'LEFT CLICK. LET THE OTTER ANSWER.',
-        320, 304, 10, Math.floor(this.t * 2) % 2 ? '#ffe48f' : '#ffffff', '#14141c', 'center');
-      pixelText(ctx, touch ? 'Helm to swim   SHIELD to parry   ROLL to dash'
-                           : 'WASD swim   SPACE roll   E / right-click shield   TAB workshop',
-        320, 320, 6, '#9ab0c0', 'center');
-    }
+    if (!this.done) return;
+    const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+    UIKit.panel(ctx, 60, 298, 520, 40, 'dark');
+    pixelTextOutlined(ctx, touch ? 'TAP FIRE. LET THE OTTER ANSWER.' : 'LEFT CLICK. LET THE OTTER ANSWER.',
+      320, 304, 10, Math.floor(this.t * 2) % 2 ? '#ffe48f' : '#ffffff', '#14141c', 'center');
+    pixelText(ctx, touch ? 'Helm to swim   SHIELD to parry   ROLL to dash'
+                         : 'WASD swim   SPACE roll   E / right-click shield   TAB workshop',
+      320, 320, 6, '#9ab0c0', 'center');
   },
 };
 
@@ -9501,12 +9544,20 @@ function drawEndScreen(ctx, t, win) {
 // ---- Game: state machine, world, render ---------------------------------
 const WORLD_W = 3200, WORLD_H = 2400, SHORE_Y = 300;
 const RIG_SCALE = 0.64;   // the rig is drawn large for detail, scaled to play size
+// The world is drawn at 1:1 into an offscreen 640x360 canvas, then a centred
+// 320x180 crop of it is blown up to fill the screen. That is a clean 2x pixel
+// zoom: everything doubles in size and the pixels stay square.
+const ZOOM = 2, VIEW_W = 640 / ZOOM, VIEW_H = 360 / ZOOM;
+const CROP_X = (640 - VIEW_W) / 2, CROP_Y = (360 - VIEW_H) / 2;
 
 class Game {
   constructor() {
     this.display = document.getElementById('screen'); this.dctx = this.display.getContext('2d');
     this.g = document.createElement('canvas'); this.g.width = 640; this.g.height = 360;
     this.ctx = this.g.getContext('2d'); this.ctx.imageSmoothingEnabled = false;
+    // the world layer, drawn at 1:1 and then cropped + magnified
+    this.world = document.createElement('canvas'); this.world.width = 640; this.world.height = 360;
+    this.wctx = this.world.getContext('2d'); this.wctx.imageSmoothingEnabled = false;
     Input.init(this.display);
     if (typeof MobileUI !== 'undefined') MobileUI.init(this.display);
     window.addEventListener('resize', () => this.resize()); this.resize();
@@ -9543,10 +9594,10 @@ class Game {
       this.rocks.push(new Rock(x, y, r, rng.int(1, 99999)));
     }
     if (typeof Village !== 'undefined') Village.build(this.pier.x, SHORE_Y, WORLD_W);
-    this.player = new Player(this.pier.x, SHORE_Y + 230, this.tree);
+    this.player = new Player(this.pier.x, SHORE_Y + 168, this.tree);
     this.director = new Director();
     this.fisherman = this.firstRun ? new Fisherman(this.pier.x, this.pier.y1 - 6) : null;
-    this.cam.x = this.player.x - 320; this.cam.y = this.player.y - 200;
+    this.cam.x = this.player.x - 320; this.cam.y = this.player.y - 180;
     UI.banner = null;
     if (!this.firstRun) { this.director.started = true; this.banner('REMATCH', '#ffe48f', 2, 'The village heard you were coming.'); }
   }
@@ -9650,46 +9701,59 @@ class Game {
     // camera
     const p = this.player;
     // bias the camera toward the shore when close to it, so the village stays in view
-    const shoreBias = Math.max(0, (SHORE_Y + 420 - p.y)) * 0.8;
-    const tx = p.x - 320 + p.vx * 0.22, ty = p.y - 180 + p.vy * 0.22 - shoreBias;
+    const shoreBias = Math.max(0, (SHORE_Y + 220 - p.y)) * 0.6;
+    const tx = p.x - 320 + p.vx * 0.12, ty = p.y - 180 + p.vy * 0.12 - shoreBias;
     const k = 1 - Math.pow(0.002, dt);
-    this.cam.x = lerp(this.cam.x, clamp(tx, 0, WORLD_W - 640), k); this.cam.y = lerp(this.cam.y, clamp(ty, 0, WORLD_H - 360), k);
+    // the visible window is cam + CROP .. cam + CROP + VIEW, so clamp to that
+    this.cam.x = lerp(this.cam.x, clamp(tx, -CROP_X, WORLD_W - CROP_X - VIEW_W), k);
+    this.cam.y = lerp(this.cam.y, clamp(ty, -CROP_Y, WORLD_H - CROP_Y - VIEW_H), k);
     this.shakeAmt = Math.max(0, this.shakeAmt - dt * 30);
     if (UI.banner) { UI.banner.t += dt; if (UI.banner.t > UI.banner.dur) UI.banner = null; }
   }
   // ---------------------------------------------------------- render
+  // screen (640x360 HUD space) <-> world, across the 2x crop
+  screenToWorld(sx, sy) { return { x: this.cam.x + CROP_X + sx / ZOOM, y: this.cam.y + CROP_Y + sy / ZOOM }; }
+  worldToScreen(wx, wy) { return { x: (wx - this.cam.x - CROP_X) * ZOOM, y: (wy - this.cam.y - CROP_Y) * ZOOM }; }
+
   render() {
     const ctx = this.ctx, t = this.time;
     if (this.state === 'intro') { Intro.render(ctx); this.blit(); return; }
     const cam = { x: Math.round(this.cam.x + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)), y: Math.round(this.cam.y + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)) };
-    this.ocean.render(ctx, cam, t);
-    if (typeof Village !== 'undefined') Village.render(ctx, cam, t); else this.renderVillage(ctx, cam, t);
+    const W = this.wctx;
+    W.clearRect(0, 0, 640, 360);
+    this.ocean.render(W, cam, t);
+    if (this.state === 'dialogue') Dialogue.renderWorld(W, cam);
+    if (typeof Village !== 'undefined') Village.render(W, cam, t); else this.renderVillage(W, cam, t);
     // underwater shadows
-    for (const e of this.enemies) this.ocean.shadow(ctx, cam, e.x, e.y, e.radius * 2.6, e.radius * 1.5, t, 1.15);
-    if (this.boss && !this.boss.dead) this.ocean.shadow(ctx, cam, this.boss.x, this.boss.y, 92, 40, t, 1.4);
-    if (!this.player.dead) this.ocean.shadow(ctx, cam, this.player.x, this.player.y, 48, 24, t, this.player.diving ? 1.7 : 1.25);
-    for (const w of this.wrecks) this.ocean.shadow(ctx, cam, w.x, w.y, w.radius * 2, w.radius, t, 0.6);
-    this.ocean.renderTempCurrents(ctx, cam, t);
-    for (const r of this.rocks) r.render(ctx, cam, t);
-    this.ocean.renderWakes(ctx, cam, t);
-    this.particles.renderUnder(ctx, cam);
-    for (const w of this.wrecks) w.render(ctx, cam);
-    for (const p of this.pickups) p.render(ctx, cam, t);
-    if (this.buoy) this.buoy.render(ctx, cam, t);
-    if (this.player.diving) this.player.render(ctx, cam, t);
-    for (const e of this.enemies) e.render(ctx, cam, t);
-    if (this.boss) this.boss.render(ctx, cam, t);
-    if (this.fisherman) this.fisherman.render(ctx, cam, t);
-    if (!this.player.diving) this.player.render(ctx, cam, t);
-    for (const p of this.projectiles) p.render(ctx, cam);
-    this.particles.render(ctx, cam);
-    if (typeof Gore !== 'undefined') Gore.render(ctx, cam);
-    Toon.render(ctx, cam);
-    this.ocean.renderRipples(ctx, cam);
+    for (const e of this.enemies) this.ocean.shadow(W, cam, e.x, e.y, e.radius * 2.6, e.radius * 1.5, t, 1.15);
+    if (this.boss && !this.boss.dead) this.ocean.shadow(W, cam, this.boss.x, this.boss.y, 92, 40, t, 1.4);
+    if (!this.player.dead) this.ocean.shadow(W, cam, this.player.x, this.player.y, 48, 24, t, this.player.diving ? 1.7 : 1.25);
+    for (const w of this.wrecks) this.ocean.shadow(W, cam, w.x, w.y, w.radius * 2, w.radius, t, 0.6);
+    this.ocean.renderTempCurrents(W, cam, t);
+    for (const r of this.rocks) r.render(W, cam, t);
+    this.ocean.renderWakes(W, cam, t);
+    this.particles.renderUnder(W, cam);
+    for (const w of this.wrecks) w.render(W, cam);
+    for (const p of this.pickups) p.render(W, cam, t);
+    if (this.buoy) this.buoy.render(W, cam, t);
+    if (this.player.diving) this.player.render(W, cam, t);
+    for (const e of this.enemies) e.render(W, cam, t);
+    if (this.boss) this.boss.render(W, cam, t);
+    if (this.fisherman) this.fisherman.render(W, cam, t);
+    if (!this.player.diving) this.player.render(W, cam, t);
+    for (const p of this.projectiles) p.render(W, cam);
+    this.particles.render(W, cam);
+    if (typeof Gore !== 'undefined') Gore.render(W, cam);
+    Toon.render(W, cam);
+    this.ocean.renderRipples(W, cam);
     // sun sheen and swell ribbons pass OVER the entities so they read as submerged
-    if (this.ocean.renderSurfaceOverlay) this.ocean.renderSurfaceOverlay(ctx, cam, t);
+    if (this.ocean.renderSurfaceOverlay) this.ocean.renderSurfaceOverlay(W, cam, t);
+
+    // magnify the centred crop of the world onto the presentation canvas
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.world, CROP_X, CROP_Y, VIEW_W, VIEW_H, 0, 0, 640, 360);
     // overlays
-    if (this.state === 'dialogue') Dialogue.render(ctx, cam);
+    if (this.state === 'dialogue') Dialogue.renderHUD(ctx);
     if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree') UI.drawHUD(ctx, t);
     if (this.state === 'tree') UI.drawTree(ctx, t);
     if (this.state === 'paused') {

@@ -7,14 +7,26 @@ function circleHit(ax, ay, ar, bx, by, br) { const dx = bx - ax, dy = by - ay; c
 class Rock {
   constructor(x, y, r, seed) { this.x = x; this.y = y; this.r = r; this.sprite = makeRock(seed, r); this.glow = 0; }
   render(ctx, cam, t) {
-    const sx = this.x - cam.x, sy = this.y - cam.y;
-    if (sx < -80 || sy < -80 || sx > 720 || sy > 440) return;
-    // foam ring where waves break on the rock
-    ctx.strokeStyle = `rgba(230,246,255,${(0.35 + Math.sin(t * 3 + this.x) * 0.15).toFixed(2)})`; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy + 2), Math.round(this.r + 3 + Math.sin(t * 2 + this.y) * 1.5), Math.round(this.r * 0.8 + 3), 0, 0, TAU); ctx.stroke();
+    const sx = Math.round(this.x - cam.x), sy = Math.round(this.y - cam.y);
+    if (sx < -90 || sy < -90 || sy > 460 || sx > 740) return;
+    // surf breaking on the rock: the dilated silhouette, dithered so it
+    // shimmers, and pulsing with the swell instead of a drawn-on ellipse
+    const fm = this.sprite.foam;
+    if (fm) {
+      const pulse = 0.34 + Math.sin(t * 2.1 + this.x * 0.05) * 0.2;
+      ctx.save();
+      ctx.globalAlpha = clamp(pulse, 0.08, 0.6);
+      ctx.drawImage(fm.c, sx - fm.ax, sy - fm.ay);
+      ctx.globalAlpha = clamp(pulse * 0.7, 0.05, 0.4);
+      ctx.drawImage(fm.c, sx - fm.ax, sy - fm.ay + 1);
+      ctx.restore();
+    }
     if (this.glow > 0) {
-      ctx.strokeStyle = `rgba(255,220,80,${(this.glow * (0.6 + Math.sin(t * 12) * 0.3)).toFixed(2)})`; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(Math.round(sx), Math.round(sy), Math.round(this.r + 8), Math.round(this.r * 0.8 + 8), 0, 0, TAU); ctx.stroke();
+      if (!this.glowSprite) this.glowSprite = tintSprite(this.sprite, '#ffe48f', 0.9);
+      ctx.save();
+      ctx.globalAlpha = clamp(this.glow * (0.5 + Math.sin(t * 12) * 0.3), 0, 1);
+      ctx.drawImage(this.glowSprite.c, sx - this.glowSprite.ax, sy - this.glowSprite.ay);
+      ctx.restore();
     }
     drawSprite(ctx, this.sprite, sx, sy);
   }
@@ -341,12 +353,12 @@ class Player {
   // ---- weapons ----------------------------------------------------------
   updateWeapons(dt, t) {
     const st = this.stats;
-    const mouseWorld = { x: Input.mouse.x + G.cam.x, y: Input.mouse.y + G.cam.y };
-    this.target = G.nearestEnemy(this.x, this.y, 420, null, true);
+    const mouseWorld = G.screenToWorld(Input.mouse.x, Input.mouse.y);
+    this.target = G.nearestEnemy(this.x, this.y, 300, null, true);
     let wantFire = false;
     const manualFire = Input.act('fire');
     const touchAim = (typeof MobileUI !== 'undefined' && MobileUI.enabled) ? MobileUI.aimAt() : null;
-    if (touchAim) { this.aim = angleTo(this.x, this.y, touchAim.x + G.cam.x, touchAim.y + G.cam.y); wantFire = manualFire || !G.holdFire; }
+    if (touchAim) { const w = G.screenToWorld(touchAim.x, touchAim.y); this.aim = angleTo(this.x, this.y, w.x, w.y); wantFire = manualFire || !G.holdFire; }
     else if (Input.mouse.down) { this.aim = angleTo(this.x, this.y, mouseWorld.x, mouseWorld.y); wantFire = true; }
     else if (manualFire && this.target) { this.aim = angleTo(this.x, this.y, this.target.x, this.target.y); wantFire = true; }
     else if (this.target) { const lead = 0.15; this.aim = angleTo(this.x, this.y, this.target.x + (this.target.vx || 0) * lead, this.target.y + (this.target.vy || 0) * lead); wantFire = !G.holdFire; }
@@ -643,7 +655,7 @@ class Enemy {
       for (let i = 0; i < 3; i++) Toon.puff(this.x + rand(-r, r), this.y + rand(-r, r), 2, '#d8e4ee');
     }
     if (!silentBoom) G.particles.explode(this.x, this.y, r * 2.2, { debris: Math.round(r * 1.2), oil: 0.6 + r / 15, debrisColors: this.type === 'gunboat' || this.type === 'harpooner' ? ['#7d858f', '#4a515a', '#aeb6c1'] : undefined });
-    G.particles.blood(this.x, this.y, 1.2 + r / 12);
+    G.particles.blood(this.x, this.y, 0.8 + r / 22);
     // the crew goes with the boat
     if (typeof Gore !== 'undefined') { Gore.burst(this.x, this.y, 1.1 + r / 14, rand(0, TAU)); if (r > 18) Gore.burst(this.x + rand(-r, r) * 0.5, this.y + rand(-r, r) * 0.5, 0.8, rand(0, TAU)); }
     G.shake(Math.min(14, 4 + r / 3));

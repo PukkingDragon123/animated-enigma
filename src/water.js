@@ -542,7 +542,7 @@ class Ocean {
     });
     this.currents.push({ x: this.W / 2, y: this.H * 0.62, r: 9999, s: 18, type: 'drift', ang: rng.range(0, TAU) });
     this.streaks = [];
-    for (let i = 0; i < 300; i++) this.streaks.push({ x: rng.range(0, this.W), y: rng.range(this.shoreY, this.H), life: rng.range(0, 3), vx: 0, vy: 0 });
+    for (let i = 0; i < 120; i++) this.streaks.push({ x: rng.range(0, this.W), y: rng.range(this.shoreY, this.H), life: rng.range(0, 3), vx: 0, vy: 0 });
   }
 
   // =====================================================================
@@ -643,7 +643,7 @@ class Ocean {
   update(dt, t) {
     this.frame++;
     for (let i = this.currents.length - 1; i >= 0; i--) { const c = this.currents[i]; if (c.life !== undefined) { c.life -= dt; if (c.life <= 0) this.currents.splice(i, 1); } }
-    if (this.frame % 2 === 0) { if (this.bloodOn) this.bloodOn = this.diffuse(this.blood, this._blood2, 0.16, 0.9975) > 0.004; }
+    if (this.frame % 2 === 0) { if (this.bloodOn) this.bloodOn = this.diffuse(this.blood, this._blood2, 0.19, 0.9915) > 0.004; }
     else { if (this.foamOn) this.foamOn = this.diffuse(this.foam, this._foam2, 0.22, 0.93) > 0.01; }
     if (this.frame % 3 === 0 && this.oilOn) this.oilOn = this.diffuse(this.oil, this._oil2, 0.08, 0.996) > 0.01;
     // jelly: fixed timestep so it stays buttery regardless of framerate
@@ -870,9 +870,14 @@ class Ocean {
         // --- drifting fields ---------------------------------------------
         if (bloodOn) {
           const bl = rB[px];
-          if (bl > 0.015) {
-            let a = bl * 1.6 * (1 + wv * 0.15); if (a > 1) a = 1;
-            const bc = a > 0.7 ? bloodC : bloodB, mm = Math.min(0.95, a * 1.1);
+          if (bl > 0.03) {
+            // a thinning, dithered cloud rather than a flat carpet of red: the
+            // edges break up into speckle and it never fully hides the water
+            let a = bl * 0.62; if (a > 0.78) a = 0.78;
+            const dith = ((wx >> 1) + (wy >> 1)) & 1;
+            if (a < 0.30 && dith) a *= 0.35;
+            const bc = a > 0.52 ? bloodC : bloodB;
+            const mm = a * (0.94 + wv * 0.10);
             r += (bc[0] - r) * mm; g += (bc[1] - g) * mm; b += (bc[2] - b) * mm;
           }
         }
@@ -1001,7 +1006,7 @@ class Ocean {
       g.fillRect(Math.round(lx - cx * (L + 1) - sy * flick), Math.round(ly - sy * (L + 1) + cx * flick), 1, 1);
     }
     // current streaks: crisp 1px dashes riding the flow
-    g.fillStyle = 'rgba(206,238,255,0.30)';
+    g.fillStyle = 'rgba(206,238,255,0.17)';
     for (let i = 0; i < this.streaks.length; i++) {
       const s = this.streaks[i];
       const lx = (s.x - cx2) >> 1, ly = (s.y - cy2) >> 1;
@@ -1022,9 +1027,9 @@ class Ocean {
     const K = _OS_K, M = _OS_M, S = _OS;
     const sparkT = Math.floor(t * 8) * 13;
     // 1. broad drifting sun sheen -- two very faint slabs that slide across
-    ctx.fillStyle = 'rgba(190,244,255,0.030)';
-    for (let i = 0; i < 3; i++) {
-      const w = 150 + i * 40;
+    ctx.fillStyle = 'rgba(190,244,255,0.014)';
+    for (let i = 0; i < 2; i++) {
+      const w = 240 + i * 90;
       let bx = ((i * 430 + t * 17 + Math.sin(t * 0.21 + i * 2.1) * 90 - camX * 0.3) % 1100 + 1100) % 1100 - 240;
       const top = Math.max(0, shore + 10 - camY);
       if (top > 360) break;
@@ -1049,24 +1054,6 @@ class Ocean {
         const h = hash2(wx >> 2, (wy >> 2) + sparkT);
         if (h > 0.88) ctx.fillRect(sx + ((h * 5) | 0), sy + ((h * 37) % 5 | 0), 2, 2);
         else if (h > 0.83 && wv > 0.92) ctx.fillRect(sx + 3, sy + 1, 1, 1);
-      }
-    }
-    // 3. swell ribbons that ride OVER the sprites, so entities read as sitting
-    //    under the surface film rather than pasted on top
-    ctx.fillStyle = 'rgba(146,226,240,0.055)';
-    const top = shore + 14 - camY;
-    for (let row = 0; row < 9; row++) {
-      const by = row * 44 - ((t * 26) % 44);
-      if (by < top - 30 || by > 372) continue;
-      let a = (camY * 0.031 - camX * 0.012 - t * 0.62) * K;
-      let c = (camX * 0.060 + (camY + by) * 0.050 + t * 2.00) * K;
-      const da = -0.012 * 4 * K, dc = 0.060 * 4 * K;
-      for (let sx = 0; sx < 640; sx += 4) {
-        const wv2 = S[(a | 0) & M] * 9 + S[(c | 0) & M] * 5;
-        a += da; c += dc;
-        const yy = Math.round(by + wv2);
-        if (yy < top || yy > 358) continue;
-        ctx.fillRect(sx, yy, 4, 3);
       }
     }
   }
