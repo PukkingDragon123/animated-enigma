@@ -174,13 +174,13 @@ const UI = {
         pixelTextOutlined(ctx, touch ? 'TAP HERE FOR THE NEXT WAVE' : '[ENTER] CALL IN THE NEXT WAVE', 320, 282, 8,
           pulse ? '#ffe48f' : '#ffffff', '#14141c', 'center');
       }
-    } else if (d.started && !d.isBossWave) {
+    } else if (d.started && d.state === 'fighting' && !d.isBossWave) {
       // a live wave: how much of it is left
       const w = d.currentWave();
       const left = d.remaining + G.enemies.length, total = w.count;
       const k = clamp(1 - left / Math.max(1, total), 0, 1);
-      UIKit.bar(ctx, 250, 28, 140, 7, k, '#ffe48f', '#1b2028');
-      pixelTextOutlined(ctx, `${Math.max(0, left)} LEFT`, 320, 29, 5, '#ffffff', '#14141c', 'center');
+      UIKit.bar(ctx, 256, 30, 128, 8, k, '#ffe48f', '#1b2028');
+      pixelTextOutlined(ctx, `${Math.max(0, left)} LEFT`, 320, 31, 5, '#ffffff', '#14141c', 'center');
     }
 
     if (hpk < 0.3) { ctx.fillStyle = `rgba(200,20,20,${(0.12 + Math.sin(t * 6) * 0.08).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }

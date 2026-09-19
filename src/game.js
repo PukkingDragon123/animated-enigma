@@ -179,6 +179,16 @@ class Game {
     for (const r of this.rocks) { if (Math.random() < 0.15) { const a = rand(0, TAU); this.ocean.addFoam(r.x + Math.cos(a) * (r.r + 4), r.y + Math.sin(a) * (r.r + 4) * 0.8, 0.12); } r.glow = Math.max(0, r.glow - dt * 2); }
     // cleanup
     this.enemies = this.enemies.filter(e => !e.dead);
+    // spread the surviving boats evenly around the player
+    this.slotT = (this.slotT || 0) - dt;
+    if (this.slotT <= 0) {
+      this.slotT = 1.2;
+      const n = this.enemies.length;
+      if (n) {
+        const base = Math.atan2(this.player.vy, this.player.vx) || 0;
+        this.enemies.forEach((e, i) => { e.slot = base + (i / n) * TAU + rand(-0.18, 0.18); });
+      }
+    }
     this.projectiles = this.projectiles.filter(p => !p.dead);
     this.pickups = this.pickups.filter(p => !p.dead);
     this.wrecks = this.wrecks.filter(w => !w.dead);

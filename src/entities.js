@@ -517,14 +517,29 @@ class Enemy {
     this.wake = G.ocean.newWake(this, c.wake); this.sprite = SP.boats[type]; this.hurtSprite = SP.boatsHurt[type];
     this.zig = rand(0, TAU); this.burstLeft = 0; this.burstT = 0; this.strafeDir = 1;
     this.slowT = 0; this.age = 0; this.dmgT = 0; this.list = 0; this.scars = [];
+    this.slot = rand(0, TAU); this.retreatT = 0;
   }
   targetPos() { if (G.buoy && !G.buoy.dead) return G.buoy; return G.player; }
   update(dt, t) {
     const c = this.cfg, p = this.targetPos(); this.age += dt;
     this.flash -= dt; this.ramCd -= dt; this.stateT += dt;
     if (this.burn > 0) { this.burn -= dt; this.burnT -= dt; if (this.burnT <= 0) { this.burnT = 0.5; this.hit(G.player.stats.burn * 0.5, 0, 0, null, true); G.particles.fire(this.x, this.y, 2); G.particles.smoke(this.x, this.y, 1); } }
-    const d = dist(this.x, this.y, p.x, p.y), toP = angleTo(this.x, this.y, p.x, p.y);
+    const d = dist(this.x, this.y, p.x, p.y);
+    // approach the slot this boat has claimed around the target, not the target
+    // itself, so a wave arrives as a ring instead of a conga line
+    const spread = Math.min(70, d * 0.55);
+    const ax0 = p.x + Math.cos(this.slot) * spread, ay0 = p.y + Math.sin(this.slot) * spread;
+    const toP = angleTo(this.x, this.y, ax0, ay0);
+    const toPDirect = angleTo(this.x, this.y, p.x, p.y);
     let desired = toP, throttle = 1;
+    // badly hurt boats peel off, circle, and come back in
+    if (this.hp / this.maxHp < 0.28 && this.retreatT <= 0 && Math.random() < 0.004) this.retreatT = rand(1.4, 2.6);
+    if (this.retreatT > 0) {
+      this.retreatT -= dt;
+      this.angle = angleLerp(this.angle, toPDirect + Math.PI + 0.5 * this.orbitDir, Math.min(1, c.turn * dt));
+      this.vx = lerp(this.vx, Math.cos(this.angle) * this.speed, Math.min(1, dt * 2.5));
+      this.vy = lerp(this.vy, Math.sin(this.angle) * this.speed, Math.min(1, dt * 2.5));
+    }
     switch (c.behavior) {
       case 'chase': desired = toP; throttle = d < 20 ? 0.6 : 1; break;
       case 'orbit': {
@@ -591,7 +606,7 @@ class Enemy {
     }
 
     // attacks
-    if (c.attack) this.updateAttack(dt, d, toP, p);
+    if (c.attack) this.updateAttack(dt, d, toPDirect, p);
     // ramming / kamikaze against the real player only
     const pl = G.player;
     const dp = dist(this.x, this.y, pl.x, pl.y);
