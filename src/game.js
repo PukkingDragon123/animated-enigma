@@ -162,9 +162,9 @@ class Game {
     this.ocean.render(ctx, cam, t);
     this.renderVillage(ctx, cam, t);
     // underwater shadows
-    for (const e of this.enemies) this.ocean.shadow(ctx, cam, e.x, e.y, e.radius * 2.2, e.radius * 1.2, t);
-    if (this.boss && !this.boss.dead) this.ocean.shadow(ctx, cam, this.boss.x, this.boss.y, 70, 26, t, 1.3);
-    if (!this.player.dead) this.ocean.shadow(ctx, cam, this.player.x, this.player.y, 34, 18, t, this.player.diving ? 1.6 : 1);
+    for (const e of this.enemies) this.ocean.shadow(ctx, cam, e.x, e.y, e.radius * 2.6, e.radius * 1.5, t, 1.15);
+    if (this.boss && !this.boss.dead) this.ocean.shadow(ctx, cam, this.boss.x, this.boss.y, 92, 40, t, 1.4);
+    if (!this.player.dead) this.ocean.shadow(ctx, cam, this.player.x, this.player.y, 48, 24, t, this.player.diving ? 1.7 : 1.25);
     for (const w of this.wrecks) this.ocean.shadow(ctx, cam, w.x, w.y, w.radius * 2, w.radius, t, 0.6);
     this.ocean.renderTempCurrents(ctx, cam, t);
     for (const r of this.rocks) r.render(ctx, cam, t);
@@ -182,6 +182,8 @@ class Game {
     this.particles.render(ctx, cam);
     Toon.render(ctx, cam);
     this.ocean.renderRipples(ctx, cam);
+    // sun sheen and swell ribbons pass OVER the entities so they read as submerged
+    if (this.ocean.renderSurfaceOverlay) this.ocean.renderSurfaceOverlay(ctx, cam, t);
     // overlays
     if (this.state === 'dialogue') Dialogue.render(ctx, cam);
     if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree') UI.drawHUD(ctx, t);

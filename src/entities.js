@@ -251,7 +251,7 @@ class Player {
     } else this.tilt = lerp(this.tilt, 0, 1 - Math.pow(0.01, dt));
     this.swimPhase += dt * (3 + sp / 40);
     // shove the water aside as we swim — the jelly surface reacts
-    if (G.ocean.disturb && sp > 12) G.ocean.disturb(this.x, this.y, Math.min(1.4, sp / 170) * (this.roll.active ? 3 : 1), this.vx, this.vy);
+    if (G.ocean.disturb && sp > 12) G.ocean.disturb(this.x, this.y, Math.min(2.0, sp / 90) * (this.roll.active ? 2.6 : 1), this.vx, this.vy);
     // wake
     if (sp > 40 && !this.dive.active) { const last = this.wake.pts[this.wake.pts.length - 1]; if (!last || dist(last.x, last.y, this.x, this.y) > 6) this.wake.pts.push({ x: this.x - this.vx / sp * 10, y: this.y - this.vy / sp * 10, t }); if (Math.random() < sp / 500) G.ocean.addFoam(this.x - this.vx / sp * 12, this.y - this.vy / sp * 12, 0.06); }
     // ---- otter: aiming & shooting
@@ -502,7 +502,7 @@ class Enemy {
     this.dead = false; this.flash = 0; this.burn = 0; this.burnT = 0; this.kx = 0; this.ky = 0; this.ramCd = 0; this.bob = rand(0, TAU);
     this.wake = G.ocean.newWake(this, c.wake); this.sprite = SP.boats[type]; this.hurtSprite = SP.boatsHurt[type];
     this.zig = rand(0, TAU); this.burstLeft = 0; this.burstT = 0; this.strafeDir = 1;
-    this.slowT = 0; this.age = 0;
+    this.slowT = 0; this.age = 0; this.dmgT = 0; this.list = 0; this.scars = [];
   }
   targetPos() { if (G.buoy && !G.buoy.dead) return G.buoy; return G.player; }
   update(dt, t) {
@@ -556,12 +556,26 @@ class Enemy {
     this.x = clamp(this.x, 10, G.ocean.W - 10); this.y = clamp(this.y, G.ocean.shoreY - 4, G.ocean.H - 10);
     // wake & spray
     const spd = Math.hypot(this.vx, this.vy);
-    if (G.ocean.disturb && spd > 20) G.ocean.disturb(this.x, this.y, Math.min(1.6, spd / 150) * (this.cfg.big ? 1.8 : 1), this.vx, this.vy);
+    if (G.ocean.disturb && spd > 20) G.ocean.disturb(this.x, this.y, Math.min(4.5, spd / 55) * (this.cfg.big ? 1.6 : 1), this.vx, this.vy);
     const last = this.wake.pts[this.wake.pts.length - 1];
     const stx = this.x - Math.cos(this.angle) * this.radius * 0.9, sty = this.y - Math.sin(this.angle) * this.radius * 0.9;
     if (!last || dist(last.x, last.y, stx, sty) > 5) { this.wake.pts.push({ x: stx, y: sty, t }); G.ocean.addFoam(stx, sty, 0.05 + spd / 3000); }
     if (spd > 150 && Math.random() < 0.5) G.particles.spray(this.x + Math.cos(this.angle) * this.radius, this.y + Math.sin(this.angle) * this.radius, this.angle + Math.PI / 2 * (Math.random() < 0.5 ? 1 : -1), 1, 60);
     if (Math.abs(angleDiff(this.angle, desired)) > 0.8 && spd > 80 && Math.random() < 0.3) G.particles.spray(stx, sty, this.angle + Math.PI, 1, 50);
+    // ---- battle damage: a chewed-up hull smokes, then burns, then lists
+    const hk = this.hp / this.maxHp;
+    if (hk < 0.65) {
+      this.dmgT -= dt;
+      if (this.dmgT <= 0) {
+        this.dmgT = hk < 0.3 ? 0.07 : hk < 0.5 ? 0.14 : 0.24;
+        const ox = rand(-this.radius, this.radius) * 0.7, oy = rand(-this.radius, this.radius) * 0.5;
+        G.particles.smoke(this.x + ox, this.y + oy, 1, hk < 0.3 ? 'rgba(22,20,26,' : 'rgba(58,56,64,', this.radius / 4);
+        if (hk < 0.35) G.particles.fire(this.x + ox, this.y + oy, 1);
+        if (hk < 0.3 && Math.random() < 0.3) G.ocean.addOil(this.x, this.y, 0.05);
+      }
+      this.list = lerp(this.list, (1 - hk) * 0.22 * (this.orbitDir || 1), Math.min(1, dt * 2));
+    }
+
     // attacks
     if (c.attack) this.updateAttack(dt, d, toP, p);
     // ramming / kamikaze against the real player only
@@ -608,6 +622,10 @@ class Enemy {
     if (!silent) {
       G.particles.sparks(this.x, this.y, 3); G.particles.debris(this.x, this.y, 2);
       Toon.impact(this.x, this.y, proj && proj.crit ? 1.5 : 0.8, proj && proj.crit ? '#ffe48f' : '#ffffff');
+      if (this.scars.length < 10) {
+        const a = rand(0, TAU), r = rand(0, this.radius * 0.8);
+        this.scars.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, s: randi(1, 3) });
+      }
       // crew gets hurt: a little blood
       if (Math.random() < 0.6) G.particles.blood(this.x, this.y, 0.4, proj ? Math.atan2(proj.vy, proj.vx) : null);
       G.particles.text(this.x + rand(-6, 6), this.y - this.radius - 4, Math.round(dmg) + '', proj && proj.crit ? '#ffe48f' : '#fff', proj && proj.crit ? 9 : 7);
@@ -618,7 +636,12 @@ class Enemy {
   die(silentBoom = false) {
     if (this.dead) return; this.dead = true; this.wake.dead = true;
     const c = this.cfg, r = this.radius;
-    if (!silentBoom) { Toon.burst(this.x, this.y, 1 + r / 22); Toon.shock(this.x, this.y, r * 3.4, 0.5); }
+    if (!silentBoom) {
+      Toon.burst(this.x, this.y, 1 + r / 22); Toon.shock(this.x, this.y, r * 3.4, 0.5);
+      // the hull comes apart into planks that tumble and float
+      G.particles.debris(this.x, this.y, Math.round(r * 1.6), ['#b57d3f', '#8f5c2c', '#5c3a1c', '#d6a05e']);
+      for (let i = 0; i < 3; i++) Toon.puff(this.x + rand(-r, r), this.y + rand(-r, r), 2, '#d8e4ee');
+    }
     if (!silentBoom) G.particles.explode(this.x, this.y, r * 2.2, { debris: Math.round(r * 1.2), oil: 0.6 + r / 15, debrisColors: this.type === 'gunboat' || this.type === 'harpooner' ? ['#7d858f', '#4a515a', '#aeb6c1'] : undefined });
     G.particles.blood(this.x, this.y, 1.2 + r / 12);
     G.shake(Math.min(14, 4 + r / 3));
@@ -637,8 +660,19 @@ class Enemy {
     const sx = this.x - cam.x, sy = this.y - cam.y; if (sx < -60 || sy < -60 || sx > 700 || sy > 420) return;
     const bob = Math.sin(t * 3 + this.bob) * 1;
     const spr = this.flash > 0 ? this.hurtSprite : this.sprite;
-    // heel into turns
-    drawSprite(ctx, spr, sx, sy + bob, this.angle, 1, 1);
+    // heel into turns, and list further as the hull fills with water
+    ctx.save();
+    ctx.translate(Math.round(sx), Math.round(sy + bob));
+    ctx.rotate(this.angle);
+    const hk2 = this.hp / this.maxHp;
+    ctx.scale(1, 1 - (1 - hk2) * 0.14);
+    ctx.drawImage(spr.c, -spr.ax, -spr.ay);
+    // scorched holes where it has been hit
+    if (this.flash <= 0) for (const sc of this.scars) {
+      ctx.fillStyle = '#14141c'; ctx.fillRect(Math.round(sc.x), Math.round(sc.y), sc.s, sc.s);
+      if (sc.s > 1) { ctx.fillStyle = '#3a3038'; ctx.fillRect(Math.round(sc.x), Math.round(sc.y) - 1, sc.s, 1); }
+    }
+    ctx.restore();
     if (this.burn > 0) { ctx.fillStyle = Math.floor(t * 10) % 2 ? '#ff9a3c' : '#ffe48f'; ctx.fillRect(Math.round(sx) - 2 + rand(-3, 3), Math.round(sy) - 6 + rand(-3, 3), 3, 3); }
     if (this.cfg.big || this.hp < this.maxHp) {
       const w = this.radius * 2, k = clamp(this.hp / this.maxHp, 0, 1);

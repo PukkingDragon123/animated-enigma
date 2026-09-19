@@ -3596,6 +3596,8 @@ class Ocean {
       if (lx < -10 || lx > lw + 10 || ly < -2 || ly - c.h > lh) continue;
       g.fillStyle = c.c1;
       const base = t * c.sp + c.ph;
+      // the whole clump leans with the passing swell
+      const swell = S[(((c.y * 0.075 + c.x * 0.020 + t * 1.30) * K) | 0) & M] * 1.5;
       for (let k = 0; k < c.n; k++) {
         const dx = (hash2(c.seed, k) * 2 - 1) * c.r * 0.5;
         const hh = c.h * (0.55 + hash2(c.seed, k + 61) * 0.7);
@@ -3604,7 +3606,7 @@ class Ocean {
         const segs = Math.max(3, hh / 2 | 0);
         for (let s = 1; s <= segs; s++) {
           const f = s / segs;
-          const off = S[(((base + ph + f * 1.9)) * K | 0) & M] * amp * f * f;
+          const off = S[(((base + ph + f * 1.9)) * K | 0) & M] * amp * f * f + swell * f * f;
           g.fillRect(Math.round(lx + dx + off), Math.round(ly - f * hh), 1, 2);
         }
       }
@@ -3618,11 +3620,15 @@ class Ocean {
       const lx = (k.x - cx2) >> 1, ly = (k.y - cy2) >> 1;
       if (lx < -14 || lx > lw + 14 || ly < 0 || ly - k.sh > lh) continue;
       const segs = k.segs, hh = k.sh, base = t * k.sp + k.ph;
+      // swell drag + whatever is currently shoving the jelly field around
+      const swell = S[(((k.y * 0.075 + k.x * 0.020 + t * 1.30) * K) | 0) & M] * 2.6
+        + S[(((k.y * 0.031 - k.x * 0.012 - t * 0.62) * K) | 0) & M] * 1.6
+        + (this.jelOn ? this.sample(this.jgx, k.x, k.y) * 9 : 0);
       g.fillStyle = k.c1;
       let lastX = lx, lastY = ly;
       for (let s = 1; s <= segs; s++) {
         const f = s / segs, ff = f * f;
-        const off = S[(((base + f * 2.2)) * K | 0) & M] * k.amp * ff + k.lean * ff;
+        const off = S[(((base + f * 2.2)) * K | 0) & M] * k.amp * ff + (k.lean + swell) * ff;
         const nx = Math.round(lx + off), ny = Math.round(ly - f * hh);
         g.fillRect(nx, ny, k.w, 2);
         if (k.leaf && (s % 3) === 0 && s < segs) {
@@ -4371,7 +4377,7 @@ class Player {
     } else this.tilt = lerp(this.tilt, 0, 1 - Math.pow(0.01, dt));
     this.swimPhase += dt * (3 + sp / 40);
     // shove the water aside as we swim — the jelly surface reacts
-    if (G.ocean.disturb && sp > 12) G.ocean.disturb(this.x, this.y, Math.min(1.4, sp / 170) * (this.roll.active ? 3 : 1), this.vx, this.vy);
+    if (G.ocean.disturb && sp > 12) G.ocean.disturb(this.x, this.y, Math.min(2.0, sp / 90) * (this.roll.active ? 2.6 : 1), this.vx, this.vy);
     // wake
     if (sp > 40 && !this.dive.active) { const last = this.wake.pts[this.wake.pts.length - 1]; if (!last || dist(last.x, last.y, this.x, this.y) > 6) this.wake.pts.push({ x: this.x - this.vx / sp * 10, y: this.y - this.vy / sp * 10, t }); if (Math.random() < sp / 500) G.ocean.addFoam(this.x - this.vx / sp * 12, this.y - this.vy / sp * 12, 0.06); }
     // ---- otter: aiming & shooting
@@ -4622,7 +4628,7 @@ class Enemy {
     this.dead = false; this.flash = 0; this.burn = 0; this.burnT = 0; this.kx = 0; this.ky = 0; this.ramCd = 0; this.bob = rand(0, TAU);
     this.wake = G.ocean.newWake(this, c.wake); this.sprite = SP.boats[type]; this.hurtSprite = SP.boatsHurt[type];
     this.zig = rand(0, TAU); this.burstLeft = 0; this.burstT = 0; this.strafeDir = 1;
-    this.slowT = 0; this.age = 0;
+    this.slowT = 0; this.age = 0; this.dmgT = 0; this.list = 0; this.scars = [];
   }
   targetPos() { if (G.buoy && !G.buoy.dead) return G.buoy; return G.player; }
   update(dt, t) {
@@ -4676,12 +4682,26 @@ class Enemy {
     this.x = clamp(this.x, 10, G.ocean.W - 10); this.y = clamp(this.y, G.ocean.shoreY - 4, G.ocean.H - 10);
     // wake & spray
     const spd = Math.hypot(this.vx, this.vy);
-    if (G.ocean.disturb && spd > 20) G.ocean.disturb(this.x, this.y, Math.min(1.6, spd / 150) * (this.cfg.big ? 1.8 : 1), this.vx, this.vy);
+    if (G.ocean.disturb && spd > 20) G.ocean.disturb(this.x, this.y, Math.min(4.5, spd / 55) * (this.cfg.big ? 1.6 : 1), this.vx, this.vy);
     const last = this.wake.pts[this.wake.pts.length - 1];
     const stx = this.x - Math.cos(this.angle) * this.radius * 0.9, sty = this.y - Math.sin(this.angle) * this.radius * 0.9;
     if (!last || dist(last.x, last.y, stx, sty) > 5) { this.wake.pts.push({ x: stx, y: sty, t }); G.ocean.addFoam(stx, sty, 0.05 + spd / 3000); }
     if (spd > 150 && Math.random() < 0.5) G.particles.spray(this.x + Math.cos(this.angle) * this.radius, this.y + Math.sin(this.angle) * this.radius, this.angle + Math.PI / 2 * (Math.random() < 0.5 ? 1 : -1), 1, 60);
     if (Math.abs(angleDiff(this.angle, desired)) > 0.8 && spd > 80 && Math.random() < 0.3) G.particles.spray(stx, sty, this.angle + Math.PI, 1, 50);
+    // ---- battle damage: a chewed-up hull smokes, then burns, then lists
+    const hk = this.hp / this.maxHp;
+    if (hk < 0.65) {
+      this.dmgT -= dt;
+      if (this.dmgT <= 0) {
+        this.dmgT = hk < 0.3 ? 0.07 : hk < 0.5 ? 0.14 : 0.24;
+        const ox = rand(-this.radius, this.radius) * 0.7, oy = rand(-this.radius, this.radius) * 0.5;
+        G.particles.smoke(this.x + ox, this.y + oy, 1, hk < 0.3 ? 'rgba(22,20,26,' : 'rgba(58,56,64,', this.radius / 4);
+        if (hk < 0.35) G.particles.fire(this.x + ox, this.y + oy, 1);
+        if (hk < 0.3 && Math.random() < 0.3) G.ocean.addOil(this.x, this.y, 0.05);
+      }
+      this.list = lerp(this.list, (1 - hk) * 0.22 * (this.orbitDir || 1), Math.min(1, dt * 2));
+    }
+
     // attacks
     if (c.attack) this.updateAttack(dt, d, toP, p);
     // ramming / kamikaze against the real player only
@@ -4728,6 +4748,10 @@ class Enemy {
     if (!silent) {
       G.particles.sparks(this.x, this.y, 3); G.particles.debris(this.x, this.y, 2);
       Toon.impact(this.x, this.y, proj && proj.crit ? 1.5 : 0.8, proj && proj.crit ? '#ffe48f' : '#ffffff');
+      if (this.scars.length < 10) {
+        const a = rand(0, TAU), r = rand(0, this.radius * 0.8);
+        this.scars.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, s: randi(1, 3) });
+      }
       // crew gets hurt: a little blood
       if (Math.random() < 0.6) G.particles.blood(this.x, this.y, 0.4, proj ? Math.atan2(proj.vy, proj.vx) : null);
       G.particles.text(this.x + rand(-6, 6), this.y - this.radius - 4, Math.round(dmg) + '', proj && proj.crit ? '#ffe48f' : '#fff', proj && proj.crit ? 9 : 7);
@@ -4738,7 +4762,12 @@ class Enemy {
   die(silentBoom = false) {
     if (this.dead) return; this.dead = true; this.wake.dead = true;
     const c = this.cfg, r = this.radius;
-    if (!silentBoom) { Toon.burst(this.x, this.y, 1 + r / 22); Toon.shock(this.x, this.y, r * 3.4, 0.5); }
+    if (!silentBoom) {
+      Toon.burst(this.x, this.y, 1 + r / 22); Toon.shock(this.x, this.y, r * 3.4, 0.5);
+      // the hull comes apart into planks that tumble and float
+      G.particles.debris(this.x, this.y, Math.round(r * 1.6), ['#b57d3f', '#8f5c2c', '#5c3a1c', '#d6a05e']);
+      for (let i = 0; i < 3; i++) Toon.puff(this.x + rand(-r, r), this.y + rand(-r, r), 2, '#d8e4ee');
+    }
     if (!silentBoom) G.particles.explode(this.x, this.y, r * 2.2, { debris: Math.round(r * 1.2), oil: 0.6 + r / 15, debrisColors: this.type === 'gunboat' || this.type === 'harpooner' ? ['#7d858f', '#4a515a', '#aeb6c1'] : undefined });
     G.particles.blood(this.x, this.y, 1.2 + r / 12);
     G.shake(Math.min(14, 4 + r / 3));
@@ -4757,8 +4786,19 @@ class Enemy {
     const sx = this.x - cam.x, sy = this.y - cam.y; if (sx < -60 || sy < -60 || sx > 700 || sy > 420) return;
     const bob = Math.sin(t * 3 + this.bob) * 1;
     const spr = this.flash > 0 ? this.hurtSprite : this.sprite;
-    // heel into turns
-    drawSprite(ctx, spr, sx, sy + bob, this.angle, 1, 1);
+    // heel into turns, and list further as the hull fills with water
+    ctx.save();
+    ctx.translate(Math.round(sx), Math.round(sy + bob));
+    ctx.rotate(this.angle);
+    const hk2 = this.hp / this.maxHp;
+    ctx.scale(1, 1 - (1 - hk2) * 0.14);
+    ctx.drawImage(spr.c, -spr.ax, -spr.ay);
+    // scorched holes where it has been hit
+    if (this.flash <= 0) for (const sc of this.scars) {
+      ctx.fillStyle = '#14141c'; ctx.fillRect(Math.round(sc.x), Math.round(sc.y), sc.s, sc.s);
+      if (sc.s > 1) { ctx.fillStyle = '#3a3038'; ctx.fillRect(Math.round(sc.x), Math.round(sc.y) - 1, sc.s, 1); }
+    }
+    ctx.restore();
     if (this.burn > 0) { ctx.fillStyle = Math.floor(t * 10) % 2 ? '#ff9a3c' : '#ffe48f'; ctx.fillRect(Math.round(sx) - 2 + rand(-3, 3), Math.round(sy) - 6 + rand(-3, 3), 3, 3); }
     if (this.cfg.big || this.hp < this.maxHp) {
       const w = this.radius * 2, k = clamp(this.hp / this.maxHp, 0, 1);
@@ -4894,7 +4934,7 @@ class Boss {
     if (this.state !== 'charge') for (const r of G.rocks) { const dr = dist(this.x, this.y, r.x, r.y); if (dr < r.r + this.radius) { const a = angleTo(r.x, r.y, this.x, this.y); this.x = r.x + Math.cos(a) * (r.r + this.radius); this.y = r.y + Math.sin(a) * (r.r + this.radius); } }
     // wake
     const spd = Math.hypot(this.vx, this.vy);
-    if (G.ocean.disturb && spd > 20) G.ocean.disturb(this.x, this.y, Math.min(3, spd / 90), this.vx, this.vy);
+    if (G.ocean.disturb && spd > 20) G.ocean.disturb(this.x, this.y, Math.min(6, spd / 70), this.vx, this.vy);
     const stx = this.x - Math.cos(this.angle) * 30, sty = this.y - Math.sin(this.angle) * 30;
     const last = this.wake.pts[this.wake.pts.length - 1];
     if (spd > 30 && (!last || dist(last.x, last.y, stx, sty) > 5)) { this.wake.pts.push({ x: stx, y: sty, t }); G.ocean.addFoam(stx, sty, 0.1 + spd / 2000); }
@@ -6662,38 +6702,65 @@ const Dialogue = {
     const sx = Math.round(f.x - cam.x), sy = Math.round(f.y - cam.y);
     if (this.t > 0.6) {
       const n = Math.min(this.text.length, Math.floor((this.t - 0.6) * 30));
-      ctx.font = 'bold 7px monospace'; const w = ctx.measureText(this.text).width + 10;
-      const bx = clamp(sx - w / 2, 4, 636 - w), by = sy - 52;
-      ctx.fillStyle = '#fff'; ctx.fillRect(bx, by, w, 16); ctx.fillStyle = '#14141c'; ctx.fillRect(bx - 1, by + 1, w + 2, 14); ctx.fillStyle = '#fff'; ctx.fillRect(bx, by, w, 16);
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(sx - 4, by + 16); ctx.lineTo(sx + 4, by + 16); ctx.lineTo(sx, by + 22); ctx.fill();
-      pixelText(ctx, this.text.slice(0, n), bx + 5, by + 4, 7, '#14141c', 'left', false);
+      const shown = this.text.slice(0, n);
+      const w = Math.max(60, textWidth(this.text, 7) + 18);
+      const bx = clamp(sx - w / 2, 4, 636 - w), by = sy - 58;
+      UIKit.panel(ctx, bx, by, w, 22, 'parchment');
+      ctx.fillStyle = '#e8dcc0';
+      ctx.beginPath(); ctx.moveTo(sx - 5, by + 21); ctx.lineTo(sx + 5, by + 21); ctx.lineTo(sx, by + 29); ctx.fill();
+      ctx.fillStyle = '#2a2016';
+      ctx.beginPath(); ctx.moveTo(sx - 6, by + 22); ctx.lineTo(sx - 4, by + 22); ctx.lineTo(sx, by + 30); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(sx + 6, by + 22); ctx.lineTo(sx + 4, by + 22); ctx.lineTo(sx, by + 30); ctx.fill();
+      pixelText(ctx, shown, bx + 9, by + 7, 7, '#2a2016', 'left', false);
     }
     if (this.done) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 300, 640, 30);
-      pixelText(ctx, Math.floor(this.t * 2) % 2 ? '[LEFT CLICK]  Let the otter answer.' : '[LEFT CLICK]  Let the otter answer.', 320, 306, 10, '#ffe48f', 'center');
-      pixelText(ctx, 'WASD move   SPACE roll   E / right-click absorb   TAB workshop', 320, 319, 6, '#aab', 'center');
+      const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+      UIKit.panel(ctx, 60, 298, 520, 40, 'dark');
+      pixelTextOutlined(ctx, touch ? 'TAP FIRE. LET THE OTTER ANSWER.' : 'LEFT CLICK. LET THE OTTER ANSWER.',
+        320, 304, 10, Math.floor(this.t * 2) % 2 ? '#ffe48f' : '#ffffff', '#14141c', 'center');
+      pixelText(ctx, touch ? 'Helm to swim   SHIELD to parry   ROLL to dash'
+                           : 'WASD swim   SPACE roll   E / right-click shield   TAB workshop',
+        320, 320, 6, '#9ab0c0', 'center');
     }
   },
 };
 
 function drawEndScreen(ctx, t, win) {
-  ctx.fillStyle = win ? 'rgba(10,30,20,0.85)' : 'rgba(30,5,10,0.85)'; ctx.fillRect(0, 0, 640, 360);
+  ctx.fillStyle = win ? 'rgba(6,26,20,0.88)' : 'rgba(30,5,10,0.88)';
+  ctx.fillRect(0, 0, 640, 360);
   const s = G.stats;
+  UIKit.ribbon(ctx, 320, 18, win ? 'VILLAGE LIBERATED' : 'THE SEA TAKES ANOTHER', win ? 'gold' : 'dark');
   if (win) {
-    pixelText(ctx, 'FISHER VILLAGE', 320, 40, 22, '#ffe48f', 'center');
-    pixelText(ctx, 'LIBERATED', 320, 66, 26, '#6fd88e', 'center');
-    pixelText(ctx, 'The Chief sank with his shark. The boats will not fish here again.', 320, 100, 8, '#fff', 'center');
-    pixelText(ctx, 'Next destination: THE CANNERY  (the manatee is not done)', 320, 114, 7, '#8ac6ff', 'center');
+    pixelTextOutlined(ctx, 'The Chief sank with his shark.', 320, 48, 7, '#ffffff', '#14141c', 'center');
+    pixelTextOutlined(ctx, 'The boats will not fish here again.', 320, 58, 7, '#ffffff', '#14141c', 'center');
+    pixelText(ctx, 'NEXT DESTINATION: THE CANNERY', 320, 72, 6, '#8ac6ff', 'center');
   } else {
-    pixelText(ctx, 'THE SEA TAKES ANOTHER', 320, 50, 22, '#ff6161', 'center');
-    pixelText(ctx, 'The otter drags you back to the reef. Your scrap and upgrades are kept.', 320, 84, 8, '#fff', 'center');
-    pixelText(ctx, 'Spend them wisely. Strategy, not luck.', 320, 98, 7, '#ffe48f', 'center');
+    pixelTextOutlined(ctx, 'The otter drags you back to the reef.', 320, 48, 7, '#ffffff', '#14141c', 'center');
+    pixelText(ctx, 'Your scrap and upgrades are kept. Spend them better.', 320, 60, 6, '#ffe48f', 'center');
+    pixelText(ctx, 'Strategy, not luck.', 320, 72, 6, '#9ab0c0', 'center');
   }
-  const rows = [['Time survived', fmtTime(G.director.time)], ['Boats sunk', s.kills], ['Attacks absorbed', s.absorbs], ['Boss crashes into rocks', s.bossCrashes], ['Damage dealt', Math.round(s.damageDealt)], ['Damage taken', Math.round(s.damageTaken)], ['Scrap collected', s.scrapCollected], ['Upgrades owned', G.tree.unlocked.size + '/' + SKILL_NODES.length]];
-  rows.forEach(([k, v], i) => { pixelText(ctx, k, 250, 140 + i * 13, 8, '#aab', 'right'); pixelText(ctx, v + '', 270, 140 + i * 13, 8, '#fff', 'left'); });
-  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 300, 640, 30);
-  pixelText(ctx, '[R] ' + (win ? 'Play again with your build' : 'Rematch (keep upgrades)') + '        [TAB] Workshop', 320, 306, 10, Math.floor(t * 2) % 2 ? '#fff' : '#ffe48f', 'center');
-  pixelText(ctx, 'Made in the bay. Manatee vs Boats.', 320, 320, 6, '#889', 'center');
+  const rows = [
+    ['Time survived', fmtTime(G.director.time)],
+    ['Boats sunk', s.kills],
+    ['Attacks absorbed', s.absorbs],
+    ['Boss crashes into rock', s.bossCrashes],
+    ['Damage dealt', Math.round(s.damageDealt)],
+    ['Damage taken', Math.round(s.damageTaken)],
+    ['Scrap collected', s.scrapCollected],
+    ['Upgrades taken', G.tree.unlocked.size + '/' + SKILL_NODES.length],
+  ];
+  UIKit.panel(ctx, 150, 88, 340, 196, 'dark');
+  rows.forEach(([k, v], i) => {
+    const y = 102 + i * 21;
+    pixelText(ctx, k, 300, y, 7, '#9ab0c0', 'right');
+    pixelTextOutlined(ctx, v + '', 316, y, 8, '#ffffff', '#14141c', 'left');
+    if (i < rows.length - 1) UIKit.divider(ctx, 166, y + 13, 308);
+  });
+  const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+  UIKit.panel(ctx, 100, 296, 440, 34, 'dark');
+  pixelTextOutlined(ctx, touch ? 'TAP TO FIGHT AGAIN' : '[R] FIGHT AGAIN        [TAB] THE DEEP',
+    320, 302, 10, Math.floor(t * 2) % 2 ? '#ffffff' : '#ffe48f', '#14141c', 'center');
+  pixelText(ctx, win ? 'Your build carries over.' : 'Everything you unlocked carries over.', 320, 317, 6, '#9ab0c0', 'center');
 }
 
 /* ===== src/game.js ===== */
@@ -6810,7 +6877,8 @@ class Game {
       case 'victory_wait': this.updateWorld(dt, false); this.endT += dt; if (this.endT > 3.5) this.state = 'victory'; break;
       case 'gameover': case 'victory':
         this.updateWorld(dt * 0.3, true);
-        if (Input.hit('KeyR')) { this.firstRun = false; this.newRun(); this.state = 'play'; }
+        const tapRestart = typeof MobileUI !== 'undefined' && MobileUI.enabled && Input.mouse.clicked;
+        if (Input.hit('KeyR') || tapRestart) { this.firstRun = false; this.newRun(); this.state = 'play'; }
         if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; }
         break;
     }
@@ -6860,9 +6928,9 @@ class Game {
     this.ocean.render(ctx, cam, t);
     this.renderVillage(ctx, cam, t);
     // underwater shadows
-    for (const e of this.enemies) this.ocean.shadow(ctx, cam, e.x, e.y, e.radius * 2.2, e.radius * 1.2, t);
-    if (this.boss && !this.boss.dead) this.ocean.shadow(ctx, cam, this.boss.x, this.boss.y, 70, 26, t, 1.3);
-    if (!this.player.dead) this.ocean.shadow(ctx, cam, this.player.x, this.player.y, 34, 18, t, this.player.diving ? 1.6 : 1);
+    for (const e of this.enemies) this.ocean.shadow(ctx, cam, e.x, e.y, e.radius * 2.6, e.radius * 1.5, t, 1.15);
+    if (this.boss && !this.boss.dead) this.ocean.shadow(ctx, cam, this.boss.x, this.boss.y, 92, 40, t, 1.4);
+    if (!this.player.dead) this.ocean.shadow(ctx, cam, this.player.x, this.player.y, 48, 24, t, this.player.diving ? 1.7 : 1.25);
     for (const w of this.wrecks) this.ocean.shadow(ctx, cam, w.x, w.y, w.radius * 2, w.radius, t, 0.6);
     this.ocean.renderTempCurrents(ctx, cam, t);
     for (const r of this.rocks) r.render(ctx, cam, t);
@@ -6880,11 +6948,19 @@ class Game {
     this.particles.render(ctx, cam);
     Toon.render(ctx, cam);
     this.ocean.renderRipples(ctx, cam);
+    // sun sheen and swell ribbons pass OVER the entities so they read as submerged
+    if (this.ocean.renderSurfaceOverlay) this.ocean.renderSurfaceOverlay(ctx, cam, t);
     // overlays
     if (this.state === 'dialogue') Dialogue.render(ctx, cam);
     if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree') UI.drawHUD(ctx, t);
     if (this.state === 'tree') UI.drawTree(ctx, t);
-    if (this.state === 'paused') { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, 640, 360); pixelText(ctx, 'PAUSED', 320, 150, 20, '#fff', 'center'); pixelText(ctx, '[ESC] resume   [TAB] workshop   [M] mute', 320, 180, 8, '#aab', 'center'); this.drawControls(ctx, 200); }
+    if (this.state === 'paused') {
+      ctx.fillStyle = 'rgba(2,8,18,0.78)'; ctx.fillRect(0, 0, 640, 360);
+      UIKit.ribbon(ctx, 320, 54, 'PAUSED', 'gold');
+      UIKit.panel(ctx, 120, 96, 400, 150, 'dark');
+      pixelText(ctx, '[ESC] resume    [TAB] the deep    [M] mute', 320, 106, 7, '#ffe48f', 'center');
+      this.drawControls(ctx, 126);
+    }
     if (this.state === 'gameover') drawEndScreen(ctx, t, false);
     if (this.state === 'victory') drawEndScreen(ctx, t, true);
     if (this.state === 'dead_wait') { ctx.fillStyle = `rgba(120,10,20,${Math.min(0.7, this.endT * 0.4).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
@@ -6894,8 +6970,17 @@ class Game {
     this.blit();
   }
   drawControls(ctx, y) {
-    const lines = ['WASD / arrows: swim', 'SPACE: Manatee Roll (dodge, invulnerable)', 'E / right-click: ABSORB incoming attacks -> fills Otter Rampage', 'Q: unleash OTTER RAMPAGE when the meter is full', 'Left mouse: aim manually (otter auto-aims otherwise)', '1-7 / wheel: switch weapon   TAB: Workshop (skill tree)'];
-    lines.forEach((l, i) => pixelText(ctx, l, 320, y + i * 11, 7, '#dde', 'center'));
+    const lines = [
+      'WASD or arrows       swim',
+      'SPACE                Manatee Roll, invulnerable dash',
+      'E / right-click      raise the SHIELD and absorb a hit',
+      'Q                    unleash OTTER RAMPAGE when full',
+      'Left mouse           aim by hand (the otter auto-aims)',
+      '1-7 or wheel         switch weapon',
+      'SHIFT / F / R        dive, decoy buoy, tidal slam',
+      'TAB                  THE DEEP, spend your salvage',
+    ];
+    lines.forEach((l, i) => pixelText(ctx, l, 150, y + i * 13, 6, '#cfe0ec', 'left'));
   }
   renderVillage(ctx, cam, t) {
     if (cam.y > SHORE_Y + 200) return;
