@@ -20,7 +20,9 @@
 const Wildlife = (function () {
   'use strict';
 
-  const VIEW_W = 320, VIEW_H = 180;     // visible world units (camera is 2x)
+  // Visible world units. The game crops a window out of its world layer, so the
+  // cull box has to cover cropOrigin..cropOrigin+view, not just 0..view.
+  let VIEW_W = 320, VIEW_H = 180;
   const CULL = 110;                     // generous off-screen margin
 
   // ------------------------------------------------------------------ world
@@ -42,7 +44,10 @@ const Wildlife = (function () {
   // ======================================================================
   //  tiny helpers
   // ======================================================================
-  function syncG() { try { _G = (typeof G !== 'undefined') ? G : null; } catch (e) { _G = null; } }
+  function syncG() {
+    try { _G = (typeof G !== 'undefined') ? G : null; } catch (e) { _G = null; }
+    if (_G && _G.viewW) { VIEW_W = (_G.cropX || 0) + _G.viewW; VIEW_H = (_G.cropY || 0) + _G.viewH; }
+  }
   function P() { const g = _G; return (g && g.player && !g.player.dead) ? g.player : null; }
   function OC() { const g = _G; return (g && g.ocean) ? g.ocean : null; }
   function PT() { const g = _G; return (g && g.particles) ? g.particles : null; }
@@ -760,6 +765,7 @@ const Wildlife = (function () {
       r: '#c8302e', R: '#ff6161', b: '#2d5d86', B: '#59a0d0',
       p: '#d8c6f0', P: '#f6f0ff', e: '#2f9e5b', E: '#6fd88e',
       c: '#8e6a3f', o: '#ff9a3c', q: '#463020', n: '#0b1118',
+      L: '#8fe6f2', i: '#1d4a66', I: '#3fa3c8', v: '#7be0c0',
     };
     function mks(rows, ax, ay) { return makeSprite(rows, { pal: TPAL, ax: ax, ay: ay }); }
 
@@ -817,31 +823,33 @@ const Wildlife = (function () {
       ];
       // ---- giant clam ------------------------------------------------------
       const clamClosed = [
-        '.....kkkkkkkk.....',
-        '..kkkSSSSSSSSkkk..',
-        '.kSzSSzSSzSSzSSzk.',
-        'kSzSSzSSzSSzSSzSSk',
-        'kSSzSSzSSzSSzSSzSk',
-        'kkkkkkkkkkkkkkkkkk',
-        'kSSzSSzSSzSSzSSzSk',
-        'kSzSSzSSzSSzSSzSSk',
-        '.kSSzSSzSSzSSzSSk.',
-        '..kkkSSSSSSSSkkk..',
-        '.....kkkkkkkk.....',
+        '....kk.kk.kk.kk....',
+        '..kkszkszkszkszkkk.',
+        '.kszSszSszSszSszSzk',
+        'kszSSzSSzSSzSSzSSzk',
+        'kzSSzSSzSSzSSzSSzSk',
+        'kkiIiLiIiLiIiLiIikk',
+        'kkiLiIiLiIiLiIiLikk',
+        'kzSSzSSzSSzSSzSSzSk',
+        'kszSSzSSzSSzSSzSSzk',
+        '.kszSszSszSszSszSzk',
+        '..kkszkszkszkszkkk.',
+        '....kk.kk.kk.kk....',
       ];
       const clamOpen = [
-        '.....kkkkkkkk.....',
-        '..kkkSSSSSSSSkkk..',
-        '.kSzSSzSSzSSzSSzk.',
-        'kSzSSzSSzSSzSSzSSk',
-        'kkkkkkkkkkkkkkkkkk',
-        'kppppPPPPPPppppppk',
-        'kpPPzzwwzzPPPPPppk',
-        'kkkkkkkkkkkkkkkkkk',
-        'kSzSSzSSzSSzSSzSSk',
-        '.kSSzSSzSSzSSzSSk.',
-        '..kkkSSSSSSSSkkk..',
-        '.....kkkkkkkk.....',
+        '....kk.kk.kk.kk....',
+        '..kkszkszkszkszkkk.',
+        '.kszSszSszSszSszSzk',
+        'kszSSzSSzSSzSSzSSzk',
+        'kkiIiLiIiLiIiLiIikk',
+        'ki v LvL vLv L vL ik',
+        'kiLv kPPPPk vLvLvik',
+        'kiv kPzzwwPk vLv ik',
+        'kkiLkPzwwzPkiLiIikk',
+        'kzSSzkPPPPkzSSzSSzk',
+        '.kszSszSszSszSszSzk',
+        '..kkszkszkszkszkkk.',
+        '....kk.kk.kk.kk....',
       ];
       // ---- wrecked-ship cache ---------------------------------------------
       const wreck = [
@@ -861,7 +869,7 @@ const Wildlife = (function () {
       ];
       return {
         chest: [mks(chestClosed, 10, 12), mks(chestAjar, 10, 12), mks(chestOpen, 10, 11)],
-        clam: [mks(clamClosed, 9, 5), mks(clamOpen, 9, 6)],
+        clam: [mks(clamClosed, 9, 6), mks(clamOpen, 9, 6)],
         wreck: mks(wreck, 11, 10),
       };
     }
@@ -972,8 +980,7 @@ const Wildlife = (function () {
         g.tree.addScrap(this.type, n);
       }
       if (g && g.stats) g.stats.scrapCollected = (g.stats.scrapCollected || 0) + n;
-      floatText(this.x, this.y - 10, K.name, K.col, 8);
-      floatText(this.x, this.y - 2, '+' + n + ' ' + this.type.toUpperCase(), K.col, 6);
+      floatText(this.x + rand(-6, 6), this.y - 10 - rand(0, 8), K.name + '  +' + n, K.col, 8);
       const T = TN();
       if (T) { T.burst(this.x, this.y, 1.1, K.col); T.impact(this.x, this.y, 1.2, '#ffffff'); T.puff(this.x, this.y, 4, K.col); }
       const P2 = PT(); if (P2) { P2.sparks(this.x, this.y, 10); }
@@ -1006,7 +1013,7 @@ const Wildlife = (function () {
     //  MAGNET ARC, TRAILS AND THE SWEEP COMBO
     // ====================================================================
     const track = new Map();          // pickup -> {trail:[], lx, ly, sw, taken}
-    const combo = { n: 0, t: -9, x: 0, y: 0, best: 0, flash: 0 };
+    const combo = { n: 0, t: -1e9, x: 0, y: 0, best: 0, flash: 0 };
 
     function addCombo(x, y, weight) {
       const now = clockT;
@@ -1045,9 +1052,12 @@ const Wildlife = (function () {
           st.vel = Math.min(430, st.vel + (260 + 520 * k) * dt);
           st.rad = Math.max(0, st.rad - st.vel * dt);
           st.ang += st.sw * (2.9 * (0.25 + k * 0.9)) * dt;
-          pk.x = p.x + Math.cos(st.ang) * st.rad;
-          pk.y = p.y + Math.sin(st.ang) * st.rad;
-          pk.vx = 0; pk.vy = 0;
+          const nx2 = p.x + Math.cos(st.ang) * st.rad;
+          const ny2 = p.y + Math.sin(st.ang) * st.rad;
+          // leave a matching velocity so the arc survives either update order
+          pk.vx = (nx2 - pk.x) / Math.max(dt, 1e-4) * 0.5;
+          pk.vy = (ny2 - pk.y) / Math.max(dt, 1e-4) * 0.5;
+          pk.x = nx2; pk.y = ny2;
           pk.magnetized = true;
           st.tt -= dt;
           if (st.tt <= 0) {
@@ -2626,34 +2636,46 @@ const Wildlife = (function () {
         const sx = Math.round(tr.x - cam.x), sy = Math.round(tr.y - cam.y) - 34;
         if (sx < -80 || sy < -60 || sx > VIEW_W + 80 || sy > VIEW_H + 60) continue;
         const rise = Math.min(1, (4.2 - tr.readT) * 3);
-        const n = tr.readout.length;
-        let wmax = 40;
-        for (let q = 0; q < n; q++) wmax = Math.max(wmax, Math.ceil(measure(tr.readout[q].s, 6)) + 10);
-        const ph = n * 8 + 12, y0 = sy - ph + Math.round((1 - rise) * 8);
+        const MAXL = 6;
+        const n = Math.min(MAXL, tr.readout.length);
+        const extra = tr.readout.length - n;
+        const rows = n + (extra > 0 ? 1 : 0);
+        let wmax = 44;
+        for (let q = 0; q < n; q++) wmax = Math.max(wmax, Math.ceil(measure(tr.readout[q].s, 6)) + 12);
+        const ph = rows * 8 + 12;
+        let x0 = Math.round(sx - wmax / 2);
+        let y0 = sy - ph + Math.round((1 - rise) * 8);
+        x0 = clamp(x0, 2, VIEW_W - wmax - 2);
+        y0 = clamp(y0, 3, VIEW_H - ph - 3);
+        const cx0 = x0 + wmax / 2;
         ctx.globalAlpha = Math.min(1, tr.readT * 1.6);
-        pxr(ctx, '#080d14', sx - wmax / 2 - 1, y0 - 1, wmax + 2, ph + 2);
-        pxr(ctx, '#131d29', sx - wmax / 2, y0, wmax, ph);
-        pxr(ctx, '#ffd464', sx - wmax / 2, y0, wmax, 1);
-        txt(ctx, 'SALVAGE', sx, y0 + 3, 6, '#ffd464', 'center');
+        pxr(ctx, '#080d14', x0 - 1, y0 - 1, wmax + 2, ph + 2);
+        pxr(ctx, '#131d29', x0, y0, wmax, ph);
+        pxr(ctx, '#ffd464', x0, y0, wmax, 1);
+        pxr(ctx, '#0b1220', x0, y0 + ph - 1, wmax, 1);
+        txt(ctx, 'SALVAGE', cx0, y0 + 3, 6, '#ffd464', 'center');
+        const shown = Math.floor((4.2 - tr.readT) * 9);
         for (let q = 0; q < n; q++) {
-          const shown = Math.floor((4.2 - tr.readT) * 9);
           if (q > shown) break;
           const row = tr.readout[q];
-          pxr(ctx, row.c, sx - wmax / 2 + 3, y0 + 13 + q * 8, 3, 3);
-          txt(ctx, row.s, sx - wmax / 2 + 8, y0 + 11 + q * 8, 6, '#eef6ff', 'left');
+          pxr(ctx, row.c, x0 + 3, y0 + 13 + q * 8, 3, 3);
+          txt(ctx, row.s, x0 + 8, y0 + 11 + q * 8, 6, '#eef6ff', 'left');
         }
+        if (extra > 0 && shown >= n) txt(ctx, '+' + extra + ' more', x0 + 8, y0 + 11 + n * 8, 6, '#8fa4b8', 'left');
         ctx.globalAlpha = 1;
       }
       // ---- sweep combo ----------------------------------------------------
       if (combo.n >= 2 && clockT - combo.t < 1.15) {
         const p = P();
-        const bx = (p ? p.x : combo.x) - cam.x, by = (p ? p.y : combo.y) - cam.y - 30;
+        let bx = (p ? p.x : combo.x) - cam.x, by = (p ? p.y : combo.y) - cam.y + 22;
         const age = clockT - combo.t;
         const pop = combo.flash > 0 ? 1 + combo.flash * 2.4 : 1;
         const col = combo.n >= 8 ? '#ff9ecb' : combo.n >= 5 ? '#ffe48f' : '#8ff0ff';
         ctx.globalAlpha = clamp(1.6 - age, 0, 1);
         const s = 'x' + combo.n + ' SWEEP';
         const wd = Math.ceil(measure(s, 7)) + 8;
+        bx = clamp(bx, wd / 2 + 3, VIEW_W - wd / 2 - 3);
+        by = clamp(by, 12, VIEW_H - 14);
         pxr(ctx, '#080d14', Math.round(bx - wd / 2 - 1), Math.round(by - 1), wd + 2, 11);
         pxr(ctx, '#16202c', Math.round(bx - wd / 2), Math.round(by), wd, 9);
         pxr(ctx, col, Math.round(bx - wd / 2), Math.round(by), wd, 1);
@@ -2685,7 +2707,7 @@ const Wildlife = (function () {
         API.riding = null;
         fly.on = false;
         track.clear();
-        combo.n = 0; combo.t = -9; combo.flash = 0;
+        combo.n = 0; combo.t = -1e9; combo.flash = 0;
         prompt = null;
         podTimer = 30;
         if (!rng) rng = new SeededRandom(9137);

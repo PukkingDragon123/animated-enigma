@@ -947,6 +947,7 @@
       this.flash = {};
       this.lastCount = -1;
       this.slotMode = 'primary';
+      this._cardKey = null; this._botKey = null;
       Otter.reset(LAY.stage.x + LAY.stage.w / 2 + 2, LAY.stage.y + 116);
       Otter.breath = clamp(Otter.breath, 0.28, 1);
     },
@@ -1411,7 +1412,32 @@
     },
 
     // --------------------------------------------------------------- card
+    // The card is ~40 lines of text; it only changes when the hover, the
+    // purse or the pulse phase changes, so it is painted to an offscreen and
+    // re-blitted the rest of the time.
     drawCard(ctx, tree, T) {
+      const c = LAY.card;
+      if (!this._cardCan) { this._cardCan = can(c.w, c.h); this._cardCtx = this._cardCan.getContext('2d'); }
+      let key = 'x';
+      if (tree) {
+        const n = this.hover;
+        key = (n ? n.id : '-') + '|' + tree.unlocked.size + '|' + tree.primary + '|' + tree.sidearm + '|' + this.tab
+          + '|' + SCRAP_TYPES.map(k => tree.scrap[k] | 0).join(',')
+          + '|' + (Math.floor(T * 3) % 2)
+          + (typeof G !== 'undefined' && G && G.stats ? '|' + G.stats.kills + ',' + G.stats.absorbs + ',' + G.stats.scrapCollected : '');
+      }
+      if (key !== this._cardKey) {
+        this._cardKey = key;
+        const q = this._cardCtx;
+        q.clearRect(0, 0, c.w, c.h);
+        q.save(); q.translate(-c.x, -c.y);
+        this.paintCard(q, tree, T);
+        q.restore();
+      }
+      ctx.drawImage(this._cardCan, c.x, c.y);
+    },
+
+    paintCard(ctx, tree, T) {
       const c = LAY.card, X = c.x + 8, Wd = c.w - 16;
       let y = c.y + 8;
       if (!tree) return;
@@ -1606,6 +1632,25 @@
     // ------------------------------------------------------------- bottom
     drawBottom(ctx, tree, T) {
       if (!tree) return;
+      if (!this._botCan) { this._botCan = can(640, 60); this._botCtx = this._botCan.getContext('2d'); }
+      const m = Input.mouse;
+      let hovSlot = -1;
+      for (let i = 0; i < WEAPON_ORDER.length; i++) if (hit(m, 8 + i * 31, 314, 26, 26)) hovSlot = i;
+      const fl = Object.keys(this.flash).sort().map(k => k + (this.flash[k] > 0.5 ? 1 : 0)).join(',');
+      const key = tree.primary + '|' + tree.sidearm + '|' + tree.unlocked.size + '|' + hovSlot + '|' + this.slotMode
+        + '|' + (hit(m, 226, 314, 72, 26) ? 1 : 0) + '|' + fl + '|' + (this.hoverW || '-');
+      if (key !== this._botKey) {
+        this._botKey = key;
+        const q = this._botCtx;
+        q.clearRect(0, 0, 640, 60);
+        q.save(); q.translate(0, -300);
+        this.paintBottom(q, tree, T);
+        q.restore();
+      }
+      ctx.drawImage(this._botCan, 0, 300);
+    },
+
+    paintBottom(ctx, tree, T) {
       const m = Input.mouse;
       // ---- loadout ----
       pixelText(ctx, 'LOADOUT', 8, 305, 7, '#ffe48f');

@@ -20,11 +20,15 @@ class Game {
     window.addEventListener('resize', () => this.resize()); this.resize();
     buildCharacters();
     if (typeof Hazards !== 'undefined') Hazards.init();
-    if (typeof Wildlife !== 'undefined') Wildlife.init();
+    // hand the modules the real crop window so their culling matches
+    this.viewW = VIEW_W; this.viewH = VIEW_H; this.cropX = CROP_X; this.cropY = CROP_Y;
+    if (typeof Wildlife !== 'undefined') { Wildlife.init(); Wildlife.keyLabel = 'G'; }
     if (typeof Upgrades !== 'undefined') Upgrades.init();
     if (typeof MainMenu !== 'undefined') MainMenu.init();
     this.tree = new SkillTree();
-    this.state = 'intro'; Intro.reset();
+    this.state = (typeof MainMenu !== 'undefined') ? 'menu' : 'intro';
+    this.showControls = false;
+    if (typeof Intro !== 'undefined' && Intro.reset) Intro.reset();
     this.firstRun = true; this.muted = false;
     this.t = 0; this.last = performance.now(); this.fps = 60;
     this.newRun();
@@ -38,6 +42,7 @@ class Game {
   }
   newRun() {
     G = this;
+    this.viewW = VIEW_W; this.viewH = VIEW_H; this.cropX = CROP_X; this.cropY = CROP_Y;
     this.ocean = new Ocean(WORLD_W, WORLD_H, SHORE_Y);
     this.particles = new Particles(this.ocean);
     this.enemies = []; this.projectiles = []; this.pickups = []; this.wrecks = []; this.rocks = [];
@@ -86,6 +91,7 @@ class Game {
     if (typeof Village !== 'undefined') Village.panicAll();
     this.banner('FISHER VILLAGE', '#ff6161', 2.6, 'The otter has spoken. FIGHT!');
     setTimeout(() => { if (this.director && !this.director.started) this.director.begin(); }, 1200);
+    this.runActive = true;
     this.state = 'play';
   }
   // a wave is only over when every last boat is on the bottom
@@ -97,7 +103,8 @@ class Game {
   }
   onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() { this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0; this.state = 'victory_wait'; }
-  onPlayerDeath() { this.particles.blood(this.player.x, this.player.y, 4); this.particles.splash(this.player.x, this.player.y, 3); this.shake(16); this.endT = 0; this.state = 'dead_wait'; }
+  onPlayerDeath() {
+    this.runActive = false; this.particles.blood(this.player.x, this.player.y, 4); this.particles.splash(this.player.x, this.player.y, 3); this.shake(16); this.endT = 0; this.state = 'dead_wait'; }
   // ---------------------------------------------------------- loop
   frame(ts) {
     let dt = (ts - this.last) / 1000; this.last = ts; if (dt > 1 / 20) dt = 1 / 20;
@@ -109,6 +116,20 @@ class Game {
     if (typeof MobileUI !== 'undefined' && MobileUI.enabled) MobileUI.update(dt, this.time);
     if (Input.hit('KeyM')) { Audio_.muted = !Audio_.muted; }
     switch (this.state) {
+      case 'menu': {
+        MainMenu.hasRun = this.runActive === true;
+        MainMenu.update(dt, this.time); this.time += dt;
+        if (this.showControls && (Input.hit('Escape') || Input.mouse.clicked)) { this.showControls = false; MainMenu.consume(); break; }
+        const a = MainMenu.action;
+        if (a) {
+          MainMenu.consume();
+          if (a === 'play') { this.firstRun = true; this.newRun(); this.runActive = false; Intro.reset(); this.state = 'intro'; }
+          else if (a === 'continue' && this.runActive) this.state = 'play';
+          else if (a === 'deep') { this.prevState = 'menu'; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); }
+          else if (a === 'controls') this.showControls = !this.showControls;
+        }
+        break;
+      }
       case 'intro': Intro.update(dt); if (Intro.done) { this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; } break;
       case 'dialogue':
         Dialogue.update(dt); this.updateWorld(dt);
@@ -147,13 +168,16 @@ class Game {
           if (Input.hit('Tab') || Input.hit('Escape')) this.state = this.prevState || 'play';
         }
         break;
-      case 'paused': if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'play'; if (Input.hit('Tab') && this.upgradesOpen()) { this.prevState = 'play'; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); } break;
+      case 'paused':
+        if (typeof MainMenu !== 'undefined' && Input.hit('Backspace')) { this.runActive = true; this.state = 'menu'; break; }
+        if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'play'; if (Input.hit('Tab') && this.upgradesOpen()) { this.prevState = 'play'; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); } break;
       case 'dead_wait': this.updateWorld(dt * 0.5, true); this.endT += dt; if (this.endT > 2) this.state = 'gameover'; break;
       case 'victory_wait': this.updateWorld(dt, false); this.endT += dt; if (this.endT > 3.5) this.state = 'victory'; break;
       case 'gameover': case 'victory':
         this.updateWorld(dt * 0.3, true);
+        if (typeof MainMenu !== 'undefined' && (Input.hit('Escape') || Input.hit('Backspace'))) { this.state = 'menu'; break; }
         const tapRestart = typeof MobileUI !== 'undefined' && MobileUI.enabled && Input.mouse.clicked;
-        if (Input.hit('KeyR') || tapRestart) { this.firstRun = false; this.newRun(); this.state = 'play'; }
+        if (Input.hit('KeyR') || tapRestart) { this.firstRun = false; this.newRun(); this.runActive = true; this.state = 'play'; }
         if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); }
         break;
     }
@@ -225,6 +249,19 @@ class Game {
 
   render() {
     const ctx = this.ctx, t = this.time;
+    if (this.state === 'menu') {
+      MainMenu.render(ctx, t);
+      if (this.showControls) {
+        ctx.fillStyle = 'rgba(2,8,18,0.86)'; ctx.fillRect(0, 0, 640, 360);
+        UIKit.ribbon(ctx, 320, 32, 'CONTROLS', 'gold');
+        UIKit.panel(ctx, 96, 70, 448, 216, 'dark');
+        this.drawControls(ctx, 84);
+        pixelText(ctx, 'G or X    interact: ride a whale, open treasure', 150, 84 + 8 * 13, 6, '#cfe0ec');
+        pixelText(ctx, 'ENTER     call in the next wave once one is cleared', 150, 84 + 9 * 13, 6, '#cfe0ec');
+        pixelTextOutlined(ctx, 'click or [ESC] to go back', 320, 296, 7, '#ffe48f', '#14141c', 'center');
+      }
+      this.blit(); return;
+    }
     if (this.state === 'intro') { Intro.render(ctx); this.blit(); return; }
     const cam = { x: Math.round(this.cam.x + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)), y: Math.round(this.cam.y + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)) };
     const W = this.wctx;

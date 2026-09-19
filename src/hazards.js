@@ -76,7 +76,6 @@
   }
   // the colour anything below the surface fades toward
   const WATER_TINT = '#14606e';
-  function sub(col, f) { return mix(shade(col, 0.62), WATER_TINT, f === undefined ? 0.5 : f); }
 
   // chunky pixel line (no antialiasing, ever)
   function pline(ctx, x0, y0, x1, y1, th, col) {
@@ -132,7 +131,7 @@
   //  1.  PALETTE
   // =======================================================================
   const HP = {
-    ink: '#14141c', ink2: '#232030',
+    ink: '#14141c',
     iron: ['#1e232b', '#2b313b', '#3a414d', '#4c5462', '#616a79', '#798393', '#98a2b1'],
     ironL: '#c3cbd8',
     horn: '#b6312c', hornL: '#ff6161', hornD: '#6d1513',
@@ -141,7 +140,6 @@
     chain: '#2b3746', chainL: '#4a5a6d',
     rope: '#c8a86a', ropeD: '#8a6f3e',
     foam: '#eaf8ff', foam2: '#b9e3f7',
-    deep: 'rgba(8,38,60,0.55)',
     warn: '#ff6161', warn2: '#ffe48f',
     wood: '#b57d3f', woodD: '#7a5227',
     steel: '#aeb6c1', steelD: '#5a626d',
@@ -165,14 +163,14 @@
   // =======================================================================
   const TUNE = {
     // ---- sea mines -----------------------------------------------------
-    mineCount: 34,          // mines populate() scatters at difficulty 1
+    mineCount: 40,          // mines populate() scatters at difficulty 1
     mineClusters: 7,        // minefields (the rest are loners)
     mineProxShare: 0.42,    // fraction that are proximity mines
     mineHp: 14,             // shooting one from range is the safe play
-    mineBlast: 58,          // explosion radius
+    mineBlast: 48,          // explosion radius
     mineDmg: 32,
-    mineChainR: 104,        // chain-detonation reach
-    mineChainDelay: [0.05, 0.24],
+    mineChainR: 90,         // chain-detonation reach
+    mineChainDelay: [0.08, 0.34],
     proxRadius: 40,         // proximity trigger radius (drawn on the water)
     proxFuse: 0.95,         // seconds of ticking before it goes off
     contactRadius: 11,
@@ -196,7 +194,7 @@
     harpoonPull: 190,       // rope drag on the player, px/s^2
     harpoonBite: 0.9,       // seconds between rope-burn ticks
     corpseLife: 7,
-    maxCorpses: 14,       // floating bodies are atmosphere, not a memory leak
+    maxCorpses: 14,         // floating bodies are atmosphere, not a memory leak
 
     // ---- boarding ------------------------------------------------------
     boarders: true,
@@ -208,7 +206,7 @@
     // ---- cannons & mortars ---------------------------------------------
     gunners: { gunboat: 'cannon', trawler: 'mortar' },
     cannonRange: 310, cannonCd: 4.6, cannonAim: 1.2,
-    cannonDmg: 30, cannonBlast: 56, cannonSpeed: 200,
+    cannonDmg: 30, cannonBlast: 48, cannonSpeed: 200,
     mortarRange: 360, mortarCd: 6.4, mortarAim: 1.5,
     mortarShells: 3, mortarSpread: 46, mortarDmg: 19, mortarBlast: 40, mortarSpeed: 150,
     shellPush: 280,         // shockwave shove
@@ -523,7 +521,6 @@
     }
     if (g.particles) {
       g.particles.explode(x, y, r, { water: true, debris: opts.debris === undefined ? 12 : opts.debris, debrisColors: opts.debrisColors || ['#7d858f', '#4a515a', '#aeb6c1'] });
-      g.particles.splash(x, y, Math.min(3.4, r / 20));
     }
     if (TOON) {
       TOON.burst(x, y, 0.85 + r / 90); TOON.shock(x, y, r * 1.7, 0.5);
@@ -568,10 +565,13 @@
       if (ds < r * 0.9) killSwimmer(s, angleTo(x, y, s.x, s.y), 1.8);
       else if (ds < r * 2.2) { const k = 1 - ds / (r * 2.2), a = angleTo(x, y, s.x, s.y); s.vx += Math.cos(a) * 260 * k; s.vy += Math.sin(a) * 260 * k; s.stun = Math.max(s.stun, 0.5 * k); }
     }
-    // ---- chain reaction through the minefield
-    if (!opts.noChain) for (let i = 0; i < mines.length; i++) {
-      const m = mines[i]; if (m.dead || m.boom >= 0) continue;
-      if (dist(x, y, m.x, m.y) < TUNE.mineChainR) m.boom = rand(TUNE.mineChainDelay[0], TUNE.mineChainDelay[1]);
+    // ---- chain reaction through the minefield, scaled to how big this bang was
+    if (!opts.noChain) {
+      const cr = Math.min(TUNE.mineChainR, r * 2.2);
+      for (let i = 0; i < mines.length; i++) {
+        const m = mines[i]; if (m.dead || m.boom >= 0) continue;
+        if (dist(x, y, m.x, m.y) < cr) m.boom = rand(TUNE.mineChainDelay[0], TUNE.mineChainDelay[1]);
+      }
     }
     // ---- shells in the air get knocked off course
     for (let i = 0; i < shells.length; i++) {
@@ -601,7 +601,7 @@
   }
 
   function spawnMine(x, y, kind) {
-    if (!built) buildSprites();
+    if (!built) Hazards.init();
     const m = new Mine(x, y, kind);
     mines.push(m);
     return m;
@@ -639,8 +639,9 @@
       m.rot += m.spin * dt;
       // ---- bob on the real swell
       m.z = 2.2 + (oc && oc.waveHeight ? oc.waveHeight(m.x, m.y, t) * 1.9 : Math.sin(t * 2 + m.ph) * 1.2);
-      if (oc && oc.disturb && ((mineFrame + m.slot) & 15) === 0) oc.disturb(m.x, m.y, 0.5, m.fx, m.fy);
-      if (oc && oc.addFoam && ((mineFrame + m.slot) & 31) === 0) oc.addFoam(m.x, m.y, 0.05);
+      const seen = onScreenWorld(g, m.x, m.y);
+      if (seen && oc && oc.disturb && ((mineFrame + m.slot) & 15) === 0) oc.disturb(m.x, m.y, 0.5, m.fx, m.fy);
+      if (seen && oc && oc.addFoam && ((mineFrame + m.slot) & 31) === 0) oc.addFoam(m.x, m.y, 0.05);
 
       // ---- warning: it ticks and blinks faster the closer you are
       let alert = 0;
@@ -675,7 +676,7 @@
       m.tick -= dt;
       if (m.tick <= 0 && (alert > 0.08 || m.fuse >= 0)) {
         m.tick = Math.max(0.07, 0.62 - alert * 0.52);
-        if (onScreenWorld(g, m.x, m.y)) snd('tone', 1500 + alert * 900, 0.035, 'square', 0.055 + alert * 0.07);
+        if (seen) snd('tone', 1500 + alert * 900, 0.035, 'square', 0.055 + alert * 0.07);
       }
       // ---- boats blunder into them too (bait a trawler into a minefield)
       const list = g.enemies;
@@ -808,7 +809,7 @@
   }
 
   function spawnSwimmer(x, y, kind) {
-    if (!built) buildSprites();
+    if (!built) Hazards.init();
     difficulty();
     const s = new Swimmer(x, y, kind);
     swimmers.push(s);
@@ -830,7 +831,7 @@
     }
     if (g) {
       if (g.particles) { g.particles.blood(s.x, s.y, 2.2 * power, ang); g.particles.splash(s.x, s.y, 1.3); g.particles.debris(s.x, s.y, 3, ['#c8302e', '#7c1414', '#e9b78c']); }
-      if (g.ocean) { if (g.ocean.splatBlood) g.ocean.splatBlood(s.x, s.y, 3.4 * power, 20); if (g.ocean.addBlood) g.ocean.addBlood(s.x, s.y, 0.9); if (g.ocean.disturb) g.ocean.disturb(s.x, s.y, 3, 0, 0); if (g.ocean.ripple) g.ocean.ripple(s.x, s.y, 34, 90, 0.7); }
+      if (g.ocean) { if (g.ocean.splatBlood) g.ocean.splatBlood(s.x, s.y, 2.0 * power, 13); if (g.ocean.addBlood) g.ocean.addBlood(s.x, s.y, 0.6); if (g.ocean.disturb) g.ocean.disturb(s.x, s.y, 3, 0, 0); if (g.ocean.ripple) g.ocean.ripple(s.x, s.y, 34, 90, 0.7); }
       if (g.shake) g.shake(3);
       if (g.stats) g.stats.kills = (g.stats.kills || 0) + 1;
       if (typeof Pickup !== 'undefined' && g.pickups && g.pickups.length < 220) {
@@ -985,14 +986,15 @@
       s.x += (s.vx + s.fx) * dt; s.y += (s.vy + s.fy) * dt;
       const speed = Math.hypot(s.vx, s.vy);
       s.ph += dt * (2.4 + speed * 0.07);
-      // the water answers back
-      if (oc) {
-        if (oc.disturb && speed > 8 && ((mineFrame + s.slot) & 3) === 0) oc.disturb(s.x, s.y, Math.min(1.6, speed / 42), s.vx, s.vy);
+      // the water answers back (only where the player can see it)
+      const seenS = onScreenWorld(g, s.x, s.y);
+      if (oc && seenS) {
+        if (oc.disturb && speed > 8 && ((mineFrame + s.slot) & 7) === 0) oc.disturb(s.x, s.y, Math.min(1.6, speed / 42), s.vx, s.vy);
         s.foamT -= dt;
-        if (s.foamT <= 0 && oc.addFoam) { s.foamT = 0.12; oc.addFoam(s.x - Math.cos(s.ang) * 6, s.y - Math.sin(s.ang) * 6, 0.09); }
+        if (s.foamT <= 0 && oc.addFoam) { s.foamT = 0.16; oc.addFoam(s.x - Math.cos(s.ang) * 6, s.y - Math.sin(s.ang) * 6, 0.09); }
       }
       s.splashT -= dt;
-      if (s.splashT <= 0 && g.particles && speed > 20) { s.splashT = 0.2; g.particles.spray(s.x + Math.cos(s.ang) * 5, s.y + Math.sin(s.ang) * 5, s.ang + Math.PI / 2 * (Math.random() < 0.5 ? 1 : -1), 1, 45); }
+      if (s.splashT <= 0 && seenS && g.particles && speed > 20) { s.splashT = 0.34; g.particles.spray(s.x + Math.cos(s.ang) * 5, s.y + Math.sin(s.ang) * 5, s.ang + Math.PI / 2 * (Math.random() < 0.5 ? 1 : -1), 1, 45); }
       // rolled over by the manatee
       if (pAlive && (p.rolling || (p.roll && p.roll.active)) && d < 17) {
         const a = angleTo(p.x, p.y, s.x, s.y);
@@ -1047,7 +1049,7 @@
       c.x += c.vx * dt; c.y += c.vy * dt;
       c.vx *= Math.pow(0.2, dt); c.vy *= Math.pow(0.2, dt);
       c.rot += dt * 0.25;
-      if (oc && oc.addBlood && Math.random() < 0.3) oc.addBlood(c.x + rand(-4, 4), c.y + rand(-4, 4), 0.06);
+      if (oc && oc.addBlood && Math.random() < 0.12) oc.addBlood(c.x + rand(-4, 4), c.y + rand(-4, 4), 0.06);
       if (c.t > c.life) {
         if (g.particles) g.particles.bubbles(c.x, c.y, 4);
         corpses[i] = corpses[corpses.length - 1]; corpses.pop();
@@ -1305,7 +1307,7 @@
   const SHELL_G = 340;
 
   function fireCannon(x, y, tx, ty, opts) {
-    if (!built) buildSprites();
+    if (!built) Hazards.init();
     opts = opts || {};
     const d = dist(x, y, tx, ty);
     const speed = opts.speed || TUNE.cannonSpeed;
@@ -1325,7 +1327,7 @@
     shells.push(sh);
     const g = gg();
     if (g) {
-      if (g.particles) { g.particles.sparks(x, y, 12, Math.atan2(sh.vy, sh.vx), 0.6); g.particles.smoke(x, y, 5, 'rgba(60,58,66,', 4); g.particles.spray(x, y, Math.atan2(sh.vy, sh.vx), 3, 70); }
+      if (g.particles) { g.particles.sparks(x, y, 8, Math.atan2(sh.vy, sh.vx), 0.6); g.particles.smoke(x, y, 3, 'rgba(60,58,66,', 4); }
       if (g.ocean && g.ocean.disturb) g.ocean.disturb(x, y, 3, sh.vx, sh.vy);
       if (g.shake) g.shake(opts.kind === 'mortar' ? 2.5 : 4);
     }
@@ -1342,11 +1344,11 @@
       s.vz -= SHELL_G * dt; s.z += s.vz * dt;
       s.rot += s.spin * dt;
       s.smokeT -= dt;
-      if (s.smokeT <= 0 && g.particles) { s.smokeT = 0.05; g.particles.smoke(s.x, s.y - s.z, 1, 'rgba(70,68,78,', 3); }
+      if (s.smokeT <= 0 && g.particles && onScreenWorld(g, s.x, s.y)) { s.smokeT = 0.1; g.particles.smoke(s.x, s.y - s.z, 1, 'rgba(70,68,78,', 3); }
       if (s.tLeft <= 0 || (s.z <= 0 && s.vz < 0)) {
         shells[i] = shells[shells.length - 1]; shells.pop();
         // ---- impact: a tower of water, then the shove
-        if (g.particles) { g.particles.splash(s.x, s.y, 3.2); g.particles.splash(s.x + rand(-10, 10), s.y + rand(-8, 8), 1.6); }
+        if (g.particles) g.particles.splash(s.x, s.y, 2.6);
         if (g.ocean && g.ocean.ripple) { g.ocean.ripple(s.x, s.y, s.blast * 3.4, 300, 1); }
         blast(s.x, s.y, s.blast, s.dmg * DF.dmg, { debris: 8, debrisColors: ['#7d858f', '#4a515a', '#aeb6c1'] });
         if (TOON) { TOON.shock(s.x, s.y, s.blast * 2.4, 0.6, '#eaf8ff'); TOON.shock(s.x, s.y, s.blast * 1.4, 0.4); }
@@ -1438,7 +1440,7 @@
 
   function boardFrom(e) {
     if (!e || e.dead) return 0;
-    if (!built) buildSprites();
+    if (!built) Hazards.init();
     const g = gg(); const p = g && g.player;
     if (!p || p.dead) return 0;
     const cap = Math.round(TUNE.maxSwimmers * DF.cnt);
@@ -1577,14 +1579,24 @@
         ctx.fillRect(Math.round(ex + dx * u), Math.round(ey + dy * u), 2, 1);
       }
       ctx.globalAlpha = 1;
-      // ---- wind-up reticle: three brackets closing on the mark
-      const rr = Math.round(18 - k * 10);
-      ctx.fillStyle = k > 0.8 ? '#ffffff' : HP.warn;
-      for (let q = 0; q < 4; q++) {
-        const cx2 = tx + (q & 1 ? rr : -rr), cy2 = ty + (q & 2 ? Math.round(rr * 0.7) : -Math.round(rr * 0.7));
-        ctx.fillRect(cx2 - 1, cy2 - 1, 3, 1); ctx.fillRect(cx2 - 1, cy2 - 1, 1, 3);
+      // ---- wind-up reticle: a ring that closes on the mark, then flashes
+      const rr = Math.round(26 - k * 14);
+      const hot = k > 0.82;
+      ctx.fillStyle = hot ? (Math.sin(t * 40) > 0 ? '#ffffff' : HP.warn) : HP.warn;
+      for (let q = 0; q < 32; q++) {
+        if ((q & 3) === 3) continue;
+        const a = -t * 2.2 + q / 32 * TAU;
+        ctx.fillRect(Math.round(tx + Math.cos(a) * rr), Math.round(ty + Math.sin(a) * rr * 0.72), 1, 1);
       }
-      ctx.fillRect(tx - 1, ty - 1, 2, 2);
+      const br = rr + 3, bh = Math.round(rr * 0.72) + 2;
+      for (let q = 0; q < 4; q++) {
+        const dxs = (q & 1) ? 1 : -1, dys = (q & 2) ? 1 : -1;
+        const cx2 = tx + dxs * br, cy2 = ty + dys * bh;
+        ctx.fillRect(cx2 - (dxs > 0 ? 3 : 0), cy2, 4, 1);
+        ctx.fillRect(cx2, cy2 - (dys > 0 ? 3 : 0), 1, 4);
+      }
+      ctx.fillRect(tx - 1, ty - 1, 3, 3);
+      if (hot) { ctx.fillStyle = '#ffffff'; ctx.fillRect(tx - 3, ty, 7, 1); ctx.fillRect(tx, ty - 3, 1, 7); }
       // ---- the charge building at the muzzle
       const ga = e.angle || 0;
       const mx = Math.round(ex + Math.cos(ga) * (e.radius + 2)), my = Math.round(ey + Math.sin(ga) * (e.radius + 2));
@@ -1740,7 +1752,7 @@
   // =======================================================================
   const world = { w: 3200, h: 2400, shoreY: 300 };
   function populate(worldW, worldH, shoreY) {
-    if (!built) buildSprites();
+    if (!built) Hazards.init();
     world.w = worldW || world.w; world.h = worldH || world.h; world.shoreY = shoreY === undefined ? world.shoreY : shoreY;
     mines.length = 0; mineSeq = 0;
     const g = gg();
@@ -1759,7 +1771,7 @@
     // ---- minefields: clusters that chain-detonate beautifully
     const clusters = Math.max(0, Math.round(TUNE.mineClusters * (1 + (DF.d - 1) * 0.25)));
     let made = 0, tries = 0;
-    for (let c = 0; c < clusters && tries < 900; c++) {
+    for (let c = 0; c < clusters && tries < 2400; c++) {
       let cx = 0, cy = 0, ok = false;
       for (let q = 0; q < 40 && !ok; q++) { cx = rand(120, world.w - 120); cy = rand(y0, y1); ok = free(cx, cy, 150); tries++; }
       if (!ok) continue;
@@ -1777,9 +1789,9 @@
     }
     // ---- loners, salted across the open water
     tries = 0;
-    while (made < total && tries++ < 1800) {
+    while (made < total && tries++ < 6000) {
       const x = rand(60, world.w - 60), y = rand(y0, y1);
-      if (!free(x, y, 120)) continue;
+      if (!free(x, y, 96)) continue;
       const m = spawnMine(x, y, Math.random() < TUNE.mineProxShare ? 'proximity' : 'contact');
       m.ax = x + rand(-8, 8); m.ay = y + rand(-8, 8);
       made++;

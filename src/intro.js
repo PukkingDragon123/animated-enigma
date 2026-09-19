@@ -748,34 +748,37 @@ function figure(ctx, x, y, s, p, col, rim) {
       cap(ctx, c, hx, 0, kx, ky, limb);
       const ex = kx + f * Math.sin(b) * s * 0.24, ey = ky + Math.cos(b) * s * 0.24;
       cap(ctx, c, kx, ky, ex, ey, Math.max(2, limb - 1));
-      ctx.fillStyle = c; ctx.fillRect(R(ex) - (f > 0 ? 2 : R(s * 0.16) - 2), R(ey) - 1, R(s * 0.16), 3);
+      ctx.fillStyle = c; ctx.fillRect(R(ex) - (f > 0 ? 2 : R(s * 0.19) - 2), R(ey) - 1, R(s * 0.19), 4);
     };
     leg(p.legB === undefined ? -0.48 : p.legB, p.kneeB || 0.10, -1);
     // torso
-    cap(ctx, c, 0, 0, shX * 0.45, shY * 0.45, Math.max(4, R(s * 0.21)));
-    cap(ctx, c, shX * 0.45, shY * 0.45, shX, shY, Math.max(3, R(s * 0.18)));
+    cap(ctx, c, 0, 0, shX * 0.45, shY * 0.45, Math.max(4, R(s * 0.25)));
+    cap(ctx, c, shX * 0.45, shY * 0.45, shX, shY, Math.max(4, R(s * 0.21)));
+    cap(ctx, c, shX - f * s * 0.09, shY + 1, shX + f * s * 0.09, shY + 1, Math.max(3, R(s * 0.11)));
     leg(p.legA === undefined ? 0.48 : p.legA, p.kneeA || -0.08, 1);
-    const arm = (a, b, wm) => {
-      const ex = shX + f * Math.sin(a) * s * 0.23, ey = shY + Math.cos(a) * s * 0.23;
-      cap(ctx, c, shX, shY, ex, ey, Math.max(2, R(s * 0.095 * wm)));
+    const arm = (a, b, wm, off) => {
+      const ax0 = shX + f * s * 0.075 * off, ay0 = shY + 1;
+      const ex = ax0 + f * Math.sin(a) * s * 0.23, ey = ay0 + Math.cos(a) * s * 0.23;
+      cap(ctx, c, ax0, ay0, ex, ey, Math.max(2, R(s * 0.10 * wm)));
       const hx = ex + f * Math.sin(b) * s * 0.22, hy = ey + Math.cos(b) * s * 0.22;
-      cap(ctx, c, ex, ey, hx, hy, Math.max(2, R(s * 0.08 * wm)));
+      cap(ctx, c, ex, ey, hx, hy, Math.max(2, R(s * 0.085 * wm)));
       return [hx, hy];
     };
-    arm(p.armB === undefined ? 0.55 : p.armB, p.foreB === undefined ? 0.95 : p.foreB, 0.85);
+    arm(p.armB === undefined ? 0.55 : p.armB, p.foreB === undefined ? 0.95 : p.foreB, 0.85, -1);
     // head: rounded skull with a peaked cap
-    const hr = Math.max(3, R(s * 0.105));
+    const hr = Math.max(4, R(s * 0.125));
     const hx2 = shX + f * Math.sin(p.head || 0) * s * 0.14, hy2 = shY - Math.cos(p.head || 0) * s * 0.15;
     ctx.fillStyle = c;
     ctx.fillRect(R(hx2) - hr, R(hy2) - hr + 1, hr * 2, hr * 2 - 1);
     ctx.fillRect(R(hx2) - hr + 1, R(hy2) - hr, hr * 2 - 2, hr * 2 + 1);
     cap(ctx, c, shX, shY, hx2, hy2 + hr, Math.max(3, R(s * 0.10)));   // neck
-    ctx.fillRect(R(hx2) - hr - 1, R(hy2) - hr - 1, hr * 2 + 2, Math.max(2, R(s * 0.06)));  // cap crown
-    ctx.fillRect(R(hx2) + (f > 0 ? hr : -hr - R(s * 0.14)), R(hy2) - hr + 1, R(s * 0.14), 2); // brim
-    const ha = arm(p.armA === undefined ? 0.75 : p.armA, p.foreA === undefined ? 1.15 : p.foreA, 1);
+    ctx.fillRect(R(hx2) - hr - 1, R(hy2) - hr - 2, hr * 2 + 2, Math.max(2, R(s * 0.05)));  // cap crown
+    ctx.fillRect(R(hx2) + (f > 0 ? hr : -hr - R(s * 0.13)), R(hy2) - hr, R(s * 0.13), 2); // brim
+    const ha = arm(p.armA === undefined ? 0.75 : p.armA, p.foreA === undefined ? 1.15 : p.foreA, 1, 1);
     ctx.restore();
     return ha;
   };
+  pass(-2, -2, rim || '#50708c');
   pass(-1, -1, rim || '#50708c');
   return pass(0, 0, col || '#0c0f15');
 }
@@ -921,7 +924,7 @@ function buildYacht() {
   const W = 392, H = 156, c = can(W, H), x = cx2(c);
   // hull: bow at the RIGHT, transom at the LEFT
   const sheer = [[22, 36], [120, 30], [250, 22], [340, 10], [368, 4]];
-  const keel = [[22, 88], [120, 102], [240, 98], [320, 82], [356, 62]];
+  const keel = [[22, 72], [66, 94], [150, 106], [250, 100], [320, 82], [356, 62]];
   const stem = xx => 4 + (368 - xx) * 2.9;
   for (let xx = 22; xx <= 368; xx++) {
     const t0 = R(curveAt(sheer, xx)), b0 = R(Math.min(stem(xx), curveAt(keel, xx)));
@@ -1170,7 +1173,7 @@ function drawCrane(ctx, o) {
 // =================================================================== NET ====
 function drawNet(ctx, o) {
   const N = 12, M = 18;
-  const WS = [1.00, 1.05, 1.08, 1.08, 1.05, 1.00, 0.94, 0.86, 0.77, 0.66, 0.53, 0.38, 0.22];
+  const WS = [1.00, 1.05, 1.08, 1.08, 1.05, 1.00, 0.95, 0.88, 0.80, 0.71, 0.61, 0.50, 0.36];
   const cinch = o.cinch || 0, t = o.t || 0;
   const pts = [];
   for (let j = 0; j <= N; j++) {
@@ -1344,7 +1347,7 @@ function buildIntroArt() {
   MAN.mom = buildManatee(86, 'mom');
   MAN.you = buildManatee(54, 'you');
   MAN.bro = buildManatee(40, 'bro');
-  MAN.youBig = buildManatee(78, 'you');
+  MAN.youBig = buildManatee(96, 'you');
   MAN.broBig = buildManatee(58, 'bro');
   OT = buildOtterParts();
   BIZ = buildBiz();
@@ -1911,11 +1914,11 @@ BEATS.push({
     const st = SC.rammed ? clamp(1 - (bt - 2.7) * 0.9, 0, 1) : 0;
     SC.men.forEach((ox, i) => {
       const lean = SC.rammed ? -0.5 * st + Math.sin((bt - 2.7) * 14 + i) * 0.2 * st : 0.30 + Math.sin(bt * 1.4 + i) * 0.06;
-      figure(ctx, SC.boatX + ox + SC.rock * 8, feet + SC.rock * 4, 30, {
-        facing: -1, lean: lean, armA: 0.95 - st * 1.5, foreA: 1.25 - st * 1.9,
-        armB: 0.80 - st * 1.1, foreB: 1.10 - st * 1.6,
+      figure(ctx, SC.boatX + ox + SC.rock * 8, feet + SC.rock * 4, 38, {
+        facing: -1, lean: lean, armA: 0.95 + st * 0.85, foreA: 1.25 + st * 1.0,
+        armB: 0.80 + st * 0.55, foreB: 1.10 + st * 0.8,
         legA: 0.50 + st * 0.3, legB: -0.46 - st * 0.2, kneeA: -0.1, kneeB: 0.12, head: -0.3 + st * 0.6,
-      });
+      }, '#10141c', '#6d8fae');
     });
     ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY + Math.abs(SC.rock) * 5)); ctx.rotate(SC.rock * 0.10 + Math.sin(bt * 2) * 0.02);
     ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay);
@@ -2005,12 +2008,12 @@ BEATS.push({
       const fired = SC.harps.some(h => h.gun === i);
       const rec = fired ? clamp(1 - (bt - SC.harps.find(h => h.gun === i).t0) * 3, 0, 1) : 0;
       const aim = i === 1 ? (bt > 1.0 ? 1 : 0) : i === 0 ? (bt > 3.6 ? 1 : 0) : 0;
-      figure(ctx, SC.boatX + ox, feet, 31, {
+      figure(ctx, SC.boatX + ox, feet, 38, {
         facing: -1, lean: 0.30 + aim * 0.10 - rec * 0.22,
         armA: 0.92 + aim * 0.30 - rec * 0.35, foreA: 1.15 + aim * 0.22 - rec * 0.45,
         armB: 0.78 + aim * 0.28 - rec * 0.25, foreB: 1.02 + aim * 0.20 - rec * 0.35,
         legA: 0.52, legB: -0.48, kneeA: -0.12, kneeB: 0.1, head: -0.28 - aim * 0.20,
-      });
+      }, '#10141c', '#6d8fae');
       if (aim) {
         // the harpoon gun in their hands
         const g = this.gunPos(i);
@@ -2047,7 +2050,7 @@ BEATS.push({
   enter() {
     A.you = actor(MAN.you, 260, 180, { beat: 7.0, exp: 'wide', tailAmp: 0.55 });
     A.bro = actor(MAN.bro, 186, 206, { beat: 8.0, exp: 'wide', tailAmp: 0.55 });
-    SC.boatX = 200; SC.boatS = 0.34;
+    SC.boatX = 430; SC.boatS = 0.40;
     if (typeof Audio_ !== 'undefined') Audio_.roll();
   },
   update(dt, bt) {
@@ -2056,7 +2059,7 @@ BEATS.push({
     A.you.y = 180 + Math.sin(bt * 3.2) * 10; A.you.rot = Math.sin(bt * 3.2) * 0.12;
     A.bro.y = 208 + Math.sin(bt * 3.6 + 1) * 12; A.bro.rot = Math.sin(bt * 3.6 + 1) * 0.14;
     A.bro.x = 186 - Math.max(0, bt - 3) * 6;
-    SC.boatX -= 78 * dt; SC.boatS = Math.max(0.07, 0.34 - bt * 0.05);
+    SC.boatX -= 62 * dt; SC.boatS = Math.max(0.08, 0.40 - bt * 0.055);
     if (Math.random() < 30 * dt) { FX.bubble(A.you.x - 26, A.you.y + 4, 1, 2.6); FX.bubble(A.bro.x - 20, A.bro.y + 3, 1, 2.6); }
     if (bt > 3.4) Intro.fade = Math.min(0.55, (bt - 3.4) * 0.22);
   },
@@ -2064,12 +2067,12 @@ BEATS.push({
     const dk = clamp(bt / 4.5, 0, 1);
     backdrop(ctx, { mood: bt > 2.6 ? 'night' : 'deep', scroll: Intro.scroll, t: Intro.t, surfY: 30 - dk * 60, bedY: 350, set: 'D', shafts: 0.5 * (1 - dk), fog: ['#020a14', dk * 0.30] });
     // the boat shrinking behind
-    ctx.save(); ctx.translate(R(SC.boatX), 46); ctx.scale(SC.boatS, SC.boatS); ctx.globalAlpha = qa(0.85 - dk * 0.7);
+    ctx.save(); ctx.translate(R(SC.boatX), 44 + bt * 4); ctx.scale(SC.boatS, SC.boatS); ctx.globalAlpha = qa(0.9 - dk * 0.75);
     ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay); ctx.restore();
-    speedLines(ctx, 420, 180, 22, 60, 1, 'rgba(190,225,245,0.30)', 7);
-    speedLines(ctx, 150, 230, 18, 48, 1, 'rgba(190,225,245,0.22)', 13);
     drawManatee(ctx, A.bro, Intro.t);
     drawManatee(ctx, A.you, Intro.t);
+    speedLines(ctx, A.you.x - 74, A.you.y, 14, 54, -1, 'rgba(190,225,245,0.34)', 7);
+    speedLines(ctx, A.bro.x - 58, A.bro.y, 11, 42, -1, 'rgba(190,225,245,0.26)', 13);
     FX.render(ctx);
     foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 350, set: 'D' });
   },
@@ -2081,8 +2084,8 @@ BEATS.push({
   lines: [[0.5, 'The next boat was white, and quiet.'], [3.4, 'The man on it pointed at us like we were money.']],
   enter() {
     SC.surfY = 132; SC.yX = -260; SC.yY = 132;
-    A.you = actor(MAN.you, 236, 272, { beat: 2.4, exp: 'wide' });
-    A.bro = actor(MAN.bro, 182, 296, { beat: 2.8, exp: 'wide' });
+    A.you = actor(MAN.you, 240, 244, { beat: 2.4, exp: 'wide' });
+    A.bro = actor(MAN.bro, 184, 268, { beat: 2.8, exp: 'wide' });
     SC.spot = 0;
   },
   update(dt, bt) {
@@ -2091,9 +2094,9 @@ BEATS.push({
     SC.yY = SC.surfY + Math.sin(bt * 1.7) * 2;
     if (typeof Audio_ !== 'undefined') { sndT -= dt; if (sndT <= 0) { sndT = 0.5; Audio_.tone(66, 0.55, 'sine', 0.05); Audio_.noise(0.4, 0.02, 500, 60); } }
     for (const k of ['you', 'bro']) swim(A[k], dt);
-    A.you.y = 272 + Math.sin(bt * 1.3) * 6; A.you.rot = -0.16 + Math.sin(bt * 1.3) * 0.06;
-    A.bro.y = 296 + Math.sin(bt * 1.6) * 6; A.bro.rot = -0.2;
-    A.you.x = 236 + Math.sin(bt * 0.6) * 8;
+    A.you.y = 244 + Math.sin(bt * 1.3) * 6; A.you.rot = -0.16 + Math.sin(bt * 1.3) * 0.06;
+    A.bro.y = 268 + Math.sin(bt * 1.6) * 6; A.bro.rot = -0.2;
+    A.you.x = 240 + Math.sin(bt * 0.6) * 8;
     SC.spot = clamp((bt - 2.8) / 0.4, 0, 1);
     if (Math.random() < 3 * dt) { FX.bubble(A.you.x + 22, A.you.y - 6, 1, 0.8); FX.bubble(A.bro.x + 16, A.bro.y - 4, 1, 0.8); }
   },
@@ -2103,13 +2106,15 @@ BEATS.push({
     // hull wake under the waterline
     ctx.save(); ctx.translate(R(SC.yX), R(SC.yY));
     ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
-    for (let i = 0; i < 22; i++) {
-      const a = qa(0.3 - i * 0.012); if (a <= 0) break;
+    for (let i = 0; i < 20; i++) {
+      const a = qa(0.34 - i * 0.017); if (a <= 0) break;
+      const hgt = R(5 + i * 1.6);
       ctx.fillStyle = rgbaq('#cfe8f5', a);
-      ctx.fillRect(R(SC.yX - 196 - i * 7), R(SC.yY + 22 + Math.sin(Intro.t * 5 + i) * 4), 7, R(3 + i * 0.5));
+      ctx.fillRect(R(SC.yX - 190 - i * 8), R(SC.yY - 2 + Math.sin(Intro.t * 5 + i) * 3), 8, hgt);
+      if (hash2(i, Math.floor(Intro.t * 10)) > 0.6) { ctx.fillStyle = rgbaq('#ffffff', qa(a * 1.4)); ctx.fillRect(R(SC.yX - 190 - i * 8), R(SC.yY - 4 + hash2(i, 3) * hgt), 4, 2); }
     }
     // the businessman at the foredeck rail
-    const bx = SC.yX + 104, by = SC.yY - 55;
+    const bx = SC.yX + 104, by = SC.yY - 76;
     const grin = SC.spot > 0.5;
     drawBiz(ctx, {
       x: bx, y: by, flip: false, grin: grin, cigar: true,
@@ -2141,10 +2146,10 @@ BEATS.push({
   name: 'net', dur: 11.0,
   lines: [[0.6, 'The net came down with weights sewn into it.'], [4.4, 'I found a tear in the mesh.'], [6.4, 'He did not.'], [8.8, 'He reached for me the whole way up.']],
   enter() {
-    SC.surfY = 116; SC.yX = 336; SC.yY = 116;
-    SC.netY = -180; SC.netX = 300; SC.cinch = 0; SC.free = false;
-    A.you = actor(MAN.you, 268, 232, { beat: 2.6, exp: 'wide' });
-    A.bro = actor(MAN.bro, 322, 254, { beat: 3.0, exp: 'wide' });
+    SC.surfY = 116; SC.yX = 150; SC.yY = 116;
+    SC.netY = -180; SC.netX = 448; SC.cinch = 0; SC.free = false;
+    A.you = actor(MAN.you, 416, 232, { beat: 2.6, exp: 'wide' });
+    A.bro = actor(MAN.bro, 470, 254, { beat: 3.0, exp: 'wide' });
   },
   update(dt, bt) {
     Intro.scroll += 10 * dt;
@@ -2157,38 +2162,38 @@ BEATS.push({
       SC.netY = lerp(-180, 168, k * k);
       if (k > 0.2 && Math.random() < 10 * dt) FX.bubble(SC.netX + rand(-90, 90), SC.netY + rand(0, 40), 1, 1.6);
       A.you.beat = 5; A.bro.beat = 5.5;
-      A.you.x = lerp(268, 256, k); A.you.y = lerp(232, 250, k);
-      A.bro.x = lerp(322, 336, k); A.bro.y = lerp(254, 266, k);
+      A.you.x = lerp(416, 412, k); A.you.y = lerp(232, 250, k);
+      A.bro.x = lerp(470, 480, k); A.bro.y = lerp(254, 266, k);
       if (k >= 1 && typeof Audio_ !== 'undefined' && !SC.splashed) { SC.splashed = true; Audio_.splash(2); Audio_.noise(0.5, 0.18, 800, 120); }
     } else if (bt < 4.8) {
       const k = clamp((bt - 3.0) / 1.8, 0, 1);
       SC.cinch = k * 0.86; SC.netY = 168 - k * 14;
       A.you.beat = 9; A.bro.beat = 9;
-      A.you.x = 256 + Math.sin(bt * 19) * 11; A.you.y = 250 + Math.sin(bt * 14) * 8;
+      A.you.x = 412 + Math.sin(bt * 19) * 11; A.you.y = 250 + Math.sin(bt * 14) * 8;
       A.you.rot = Math.sin(bt * 17) * 0.5;
-      A.bro.x = 336 + Math.sin(bt * 16 + 2) * 11; A.bro.y = 266 + Math.sin(bt * 13 + 1) * 8;
+      A.bro.x = 482 + Math.sin(bt * 16 + 2) * 11; A.bro.y = 266 + Math.sin(bt * 13 + 1) * 8;
       A.bro.rot = Math.sin(bt * 15 + 1) * 0.5;
       if (Math.random() < 40 * dt) { FX.bubble(A.you.x, A.you.y, 1, 2.6); FX.bubble(A.bro.x, A.bro.y, 1, 2.6); }
       Intro.shake = Math.max(Intro.shake, 2);
     } else if (bt < 6.0) {
       const k = clamp((bt - 4.8) / 1.2, 0, 1);
       SC.cinch = 0.86; SC.netY = 154;
-      A.you.x = lerp(256, 148, k * k); A.you.y = lerp(250, 292, k);
+      A.you.x = lerp(412, 306, k * k); A.you.y = lerp(250, 296, k);
       A.you.rot = lerp(0.4, -0.1, k); A.you.beat = 8;
-      A.bro.x = 336 + Math.sin(bt * 16 + 2) * 9; A.bro.y = 266 + Math.sin(bt * 13) * 7;
+      A.bro.x = 482 + Math.sin(bt * 16 + 2) * 9; A.bro.y = 266 + Math.sin(bt * 13) * 7;
       A.bro.rot = Math.sin(bt * 15) * 0.45;
       if (k > 0.25 && !SC.free) { SC.free = true; if (typeof Audio_ !== 'undefined') Audio_.roll(); FX.bubble(A.you.x, A.you.y, 12, 2.4); }
       if (Math.random() < 25 * dt) FX.bubble(A.bro.x, A.bro.y, 1, 2.4);
     } else {
       const k = clamp((bt - 6.0) / 4.4, 0, 1), e = k * k;
-      SC.netY = lerp(154, -250, e);
+      SC.netY = lerp(154, -300, e);
       SC.cinch = 0.9;
-      A.bro.x = SC.netX + 30; A.bro.y = SC.netY + 84;
+      A.bro.x = SC.netX + 34; A.bro.y = SC.netY + 80;
       A.bro.rot = lerp(0.2, -0.5, clamp(k * 2, 0, 1));
       A.bro.flip = true;
       A.bro.beat = lerp(9, 2.2, clamp(k * 1.6, 0, 1));
       A.bro.exp = 'wide';
-      A.you.x = lerp(148, 178, k); A.you.y = lerp(292, 268, k);
+      A.you.x = lerp(306, 336, k); A.you.y = lerp(296, 262, k);
       A.you.rot = -0.22; A.you.beat = lerp(8, 1.3, clamp(k * 2, 0, 1));
       A.you.exp = k > 0.4 ? 'sad' : 'wide';
       if (Math.random() < 6 * dt) FX.bubble(A.bro.x, A.bro.y, 1, 1.6);
@@ -2200,7 +2205,7 @@ BEATS.push({
     drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
     ctx.save(); ctx.translate(R(SC.yX), R(SC.yY)); ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
     // davit rope down to the net
-    drawRope(ctx, SC.yX - 150, SC.yY - 62, SC.netX, SC.netY + 2, 14, '#d8cfae', '#7a6a44');
+    drawRope(ctx, SC.yX + 178, SC.yY - 78, SC.netX, SC.netY + 2, 14, '#d8cfae', '#7a6a44');
     drawManatee(ctx, A.bro, Intro.t);
     drawManatee(ctx, A.you, Intro.t);
     // the brother's outstretched flipper, reaching back
@@ -2210,7 +2215,7 @@ BEATS.push({
       const sx = b.x + (M.shoX * fxs) * cs - M.shoY * sn;
       const sy = b.y + (M.shoX * fxs) * sn + M.shoY * cs;
       const a = angleTo(sx, sy, A.you.x, A.you.y);
-      ctx.save(); ctx.translate(R(sx), R(sy)); ctx.rotate(a);
+      ctx.save(); ctx.translate(R(sx), R(sy)); ctx.rotate(a); ctx.scale(1.5, 1.3);
       ctx.drawImage(M.flip.c, -M.flip.ax, -M.flip.ay);
       ctx.restore();
     }
@@ -2263,8 +2268,8 @@ BEATS.push({
       if (SC.broke && Math.random() < 30 * dt) FX.drops(A.you.x + rand(-20, 20), A.you.y + 10, 1, 0.4);
     } else if (bt < 6.7) {                            // swung over the deck
       const k = clamp((bt - 4.3) / 2.4, 0, 1);
-      SC.deckClawX = lerp(150, 470, k * k * (3 - 2 * k));
-      SC.deckClawY = lerp(96, 120 + k * 40, k);
+      SC.deckClawX = lerp(130, 496, k * k * (3 - 2 * k));
+      SC.deckClawY = lerp(74, 92 + k * 40, k);
       A.you.rot = 0.2 + Math.sin(bt * 5) * 0.12 * (1 - k);
       A.you.beat = 5;
       if (Math.random() < 14 * dt) FX.drops(SC.deckClawX + rand(-16, 16), SC.deckClawY + 30, 1, 0.3);
@@ -2293,15 +2298,17 @@ BEATS.push({
       drawDeck(ctx, Intro.t, bt);
       // the claw carrying you over the deck
       ctx.save(); ctx.translate(R(SC.deckClawX), R(SC.deckClawY));
-      P(ctx, IP.ink, -3, -260, 6, 260); P(ctx, '#e0a838', -2, -260, 4, 260);
+      P(ctx, IP.ink, -3, -300, 6, 300); P(ctx, '#e0a838', -2, -300, 4, 300);
       ctx.drawImage(CR.clawBody.c, -CR.clawBody.ax, -CR.clawBody.ay);
+      ctx.restore();
+      const yy = Object.assign({}, A.you, { x: SC.deckClawX, y: SC.deckClawY + 30, set: MAN.you });
+      drawManatee(ctx, yy, Intro.t);
+      ctx.save(); ctx.translate(R(SC.deckClawX), R(SC.deckClawY));
       for (const [sx, dir] of [[-13, -1], [0, 0], [13, 1]]) {
         ctx.save(); ctx.translate(sx, 17); ctx.rotate(dir === 0 ? 1.57 : 1.57 + dir * 0.12 * 0.8); ctx.scale(dir < 0 ? -1 : 1, 1);
         ctx.drawImage(CR.finger.c, -CR.finger.ax, -CR.finger.ay); ctx.restore();
       }
       ctx.restore();
-      const yy = Object.assign({}, A.you, { x: SC.deckClawX, y: SC.deckClawY + 40, set: MAN.you });
-      drawManatee(ctx, yy, Intro.t);
       FX.render(ctx);
     } else {
       drawTankScene(ctx, Intro.t, { deck: true, fish: SC.tankFish });
@@ -2315,50 +2322,72 @@ BEATS.push({
 // ---- the yacht deck, seen from the side ------------------------------------
 function drawDeck(ctx, t, bt) {
   if (!LAY.sky) LAY.sky = buildSky();
-  tile(ctx, LAY.sky, t * 4, 26 - LAY.sky.height + 130);
-  P(ctx, '#2d74ab', 0, 150, 640, 22); P(ctx, '#1a4b78', 0, 164, 640, 12);
-  for (let x = 0; x < 640; x += 5) if (hash2(x, Math.floor(t * 2)) > 0.8) P(ctx, '#cfe8f5', x, 152 + R(hash2(x, 3) * 10), 4, 1);
-  // bulwark + rail
-  P(ctx, IP.ink, 0, 172, 640, 4); P(ctx, '#f2f6fa', 0, 176, 640, 26); P(ctx, '#cfd8e2', 0, 196, 640, 6);
-  for (let x = 10; x < 640; x += 46) { P(ctx, IP.ink, x, 140, 5, 34); P(ctx, '#c3ccd8', x + 1, 141, 3, 32); }
-  P(ctx, IP.ink, 0, 138, 640, 4); P(ctx, '#dfe6ee', 0, 139, 640, 2);
-  // deck planks
-  for (let y = 202; y < 360; y++) {
-    const col = ((y % 10) === 0) ? '#8e8572' : ((y % 10) < 5 ? '#d5ccb4' : '#c2b99f');
-    P(ctx, col, 0, y, 640, 1);
+  P(ctx, IP.sky[0], 0, 0, 640, 360);
+  tile(ctx, LAY.sky, t * 4, 152 - LAY.sky.height);
+  // open sea behind the rail
+  for (let y = 152; y < 190; y++) {
+    const k = (y - 152) / 38;
+    P(ctx, k < 0.3 ? '#2a6f9c' : k < 0.62 ? '#1f5a86' : '#17466b', 0, y, 640, 1);
   }
-  for (let x = 0; x < 640; x += 53) P(ctx, '#8e8572', x, 202, 1, 158);
-  P(ctx, IP.ink, 0, 202, 640, 1);
-  // the tank on the right
-  const tx = 412, ty = 186, tw = 196, th = 150;
-  P(ctx, IP.ink, tx - 5, ty - 5, tw + 10, th + 10);
-  P(ctx, '#4b5460', tx - 4, ty - 4, tw + 8, th + 8);
-  P(ctx, '#79838f', tx - 4, ty - 4, tw + 8, 3);
+  for (let x = 0; x < 640; x += 3) if (hash2(x, Math.floor(t * 2) + (x % 5)) > 0.84) P(ctx, '#bcdcec', x, 154 + R(hash2(x, 3) * 32), 4, 1);
+  // guard rail
+  for (let x = 6; x < 640; x += 44) { P(ctx, IP.ink, x, 150, 5, 44); P(ctx, '#c3ccd8', x + 1, 151, 3, 42); P(ctx, '#eef4fa', x + 1, 151, 1, 42); }
+  P(ctx, IP.ink, 0, 146, 640, 5); P(ctx, '#dfe6ee', 0, 147, 640, 2); P(ctx, '#9aa6b6', 0, 149, 640, 1);
+  P(ctx, IP.ink, 0, 168, 640, 3); P(ctx, '#b9c4d0', 0, 169, 640, 1);
+  // bulwark cap + coaming
+  P(ctx, IP.ink, 0, 190, 640, 4);
+  P(ctx, '#eef2f7', 0, 194, 640, 12); P(ctx, '#ccd4de', 0, 203, 640, 3);
+  P(ctx, IP.ink, 0, 206, 640, 2);
+  // deck sole, darker where it meets the bulwark
+  for (let y = 208; y < 360; y++) {
+    const k = (y - 208) / 152;
+    const base = k < 0.16 ? '#7e7a6a' : k < 0.44 ? '#9a9584' : k < 0.74 ? '#aea895' : '#bdb6a1';
+    P(ctx, ((y % 11) === 0) ? '#5f5c50' : base, 0, y, 640, 1);
+  }
+  for (let x = 0; x < 640; x += 61) { P(ctx, '#5f5c50', x, 208, 1, 152); P(ctx, '#c9c2ad', x + 1, 208, 1, 152); }
+  for (let i = 0; i < 90; i++) { const gx = R(hash2(i, 5) * 640), gy = 210 + R(hash2(i, 9) * 148); P(ctx, hash2(gx, gy) > 0.5 ? '#8d8878' : '#c6bfab', gx, gy, 2, 1); }
+  for (let i = 0; i < 6; i++) { const gx = 40 + R(hash2(i, 21) * 520); P(ctx, '#7f8f86', gx, 300 + R(hash2(i, 3) * 44), R(20 + hash2(i, 7) * 40), 3); }
+  // ---- crates, cooler and winch to port
+  P(ctx, IP.ink, 36, 246, 78, 58); P(ctx, '#8a5f2f', 37, 247, 76, 56); P(ctx, '#b5813f', 37, 247, 76, 5);
+  for (let i = 0; i < 5; i++) P(ctx, '#5c3a1c', 37, 255 + i * 11, 76, 2);
+  P(ctx, '#3f3324', 36, 304, 78, 4);
+  P(ctx, IP.ink, 132, 262, 58, 42); P(ctx, '#d8dde4', 133, 263, 56, 40); P(ctx, '#9aa6b6', 133, 292, 56, 11);
+  P(ctx, '#c4202c', 138, 268, 46, 5); P(ctx, '#3f3324', 132, 304, 58, 4);
+  P(ctx, IP.ink, 206, 232, 54, 72); P(ctx, '#4a525e', 207, 233, 52, 70); P(ctx, '#767f8d', 207, 233, 52, 7);
+  for (let i = 0; i < 5; i++) P(ctx, '#2a3038', 211 + i * 9, 246, 4, 46);
+  P(ctx, '#3f3324', 206, 304, 54, 4);
+  // ---- the tank, standing on the deck
+  const tx = 392, ty = 150, tw = 212, th = 176;
+  P(ctx, IP.ink, tx - 6, ty - 6, tw + 12, th + 12);
+  P(ctx, '#4b5460', tx - 5, ty - 5, tw + 10, th + 10);
+  P(ctx, '#79838f', tx - 5, ty - 5, tw + 10, 3); P(ctx, '#2a303a', tx - 5, ty + th + 2, tw + 10, 3);
+  for (let i = 0; i < tw; i += 17) { P(ctx, '#9aa4b0', tx + i + 4, ty - 4, 2, 2); P(ctx, '#9aa4b0', tx + i + 4, ty + th + 2, 2, 2); }
   P(ctx, '#3f5a2c', tx, ty, tw, th);
-  for (let y = 0; y < th; y++) for (let x = 0; x < tw; x += 1) {
-    if (hash2(x + y * 7, y) > 0.86) P(ctx, hash2(x, y) > 0.5 ? '#4e6f36' : '#32491f', tx + x, ty + y);
-  }
-  P(ctx, '#6f8f4a', tx, ty, tw, 5); P(ctx, '#d8f0a0', tx, ty, tw, 1);
-  for (let i = 0; i < 14; i++) {
-    const fx2 = tx + R(hash2(i * 7, 3) * (tw - 20)) + 8, fy = ty + 14 + R(hash2(i, 9) * (th - 30));
+  for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) if (hash2(x + y * 7, y) > 0.87) P(ctx, hash2(x, y) > 0.5 ? '#4e6f36' : '#32491f', tx + x, ty + y);
+  P(ctx, '#20301a', tx, ty + th - 24, tw, 24);
+  P(ctx, '#6f8f4a', tx, ty + 4, tw, 6); P(ctx, '#d8f0a0', tx, ty + 4, tw, 2); P(ctx, IP.ink, tx, ty + 3, tw, 1);
+  for (let i = 0; i < 26; i++) {
+    const fx2 = tx + 8 + R(hash2(i * 7, 3) * (tw - 24)), fy = ty + 18 + R(hash2(i, 9) * (th - 46));
     const sp = FISHSPR[i % 4][i % 3];
     ctx.save(); ctx.translate(fx2, fy + R(Math.sin(t * 2 + i) * 3)); if (i & 1) ctx.scale(-1, 1); ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore();
   }
-  for (let i = 0; i < 3; i++) { const sp = FISHDEAD[i]; ctx.save(); ctx.translate(tx + 30 + i * 60, ty + 8); ctx.scale(1, -1); ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore(); }
-  for (let i = 0; i < 5; i++) { ctx.fillStyle = rgbaq('#f2fff0', 0.07); ctx.fillRect(tx + 12 + i * 38, ty + 4, 9, th - 8); }
-  P(ctx, IP.ink, tx - 5, ty + th + 5, tw + 10, 6); P(ctx, '#2a3038', tx - 4, ty + th + 5, tw + 8, 5);
-  // crates and a winch on the left
-  P(ctx, IP.ink, 40, 236, 74, 54); P(ctx, '#8a5f2f', 41, 237, 72, 52); P(ctx, '#b5813f', 41, 237, 72, 5);
-  for (let i = 0; i < 5; i++) P(ctx, '#5c3a1c', 41, 244 + i * 11, 72, 2);
-  P(ctx, IP.ink, 130, 250, 54, 40); P(ctx, '#4a525e', 131, 251, 52, 38); P(ctx, '#767f8d', 131, 251, 52, 6);
-  // a couple of deck hands watching
-  figure(ctx, 240, 300, 40, { facing: 1, lean: -0.05, armA: 0.25, foreA: 0.45, armB: 0.15, foreB: 0.30, legA: 0.46, legB: -0.44, head: 0.1 }, '#243044', '#5a7290');
-  figure(ctx, 300, 302, 38, { facing: 1, lean: 0.08, armA: -0.45, foreA: -0.9, armB: 0.30, foreB: 0.55, legA: -0.42, legB: 0.46, head: 0.16 }, '#2b2436', '#6a6280');
+  for (let i = 0; i < 6; i++) { const sp = FISHDEAD[i % 4]; ctx.save(); ctx.translate(tx + 22 + i * 32, ty + 13 + R(Math.sin(t * 0.6 + i) * 2)); ctx.scale(1, -1); ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore(); }
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = rgbaq('#f2fff0', 0.07); ctx.fillRect(tx + 14 + i * 42, ty + 8, 10, th - 16); }
+  P(ctx, IP.ink, tx - 6, ty + th + 6, tw + 12, 8); P(ctx, '#2a3038', tx - 5, ty + th + 6, tw + 10, 7);
+  // ---- deck hands watching the catch come aboard
+  figure(ctx, 286, 322, 48, { facing: 1, lean: -0.05, armA: 0.25, foreA: 0.45, armB: 0.15, foreB: 0.30, legA: 0.46, legB: -0.44, head: 0.12 }, '#222c3e', '#6d8fae');
+  figure(ctx, 338, 324, 45, { facing: 1, lean: 0.08, armA: -0.45, foreA: -0.9, armB: 0.30, foreB: 0.55, legA: -0.42, legB: 0.46, head: 0.18 }, '#2b2436', '#7a7290');
   void bt;
 }
 // ---- inside the tank -------------------------------------------------------
 function drawTankScene(ctx, t, o) {
   ctx.drawImage(TANK.bg, 0, 0);
+  if (o.aerator) {
+    // grubby air line running down the back wall
+    P(ctx, IP.ink, 60, 22, 9, 300); P(ctx, '#4a5460', 61, 22, 7, 300); P(ctx, '#79838f', 61, 22, 2, 300);
+    for (let i = 0; i < 9; i++) { P(ctx, IP.ink, 59, 40 + i * 34, 11, 5); P(ctx, '#2f3740', 60, 41 + i * 34, 9, 3); }
+    P(ctx, IP.ink, 56, 318, 17, 9); P(ctx, '#3a4450', 57, 319, 15, 7);
+  }
   if (o.deck) {
     ctx.save();
     ctx.beginPath(); ctx.rect(444, 22, 176, 316); ctx.clip();
@@ -2397,8 +2426,8 @@ BEATS.push({
   name: 'otter', dur: 15.5,
   lines: [[13.6, 'We get out. Then we go and get him back.']],
   enter() {
-    A.you = actor(MAN.youBig, 140, 214, { beat: 1.1, exp: 'sad', tailAmp: 0.16 });
-    SC.ot = { x: 262, y: 198, phase: 0, s: 1.25, exp: 'plot', flip: false, armNear: 0.4, armFar: 0.9, headR: -0.1 };
+    A.you = actor(MAN.youBig, 136, 194, { beat: 1.1, exp: 'sad', tailAmp: 0.16 });
+    SC.ot = { x: 272, y: 172, phase: 0, s: 1.5, exp: 'plot', flip: false, armNear: 1.15, armFar: 1.45, headR: -0.1 };
     SC.tankFish = [];
     for (let i = 0; i < 64; i++) SC.tankFish.push({ x: rand(30, 420), y: i < 12 ? rand(34, 60) : rand(60, 322), ph: rand(0, TAU), k: randi(0, 3), s: randi(0, 2), dead: i < 12, sp: rand(12, 44) * (Math.random() < 0.5 ? -1 : 1) });
     SC.talkI = -1;
@@ -2420,14 +2449,16 @@ BEATS.push({
     if (typing && Math.random() < 9 * dt && typeof Audio_ !== 'undefined') Audio_.tone(speaking === 'otter' ? 500 + rand(0, 90) : 330 + rand(0, 60), 0.035, 'square', 0.045);
     // both drift to the glass for the last beat
     const k = clamp((bt - 11.5) / 3.0, 0, 1), e = k * k * (3 - 2 * k);
-    A.you.x = lerp(140, 268, e) + Math.sin(bt * 0.5) * 3;
-    A.you.y = 214 + Math.sin(bt * 0.7) * 5 - e * 6;
+    A.you.x = lerp(136, 262, e) + Math.sin(bt * 0.5) * 3;
+    A.you.y = 194 + Math.sin(bt * 0.7) * 5 - e * 6;
     A.you.rot = Math.sin(bt * 0.7) * 0.05;
-    SC.ot.x = lerp(262, 384, e) + Math.sin(bt * 0.6) * 2;
-    SC.ot.y = 198 + Math.sin(bt * 0.9) * 4 - e * 4;
-    SC.ot.armNear = lerp(0.4 + Math.sin(bt * 1.1) * 0.3, -0.4, e);
+    SC.ot.x = lerp(272, 380, e) + Math.sin(bt * 0.6) * 2;
+    SC.ot.y = 172 + Math.sin(bt * 0.9) * 4 - e * 4;
+    SC.ot.armNear = lerp(1.15 + Math.sin(bt * 1.1) * 0.25, 0.25, e);
+    SC.ot.armFar = lerp(1.45, 0.6, e);
     SC.ot.headR = lerp(-0.1 + Math.sin(bt * 0.8) * 0.08, 0.05, e);
     if (Math.random() < 2.5 * dt) FX.bubble(SC.ot.x + 14, SC.ot.y - 8, 1, 0.7);
+    if (Math.random() < 22 * dt) FX.bubble(64 + rand(-3, 3), 320, 1, 1.6);
     if (Math.random() < 1.6 * dt) FX.bubble(A.you.x + 26, A.you.y - 10, 1, 0.6);
     for (const f of SC.tankFish) {
       if (!f.dead) { f.x += f.sp * dt; if (f.x > 424) f.sp = -Math.abs(f.sp); if (f.x < 32) f.sp = Math.abs(f.sp); }
@@ -2436,7 +2467,7 @@ BEATS.push({
     if (bt > 14.1) Intro.fade = clamp((bt - 14.1) / 1.4, 0, 1);
   },
   render(ctx, bt) {
-    drawTankScene(ctx, Intro.t, { deck: true, fish: SC.tankFish });
+    drawTankScene(ctx, Intro.t, { deck: true, fish: SC.tankFish, aerator: true });
     drawManatee(ctx, A.you, Intro.t);
     SC.ot.blink = Intro.blink;
     drawOtter(ctx, SC.ot, Intro.t);
