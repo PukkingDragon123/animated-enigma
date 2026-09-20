@@ -216,7 +216,7 @@ function buildTopArt() {
   A.soakDisc = [];
   for (let i = 0; i < 10; i++) {
     const r = 10 + i * 7;
-    A.soakDisc.push(bakeDisc(r, Math.max(3, r * 0.26), ['#3a060c', '#2a050a', '#1e0409', '#150307']));
+    A.soakDisc.push(bakeDisc(r, Math.max(3, r * 0.26), ['#5a0a12', '#42070e', '#2c050a', '#1a0407']));
   }
   A.darkDisc = [];
   for (let i = 0; i < 10; i++) { const r = 8 + i * 8; A.darkDisc.push(bakeDisc(r, r * 0.60, [DP.deep[0], DP.bruise[0], DP.deep[1], DP.deep[2]])); }
@@ -953,8 +953,8 @@ const SHORE_LINES = [
   [0.55, 1.9, 'he would not let go.'],
   [3.35, 1.5, 'stay in there. stay in there.'],
   [6.20, 1.3, 'breathe, you stubborn old cow.'],
-  [7.50, 1.1, "don't you dare."],
-  [8.90, 1.7, "i'm sorry. i'm sorry."],
+  [7.45, 0.9, "don't you dare."],
+  [9.25, 1.6, "i'm sorry. i'm sorry."],
   [11.05, 1.6, '...aye. again, then.'],
 ];
 
@@ -1028,10 +1028,11 @@ const DeathScene = {
     this.man = { x: x, y: y, vx: -f * 26, vy: rand(-6, 6), tilt: 0, roll: 0, sink: 0, hurt: 1, alpha: 1 };
     this.ott = { x: x - f * 6, y: y - 4, vx: -f * 150 + rand(-40, 40), vy: rand(-120, 120), ang: 0, spin: rand(6, 11) * (Math.random() < 0.5 ? 1 : -1), s: rigScale() * 0.66, state: 'fly', exp: 'surprised', armA: 0.9, armB: -0.9, alpha: 1 };
     // the first, big gout
-    for (let i = 0; i < 7; i++) this.stains.push({ x: x + rand(-16, 16), y: y + rand(-11, 11), r: rand(3, 6), max: rand(12, 26), vx: rand(-7, 7), vy: rand(-5, 5), a: 1 });
+    for (let i = 0; i < 7; i++) this.stains.push({ x: x + rand(-16, 16), y: y + rand(-11, 11), r: rand(3, 6), max: rand(9, 19), vx: rand(-7, 7), vy: rand(-5, 5), a: 1 });
     for (let i = 0; i < 5; i++) this.junk.push({ s: i === 0 ? A.plate : i === 3 ? A.hatTop : i === 4 ? A.net : A.strap, x: x + rand(-10, 10), y: y + rand(-8, 8), vx: rand(-90, 90), vy: rand(-70, 70), rot: rand(0, TAU), vr: rand(-5, 5), sink: 0 });
+    FX.thread(x, y, 26, 1.7);
     try {
-      if (typeof G !== 'undefined' && G && G.particles) { G.particles.blood(x, y, 6); G.particles.splash(x, y, 2.4); G.particles.bubbles(x, y, 10); }
+      if (typeof G !== 'undefined' && G && G.particles) { G.particles.blood(x, y, 10); G.particles.splash(x, y, 2.4); G.particles.bubbles(x, y, 10); }
       if (typeof Toon !== 'undefined') { Toon.impact(x, y, 2.2, '#ff8a8a'); Toon.burst(x, y, 1.7, '#c4202c'); Toon.shock(x, y, 110, 0.6, '#e8515a'); }
       if (typeof Gore !== 'undefined' && Gore.burst) Gore.burst(x, y, 2.2);
       if (typeof Audio_ !== 'undefined') { Audio_.hurt(); Audio_.splash(2); Audio_.tone(70, 1.4, 'sawtooth', 0.32, -40); }
@@ -1086,7 +1087,7 @@ const DeathScene = {
       this.pulse = 1;
       const hard = 1 - (this.beat - 1) / BEATS.length;
       for (let i = 0; i < 3 + R(hard * 4); i++)
-        this.stains.push({ x: wx + rand(-7, 7), y: wy + rand(-6, 6), r: 2, max: rand(9, 16 + hard * 16), vx: rand(-11, 11), vy: rand(-8, 8), a: 1 });
+        this.stains.push({ x: wx + rand(-7, 7), y: wy + rand(-6, 6), r: 2, max: rand(7, 13 + hard * 12), vx: rand(-11, 11), vy: rand(-8, 8), a: 1 });
       FX.thread(wx, wy, 10 + R(hard * 14), 0.6 + hard);
       try {
         if (typeof G !== 'undefined' && G && G.ocean) G.ocean.splatBlood(wx, wy, 0.6 + hard * 0.5, 26);
@@ -1503,7 +1504,7 @@ const DeathScene = {
         if (ctx.globalCompositeOperation === 'color') {
           for (const [bx, by, bi, ba] of rec) {
             const bd = A.bloodDisc[bi];
-            ctx.globalAlpha = qa(ba * dr * 0.70);
+            ctx.globalAlpha = qa(ba * dr * 0.45);
             ctx.drawImage(bd.c, bx - bd.ax, by - bd.ay);
           }
         }
@@ -1539,8 +1540,8 @@ const DeathScene = {
     const T = this.t;
     const k = clamp((T - K1.swim) / (K1.fade - K1.swim), 0, 1);
     const rad = lerp(330, 62, Math.pow(k, 1.15));
-    const icx = R(lerp(320, this._irisX === undefined ? 320 : this._irisX, 0.45));
-    const icy = R(lerp(180, this._irisY === undefined ? 180 : this._irisY, 0.45));
+    const icx = R(lerp(320, this._irisX === undefined ? 320 : this._irisX, 0.88));
+    const icy = R(lerp(180, this._irisY === undefined ? 180 : this._irisY, 0.88));
     const red = clamp(1 - T / 2.4, 0, 1);
     // the frame is never flat black: it starts as a blood bruise and settles
     // into the deep indigo of water with no light left in it
@@ -1624,12 +1625,12 @@ const DeathScene = {
     this.drawSurf(ctx, T);
 
     // -------------------------------------------------------- driftwood
-    ctx.globalAlpha = 0.45; ctx.drawImage(A.logShadow.c, 232 - A.logShadow.ax, 328 - A.logShadow.ay); ctx.globalAlpha = 1;
-    ctx.save(); ctx.translate(230, 322);
+    ctx.globalAlpha = 0.45; ctx.drawImage(A.logShadow.c, 566 - A.logShadow.ax, 332 - A.logShadow.ay); ctx.globalAlpha = 1;
+    ctx.save(); ctx.translate(564, 326);
     ctx.drawImage(A.log.c, -A.log.ax, -A.log.ay);
-    rimBlit(ctx, 'log', this.litAt(230), false);
+    rimBlit(ctx, 'log', this.litAt(564), false);
     ctx.restore();
-    ctx.drawImage(A.bucket.c, 188 - A.bucket.ax, 336 - A.bucket.ay);
+    ctx.drawImage(A.bucket.c, 178 - A.bucket.ax, 326 - A.bucket.ay);
 
     // ------------------------------------------------------------- fire
     const pi = clamp(Math.floor(fireUp * 3.4), 0, 3);
@@ -1727,14 +1728,16 @@ const DeathScene = {
     //      down the middle of it
     if (dragK < 1 || T < K2.hammer) {
       const fade = T < K2.pull ? 1 : clamp(1 - (T - K2.pull) / 2.4, 0, 1);
-      ctx.globalAlpha = qa(0.55 * fade);
-      for (let i = 0; i < 110; i++) {
-        const q = i / 110;
-        const fxx = R(mx + HL * 0.55 + q * 190), fyy = R(my + 22 - q * 46);
-        for (let w = -14; w <= 14; w++) {
-          if (bay(fxx, fyy + w) > 0.58 - Math.abs(w) / 32) continue;
-          const mid = Math.abs(w) < 5 && hash2(fxx, w) > 0.45;
-          P(ctx, mid ? (hash2(fxx, w + 3) > 0.7 ? DP.blood[1] : DP.blood[0]) : Math.abs(w) > 10 ? '#5a4a52' : '#241c26', fxx, fyy + w);
+      ctx.globalAlpha = qa(0.75 * fade);
+      const y0 = my + 14, y1 = A.SANDY + 10;
+      for (let i = 0; i < 120; i++) {
+        const q = i / 120;
+        const fyy = R(lerp(y0, y1, q)), fxx = R(mx + HL * 0.18 + q * 64);
+        const hw = R(16 - q * 7);
+        for (let w = -hw; w <= hw; w++) {
+          if (bay(fxx + w, fyy) > (0.66 - Math.abs(w) / (hw * 2.1)) * (1 - q * 0.45)) continue;
+          const mid = Math.abs(w) < 5 && hash2(fxx, w) > 0.40;
+          P(ctx, mid ? (hash2(fxx, w + 3) > 0.6 ? DP.blood[1] : DP.blood[0]) : Math.abs(w) > hw - 4 ? '#6a5560' : '#171220', fxx + w, fyy);
         }
       }
       ctx.globalAlpha = 1;
@@ -2020,7 +2023,7 @@ const DeathScene = {
       // the hat, off, in the sand beside him
       const hk = clamp((T - K2.grieve) / 0.5, 0, 1);
       ctx.save();
-      ctx.translate(R(lerp(x + 20, hx + MA.chest[0] + 92, hk)), R(lerp(y + 4, FEET + 6, hk)));
+      ctx.translate(R(lerp(x + 20, hx + MA.chest[0] + 118, hk)), R(lerp(y + 4, FEET + 14, hk)));
       ctx.rotate(hk * 0.6); ctx.scale(MSC, MSC);
       ctx.drawImage(A.hatSide.c, -A.hatSide.ax, -A.hatSide.ay);
       ctx.restore();
@@ -2035,7 +2038,7 @@ const DeathScene = {
       o.hat = k > 0.55;
       if (k <= 0.55) {
         ctx.save();
-        ctx.translate(R(hx + MA.chest[0] + 92 - k * 20), R(FEET + 6 - Math.sin(k * 5.7) * 40));
+        ctx.translate(R(hx + MA.chest[0] + 118 - k * 24), R(FEET + 14 - Math.sin(k * 5.7) * 44));
         ctx.rotate(0.5 - k * 2.2); ctx.scale(MSC, MSC);
         ctx.drawImage(A.hatSide.c, -A.hatSide.ax, -A.hatSide.ay);
         ctx.restore();
@@ -2066,7 +2069,7 @@ const DeathScene = {
     // the steel, thrown down the beach, where it stays
     if (this.harpFree) {
       ctx.save();
-      ctx.translate(R(hx + HL + 52), R(hy + HH + 16));
+      ctx.translate(R(hx + HL + 22), R(HER.feet + 4));
       ctx.rotate(0.22); ctx.scale(MSC, MSC);
       ctx.drawImage(A.harp.c, -A.harp.ax, -A.harp.ay);
       ctx.restore();
