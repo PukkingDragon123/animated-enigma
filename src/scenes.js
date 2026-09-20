@@ -331,9 +331,23 @@ function seaLayer(seaRamp, opt) {
 }
 function buildBay(skyRamp, seaRamp, opt) {
   const c = can(640, 360), x = cx2(c);
-  // ---- sky: posterized bands with a little ordered break-up
-  paintRamp(x, 0, 0, 640, HZ, skyRamp, (u, px, py) =>
-    Math.pow(u, 0.72) + (hash2(px >> 3, py >> 1) - 0.5) * 0.09);
+  // ---- sky: posterized bands with a little ordered break-up.  the ramp
+  // position only depends on the row, so it is computed once per row.
+  {
+    const b = pixBuf(640, HZ), cols = skyRamp.map(hexToRgb), n = cols.length;
+    for (let y = 0; y < HZ; y++) {
+      const base = Math.pow(y / (HZ - 1), 0.72) * (n - 1);
+      for (let px = 0; px < 640; px++) {
+        let fi = base + (hash2(px >> 3, y >> 1) - 0.5) * 0.09 * (n - 1);
+        if (fi < 0) fi = 0; else if (fi > n - 1) fi = n - 1;
+        let i = Math.floor(fi);
+        if (bay(px, y) < fi - i) i++;
+        if (i > n - 1) i = n - 1;
+        pset(b, cols[i], px, y);
+      }
+    }
+    x.drawImage(pixTo(b), 0, 0);
+  }
   // cloud slabs, flat and hard-edged
   for (let i = 0; i < 7; i++) {
     const cy = 34 + i * 19 + (i & 1) * 5, cw = 70 + ((i * 53) % 150);
