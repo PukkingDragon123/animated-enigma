@@ -173,6 +173,67 @@ function stamp(ctx, rows, x, y, map) {
   }
 }
 function px(ctx, col, x, y, w = 1, h = 1) { ctx.fillStyle = col; ctx.fillRect(x | 0, y | 0, w, h); }
+// ---- detail passes -------------------------------------------------------
+// These add the sub-pixel information an upscaled silhouette cannot carry:
+// a one-pixel lit rim along every top edge and a shadow along every bottom
+// edge, and a sparse, colour-keyed texture grain. Both work on the raster, so
+// they never change a silhouette and never introduce a seam.
+function _rgbKey(hex) { const [r, g, b] = hexToRgb(hex); return (r << 16) | (g << 8) | b; }
+function pixelPass(ctx, w, h, fn) {
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  fn(d, w, h);
+  ctx.putImageData(img, 0, 0);
+}
+function edgeLight(ctx, w, h, litHex, shadeHex, opts = {}) {
+  const lit = hexToRgb(litHex), sh = hexToRgb(shadeHex);
+  const outKey = _rgbKey(opts.outline || CPAL.out), out2Key = _rgbKey(CPAL.out2);
+  pixelPass(ctx, w, h, (d) => {
+    const src = Uint8ClampedArray.from(d);
+    const at = (x, y) => (y * w + x) * 4;
+    const isVoid = (x, y) => {
+      if (x < 0 || y < 0 || x >= w || y >= h) return true;
+      const i = at(x, y); if (src[i + 3] < 30) return true;
+      const k = (src[i] << 16) | (src[i + 1] << 8) | src[i + 2];
+      return k === outKey || k === out2Key;
+    };
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = at(x, y); if (src[i + 3] < 30) continue;
+      const k = (src[i] << 16) | (src[i + 1] << 8) | src[i + 2];
+      if (k === outKey || k === out2Key) continue;
+      let c = null;
+      if (isVoid(x, y - 1)) c = lit;
+      else if (isVoid(x, y + 1)) c = sh;
+      if (!c) continue;
+      d[i] = (src[i] * 0.45 + c[0] * 0.55) | 0;
+      d[i + 1] = (src[i + 1] * 0.45 + c[1] * 0.55) | 0;
+      d[i + 2] = (src[i + 2] * 0.45 + c[2] * 0.55) | 0;
+    }
+  });
+}
+// rules: [fromHex, toHex, probability, salt]
+function texture(ctx, w, h, rules) {
+  const R = rules.map(r => ({ from: _rgbKey(r[0]), to: hexToRgb(r[1]), p: r[2], s: r[3] || 1 }));
+  pixelPass(ctx, w, h, (d) => {
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4; if (d[i + 3] < 30) continue;
+      const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+      for (const r of R) {
+        if (k !== r.from) continue;
+        if (hash2(x * 7 * r.s, y * 13 + r.s * 31) > 1 - r.p) { d[i] = r.to[0]; d[i + 1] = r.to[1]; d[i + 2] = r.to[2]; }
+        break;
+      }
+    }
+  });
+}
+// Stamp a 1x row-string at AS x, so a silhouette authored at the old size is
+// reproduced exactly and the new pixels go into detail passes drawn over it.
+function stampUp(ctx, rows, x, y, map) {
+  for (let r = 0; r < rows.length; r++) for (let q = 0; q < rows[r].length; q++) {
+    const ch = rows[r][q]; if (ch === '.' || ch === ' ') continue;
+    const col = map[ch]; if (!col) continue;
+    ctx.fillStyle = col; ctx.fillRect(x + q * AS, y + r * AS, AS, AS);
+  }
+}
 
 // ===========================================================================
 //  WAR MANATEE  — top-down, facing RIGHT
@@ -248,46 +309,45 @@ function buildManateeBody(armored) {
   for (let i = 0; i < 9; i++) px(ctx, CPAL.manLL, 9 + (i & 1), 26 + i * 3, 1, 2);
 
   // ---- head: eyes set wide, whisker pad, nostrils ------------------------
-  for (const ey of [22, 46]) {
-    // lid, sclera crease, iris, catchlight — a real eye now, not a 2x2 blob
-    px(ctx, CPAL.out, 118, ey, 10, 9);
-    px(ctx, CPAL.manDD, 119, ey + 1, 8, 7);
-    px(ctx, CPAL.eye, 120, ey + 2, 6, 5);
-    px(ctx, '#3d2f24', 121, ey + 3, 4, 3);
+  // The original features, doubled, with the sub-pixels spent on an iris, a
+  // lid and a lit brow rather than on making anything bigger.
+  for (const ey of [20, 44]) {
+    // heavy-lidded manatee eye: pale lid ring, amber iris, black pupil, glint
+    stamp(ctx, [
+      '..kkkkkkkk..',
+      '.kLLLLLLLLk.',
+      'kLLaaaaaaLLk',
+      'kLaaaeeaaaLk',
+      'kLaaeeeeaaLk',
+      'kLaaeeeeaaLk',
+      'kLaaaeeaaaLk',
+      'kLLaaaaaaLLk',
+      '.kLLLLLLLLk.',
+      '..kkkkkkkk..',
+    ], 117, ey, { k: CPAL.out, L: CPAL.manLL, a: '#5c4326', e: CPAL.eye });
     px(ctx, CPAL.shine, 121, ey + 3, 2, 2);
-    px(ctx, CPAL.manL, 118, ey - 1, 10, 1);      // brow ridge
-    px(ctx, CPAL.manDD, 118, ey + 9, 10, 1);     // lower lid shadow
+    px(ctx, CPAL.manL, 118, ey - 1, 10, 1);
+    px(ctx, CPAL.manDD, 118, ey + 10, 10, 1);
   }
-  // whisker pad, dimpled
-  stamp(ctx, [
-    '....kkkkkkkk....',
-    '..kkWWWWWWWWkk..',
-    '.kWWWWWWWWWWWWk.',
-    'kWWWWwwwwwwWWWWk',
-    'kWWWwwwwwwwwWWWk',
-    'kWWwwwwwwwwwwWWk',
-    'kWWwwwwwwwwwwWWk',
-    'kWWWwwwwwwwwWWWk',
-    'kWWWWwwwwwwWWWWk',
-    '.kWWWWWWWWWWWWk.',
-    '..kkWWWWWWWWkk..',
-    '....kkkkkkkk....',
+  stampUp(ctx, [
+    '..kkkk..',
+    '.kWWWWk.',
+    'kWWwwWWk',
+    'kWwwwwWk',
+    'kWWwwWWk',
+    '.kWWWWk.',
+    '..kkkk..',
   ], 126, 32, { k: CPAL.out, W: CPAL.manL, w: CPAL.manD });
-  // dimples in the pad
-  for (let r = 0; r < 4; r++) for (let q = 0; q < 5; q++)
-    px(ctx, CPAL.manDD, 130 + q * 2, 36 + r * 2);
-  // nostrils: two crescent slits with a lit upper edge
-  px(ctx, CPAL.out, 132, 34, 4, 3); px(ctx, CPAL.manLL, 132, 33, 4, 1);
-  px(ctx, CPAL.out, 132, 43, 4, 3); px(ctx, CPAL.manLL, 132, 42, 4, 1);
-  // mouth line under the pad
-  px(ctx, CPAL.manDD, 128, 52, 10, 1); px(ctx, CPAL.manD, 129, 53, 8, 1);
-  // individual whiskers, now that a whisker can be more than one pixel
-  for (let i = 0; i < 7; i++) {
-    const wy = 28 - i * 2, wx = 138 + (i & 1) * 2;
-    px(ctx, CPAL.bone, wx, wy, 3, 1); px(ctx, CPAL.creamD, wx + 3, wy - 1, 2, 1);
-    const wy2 = 48 + i * 2;
-    px(ctx, CPAL.bone, wx, wy2, 3, 1); px(ctx, CPAL.creamD, wx + 3, wy2 + 1, 2, 1);
-  }
+  // dimples in the pad, a lit upper lip and a shaded lower one
+  for (let r = 0; r < 2; r++) for (let q = 0; q < 3; q++) px(ctx, CPAL.manDD, 132 + q * 3, 37 + r * 3);
+  px(ctx, CPAL.manLL, 129, 33, 10, 1);
+  px(ctx, CPAL.manDD, 129, 44, 10, 1);
+  // nostrils: slits with a lit upper edge
+  px(ctx, CPAL.out, 137, 34, 3, 3); px(ctx, CPAL.manLL, 137, 33, 3, 1);
+  px(ctx, CPAL.out, 137, 43, 3, 3); px(ctx, CPAL.manLL, 137, 42, 3, 1);
+  // whisker stubble, kept inside the muzzle where it belongs
+  for (const [wx, wy] of [[138, 30], [141, 32], [138, 47], [141, 45], [141, 36], [141, 42]])
+    px(ctx, CPAL.bone, wx, wy, 3, 1);
 
   if (armored) {
     // ---- two riveted steel back plates, leaving plenty of hide showing
@@ -295,12 +355,12 @@ function buildManateeBody(armored) {
     for (const [pxx, pyy, pw, ph] of plates) {
       for (let y = pyy; y < pyy + ph; y++) for (let x = pxx; x < pxx + pw; x++) {
         if (!solid(x, y)) continue;
-        const top = y < pyy + 5, bot = y > pyy + ph - 7, lef = x < pxx + 4;
-        let col = top ? CPAL.metL : bot ? CPAL.metDD : lef ? CPAL.metD : CPAL.met;
-        if (top && y < pyy + 2) col = CPAL.metLL;
+        const top = y < pyy + 4, bot = y > pyy + ph - 6, lef = x < pxx + 4;
+        let col = top ? CPAL.met : bot ? CPAL.metDD : lef ? CPAL.metD : CPAL.met;
+        if (y < pyy + 2) col = CPAL.metL;
         // hammered-plate mottle, one pixel at a time
-        if (!top && !bot && hash2(x * 5, y * 3) > 0.80) col = CPAL.metD;
-        if (!top && !bot && hash2(x * 13, y * 7) > 0.94) col = CPAL.metL;
+        if (!top && !bot && hash2(x * 5, y * 3) > 0.91) col = CPAL.metD;
+        if (!top && !bot && hash2(x * 13, y * 7) > 0.975) col = CPAL.metL;
         px(ctx, col, x, y);
       }
       // rolled edges
@@ -366,11 +426,11 @@ function buildManateeBody(armored) {
       'kmMMMMMMMMMMMMmk',
       'kmmmmmmmmmmmmmmk',
       '.kkkkkkkkkkkkkk.',
-    ], 108, 28, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL, m: CPAL.metDD });
-    px(ctx, CPAL.goldD, 113, 33, 8, 10); px(ctx, CPAL.gold, 114, 34, 6, 8);
-    px(ctx, CPAL.goldL, 114, 34, 6, 2); px(ctx, CPAL.goldL, 114, 34, 2, 6);
-    for (const [rx, ry] of [[110, 31], [124, 31], [110, 42], [124, 42]]) {
-      px(ctx, CPAL.metDD, rx, ry, 3, 3); px(ctx, CPAL.metLL, rx, ry, 2, 2);
+    ], 104, 30, { k: CPAL.out, M: CPAL.metD, L: CPAL.met, m: CPAL.metDD });
+    px(ctx, CPAL.goldD, 109, 35, 8, 10); px(ctx, CPAL.gold, 110, 36, 6, 8);
+    px(ctx, CPAL.goldL, 110, 36, 6, 2); px(ctx, CPAL.goldL, 110, 36, 2, 6);
+    for (const [rx, ry] of [[106, 33], [120, 33], [106, 44], [120, 44]]) {
+      px(ctx, CPAL.metDD, rx, ry, 3, 3); px(ctx, CPAL.metL, rx, ry, 2, 2);
     }
   }
   return spriteFromHi(c, MAN_CX, MAN_CY);
@@ -379,49 +439,44 @@ function buildManateeBody(armored) {
 // ---- saddle (sits mid-back, the otter perches here) -----------------------
 function buildSaddle() {
   const W = 44, H = 40, c = newCan(W, H), ctx = c.getContext('2d');
-  const cx = 22, cy = 20, rx = 19, ry = 13;
-  // superellipse pad, shaded by distance from the rim so it reads as tooled
-  // leather with a rolled edge rather than a flat slab
-  const dAt = (x, y) => {
-    const u = (x - cx) / rx, v = (y - cy) / ry;
-    return Math.pow(Math.abs(u), 2.6) + Math.pow(Math.abs(v), 2.6);
-  };
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const d = dAt(x, y); if (d > 1) continue;
-    const edge = dAt(x + 1, y) > 1 || dAt(x - 1, y) > 1 || dAt(x, y + 1) > 1 || dAt(x, y - 1) > 1;
-    if (edge) { px(ctx, CPAL.out, x, y); continue; }
-    let col;
-    if (d > 0.80) col = CPAL.leaL;            // rolled, lit rim
-    else if (d > 0.62) col = CPAL.lea;
-    else if (d > 0.30) col = CPAL.leaD;
-    else col = '#3a2412';                      // worn seat dip
-    if (y < cy - 8 && d < 0.85) col = CPAL.leaL;
-    px(ctx, col, x, y);
+  stampUp(ctx, [
+    '...kkkkkkkkkkkk...',
+    '..kLLLLLLLLLLLLk..',
+    '.kLllllllllllllLk.',
+    'kLllddddddddddllLk',
+    'kLlddDDDDDDDDddlLk',
+    'kLldDDDDDDDDDDdlLk',
+    'kLldDDDDDDDDDDdlLk',
+    'kLlddDDDDDDDDddlLk',
+    'kLllddddddddddllLk',
+    '.kLllllllllllllLk.',
+    '..kLLLLLLLLLLLLk..',
+    '...kkkkkkkkkkkk...',
+  ], 4, 8, { k: CPAL.out, L: CPAL.leaL, l: CPAL.lea, d: CPAL.leaD, D: '#3a2412' });
+  // a running stitched seam inside the rolled rim, both sides
+  for (let x = 10; x < 34; x++) {
+    if ((x & 1) === 0) { px(ctx, CPAL.cream, x, 13); px(ctx, CPAL.creamD, x, 14); px(ctx, CPAL.cream, x, 33); px(ctx, CPAL.creamD, x, 34); }
   }
-  // grain: short scuffs following the length of the pad
-  for (let y = 6; y < H - 6; y++) for (let x = 5; x < W - 5; x++) {
-    if (dAt(x, y) > 0.92) continue;
-    if (hash2(x * 3, y * 9) > 0.93) px(ctx, CPAL.leaD, x, y, 2, 1);
-    else if (hash2(x * 11, y * 5) > 0.965) px(ctx, CPAL.leaL, x, y, 2, 1);
+  for (let y = 17; y < 31; y++) {
+    if ((y & 1) === 0) { px(ctx, CPAL.creamD, 9, y); px(ctx, CPAL.creamD, 34, y); }
   }
-  // stitching: a running dashed seam inset from the rim, both sides
-  for (let a2 = 0; a2 < 64; a2++) {
-    const th = a2 / 64 * TAU;
-    const sx = Math.round(cx + Math.cos(th) * (rx - 4)), sy = Math.round(cy + Math.sin(th) * (ry - 3));
-    if ((a2 & 1) === 0) { px(ctx, CPAL.cream, sx, sy); px(ctx, CPAL.creamD, sx, sy + 1); }
-  }
-  // brass studs down both flanks, each a dome with a highlight and a shadow
-  for (let i = 0; i < 6; i++) {
-    const sx = 8 + i * 6;
-    for (const sy of [8, 31]) {
-      px(ctx, CPAL.out, sx - 1, sy - 1, 4, 4);
+  // brass studs down both flanks: dome, highlight, drop shadow
+  for (let i = 0; i < 5; i++) {
+    const sx = 11 + i * 5;
+    for (const sy of [17, 29]) {
+      px(ctx, '#2e1b0d', sx - 1, sy - 1, 4, 4);
       px(ctx, CPAL.gold, sx, sy, 2, 2);
       px(ctx, CPAL.goldL, sx, sy);
       px(ctx, CPAL.goldD, sx + 1, sy + 1);
     }
   }
   // cantle ridge across the back of the seat
-  for (let x = 8; x < W - 8; x++) { px(ctx, CPAL.leaL, x, 15); px(ctx, '#3a2412', x, 16); }
+  for (let x = 12; x < 32; x++) { px(ctx, CPAL.leaL, x, 21); px(ctx, '#2e1b0d', x, 22); }
+  texture(ctx, W, H, [
+    [CPAL.lea, CPAL.leaD, 0.16, 1], [CPAL.leaL, CPAL.lea, 0.14, 3],
+    [CPAL.leaD, '#3a2412', 0.14, 5], ['#3a2412', CPAL.leaD, 0.10, 7],
+  ]);
+  edgeLight(ctx, W, H, CPAL.leaL, '#2e1b0d');
   return spriteFromHi(c, 22, 20);
 }
 
@@ -491,11 +546,13 @@ function buildFlag(frame) {
 //  CAPTAIN OTTER — high 3/4 view, sits on the saddle, aims 360°
 // ===========================================================================
 // torso + cape, drawn once; head and arms are separate so they animate.
+// The silhouette is the original art, stamped at AS; everything after that is
+// detail the old resolution had no room for.
 function buildOtterTorso() {
-  const c = newCan(26, 24), ctx = c.getContext('2d');
+  const W = 52, H = 48, c = newCan(W, H), ctx = c.getContext('2d');
   const M = { k: CPAL.out, C: CPAL.cape, c: CPAL.capeD, L: CPAL.capeL, f: CPAL.fur, d: CPAL.furD, l: CPAL.furL, r: CPAL.cream, e: CPAL.lea, E: CPAL.leaL, g: CPAL.gold, G: CPAL.goldL, m: CPAL.met, M: CPAL.metL };
   // cape spread behind the shoulders
-  stamp(ctx, [
+  stampUp(ctx, [
     '.....kkkkkk.....',
     '....kcCCCCck....',
     '...kcCCCCCCck...',
@@ -508,9 +565,30 @@ function buildOtterTorso() {
     'kcCCCcCCCcCCCCck',
     '.kcCCcCCCcCCCck.',
     '..kkcckkkcckkk..',
-  ], 5, 10, M);
+  ], 10, 20, M);
+  // cape folds: a lit crease and a shadow either side of it, every few pixels
+  for (let y = 22; y < 44; y++) for (let x = 12; x < 40; x++) {
+    const fold = Math.sin((x - 26) * 0.55);
+    if (fold > 0.86) px(ctx, CPAL.capeL, x, y);
+    else if (fold < -0.86) px(ctx, CPAL.capeD, x, y);
+  }
+  // redraw the cape outline the folds just walked over
+  stampUp(ctx, [
+    '.....kkkkkk.....',
+    '....k......k....',
+    '...k........k...',
+    '..k..........k..',
+    '..k..........k..',
+    '.k............k.',
+    '.k............k.',
+    'k..............k',
+    'k..............k',
+    'k..............k',
+    '.k............k.',
+    '..kkkkkkkkkkkk..',
+  ], 10, 20, M);
   // torso (fur) over the cape
-  stamp(ctx, [
+  stampUp(ctx, [
     '..kkkkkkkk..',
     '.kddffffddk.',
     'kdffffffffdk',
@@ -521,32 +599,45 @@ function buildOtterTorso() {
     'kddffffffddk',
     '.kkddddddkk.',
     '...kkkkkk...',
-  ], 7, 8, M);
-  // bandolier strap + brass buckle
-  stamp(ctx, [
-    'e.........',
-    '.e........',
-    '..E.......',
-    '...e......',
-    '....e.....',
-    '.....E....',
-  ], 9, 10, M);
-  px(ctx, CPAL.gold, 14, 15, 3, 3); px(ctx, CPAL.goldL, 14, 15, 3, 1); px(ctx, CPAL.goldD, 14, 17, 3, 1);
-  // shoulder pauldron (salvaged steel)
-  stamp(ctx, ['kkkk', 'kMMk', 'kmmk', '.kk.'], 6, 9, M);
-  stamp(ctx, ['kkkk', 'kMMk', 'kmmk', '.kk.'], 17, 9, M);
-  return spriteFrom(c, 13, 14);
+  ], 14, 16, M);
+  // bandolier strap: stitched edges and brass cartridges in the loops
+  for (let i = 0; i < 12; i++) {
+    const x = 18 + i * 2, y = 20 + i * 2;
+    px(ctx, CPAL.leaD, x, y, 2, 3); px(ctx, CPAL.lea, x, y, 2, 2); px(ctx, CPAL.leaL, x, y, 2, 1);
+    if (i % 3 === 1) { px(ctx, CPAL.gold, x, y + 1, 2, 2); px(ctx, CPAL.goldL, x, y + 1, 1, 1); }
+    else if (i % 3 === 2) px(ctx, CPAL.creamD, x, y + 2, 2, 1);
+  }
+  // brass buckle over the heart
+  px(ctx, CPAL.out, 28, 30, 6, 6);
+  px(ctx, CPAL.goldD, 29, 31, 4, 4); px(ctx, CPAL.gold, 29, 31, 4, 2); px(ctx, CPAL.goldL, 29, 31, 2, 1);
+  px(ctx, CPAL.out, 30, 32, 2, 2);
+  // shoulder pauldrons (salvaged steel), bevelled and riveted
+  for (const sx of [12, 34]) {
+    stampUp(ctx, ['kkkk', 'kMMk', 'kmmk', '.kk.'], sx, 18, { k: CPAL.out, M: CPAL.metL, m: CPAL.met });
+    px(ctx, CPAL.metLL, sx + 2, 20, 4, 1);
+    px(ctx, CPAL.metDD, sx + 2, 25, 4, 1);
+    px(ctx, CPAL.metLL, sx + 3, 22); px(ctx, CPAL.out2, sx + 3, 23);
+  }
+  // fine fur grain and cape weave, then a lit rim on every upper edge
+  texture(ctx, W, H, [
+    [CPAL.fur, CPAL.furD, 0.16, 1], [CPAL.fur, CPAL.furL, 0.08, 3],
+    [CPAL.furD, CPAL.furDD, 0.14, 5], [CPAL.furL, CPAL.furLL, 0.12, 7],
+    [CPAL.cream, CPAL.creamD, 0.14, 9], [CPAL.cape, CPAL.capeD, 0.10, 11],
+    [CPAL.capeL, CPAL.cape, 0.12, 13],
+  ]);
+  edgeLight(ctx, W, H, CPAL.furLL, CPAL.furDD);
+  return spriteFromHi(c, 26, 28);
 }
 
-// Head + tricorn hat. `look` shifts the muzzle for a turned head.
+// Head + tricorn hat.
 function buildOtterHead() {
-  const c = newCan(24, 22), ctx = c.getContext('2d');
+  const W = 48, H = 44, c = newCan(W, H), ctx = c.getContext('2d');
   const M = {
     k: CPAL.out, f: CPAL.fur, d: CPAL.furD, D: CPAL.furDD, l: CPAL.furL, L: CPAL.furLL,
     r: CPAL.cream, R: CPAL.creamD, h: CPAL.hat, H: CPAL.hatL, x: CPAL.hatD, X: CPAL.hatLL, W: CPAL.white,
   };
   // ---- head fur (round otter skull, ears)
-  stamp(ctx, [
+  stampUp(ctx, [
     '.kk........kk.',
     'kddk......kddk',
     'kdfdk....kdfdk',
@@ -561,9 +652,17 @@ function buildOtterHead() {
     '..kddffffddk..',
     '...kkddddkk...',
     '.....kkkk.....',
-  ], 5, 6, M);
+  ], 10, 12, M);
+  // inner ears, and a soft crown highlight down the middle of the skull
+  px(ctx, '#5a3040', 13, 16, 3, 4); px(ctx, '#7a4356', 13, 16, 3, 2);
+  px(ctx, '#5a3040', 32, 16, 3, 4); px(ctx, '#7a4356', 32, 16, 3, 2);
+  for (let y = 22; y < 30; y++) px(ctx, CPAL.furL, 22 - (y - 22 >> 2), y, 4, 1);
+  px(ctx, CPAL.furLL, 22, 22, 3, 2);
+  // cheek fluff at the jawline
+  for (let i = 0; i < 4; i++) { px(ctx, CPAL.furL, 11 + i, 32 + i); px(ctx, CPAL.furL, 36 - i, 32 + i); }
+
   // ---- tricorn hat sits on top, brim upturned at three corners
-  stamp(ctx, [
+  stampUp(ctx, [
     '...kkkkkkkkkkkk...',
     '..kxxxxxxxxxxxxk..',
     '.kxhhhhhhhhhhhhxk.',
@@ -573,108 +672,171 @@ function buildOtterHead() {
     'kkxhhhhhhhhhhhhxkk',
     '.kkxxxxxxxxxxxxkk.',
     '..kkkkkkkkkkkkkk..',
-  ], 3, 0, M);
-  // hat band + skull badge
-  for (let x = 5; x < 19; x++) px(ctx, CPAL.goldD, x, 6);
-  px(ctx, CPAL.goldL, 5, 6, 14, 1);
-  stamp(ctx, [
+  ], 6, 0, M);
+  // crown crease and a felt nap on the brim
+  for (let x = 14; x < 34; x++) { px(ctx, CPAL.hatLL, x, 7); px(ctx, CPAL.hatD, x, 9); }
+  for (let x = 10; x < 38; x++) px(ctx, CPAL.hatL, x, 5);
+  // hat band with a gold edge, and a skull badge
+  for (let x = 10; x < 38; x++) { px(ctx, CPAL.goldD, x, 12, 1, 2); px(ctx, CPAL.goldL, x, 12); }
+  stampUp(ctx, [
     '.kkkk.',
     'kWWWWk',
     'kWkWkW',
     'kWWWWk',
     '.kkkk.',
-  ], 9, 1, M);
-  return spriteFrom(c, 12, 12);
+  ], 18, 2, M);
+  // eye sockets + nose holes in the badge skull, now that they fit
+  px(ctx, CPAL.out, 21, 5, 2, 2); px(ctx, CPAL.out, 25, 5, 2, 2); px(ctx, CPAL.out, 23, 8, 2, 1);
+  texture(ctx, W, H, [
+    [CPAL.fur, CPAL.furD, 0.16, 1], [CPAL.fur, CPAL.furL, 0.09, 3],
+    [CPAL.furD, CPAL.furDD, 0.14, 5], [CPAL.furL, CPAL.furLL, 0.12, 7],
+    [CPAL.hat, CPAL.hatD, 0.13, 9], [CPAL.hatL, CPAL.hat, 0.12, 11],
+  ]);
+  edgeLight(ctx, W, H, CPAL.furLL, CPAL.furDD);
+  return spriteFromHi(c, 24, 24);
 }
 
 // Muzzle + expression are drawn live on top of the head so they can animate.
 // exp: 'idle' | 'happy' | 'angry' | 'talk' | 'surprised' | 'hurt'
+// All coordinates are the original face, doubled, so the expressions land in
+// exactly the same place on the skull — with room now for iris, lash and tooth.
 function drawOtterFace(ctx, exp, blink, t) {
   const O = CPAL.out, C = CPAL.cream, CD = CPAL.creamD, E = CPAL.eye, W = CPAL.shine;
-  void E; void W;
   // muzzle pad
-  stamp(ctx, [
+  stampUp(ctx, [
     '.kkkkkk.',
     'kCCCCCCk',
     'kCCCCCCk',
     'kCCCCCCk',
     '.kCCCCk.',
     '..kkkk..',
-  ], 8, 13, { k: O, C });
-  // nose
-  px(ctx, O, 11, 14, 3, 2); px(ctx, CPAL.furDD, 11, 14, 3, 1);
+  ], 16, 26, { k: O, C });
+  px(ctx, CD, 18, 32, 12, 2);                      // pad shadow
+  px(ctx, CPAL.white, 19, 29, 8, 1);               // lit crown of the pad
+  // nose leather with a lit bridge and two nostrils
+  px(ctx, O, 21, 27, 8, 5);
+  px(ctx, '#6a4436', 22, 28, 6, 3);
+  px(ctx, '#8a5b46', 22, 28, 6, 1);
+  px(ctx, CPAL.white, 23, 28, 2, 1);
+  px(ctx, O, 22, 30, 2, 1); px(ctx, O, 26, 30, 2, 1);
   const brow = exp === 'angry' ? 1 : exp === 'surprised' ? -1 : 0;
-  // eyes
+
   // drowning / agony: eyes screwed shut, cheeks puffed, mouth gasping
   if (exp === 'drown' || exp === 'pain') {
-    px(ctx, O, 6, 10, 5, 1); px(ctx, O, 7, 9, 3, 1); px(ctx, O, 7, 11, 3, 1);
-    px(ctx, O, 13, 10, 5, 1); px(ctx, O, 14, 9, 3, 1); px(ctx, O, 14, 11, 3, 1);
-    px(ctx, CPAL.furDD, 5, 8, 5, 1); px(ctx, CPAL.furDD, 14, 8, 5, 1);
+    for (const ex of [12, 26]) {
+      px(ctx, O, ex, 20, 10, 2); px(ctx, O, ex + 2, 18, 6, 2); px(ctx, O, ex + 2, 22, 6, 2);
+      px(ctx, CPAL.furDD, ex - 2, 16, 10, 2);
+    }
     const g = Math.floor(t * 4) & 1;
-    px(ctx, O, 10 - g, 17, 5 + g * 2, 4 + g);
-    px(ctx, CPAL.bloodD, 11 - g, 18, 3 + g * 2, 2 + g);
-    px(ctx, CD, 4, 14, 3, 1); px(ctx, CD, 4, 16, 3, 1);
-    px(ctx, CD, 17, 14, 3, 1); px(ctx, CD, 17, 16, 3, 1);
+    px(ctx, O, 20 - g * 2, 34, 10 + g * 4, 8 + g * 2);
+    px(ctx, CPAL.bloodD, 22 - g * 2, 36, 6 + g * 4, 4 + g * 2);
+    for (let i = 0; i < 2; i++) { px(ctx, CD, 8, 28 + i * 4, 6, 2); px(ctx, CD, 34, 28 + i * 4, 6, 2); }
     return;
   }
   const shut = blink || exp === 'happy';
-  for (const ex of [7, 14]) {
-    if (shut) { px(ctx, O, ex, 11, 3, 1); continue; }
+  for (const ex of [14, 28]) {
+    if (shut) { px(ctx, O, ex, 22, 6, 2); px(ctx, CPAL.furDD, ex + 1, 24, 4, 1); continue; }
     const big = exp === 'surprised' ? 1 : 0;
-    px(ctx, CPAL.white, ex - big, 10 - big, 3 + big * 2, 3 + big * 2);
-    px(ctx, O, ex - big, 10 - big, 3 + big * 2, 1);
-    px(ctx, E, ex + (exp === 'angry' ? 0 : 0), 11, 2, 2);
-    px(ctx, W, ex, 11);
+    const x0 = ex - big, y0 = 20 - big, w = 6 + big * 2, h = 6 + big * 2;
+    // rounded socket, white, iris, pupil, catchlight — a real eye at last
+    px(ctx, O, x0, y0 - 1, w, 1); px(ctx, O, x0, y0 + h, w, 1);
+    px(ctx, O, x0 - 1, y0, 1, h); px(ctx, O, x0 + w, y0, 1, h);
+    px(ctx, CPAL.white, x0, y0, w, h);
+    px(ctx, O, x0, y0); px(ctx, O, x0 + w - 1, y0); px(ctx, O, x0, y0 + h - 1); px(ctx, O, x0 + w - 1, y0 + h - 1);
+    px(ctx, '#b9c4d0', x0 + 1, y0 + h - 1, w - 2, 1);
+    px(ctx, '#6a4d2a', ex + 1, 20, 4, 5);
+    px(ctx, E, ex + 2, 21, 2, 3);
+    px(ctx, W, ex + 1, 20, 1, 1);
   }
-  // brows
-  if (brow !== 0) {
-    px(ctx, CPAL.furDD, 6, 9 + (brow > 0 ? 1 : -1), 4, 1);
-    px(ctx, CPAL.furDD, 13, 9 + (brow > 0 ? 1 : -1), 4, 1);
+  // brows: angry ones slant in over the sockets, surprised ones lift clear
+  if (brow > 0) {
+    for (let i = 0; i < 9; i++) {
+      px(ctx, CPAL.furDD, 12 + i, 17 + (i >> 2), 1, 2);
+      px(ctx, CPAL.furDD, 35 - i, 17 + (i >> 2), 1, 2);
+    }
+  } else if (brow < 0) {
+    px(ctx, CPAL.furDD, 13, 17, 8, 2); px(ctx, CPAL.furDD, 27, 17, 8, 2);
   }
-  // mouth
-  if (exp === 'happy') { px(ctx, O, 10, 18, 5, 1); px(ctx, O, 9, 17); px(ctx, O, 15, 17); }
-  else if (exp === 'angry') { px(ctx, O, 10, 18, 5, 1); px(ctx, O, 9, 19); px(ctx, O, 15, 19); }
-  else if (exp === 'talk') { const o = (Math.floor(t * 9) & 1); px(ctx, O, 10, 17, 5, 2 + o); px(ctx, CPAL.blood, 11, 18, 3, o); }
-  else if (exp === 'surprised') { px(ctx, O, 11, 17, 3, 3); px(ctx, CPAL.bloodD, 11, 18, 3, 2); }
-  else px(ctx, O, 10, 18, 5, 1);
-  // whiskers
-  px(ctx, CD, 4, 14, 3, 1); px(ctx, CD, 4, 16, 3, 1);
-  px(ctx, CD, 17, 14, 3, 1); px(ctx, CD, 17, 16, 3, 1);
+  // mouth — with teeth, now that a tooth fits
+  if (exp === 'happy') {
+    px(ctx, O, 20, 36, 10, 2); px(ctx, O, 18, 34, 2, 2); px(ctx, O, 30, 34, 2, 2);
+    px(ctx, CPAL.white, 22, 35, 3, 2); px(ctx, CPAL.white, 26, 35, 3, 2);
+  } else if (exp === 'angry') {
+    px(ctx, O, 20, 36, 10, 2); px(ctx, O, 18, 38, 2, 2); px(ctx, O, 30, 38, 2, 2);
+    px(ctx, CPAL.white, 21, 34, 2, 3); px(ctx, CPAL.white, 27, 34, 2, 3);
+  } else if (exp === 'talk') {
+    const o = (Math.floor(t * 9) & 1);
+    px(ctx, O, 20, 34, 10, 4 + o * 2); px(ctx, CPAL.blood, 22, 36, 6, 1 + o * 2);
+    px(ctx, CPAL.white, 22, 35, 6, 1);
+  } else if (exp === 'surprised') {
+    px(ctx, O, 22, 34, 6, 6); px(ctx, CPAL.bloodD, 23, 36, 4, 3);
+  } else { px(ctx, O, 20, 36, 10, 2); px(ctx, O, 19, 35); px(ctx, O, 30, 35); }
+  // whiskers — individual, splayed, tapering to a fine tip
+  for (let i = 0; i < 3; i++) {
+    const wy = 28 + i * 4;
+    px(ctx, CD, 10, wy, 4, 1); px(ctx, C, 12, wy, 2, 1);
+    px(ctx, CD, 34, wy, 4, 1); px(ctx, C, 34, wy, 2, 1);
+  }
 }
 
 // ---- cigar (clamped in the muzzle, embers + smoke) ------------------------
 function buildCigar() {
-  const c = newCan(12, 5), ctx = c.getContext('2d');
-  stamp(ctx, [
+  const c = newCan(24, 10), ctx = c.getContext('2d');
+  stampUp(ctx, [
     'kkkkkkkkk..',
     'kDDDDDDDek.',
     'kDdddddDEek',
     'kDDDDDDDek.',
     'kkkkkkkkk..',
   ], 0, 0, { k: CPAL.out, D: CPAL.woodDD, d: CPAL.woodD, e: CPAL.ember, E: CPAL.emberL });
-  return spriteFrom(c, 0, 2);
+  // a rolled-leaf highlight, a paper band, and ash creeping back from the coal
+  for (let x = 3; x < 15; x++) px(ctx, CPAL.woodD, x, 4);
+  px(ctx, CPAL.woodDD, 4, 2, 2, 6); px(ctx, CPAL.goldD, 4, 4, 2, 2);
+  px(ctx, CPAL.smoke, 15, 3, 2, 4); px(ctx, CPAL.emberL, 17, 4, 1, 2);
+  return spriteFromHi(c, 0, 5);
 }
 
 // ---- arm (shoulder at the anchor, hand at the far end) --------------------
 function buildOtterArm() {
-  const c = newCan(12, 7), ctx = c.getContext('2d');
-  stamp(ctx, [
+  const c = newCan(24, 14), ctx = c.getContext('2d');
+  stampUp(ctx, [
     '.kkkkkkkkk.',
     'kdffffffdDk',
     'kffffffffDk',
     'kdffffffdDk',
     '.kkkkkkkkk.',
-  ], 0, 1, { k: CPAL.out, f: CPAL.fur, d: CPAL.furD, D: CPAL.furDD });
-  // leather cuff
-  px(ctx, CPAL.lea, 7, 2, 2, 3); px(ctx, CPAL.leaL, 7, 2, 2, 1);
-  return spriteFrom(c, 1, 3.5);
+  ], 0, 2, { k: CPAL.out, f: CPAL.fur, d: CPAL.furD, D: CPAL.furDD });
+  // a lit ridge along the top of the forearm
+  for (let x = 3; x < 17; x++) px(ctx, CPAL.furL, x, 5);
+  // leather cuff with stitching
+  for (let y = 5; y <= 11; y++) {
+    px(ctx, CPAL.lea, 14, y, 3, 1); px(ctx, CPAL.leaD, 16, y);
+    if ((y & 1) === 0) px(ctx, CPAL.creamD, 14, y);
+  }
+  px(ctx, CPAL.leaL, 14, 5, 3, 1);
+  // the paw: a palm and three curled fingers with dark claws
+  px(ctx, CPAL.out, 17, 4, 5, 7);
+  px(ctx, CPAL.furD, 18, 5, 3, 5);
+  px(ctx, CPAL.fur, 18, 5, 2, 4);
+  px(ctx, CPAL.furL, 18, 5, 2, 1);
+  for (let i = 0; i < 3; i++) { px(ctx, CPAL.furDD, 18, 6 + i * 2, 3, 1); px(ctx, CPAL.out, 21, 6 + i * 2); }
+  texture(ctx, 24, 14, [
+    [CPAL.fur, CPAL.furD, 0.16, 1], [CPAL.furD, CPAL.furDD, 0.12, 3], [CPAL.furL, CPAL.furLL, 0.12, 5],
+  ]);
+  return spriteFromHi(c, 2, 7);
 }
 
 function buildOtterTail() {
-  const W = 18, H = 10;
-  const f = blobField(W, H, [{ x: 4, y: 5, rx: 5, ry: 4.4 }, { x: 9, y: 5, rx: 5, ry: 3.6 }, { x: 14, y: 5, rx: 4, ry: 2.6 }]);
-  const { c } = shadeBlob(W, H, f, [CPAL.furDD, CPAL.furD, CPAL.fur, CPAL.furL], { outline: CPAL.out, lift: 0.20, smooth: 1 });
-  return spriteFrom(c, 2, 5);
+  const W = 36, H = 20;
+  const f = blobField(W, H, [{ x: 8, y: 10, rx: 10, ry: 8.8 }, { x: 18, y: 10, rx: 10, ry: 7.2 }, { x: 28, y: 10, rx: 8, ry: 5.2 }]);
+  const { c, ctx } = shadeBlob(W, H, f, [CPAL.furDD, CPAL.furD, CPAL.fur, CPAL.furL], { outline: CPAL.out, lift: 0.20, smooth: 1 });
+  // a pale dorsal stripe down the rudder, and guard hairs along the underside
+  for (let x = 5; x < 30; x++) if (f[7 * W + x] > 0.25) px(ctx, CPAL.furL, x, 7);
+  for (let x = 6; x < 30; x += 3) { const y = 14 + Math.round(Math.sin(x * 0.4)); if (f[y * W + x] > 0.15) px(ctx, CPAL.furDD, x, y, 2, 1); }
+  texture(ctx, W, H, [
+    [CPAL.fur, CPAL.furD, 0.16, 1], [CPAL.furD, CPAL.furDD, 0.13, 3], [CPAL.furL, CPAL.furLL, 0.12, 5],
+  ]);
+  return spriteFromHi(c, 4, 10);
 }
 
 // ===========================================================================
@@ -684,8 +846,8 @@ const CH = {};
 function buildCharacters() {
   CH.manatee      = buildManateeBody(false);
   CH.manateeArmor = buildManateeBody(true);
-  CH.manateeHurt  = tintSprite(CH.manateeArmor, '#ffffff', 0.85);
-  CH.manateeHurtP = tintSprite(CH.manatee, '#ffffff', 0.85);
+  CH.manateeHurt  = tintHi(CH.manateeArmor, '#ffffff', 0.85);
+  CH.manateeHurtP = tintHi(CH.manatee, '#ffffff', 0.85);
   CH.flipper      = buildFlipper();
   CH.saddle       = buildSaddle();
   CH.flags        = []; for (let i = 0; i < 8; i++) CH.flags.push(buildFlag(i));
@@ -694,10 +856,10 @@ function buildCharacters() {
   CH.otterArm     = buildOtterArm();
   CH.otterTail    = buildOtterTail();
   CH.cigar        = buildCigar();
-  CH.otterRage    = tintSprite(CH.otterTorso, '#ff4a26', 0.4);
-  CH.headRage     = tintSprite(CH.otterHead, '#ff4a26', 0.35);
-  // head canvas we redraw the face onto each frame
-  CH.headBuf = newCan(CH.otterHead.w, CH.otterHead.h);
+  CH.otterRage    = tintHi(CH.otterTorso, '#ff4a26', 0.4);
+  CH.headRage     = tintHi(CH.otterHead, '#ff4a26', 0.35);
+  // head canvas we redraw the face onto each frame (hi-res, like its source)
+  CH.headBuf = newCanHi(CH.otterHead.w, CH.otterHead.h);
   CH.headBufCtx = CH.headBuf.getContext('2d');
   buildBoats();
   buildShields();
@@ -708,7 +870,7 @@ function buildCharacters() {
 function otterHeadWithFace(exp, blink, t, rage) {
   const ctx = CH.headBufCtx;
   ctx.clearRect(0, 0, CH.headBuf.width, CH.headBuf.height);
-  ctx.drawImage((rage ? CH.headRage : CH.otterHead).c, 0, 0);
+  drawRaw(ctx, (rage ? CH.headRage : CH.otterHead).c, 0, 0);
   drawOtterFace(ctx, exp, blink, t);
   return CH.headBuf;
 }
@@ -940,102 +1102,173 @@ const Toon = {
 //  (bow right). Generated once at load, same sprite keys as before.
 // ===========================================================================
 function buildBoat(o) {
-  const L = o.len, B = o.beam;                 // length, half-beam at the widest
-  const W = L + 4, H = B * 2 + 6, cy = H / 2;
+  // o.len / o.beam are WORLD units; the hull is rasterized at AS art px per unit
+  const L = o.len * AS, B = o.beam * AS;       // length, half-beam at the widest
+  const W = L + 4 * AS, H = B * 2 + 6 * AS, cy = Math.round(H / 2);
   const c = newCan(W, H), ctx = c.getContext('2d');
   const hullL = o.hullL || CPAL.woodL, hull = o.hull || CPAL.wood;
   const hullD = o.hullD || CPAL.woodD, hullDD = o.hullDD || CPAL.woodDD;
   const deck = o.deck || CPAL.wood, deckD = o.deckD || CPAL.woodD;
+  const X0 = 2 * AS;
 
   const halfW = x => {
-    const u = clamp((x - 2) / L, 0, 1);
+    const u = clamp((x - X0) / L, 0, 1);
     if (u < 0.33) return B * (0.70 + 0.30 * (u / 0.33));
     return B * Math.max(0, 1 - Math.pow((u - 0.33) / 0.67, 1.7));
   };
   // ---- hull: outline, topside shading, then the deck well
-  for (let x = 2; x <= L + 1; x++) {
-    const hw = halfW(x); if (hw < 0.6) continue;
+  for (let x = X0; x <= L + X0 - 1; x++) {
+    const hw = halfW(x); if (hw < 1.2) continue;
     const y0 = Math.round(cy - hw), y1 = Math.round(cy + hw);
     for (let y = y0; y <= y1; y++) {
-      const edge = y === y0 || y === y1 || x === 2 || x > L;
+      const edge = y === y0 || y === y1 || x === X0 || x > L + X0 - 2;
       if (edge) { px(ctx, CPAL.out, x, y); continue; }
       const near = Math.min(y - y0, y1 - y);
-      // gunwale catches the light on the upper side, shadow on the lower
-      px(ctx, near <= 1 ? (y - y0 <= 1 ? hullL : hullDD) : near <= 2 ? hull : hullD, x, y);
+      // gunwale: a lit cap rail over a shadowed topside, and a dark boot line
+      let col;
+      if (near <= 1) col = (y - y0 <= 1) ? hullL : hullDD;
+      else if (near <= 3) col = (y - y0 <= 3) ? hull : hullD;
+      else col = hullD;
+      // hull planking runs fore-and-aft: a seam every 3px
+      if (((y - cy) % 3) === 0 && near > 3) col = hullDD;
+      px(ctx, col, x, y);
     }
   }
-  // ---- open deck well with fore-and-aft planking
-  const wellA = Math.round(2 + L * 0.14), wellB = Math.round(2 + L * 0.82);
+  // ---- open deck well with fore-and-aft planking and visible frames
+  const wellA = Math.round(X0 + L * 0.14), wellB = Math.round(X0 + L * 0.82);
   for (let x = wellA; x <= wellB; x++) {
-    const hw = halfW(x) - 3; if (hw < 1) continue;
+    const hw = halfW(x) - 3 * AS; if (hw < 1.5) continue;
     const y0 = Math.round(cy - hw), y1 = Math.round(cy + hw);
     for (let y = y0; y <= y1; y++) {
       if (y === y0 || y === y1 || x === wellA || x === wellB) { px(ctx, CPAL.out2, x, y); continue; }
-      px(ctx, ((y - y0) % 3 === 0) ? deckD : deck, x, y);
+      let col = ((y - y0) % 5 === 0) ? deckD : deck;
+      if (((x - wellA) % 9) === 0) col = deckD;              // athwartship frame
+      if (hash2(x * 5, y * 3) > 0.93) col = deckD;           // wear
+      px(ctx, col, x, y);
     }
   }
   // ---- thwarts (bench seats) across the well
   for (const f of (o.thwarts || [0.34, 0.62])) {
-    const x = Math.round(2 + L * f), hw = halfW(x) - 2; if (hw < 1) continue;
-    for (let y = Math.round(cy - hw); y <= Math.round(cy + hw); y++) px(ctx, hullL, x, y);
-    px(ctx, CPAL.out2, x + 1, Math.round(cy - hw), 1, Math.round(hw * 2) + 1);
+    const x = Math.round(X0 + L * f), hw = halfW(x) - 2 * AS; if (hw < 1.5) continue;
+    for (let y = Math.round(cy - hw); y <= Math.round(cy + hw); y++) { px(ctx, hullL, x, y, 2, 1); px(ctx, hullD, x + 1, y); }
+    px(ctx, CPAL.out2, x + 2, Math.round(cy - hw), 1, Math.round(hw * 2) + 1);
+    px(ctx, CPAL.out2, x - 1, Math.round(cy - hw), 1, Math.round(hw * 2) + 1);
+  }
+  // ---- rivets / fastenings along the sheer, every boat
+  for (let x = X0 + 4; x < L + X0 - 4; x += 7) {
+    const hw = halfW(x); if (hw < 3) continue;
+    px(ctx, hullL, x, Math.round(cy - hw) + 2); px(ctx, hullDD, x, Math.round(cy + hw) - 2);
   }
   // ---- transom + outboard motor at the stern
   if (o.motor) {
-    const mx = 0, my = Math.round(cy);
+    const mx = 1, my = cy;
     stamp(ctx, [
-      'kkkkk',
-      'kXXXk',
-      'kXmXk',
-      'kXXXk',
-      'kkkkk',
-    ], mx, my - 2, { k: CPAL.out, X: CPAL.metDD, m: CPAL.metL });
+      'kkkkkkkk',
+      'kXXXXXXk',
+      'kXmmmmXk',
+      'kXmMMmXk',
+      'kXmMMmXk',
+      'kXmmmmXk',
+      'kXXXXXXk',
+      'kkkkkkkk',
+    ], mx, my - 4, { k: CPAL.out, X: CPAL.metDD, m: CPAL.metD, M: CPAL.metL });
+    px(ctx, CPAL.out, mx + 8, my - 1, 3, 2);        // shaft
+    px(ctx, CPAL.metL, mx + 2, my - 3, 1, 2);
   }
   // ---- wheelhouse / cabin
   if (o.cabin) {
     const cw = Math.round(L * 0.22), ch = Math.round(B * 1.1);
-    const cx0 = Math.round(2 + L * o.cabin), cy0 = Math.round(cy - ch / 2);
+    const cx0 = Math.round(X0 + L * o.cabin), cy0 = Math.round(cy - ch / 2);
     for (let y = cy0; y < cy0 + ch; y++) for (let x = cx0; x < cx0 + cw; x++) {
       const e = y === cy0 || y === cy0 + ch - 1 || x === cx0 || x === cx0 + cw - 1;
-      px(ctx, e ? CPAL.out : (y < cy0 + 2 ? CPAL.metL : y > cy0 + ch - 3 ? CPAL.metDD : CPAL.met), x, y);
+      let col = e ? CPAL.out : (y < cy0 + 4 ? CPAL.metL : y > cy0 + ch - 5 ? CPAL.metDD : CPAL.met);
+      if (!e && ((x - cx0) % 5) === 0) col = CPAL.metD;   // panel seams
+      px(ctx, col, x, y);
     }
-    // lit window
-    px(ctx, CPAL.goldL, cx0 + cw - 3, cy0 + 2, 2, Math.max(1, ch - 4));
+    // lit windows with mullions, and a rail along the roof
+    for (let i = 0; i < 3; i++) {
+      const wy = cy0 + 3 + i * Math.max(2, Math.floor((ch - 6) / 3));
+      if (wy > cy0 + ch - 4) break;
+      px(ctx, CPAL.out, cx0 + cw - 5, wy, 4, 2);
+      px(ctx, CPAL.goldL, cx0 + cw - 4, wy, 2, 1);
+      px(ctx, CPAL.gold, cx0 + cw - 4, wy + 1, 2, 1);
+    }
+    px(ctx, CPAL.metLL, cx0 + 1, cy0 + 1, cw - 2, 1);
   }
   // ---- role-specific gear
   if (o.gear === 'net') {
-    for (let x = wellA + 2; x < wellA + Math.round(L * 0.3); x++)
-      for (let y = Math.round(cy - B * 0.5); y < Math.round(cy + B * 0.5); y++)
-        if (((x + y) & 1) === 0) px(ctx, CPAL.white, x, y);
-    px(ctx, CPAL.out2, wellA + 1, Math.round(cy - B * 0.5), 1, Math.round(B));
-  } else if (o.gear === 'harpoon') {
-    const hx = Math.round(2 + L * 0.62);
-    px(ctx, CPAL.metDD, hx, Math.round(cy) - 1, Math.round(L * 0.3), 3);
-    px(ctx, CPAL.metL, hx, Math.round(cy), Math.round(L * 0.3), 1);
-    px(ctx, CPAL.out, hx - 2, Math.round(cy) - 3, 4, 7);
-  } else if (o.gear === 'dyna') {
-    const bx = Math.round(2 + L * 0.3);
-    stamp(ctx, ['kkkkkk', 'krrrrk', 'kRrRrk', 'krrrrk', 'kkkkkk'], bx, Math.round(cy) - 2,
-      { k: CPAL.out, r: CPAL.blood, R: '#ff6161' });
-  } else if (o.gear === 'turret') {
-    const tx = Math.round(2 + L * 0.55);
-    for (let y = Math.round(cy) - 3; y <= Math.round(cy) + 3; y++)
-      for (let x = tx - 3; x <= tx + 3; x++) {
-        const d = Math.hypot(x - tx, y - cy); if (d > 3.4) continue;
-        px(ctx, d > 2.6 ? CPAL.out : d > 1.4 ? CPAL.metD : CPAL.met, x, y);
+    const nx0 = wellA + 4, nx1 = wellA + Math.round(L * 0.3);
+    for (let x = nx0; x < nx1; x++)
+      for (let y = Math.round(cy - B * 0.5); y < Math.round(cy + B * 0.5); y++) {
+        // a real mesh: knots on a diagonal lattice
+        if (((x + y) & 3) === 0) px(ctx, CPAL.white, x, y);
+        else if (((x - y + 64) & 3) === 0) px(ctx, CPAL.creamD, x, y);
       }
-    px(ctx, CPAL.metDD, tx + 2, Math.round(cy) - 1, Math.round(L * 0.24), 2);
-    px(ctx, CPAL.metL, tx + 2, Math.round(cy) - 1, Math.round(L * 0.24), 1);
+    px(ctx, CPAL.out2, nx0 - 2, Math.round(cy - B * 0.5), 2, Math.round(B));
+    // corks along the float line
+    for (let y = Math.round(cy - B * 0.5); y < Math.round(cy + B * 0.5); y += 5) px(ctx, CPAL.ember, nx1, y, 2, 2);
+  } else if (o.gear === 'harpoon') {
+    const hx = Math.round(X0 + L * 0.62), len = Math.round(L * 0.3);
+    px(ctx, CPAL.metDD, hx, cy - 2, len, 5);
+    px(ctx, CPAL.metL, hx, cy - 1, len, 1);
+    px(ctx, CPAL.metLL, hx + len - 6, cy - 1, 6, 1);
+    px(ctx, CPAL.out, hx - 3, cy - 5, 6, 11);              // mount
+    px(ctx, CPAL.met, hx - 2, cy - 4, 4, 9);
+    px(ctx, CPAL.metL, hx - 2, cy - 4, 4, 2);
+    for (let i = 0; i < 3; i++) px(ctx, CPAL.metDD, hx - 2, cy - 1 + i * 2, 4, 1);
+  } else if (o.gear === 'dyna') {
+    const bx = Math.round(X0 + L * 0.3);
+    stamp(ctx, [
+      'kkkkkkkkkk',
+      'krrrrrrrrk',
+      'krRrrRrrRk',
+      'krRrrRrrRk',
+      'krrrrrrrrk',
+      'kfkkfkkfkk',
+      'kkkkkkkkkk',
+    ], bx, cy - 4, { k: CPAL.out, r: CPAL.blood, R: '#ff6161', f: CPAL.gold });
+    for (let i = 0; i < 3; i++) px(ctx, CPAL.emberL, bx + 2 + i * 3, cy + 2, 1, 2);
+  } else if (o.gear === 'turret') {
+    const tx = Math.round(X0 + L * 0.55);
+    for (let y = cy - 7; y <= cy + 7; y++)
+      for (let x = tx - 7; x <= tx + 7; x++) {
+        const d = Math.hypot(x - tx, y - cy); if (d > 7) continue;
+        px(ctx, d > 5.6 ? CPAL.out : d > 4.4 ? CPAL.metD : d > 2 ? CPAL.met : CPAL.metL, x, y);
+      }
+    for (let i = 0; i < 8; i++) {                                 // ring bolts
+      const th = i / 8 * TAU;
+      px(ctx, CPAL.metLL, Math.round(tx + Math.cos(th) * 5), Math.round(cy + Math.sin(th) * 5));
+    }
+    const bl = Math.round(L * 0.24);
+    px(ctx, CPAL.metDD, tx + 4, cy - 2, bl, 4);
+    px(ctx, CPAL.metL, tx + 4, cy - 2, bl, 1);
+    px(ctx, CPAL.out, tx + 4 + bl, cy - 3, 2, 6);                 // muzzle brake
   } else if (o.gear === 'crates') {
     for (const [fx, fy] of [[0.28, -0.4], [0.28, 0.35], [0.46, 0]]) {
-      const bx = Math.round(2 + L * fx), by = Math.round(cy + B * fy) - 2;
-      stamp(ctx, ['kkkkk', 'kTtTk', 'ktTtk', 'kTtTk', 'kkkkk'], bx, by,
-        { k: CPAL.out, T: CPAL.woodL, t: CPAL.woodD });
+      const bx = Math.round(X0 + L * fx), by = Math.round(cy + B * fy) - 4;
+      stamp(ctx, [
+        'kkkkkkkkk',
+        'kTTTTTTTk',
+        'kTttttTtk',
+        'kTtTTTtTk',
+        'kTttttTtk',
+        'kTTTTTTTk',
+        'kkkkkkkkk',
+      ], bx, by, { k: CPAL.out, T: CPAL.woodL, t: CPAL.woodD });
+      px(ctx, CPAL.metD, bx + 1, by + 3, 7, 1);                   // banding
     }
   }
   // ---- bow cleat + a coil of rope, every boat gets them
-  px(ctx, CPAL.metL, Math.round(2 + L * 0.9), Math.round(cy) - 1, 2, 2);
-  return spriteFrom(c, W / 2, cy);
+  const clx = Math.round(X0 + L * 0.88);
+  px(ctx, CPAL.out, clx, cy - 2, 3, 4);
+  px(ctx, CPAL.metL, clx, cy - 1, 2, 1); px(ctx, CPAL.metDD, clx, cy + 1, 2, 1);
+  // a small coil of rope, stowed off the centreline so it reads as gear
+  const rcx = Math.round(X0 + L * 0.72), rcy = Math.round(cy - B * 0.42);
+  for (let r = 1; r <= 3; r++) for (let th = 0; th < 20; th++) {
+    const ang = th / 20 * TAU;
+    px(ctx, r === 2 ? CPAL.creamD : CPAL.woodD, Math.round(rcx + Math.cos(ang) * r), Math.round(rcy + Math.sin(ang) * r * 0.8));
+  }
+  return spriteFromHi(c, W / 2, cy);
 }
 
 function buildBoats() {
@@ -1068,7 +1301,7 @@ function buildBoats() {
   };
   for (const k in defs) {
     SP.boats[k] = buildBoat(defs[k]);
-    SP.boatsHurt[k] = tintSprite(SP.boats[k], '#ffffff', 0.8);
+    SP.boatsHurt[k] = tintHi(SP.boats[k], '#ffffff', 0.8);
   }
 }
 
@@ -1076,36 +1309,46 @@ function buildBoats() {
 //  PARRY SHIELD — the Absorb ability reads as a real shield, not a ring
 // ===========================================================================
 function buildShieldSprite(R, rim, face, glow) {
-  const D = R * 2 + 3, c = newCan(D, D), ctx = c.getContext('2d'), o = R + 1;
+  // R is in WORLD units; the plate is rasterized at AS art px per unit
+  const r = R * AS, D = r * 2 + 3 * AS, c = newCan(D, D), ctx = c.getContext('2d'), o = Math.round(D / 2);
   const SIDES = 8, step = TAU / SIDES;
   const rAt = ang => { // octagon radius at an angle
     const a = ((ang % step) + step) % step - step / 2;
-    return R * Math.cos(step / 2) / Math.cos(a);
+    return r * Math.cos(step / 2) / Math.cos(a);
   };
   for (let y = 0; y < D; y++) for (let x = 0; x < D; x++) {
     const dx = x - o, dy = y - o, d = Math.hypot(dx, dy);
     if (d < 1) continue;
     const rr = rAt(Math.atan2(dy, dx));
     if (d > rr) continue;
-    if (d > rr - 1.6) { px(ctx, rim, x, y); continue; }
-    if (d > rr - 3.0) { px(ctx, face, x, y); continue; }
+    if (d > rr - 3) { px(ctx, rim, x, y); continue; }              // rim
+    if (d > rr - 4.5) continue;                                     // dark groove
+    if (d > rr - 7) { px(ctx, face, x, y); continue; }              // inner band
     // faceted interior: radial spokes + a hex weave, mostly transparent
     const ang = Math.atan2(dy, dx);
-    const spoke = Math.abs(((ang % step) + step) % step - step / 2) < 0.055;
+    const spoke = Math.abs(((ang % step) + step) % step - step / 2) < 0.045;
     if (spoke) px(ctx, face, x, y);
-    else if ((((x + y) & 7) === 0) || (((x - y + 64) & 7) === 0)) px(ctx, glow, x, y);
+    else if ((((x + y) & 15) === 0) || (((x - y + 128) & 15) === 0)) px(ctx, glow, x, y);
+    else if ((((x + y) & 15) === 1) || (((x - y + 128) & 15) === 1)) px(ctx, glow, x, y);
   }
   // shield emblem dead centre
   stamp(ctx, [
-    '.kkkkk.',
-    'kWWWWWk',
-    'kWwwwWk',
-    'kWwwwWk',
-    '.kWwWk.',
-    '..kWk..',
-    '...k...',
-  ], o - 3, o - 3, { k: rim, W: face, w: glow });
-  return spriteFrom(c, o, o);
+    '..kkkkkkkkkk..',
+    '.kWWWWWWWWWWk.',
+    'kWWWWWWWWWWWWk',
+    'kWWwwwwwwwwWWk',
+    'kWWwwwwwwwwWWk',
+    'kWWwwwwwwwwWWk',
+    'kWWWwwwwwwWWWk',
+    '.kWWwwwwwwWWk.',
+    '.kWWWwwwwWWWk.',
+    '..kWWwwwwWWk..',
+    '...kWWwwWWk...',
+    '....kWWWWk....',
+    '.....kWWk.....',
+    '......kk......',
+  ], o - 7, o - 7, { k: rim, W: face, w: glow });
+  return spriteFromHi(c, o, o);
 }
 function buildShields() {
   CH.shield     = buildShieldSprite(30, 'rgba(150,215,255,0.95)', 'rgba(120,195,250,0.55)', 'rgba(200,238,255,0.30)');
@@ -1143,136 +1386,193 @@ function triOutlined(ctx, fill, outline, a, b, c2) {
 // ===========================================================================
 //  THE VILLAGE CHIEF'S SHARK — procedural, top-down, bow... er, snout right
 // ===========================================================================
-const SHK_W = 92, SHK_H = 44, SHK_CX = 46, SHK_CY = 22;
+const SHK_W = 184, SHK_H = 88, SHK_CX = 92, SHK_CY = 44;
 function buildShark(rage) {
   const lobes = [
-    { x: 19, y: 22, rx: 5.5,  ry: 3.4 },              // peduncle (fins drawn separately)
-    { x: 27, y: 22, rx: 8.5,  ry: 6.5 },
-    { x: 39, y: 22, rx: 12.5, ry: 10.0 },             // thickest
-    { x: 52, y: 22, rx: 12.0, ry: 9.5 },
-    { x: 64, y: 22, rx: 9.0,  ry: 7.5 },              // head
-    { x: 74, y: 22, rx: 6.4,  ry: 5.0 },
-    { x: 82, y: 22, rx: 3.6,  ry: 2.8 },              // snout
+    { x: 38,  y: 44, rx: 11.0, ry: 6.8 },             // peduncle (fins drawn separately)
+    { x: 54,  y: 44, rx: 17.0, ry: 13.0 },
+    { x: 78,  y: 44, rx: 25.0, ry: 20.0 },            // thickest
+    { x: 104, y: 44, rx: 24.0, ry: 19.0 },
+    { x: 128, y: 44, rx: 18.0, ry: 15.0 },            // head
+    { x: 148, y: 44, rx: 12.8, ry: 10.0 },
+    { x: 164, y: 44, rx: 7.2,  ry: 5.6 },             // snout
   ];
   const f = blobField(SHK_W, SHK_H, lobes);
-  const ramp0 = rage
+  const ramp = rage
     ? ['#23161d', '#3e2029', '#5c3138', '#7d4c4c', '#9e6d66']
     : ['#1b2433', '#2b374d', '#42526d', '#5e7291', '#8093b0'];
-  const ramp = ramp0;
   const body = shadeBlob(SHK_W, SHK_H, f, ramp, { outline: CPAL.out, smooth: 3, lift: 0.14 });
   // fins first, on their own layer, so the body overlaps their roots cleanly
   const c = newCan(SHK_W, SHK_H), ctx = c.getContext('2d');
   const finF = ramp[2], finD = ramp[1], finO = CPAL.out;
   // pectorals: broad deltas, swept back from just behind the gills
-  triOutlined(ctx, finF, finO, [58, 18], [47, 12], [38, 6]);
-  triOutlined(ctx, finF, finO, [58, 18], [38, 6], [46, 18]);
-  triOutlined(ctx, finF, finO, [58, 26], [47, 32], [38, 38]);
-  triOutlined(ctx, finF, finO, [58, 26], [38, 38], [46, 26]);
+  triOutlined(ctx, finF, finO, [116, 36], [94, 24], [76, 12]);
+  triOutlined(ctx, finF, finO, [116, 36], [76, 12], [92, 36]);
+  triOutlined(ctx, finF, finO, [116, 52], [94, 64], [76, 76]);
+  triOutlined(ctx, finF, finO, [116, 52], [76, 76], [92, 52]);
   // pelvic fins, small, further aft
-  triOutlined(ctx, finD, finO, [34, 19], [27, 17], [23, 12]);
-  triOutlined(ctx, finD, finO, [34, 25], [27, 27], [23, 32]);
+  triOutlined(ctx, finD, finO, [68, 38], [54, 34], [46, 24]);
+  triOutlined(ctx, finD, finO, [68, 50], [54, 54], [46, 64]);
   // caudal: a tall swept upper lobe over a shorter lower one
-  triOutlined(ctx, finF, finO, [26, 18], [23, 26], [8, 5]);
-  triOutlined(ctx, finF, finO, [26, 18], [8, 5], [17, 16]);
-  triOutlined(ctx, finD, finO, [26, 26], [23, 20], [12, 38]);
-  ctx.drawImage(body.c, 0, 0);
+  triOutlined(ctx, finF, finO, [52, 36], [46, 52], [16, 10]);
+  triOutlined(ctx, finF, finO, [52, 36], [16, 10], [34, 32]);
+  triOutlined(ctx, finD, finO, [52, 52], [46, 40], [24, 76]);
+  drawRaw(ctx, body.c, 0, 0);
 
   const pale = rage ? '#d8b2a8' : '#aebed6';
   const mid  = rage ? '#7d4c4c' : '#5e7291';
   const dark = rage ? '#3e2029' : '#2b374d';
+  const solid = (x, y, l) => { const i = y * SHK_W + x; return i >= 0 && i < f.length && f[i] > l; };
 
-  // countershading: sharks are pale underneath (lower half here)
-  for (let y = 24; y < SHK_H - 2; y++) for (let x = 12; x < 86; x++) {
-    const i = y * SHK_W + x; if (f[i] <= 0.06) continue;
-    if (f[i + SHK_W] <= 0.06 || ((x + y) & 3) === 0) px(ctx, mid, x, y);
+  // countershading: sharks are pale underneath (lower half here), with a
+  // dithered transition band instead of a hard line
+  for (let y = 46; y < SHK_H - 4; y++) for (let x = 24; x < 172; x++) {
+    if (!solid(x, y, 0.06)) continue;
+    if (!solid(x, y + 1, 0.06)) { px(ctx, mid, x, y); continue; }
+    // ordered dither, so the belly fades in cleanly instead of speckling
+    const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+    const k = clamp((y - 46) / 24, 0, 1);
+    if (BAYER[(y & 3) * 4 + (x & 3)] / 16 < k) px(ctx, mid, x, y);
+  }
+  // denticle texture over the back — the skin actually looks like sandpaper
+  for (let y = 12; y < 46; y++) for (let x = 40; x < 160; x++) {
+    if (!solid(x, y, 0.25)) continue;
+    if (hash2(x * 7, y * 13) > 0.965) px(ctx, dark, x, y);
+    else if (hash2(x * 5, y * 3) > 0.985) px(ctx, pale, x, y);
   }
   // dorsal ridge running down the spine
-  for (let x = 24; x < 62; x++) {
-    const i = 22 * SHK_W + x; if (f[i] <= 0.1) continue;
-    px(ctx, pale, x, 21); px(ctx, dark, x, 23);
+  for (let x = 48; x < 124; x++) {
+    if (!solid(x, 44, 0.1)) continue;
+    px(ctx, pale, x, 41, 1, 2); px(ctx, dark, x, 46, 1, 2);
   }
   // dorsal fin: a swept triangle standing proud of the back
-  for (let i = 0; i < 16; i++) {
-    const u = i / 15;
-    const w = Math.round(1 + Math.sin(Math.pow(u, 0.7) * Math.PI) * 5.5);
-    const x = 34 + i;
-    px(ctx, CPAL.out, x, 22 - w - 1, 1, 1); px(ctx, CPAL.out, x, 22 + w, 1, 1);
-    px(ctx, mid, x, 22 - w, 1, w * 2);
-    px(ctx, pale, x, 22 - w, 1, Math.max(1, w));
-    if (i > 11) px(ctx, dark, x, 22 - w, 1, w * 2);
+  for (let i = 0; i < 32; i++) {
+    const u = i / 31;
+    const w = Math.round(2 + Math.sin(Math.pow(u, 0.7) * Math.PI) * 11);
+    const x = 68 + i;
+    px(ctx, CPAL.out, x, 44 - w - 2, 1, 2); px(ctx, CPAL.out, x, 44 + w, 1, 2);
+    px(ctx, mid, x, 44 - w, 1, w * 2);
+    px(ctx, pale, x, 44 - w, 1, Math.max(1, w));
+    if (i > 23) px(ctx, dark, x, 44 - w, 1, w * 2);
+    if ((i & 7) === 0 && w > 4) px(ctx, dark, x, 44 - w + 2, 1, 2);   // fin rays, just a hint
   }
-  // gill slits
+  // gill slits, curved, five a side
   for (let g = 0; g < 5; g++) {
-    const gx = 62 - g * 3;
-    for (let y = 16; y <= 28; y++) { const i = y * SHK_W + gx; if (f[i] > 0.25) px(ctx, dark, gx, y); }
+    const gx = 124 - g * 5;
+    for (let y = 32; y <= 56; y++) {
+      const bend = Math.round(Math.abs(y - 44) * 0.16);
+      if (!solid(gx + bend, y, 0.45)) continue;
+      px(ctx, dark, gx + bend, y);
+    }
   }
-  // eyes — small, black, mean
-  px(ctx, CPAL.out, 73, 14, 4, 4); px(ctx, rage ? '#ff3a2a' : '#0f1318', 74, 15, 2, 2); px(ctx, CPAL.shine, 74, 15);
-  px(ctx, CPAL.out, 73, 26, 4, 4); px(ctx, rage ? '#ff3a2a' : '#0f1318', 74, 27, 2, 2); px(ctx, CPAL.shine, 74, 27);
+  // eyes — small, black, mean, with a lid and a catchlight
+  for (const ey of [27, 53]) {
+    stamp(ctx, [
+      '..kkkk..',
+      '.kaaaak.',
+      'kaaeeaak',
+      'kaeeeeak',
+      'kaeeeeak',
+      'kaaeeaak',
+      '.kaaaak.',
+      '..kkkk..',
+    ], 143, ey, { k: CPAL.out, a: rage ? '#6a1a12' : '#25313f', e: rage ? '#ff3a2a' : '#0b0f14' });
+    px(ctx, CPAL.shine, 145, ey + 2, 2, 2);
+    px(ctx, pale, 144, ey - 1, 6, 1);
+  }
   // jaws under the snout, full of teeth
-  for (let x = 78; x < 88; x++) {
-    const i = 22 * SHK_W + x; if (f[i] <= 0.05) continue;
-    px(ctx, '#2a0d12', x, 20, 1, 5);
+  for (let x = 152; x < 172; x++) {
+    if (!solid(x, 44, 0.05)) continue;
+    px(ctx, '#2a0d12', x, 39, 1, 10);
   }
-  for (let i = 0; i < 5; i++) {
-    px(ctx, CPAL.bone, 79 + i * 2, 20); px(ctx, CPAL.bone, 79 + i * 2, 24);
+  for (let i = 0; i < 6; i++) {
+    const tx = 154 + i * 3;
+    if (!solid(tx, 44, 0.05)) continue;
+    px(ctx, CPAL.bone, tx, 39, 1, 2); px(ctx, CPAL.white, tx, 39);
+    px(ctx, CPAL.bone, tx, 47, 1, 2); px(ctx, CPAL.white, tx, 48);
   }
+  px(ctx, '#160508', 154, 42, 16, 3);     // gullet
   // battle scars
-  for (let i = 0; i < 4; i++) px(ctx, pale, 44 + i * 2, 12 + i);
-  for (let i = 0; i < 3; i++) px(ctx, pale, 30 + i * 2, 31 - i);
-  return spriteFrom(c, SHK_CX, SHK_CY);
+  for (let i = 0; i < 8; i++) { px(ctx, pale, 88 + i * 3, 24 + i * 2, 2, 1); px(ctx, dark, 88 + i * 3, 25 + i * 2, 2, 1); }
+  for (let i = 0; i < 6; i++) { px(ctx, pale, 60 + i * 3, 62 - i * 2, 2, 1); px(ctx, dark, 60 + i * 3, 63 - i * 2, 2, 1); }
+  return spriteFromHi(c, SHK_CX, SHK_CY);
 }
 
 // ---- the Chief himself, straddling the shark ------------------------------
 function buildChief() {
-  const c = newCan(26, 26), ctx = c.getContext('2d');
+  const c = newCan(52, 52), ctx = c.getContext('2d');
   const M = {
     k: CPAL.out, s: '#d9a06a', S: '#a9713f', d: '#7a4a22',
     r: CPAL.cape, R: CPAL.capeL, b: CPAL.leaD, B: CPAL.lea, L: CPAL.leaL,
     g: CPAL.gold, G: CPAL.goldL, w: CPAL.white, m: CPAL.met, M2: CPAL.metL,
   };
-  // feathered headdress / chief's crown
-  stamp(ctx, [
-    '..k..k..k..k..',
-    '.kRk.kRk.kRk..',
-    '.kRkkkRkkkRk..',
-    '..kRRRRRRRk...',
-    '.kkkkkkkkkkk..',
-  ], 6, 0, M);
+  // feathered headdress: each feather has a quill and a barb edge now
+  const FCOL = [CPAL.cape, CPAL.gold, CPAL.capeL, CPAL.gold, CPAL.cape];
+  for (let i = 0; i < 5; i++) {
+    const fx = 11 + i * 7, h = 9 + (i === 2 ? 4 : (i === 1 || i === 3) ? 2 : 0);
+    for (let y = 0; y < h; y++) {
+      const barb = y > 1 ? 1 : 0;
+      px(ctx, CPAL.out, fx - 1 - barb, 10 - h + y, 3 + barb * 2, 1);
+      px(ctx, FCOL[i], fx - barb, 10 - h + y, 1 + barb * 2, 1);
+      px(ctx, CPAL.woodDD, fx, 10 - h + y);              // quill
+    }
+    px(ctx, CPAL.bone, fx, 10 - h, 1, 2);
+  }
+  for (let x = 8; x < 44; x++) { px(ctx, CPAL.leaD, x, 10, 1, 3); px(ctx, CPAL.leaL, x, 10); }
+  for (let x = 10; x < 42; x += 4) px(ctx, CPAL.gold, x, 11, 2, 1);
   // head + face paint
-  stamp(ctx, [
-    '..kkkkkkk..',
-    '.kssssssssk',
-    'kssssssssssk',
-    'ksdsssssdsk',
-    'kssssssssssk',
-    '.kSssssssSk',
-    '..kkSSSSkk.',
-    '....kkkk...',
-  ], 7, 5, M);
-  px(ctx, CPAL.blood, 10, 9, 2, 1); px(ctx, CPAL.blood, 15, 9, 2, 1);
-  px(ctx, CPAL.out, 11, 10, 2, 2); px(ctx, CPAL.out, 14, 10, 2, 2);
-  px(ctx, CPAL.white, 11, 13, 5, 1);
+  const hcx = 26, hcy = 20;
+  for (let y = hcy - 8; y <= hcy + 9; y++) {
+    const hw = 9 * Math.sqrt(Math.max(0, 1 - Math.pow((y - hcy) / 9.6, 2)));
+    if (hw < 1) continue;
+    const x0 = Math.round(hcx - hw), x1 = Math.round(hcx + hw);
+    for (let x = x0; x <= x1; x++) {
+      const u = (x - hcx) / hw;
+      px(ctx, u < -0.5 ? '#e8b782' : u > 0.55 ? '#7a4a22' : u > 0.2 ? '#a9713f' : '#d9a06a', x, y);
+    }
+    px(ctx, CPAL.out, x0, y); px(ctx, CPAL.out, x1, y);
+  }
+  // war paint: two bars across the eyes, a white jaw stripe
+  px(ctx, CPAL.blood, 18, 17, 7, 2); px(ctx, CPAL.bloodD, 18, 19, 7, 1);
+  px(ctx, CPAL.blood, 28, 17, 7, 2); px(ctx, CPAL.bloodD, 28, 19, 7, 1);
+  for (const ex of [19, 29]) {
+    px(ctx, CPAL.out, ex, 20, 5, 4); px(ctx, CPAL.white, ex + 1, 21, 3, 2);
+    px(ctx, CPAL.out, ex + 2, 21, 2, 2);
+  }
+  px(ctx, CPAL.white, 20, 27, 12, 2); px(ctx, CPAL.out, 22, 28, 8, 1);
   // bare torso with a bone necklace and a leather harness
-  stamp(ctx, [
-    '.kkkkkkkkk.',
-    'kSssssssssk',
-    'ksssssssssk',
-    'ksssssssssk',
-    'kSssssssssk',
-    '.kkkkkkkkk.',
-  ], 7, 13, M);
-  for (let i = 0; i < 5; i++) px(ctx, CPAL.bone, 9 + i * 2, 14 + (i & 1));
-  px(ctx, CPAL.lea, 8, 16, 11, 2); px(ctx, CPAL.leaL, 8, 16, 11, 1);
-  return spriteFrom(c, 13, 14);
+  for (let y = 30; y <= 44; y++) {
+    const hw = 11 - Math.abs(y - 36) * 0.18;
+    const x0 = Math.round(hcx - hw), x1 = Math.round(hcx + hw);
+    for (let x = x0; x <= x1; x++) {
+      const u = (x - hcx) / hw;
+      let col = u < -0.45 ? '#e8b782' : u > 0.5 ? '#7a4a22' : u > 0.15 ? '#a9713f' : '#d9a06a';
+      if (Math.abs(u) < 0.12 && y > 33) col = '#8a5527';                  // sternum
+      if (y > 38 && Math.abs(u) < 0.6 && ((y - 38) % 3) === 0) col = '#8a5527';  // abs
+      px(ctx, col, x, y);
+    }
+    px(ctx, CPAL.out, x0, y); px(ctx, CPAL.out, x1, y);
+  }
+  // bone necklace: individual teeth on a cord
+  for (let i = 0; i < 7; i++) {
+    const bx = 17 + i * 3, by = 31 + Math.abs(i - 3);
+    px(ctx, CPAL.out, bx, by, 2, 4); px(ctx, CPAL.bone, bx, by, 1, 3); px(ctx, CPAL.white, bx, by);
+  }
+  // leather harness with stitching and a brass ring
+  for (let x = 15; x < 38; x++) {
+    px(ctx, CPAL.leaD, x, 36, 1, 4); px(ctx, CPAL.lea, x, 37, 1, 2); px(ctx, CPAL.leaL, x, 37);
+    if ((x & 3) === 0) px(ctx, CPAL.creamD, x, 39);
+  }
+  px(ctx, CPAL.goldD, 24, 35, 6, 6); px(ctx, CPAL.gold, 25, 36, 4, 4); px(ctx, CPAL.out, 26, 37, 2, 2);
+  return spriteFromHi(c, 26, 28);
 }
 function buildBossArt() {
   CH.shark     = buildShark(false);
   CH.sharkRage = buildShark(true);
-  CH.sharkHurt = tintSprite(CH.shark, '#ffffff', 0.82);
-  CH.sharkRageHurt = tintSprite(CH.sharkRage, '#ffffff', 0.82);
+  CH.sharkHurt = tintHi(CH.shark, '#ffffff', 0.82);
+  CH.sharkRageHurt = tintHi(CH.sharkRage, '#ffffff', 0.82);
   CH.chief     = buildChief();
-  CH.chiefHurt = tintSprite(CH.chief, '#ffffff', 0.8);
+  CH.chiefHurt = tintHi(CH.chief, '#ffffff', 0.8);
   // keep the old sprite keys alive for the HUD's off-screen fin marker
   SP.shark = CH.shark; SP.sharkHurt = CH.sharkHurt; SP.sharkRage = CH.sharkRage;
 }

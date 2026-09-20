@@ -77,7 +77,7 @@
   // the colour anything below the surface fades toward
   const WATER_TINT = '#14606e';
 
-  // chunky pixel line (no antialiasing, ever)
+  // chunky pixel line, SPRITE space (no antialiasing, ever)
   function pline(ctx, x0, y0, x1, y1, th, col) {
     const dx = x1 - x0, dy = y1 - y0;
     const len = Math.abs(dx) > Math.abs(dy) ? Math.abs(dx) : Math.abs(dy);
@@ -85,6 +85,27 @@
     const h = th >> 1;
     ctx.fillStyle = col;
     for (let i = 0; i <= n; i++) ctx.fillRect(Math.round(x0 + dx * i / n) - h, Math.round(y0 + dy * i / n) - h, th, th);
+  }
+
+  // ---- the fine grid ----------------------------------------------------
+  //  The world layer carries a DETAIL scale, so 1/DETAIL world units is
+  //  exactly one screen pixel. Sprites are rasterised at DETAIL art pixels
+  //  per world unit and blitted at 1/DETAIL; everything rigged per frame
+  //  snaps to the same grid. Twice the resolution, still hard pixel edges.
+  const D = (typeof DETAIL === 'number' && DETAIL > 0) ? DETAIL : 1;
+  const IP = 1 / D;
+  function snap(v) { return Math.round(v * D) * IP; }
+  // world-space rect, w/h in ART pixels
+  function fpx(ctx, x, y, w, h, col) { if (col) ctx.fillStyle = col; ctx.fillRect(snap(x), snap(y), (w || 1) * IP, (h || 1) * IP); }
+  // world-space line, thickness in ART pixels
+  function fline(ctx, x0, y0, x1, y1, th, col) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const len = (Math.abs(dx) > Math.abs(dy) ? Math.abs(dx) : Math.abs(dy)) * D;
+    const step = th * 0.8 < 1 ? 1 : th * 0.8;
+    const n = len < 1 ? 1 : Math.ceil(len / step);
+    const h = (th >> 1) * IP, s = th * IP;
+    ctx.fillStyle = col;
+    for (let i = 0; i <= n; i++) ctx.fillRect(snap(x0 + dx * i / n) - h, snap(y0 + dy * i / n) - h, s, s);
   }
 
   // two-bone IK, result in _ikx/_iky
@@ -107,8 +128,8 @@
   function LY(x, y) { return _oy + x * _rs + y * _rc; }
   function limb(ctx, x0, y0, x1, y1, th, col, ink) {
     const ax = LX(x0, y0), ay = LY(x0, y0), bx = LX(x1, y1), by = LY(x1, y1);
-    if (ink) pline(ctx, ax, ay, bx, by, th + 2, ink);
-    pline(ctx, ax, ay, bx, by, th, col);
+    if (ink) fline(ctx, ax, ay, bx, by, th + 2, ink);
+    fline(ctx, ax, ay, bx, by, th, col);
   }
   // a chunky 3-band oval: crisper than ctx.ellipse (which antialiases) and cheaper
   function shadowBlob(ctx, x, y, rx, ry, col) {
@@ -118,13 +139,13 @@
     ctx.fillRect(x - rx + (rx >> 1), y - ry, w - (rx & ~1), h);
     ctx.fillRect(x - rx + 1, y - ry + 1, w - 2, h - 2);
   }
-  function ldot(ctx, x, y, s, col) { ctx.fillStyle = col; ctx.fillRect(Math.round(LX(x, y)) - (s >> 1), Math.round(LY(x, y)) - (s >> 1), s, s); }
+  function ldot(ctx, x, y, s, col) { ctx.fillStyle = col; ctx.fillRect(snap(LX(x, y)) - (s >> 1) * IP, snap(LY(x, y)) - (s >> 1) * IP, s * IP, s * IP); }
   // a two-bone limb: outline the whole chain first so the elbow has no black seam
   function limb2(ctx, x0, y0, ex, ey, hx, hy, th1, th2, c1, c2, ink) {
     const ax = LX(x0, y0), ay = LY(x0, y0), bx = LX(ex, ey), by = LY(ex, ey), cx2 = LX(hx, hy), cy2 = LY(hx, hy);
-    if (ink) { pline(ctx, ax, ay, bx, by, th1 + 2, ink); pline(ctx, bx, by, cx2, cy2, th2 + 2, ink); }
-    pline(ctx, ax, ay, bx, by, th1, c1);
-    pline(ctx, bx, by, cx2, cy2, th2, c2);
+    if (ink) { fline(ctx, ax, ay, bx, by, th1 + 2, ink); fline(ctx, bx, by, cx2, cy2, th2 + 2, ink); }
+    fline(ctx, ax, ay, bx, by, th1, c1);
+    fline(ctx, bx, by, cx2, cy2, th2, c2);
   }
 
   // =======================================================================
@@ -146,17 +167,21 @@
     blood: '#c8302e', bloodD: '#7c1414',
   };
 
-  // swimmer looks: a crowd should read as a crowd
+  // swimmer looks: a crowd has to read as a crowd, so build, skin, hair,
+  // clothing and facial hair all vary, and the kit is picked from the weapon.
   const LOOKS = [
-    { skin: '#e9b78c', shirt: '#e4562f', hair: '#43302a', hat: 1 },
-    { skin: '#c68a5c', shirt: '#f0a13a', hair: '#4a3020', hat: 0 },
-    { skin: '#a96f45', shirt: '#e8dcbe', hair: '#3a2b24', hat: 2 },
-    { skin: '#d8a172', shirt: '#d8763a', hair: '#7a2a1a', hat: 1 },
-    { skin: '#8a5733', shirt: '#eac04a', hair: '#463228', hat: 3 },
-    { skin: '#f0c9a4', shirt: '#c8302e', hair: '#8a7a60', hat: 2 },
-    { skin: '#e9b78c', shirt: '#b4708f', hair: '#6b5030', hat: 0 },
-    { skin: '#c68a5c', shirt: '#7fb2c8', hair: '#43302a', hat: 3 },
-    ];
+    { skin: '#e9b78c', shirt: '#e4562f', hair: '#43302a', hat: 1, build: 1.00, beard: 0, stripe: 0 },
+    { skin: '#c68a5c', shirt: '#f0a13a', hair: '#4a3020', hat: 0, build: 1.14, beard: 1, stripe: 0 },
+    { skin: '#a96f45', shirt: '#e8dcbe', hair: '#3a2b24', hat: 2, build: 0.88, beard: 0, stripe: 1 },
+    { skin: '#d8a172', shirt: '#d8763a', hair: '#7a2a1a', hat: 1, build: 1.07, beard: 2, stripe: 0 },
+    { skin: '#8a5733', shirt: '#eac04a', hair: '#463228', hat: 3, build: 0.94, beard: 0, stripe: 0 },
+    { skin: '#f0c9a4', shirt: '#c8302e', hair: '#8a7a60', hat: 2, build: 1.18, beard: 2, stripe: 0 },
+    { skin: '#e9b78c', shirt: '#b4708f', hair: '#6b5030', hat: 0, build: 0.86, beard: 1, stripe: 1 },
+    { skin: '#c68a5c', shirt: '#7fb2c8', hair: '#43302a', hat: 3, build: 1.02, beard: 0, stripe: 0 },
+    { skin: '#b07a4e', shirt: '#4f8a6a', hair: '#211a18', hat: 0, build: 1.09, beard: 2, stripe: 1 },
+    { skin: '#f2d2b0', shirt: '#d6ccbc', hair: '#c9a24a', hat: 1, build: 0.92, beard: 0, stripe: 0 },
+  ];
+  const KITS = ['shirt', 'vest', 'oil'];
 
   // =======================================================================
   //  2.  TUNING  --  everything the run can dial up
@@ -363,131 +388,282 @@
     return spr(c, o, o);
   }
 
-  // ---- swimmer torso, seen from above, head end at +x --------------------
-  function buildTorso(look) {
-    const L = 12, H = 11, cy = 5;
-    const c = hcan(L, H), x = c.getContext('2d');
-    const sh = look.shirt, shL = shade(sh, 1.45), shD = shade(sh, 0.58);
-    const halfW = px => {
-      const u = px / (L - 1);
-      if (u < 0.18) return 1.7 + u / 0.18 * 0.8;                 // hips
-      if (u < 0.60) return 2.5 + (u - 0.18) / 0.42 * 1.9;        // back
-      if (u < 0.80) return 4.4;                                   // shoulders
-      return 4.4 - (u - 0.80) / 0.20 * 2.0;                       // neck
-    };
+  // =======================================================================
+  //  3b. PEOPLE  --  built at D art pixels per world unit, blitted at 1/D
+  // =======================================================================
+  //  Seen from directly overhead a man in the water is a wedge: the crown of
+  //  the head, the shoulders as the widest thing on him, the back tapering
+  //  away and the hips already lost in the water. That is the silhouette
+  //  these builders cut; arms and legs are rigged per frame on top of it.
+
+  // torso profile: half width in "shoulder units" along the body, head at u=1
+  function torsoHalf(u) {
+    if (u < 0.13) return 0.40 + u / 0.13 * 0.18;        // hips, sunk
+    if (u < 0.56) return 0.58 + (u - 0.13) / 0.43 * 0.36; // back
+    if (u < 0.82) return 0.94 + Math.sin((u - 0.56) / 0.26 * Math.PI) * 0.06; // shoulders
+    return 1.00 - (u - 0.82) / 0.18 * 0.55;             // neck
+  }
+
+  function buildTorso(look, kit) {
+    const bw = look.build || 1;
+    const L = Math.max(6, Math.round(13.4 * D));            // nose-to-hip length
+    const SH = Math.max(2.5, 3.05 * D * bw);                // half shoulder width
+    const H = Math.round(SH * 2) + 3;
+    const c = hcan(L + 2, H), x = c.getContext('2d');
+    const cy = (H - 1) / 2;
+    const base = kit === 'oil' ? '#4a5a63' : look.shirt;
+    const lit = shade(base, 1.42), mid = shade(base, 1.1), dk = shade(base, 0.66), dk2 = shade(base, 0.46);
+    const stripe = shade(base, 0.72);
     for (let px = 0; px < L; px++) {
-      const hw = halfW(px);
+      const u = px / (L - 1);
+      const hw = torsoHalf(u) * SH;
       const y0 = Math.round(cy - hw), y1 = Math.round(cy + hw);
       for (let y = y0; y <= y1; y++) {
         const edge = y === y0 || y === y1 || px === 0 || px === L - 1;
-        if (edge) { pset(x, HP.ink, px, y); continue; }
-        const near = Math.min(y - y0, y1 - y);
-        pset(x, y - y0 <= 1 ? shL : near <= 1 ? shD : sh, px, y);
+        if (edge) { pset(x, HP.ink, 1 + px, y); continue; }
+        const dn = (y - cy) / (hw || 1);
+        let col = base;
+        if (dn < -0.72) col = lit;                          // light from -y
+        else if (dn < -0.30) col = mid;
+        else if (dn > 0.86) col = dk2;
+        else if (dn > 0.48) col = dk;
+        // a hint of the spine ridge running down the middle of the back
+        if (Math.abs(dn) < 0.12 && u > 0.2 && u < 0.78 && (px & 1) === 0) col = shade(col, 0.88);
+        if (look.stripe && ((px >> Math.max(1, D - 1)) & 1) === 0 && u < 0.78) col = shade(col, 0.8);
+        pset(x, col, 1 + px, y);
       }
     }
-    // spine seam + belt + a wet sheen along the shoulders
-    for (let px = 2; px < L - 2; px++) if ((px & 1) === 0) pset(x, shade(sh, 0.78), px, cy + 1);
-    pset(x, '#40291f', 2, cy - 2, 1, 5); pset(x, HP.steel, 2, cy, 1, 1);
-    pset(x, shade(sh, 1.7), 8, cy - 3, 3, 1);
-    pset(x, shade(sh, 1.7), 6, cy - 3, 1, 1);
-    return spr(c, 4, cy);
+    const xa = f => 1 + Math.round(f * (L - 1));            // along the body
+    const ya = f => Math.round(cy + f * SH);                // across it
+    // collar / neck shadow where the head sits on the shoulders
+    for (let y = ya(-0.5); y <= ya(0.5); y++) pset(x, shade(base, 0.6), xa(0.83), y);
+    // belt at the hips, with a buckle
+    for (let y = ya(-0.52); y <= ya(0.52); y++) { pset(x, '#40291f', xa(0.16), y); if (D > 1) pset(x, '#2c1c14', xa(0.16) + 1, y); }
+    pset(x, HP.steel, xa(0.16), ya(0), D, D);
+    if (kit === 'vest') {
+      // gaffer: leather braces over the shoulders, an apron panel on the back
+      for (let px = xa(0.24); px <= xa(0.82); px++) {
+        pset(x, '#6b4a2a', px, ya(-0.46), 1, Math.max(1, D - 1));
+        pset(x, '#4e351d', px, ya(0.46), 1, Math.max(1, D - 1));
+      }
+      pset(x, HP.brass, xa(0.40), ya(-0.46), D, Math.max(1, D - 1));
+      pset(x, HP.brass, xa(0.40), ya(0.46), D, Math.max(1, D - 1));
+      for (let px = xa(0.22); px <= xa(0.52); px++) for (let y = ya(-0.3); y <= ya(0.3); y++) if (((px + y) & 3) === 0) pset(x, shade(base, 0.8), px, y);
+    } else if (kit === 'oil') {
+      // harpooner: oilskin with a yellow storm collar and a chest strap
+      for (let y = ya(-0.62); y <= ya(0.62); y++) pset(x, '#c8a64a', xa(0.78), y);
+      for (let y = ya(-0.5); y <= ya(0.5); y++) pset(x, '#8d7430', xa(0.78) + D, y);
+      for (let i = 0; i <= Math.round(SH * 1.6); i++) {
+        const px = xa(0.34) + i, y = ya(-0.7) + i;
+        pset(x, '#3a2a1c', px, y, Math.max(1, D - 1), Math.max(1, D - 1));
+      }
+      // hood, bunched behind the neck
+      for (let py = ya(-0.55); py <= ya(0.55); py++) for (let px = xa(0.86); px < L; px++) {
+        if (Math.hypot((px - xa(0.92)) / 1.2, py - cy) > SH * 0.62) continue;
+        pset(x, (py - cy) < -SH * 0.2 ? '#6f8089' : '#3d4a52', px, py);
+      }
+    } else {
+      // deckhand: a couple of patches and a rolled-up hem
+      for (let y = ya(-0.2); y <= ya(0.16); y++) pset(x, shade(base, 0.78), xa(0.30), y);
+      pset(x, shade(base, 0.86), xa(0.30) + 1, ya(-0.1), Math.max(1, D), Math.max(1, D));
+    }
+    // wet sheen across the shoulder blades
+    for (let px = xa(0.58); px <= xa(0.76); px++) pset(x, shade(base, 1.75), px, ya(-0.62));
+    pset(x, shade(base, 1.9), xa(0.66), ya(-0.72), D, 1);
+    return spr(c, 1 + Math.round((L - 1) * 0.47), cy);
   }
 
-  // ---- swimmer head, seen from above (face at +x) ------------------------
-  //  From above you mostly see wet hair, so the crown gets a hard highlight
-  //  and the forehead/cheek stay skin: that is what separates it from the ink.
-  function buildHead(look) {
-    const W = 11, o = 5;
+  // ---- head from directly above: crown of hair, face wedge forward -------
+  function buildHead(look, bloody) {
+    const r = 2.95 * D * (0.92 + (look.build || 1) * 0.08);
+    const W = Math.round(r * 2) + 3, o = (W - 1) / 2;
     const c = hcan(W, W), x = c.getContext('2d');
-    const hairL = shade(look.hair, 1.55), hairD = shade(look.hair, 0.72);
-    for (let y = -5; y <= 5; y++) for (let px = -5; px <= 5; px++) {
+    const hairL = shade(look.hair, 1.6), hairM = shade(look.hair, 1.15), hairD = shade(look.hair, 0.7);
+    const skinL = shade(look.skin, 1.16), skinD = shade(look.skin, 0.82), skinD2 = shade(look.skin, 0.66);
+    for (let y = -r - 1; y <= r + 1; y++) for (let px = -r - 1; px <= r + 1; px++) {
       const d = Math.hypot(px * 0.94, y);
-      if (d > 4.4) continue;
-      if (d > 3.7) { pset(x, HP.ink, o + px, o + y); continue; }
+      if (d > r) continue;
+      if (d > r - 0.75 * D) { pset(x, HP.ink, o + px, o + y); continue; }
+      const fx2 = px / r, fy2 = y / r;
       let col;
-      if (px >= 0.2) col = y < -1 ? shade(look.skin, 1.2) : (d > 2.8 ? shade(look.skin, 0.86) : look.skin);
-      else if (y < -1.4) col = hairL;
-      else if (y > 1.8) col = hairD;
-      else col = shade(look.hair, 1.18);
+      if (fx2 > 0.02 + Math.abs(fy2) * 0.18) {            // face
+        col = fy2 < -0.28 ? skinL : (d > r * 0.66 ? skinD : look.skin);
+        if (fy2 > 0.44) col = skinD2;
+      } else {                                            // wet hair
+        col = fy2 < -0.3 ? hairL : fy2 > 0.34 ? hairD : hairM;
+        if (((px + y * 2) % (2 * D) + 2 * D) % (2 * D) < D) col = shade(col, 0.86);
+      }
       pset(x, col, o + px, o + y);
     }
-    pset(x, shade(look.skin, 0.6), o + 4, o, 1, 1);            // nose, pointing the way he swims
-    pset(x, HP.ink, o + 2, o - 1, 1, 1);                       // brow
-    pset(x, shade(look.skin, 0.72), o + 1, o + 3, 1, 1);       // ear
-    pset(x, hairL, o - 3, o - 1, 2, 2);                        // wet shine on the crown
-    switch (look.hat) {
-      case 1: // bandana
-        for (let px = -3; px <= 1; px++) { pset(x, '#ff6161', o + px, o - 3, 1, 1); pset(x, '#c8302e', o + px, o - 2, 1, 1); }
-        pset(x, '#8e2326', o - 4, o - 1, 2, 1); pset(x, HP.ink, o - 1, o - 4, 3, 1); break;
-      case 2: // cap with a forward brim
-        for (let y = -3; y <= 3; y++) for (let px = -3; px <= 1; px++) { if (Math.hypot(px, y) > 3.3) continue; pset(x, y < -1 ? '#5e93c4' : y < 1 ? '#3f6f9e' : '#2d5279', o + px, o + y); }
-        pset(x, HP.ink, o + 2, o - 2, 1, 5); pset(x, '#243f5e', o + 2, o - 1, 1, 3); break;
-      case 3: // knitted beanie
-        for (let y = -3; y <= 3; y++) for (let px = -3; px <= 2; px++) { if (Math.hypot(px, y) > 3.4) continue; pset(x, ((px + y) & 1) ? '#b0a086' : '#6b5c46', o + px, o + y); }
-        pset(x, HP.ink, o - 4, o - 3, 1, 1); pset(x, '#d8cbb0', o - 2, o - 3, 2, 1); break;
+    // brow ridge, nose down the centreline, ears either side
+    for (let y = -Math.round(r * 0.42); y <= Math.round(r * 0.42); y++) pset(x, shade(look.skin, 0.62), o + Math.round(r * 0.3), o + y);
+    pset(x, skinD, o + Math.round(r * 0.62), o - Math.round(D * 0.5), D, D + 1);
+    pset(x, shade(look.skin, 0.52), o + Math.round(r * 0.78), o, Math.max(1, D - 1), D);
+    pset(x, skinD, o + Math.round(r * 0.1), o - Math.round(r * 0.84), Math.max(1, D - 1), D);
+    pset(x, skinD, o + Math.round(r * 0.1), o + Math.round(r * 0.72), Math.max(1, D - 1), D);
+    if (look.beard) {
+      const bc = mix(look.hair, look.skin, look.beard === 1 ? 0.45 : 0.2);
+      for (let y = -Math.round(r * 0.7); y <= Math.round(r * 0.7); y++) for (let px = Math.round(r * 0.1); px <= Math.round(r * 0.72); px++) {
+        if (Math.hypot(px * 0.94, y) > r - 1.1 * D) continue;
+        if (Math.abs(y) < r * 0.34 && px < r * 0.5) continue;
+        if (((px * 3 + y * 5) & 3) === 0 || look.beard === 2) pset(x, bc, o + px, o + y);
+      }
+    }
+    // the hard wet highlight on the crown is what separates hair from the ink
+    pset(x, hairL, o - Math.round(r * 0.55), o - Math.round(r * 0.35), D + 1, D);
+    pset(x, '#ffffff', o - Math.round(r * 0.5), o - Math.round(r * 0.5), Math.max(1, D - 1), Math.max(1, D - 1));
+    if (bloody) {
+      const bl = HP.blood, bd = HP.bloodD;
+      for (let y = -Math.round(r * 0.9); y <= Math.round(r * 0.2); y++) {
+        const px = Math.round(r * -0.1 + Math.sin(y * 0.8) * D);
+        if (Math.hypot(px * 0.94, y) > r - 1.0 * D) continue;
+        pset(x, (y & 1) ? bl : bd, o + px, o + y, D, 1);
+      }
+      pset(x, bl, o + Math.round(r * 0.2), o - Math.round(r * 0.45), D, D);
+      pset(x, bd, o - Math.round(r * 0.45), o + Math.round(r * 0.1), D, D);
     }
     return spr(c, o, o);
   }
 
-  // ---- held gear ---------------------------------------------------------
-  //  Outlined, never solid black: a weapon must read as a shape at 1:1.
-  const GEARPAL = { k: HP.ink, u: '#5c3a1c', U: '#8f5c2c', T: HP.wood, M: HP.steel, m: HP.steelD, W: '#e9f2fb', X: '#2e333a', y: HP.brassL };
-  function rowsSprite(rows, ax, ay, pal) {
-    const w = Math.max.apply(null, rows.map(r => r.length)), h = rows.length;
-    const c = hcan(w, h), x = c.getContext('2d');
-    const map = pal || GEARPAL;
-    for (let r = 0; r < h; r++) for (let q = 0; q < rows[r].length; q++) {
-      const ch = rows[r][q]; if (ch === '.' || ch === ' ') continue;
-      const col = map[ch]; if (!col) continue;
-      pset(x, col, q, r);
+  // ---- hats, drawn over the head so a man can lose his ------------------
+  function buildHat(look, type) {
+    if (!type) return null;
+    const r = 2.95 * D * (0.92 + (look.build || 1) * 0.08);
+    const W = Math.round(r * 2) + 3, o = (W - 1) / 2;
+    const c = hcan(W, W), x = c.getContext('2d');
+    const R = r - 0.4 * D;
+    if (type === 1) {                                     // bandana
+      for (let y = -R; y <= R; y++) for (let px = -R; px <= R; px++) {
+        if (Math.hypot(px * 0.94, y) > R) continue;
+        if (px > R * 0.18) continue;
+        const k = (y + R) / (2 * R);
+        pset(x, k < 0.3 ? '#ff6161' : k < 0.72 ? '#c8302e' : '#8e2326', o + px, o + y);
+        if (((px * 2 + y) & 5) === 0) pset(x, '#8e2326', o + px, o + y);
+      }
+      for (let px = -R; px <= R; px++) if (Math.hypot(px * 0.94, R * 0.02) <= R && px <= R * 0.18) pset(x, HP.ink, o + px, o + Math.round(R * 0.02));
+      pset(x, '#c8302e', o - Math.round(R * 1.05), o + Math.round(R * 0.3), D + 1, D);   // knot tail
+    } else if (type === 2) {                              // cap with a brim
+      for (let y = -R; y <= R; y++) for (let px = -R; px <= R; px++) {
+        if (Math.hypot(px * 0.94, y) > R * 0.92) continue;
+        if (px > R * 0.3) continue;
+        pset(x, y < -R * 0.3 ? '#5e93c4' : y < R * 0.3 ? '#3f6f9e' : '#2d5279', o + px, o + y);
+      }
+      for (let y = -Math.round(R * 0.55); y <= Math.round(R * 0.55); y++) {
+        const w = Math.round(R * 0.45);
+        for (let px = 0; px < w; px++) pset(x, px === w - 1 ? HP.ink : '#243f5e', o + Math.round(R * 0.3) + px, o + y);
+      }
+      pset(x, '#8fb8dd', o - Math.round(R * 0.5), o - Math.round(R * 0.45), D, D);
+    } else {                                              // knitted beanie
+      for (let y = -R; y <= R; y++) for (let px = -R; px <= R; px++) {
+        if (Math.hypot(px * 0.94, y) > R * 0.96) continue;
+        if (px > R * 0.36) continue;
+        pset(x, ((px + y) & (D === 1 ? 1 : 2)) ? '#b0a086' : '#6b5c46', o + px, o + y);
+      }
+      for (let px = -R; px <= R * 0.36; px++) if (Math.hypot(px * 0.94, R * 0.75) <= R * 0.96) pset(x, '#d8cbb0', o + px, o + Math.round(R * 0.72), 1, Math.max(1, D - 1));
+      pset(x, '#4a3f30', o - Math.round(R * 0.95), o - Math.round(R * 0.3), D, D);
     }
-    return spr(c, ax, ay);
+    return spr(c, o, o);
   }
+
+  // ---- held gear, outlined so it reads as a shape -----------------------
+  function gbar(x, x0, y0, w, h, col) { pset(x, col, x0, y0, w, h); }
   function buildKnife() {
-    return rowsSprite([
-      '.kkkkkk.',
-      'kuUMMMWk',
-      '.kkkkkk.',
-    ], 1, 1);
+    const L = Math.round(9 * D), TH = Math.max(2, Math.round(1.6 * D));
+    const c = hcan(L + 2, TH + 4), x = c.getContext('2d');
+    const y0 = 2;
+    gbar(x, 0, y0 - 1, L + 2, TH + 2, HP.ink);
+    gbar(x, 1, y0, Math.round(L * 0.34), TH, '#6b4a2a');
+    gbar(x, 1, y0, Math.round(L * 0.34), Math.max(1, TH >> 1), '#8f5c2c');
+    gbar(x, 1 + Math.round(L * 0.34), y0, Math.round(L * 0.1) + 1, TH, HP.brass);
+    gbar(x, 1 + Math.round(L * 0.44), y0, Math.round(L * 0.56), TH, HP.steel);
+    gbar(x, 1 + Math.round(L * 0.44), y0, Math.round(L * 0.56), Math.max(1, TH >> 1), '#e9f2fb');
+    return spr(c, 2, y0 + (TH >> 1));
   }
   function buildGaff() {
-    return rowsSprite([
-      '..........kWk',
-      '..........kMk',
-      '.kkkkkkkkkkMk',
-      'kuUTTTTTTUMMk',
-      '.kkkkkkkkkkk.',
-    ], 1, 3);
+    const L = Math.round(14 * D), TH = Math.max(2, Math.round(1.4 * D));
+    const c = hcan(L + 2, Math.round(5 * D)), x = c.getContext('2d');
+    const y0 = Math.round(3 * D);
+    gbar(x, 0, y0 - 1, L + 2, TH + 2, HP.ink);
+    gbar(x, 1, y0, L, TH, HP.wood);
+    gbar(x, 1, y0, L, Math.max(1, TH >> 1), shade(HP.wood, 1.25));
+    gbar(x, 1, y0, Math.round(L * 0.16), TH, '#6b4a2a');
+    // the hook, curling up off the head of the shaft
+    for (let i = 0; i <= Math.round(3 * D); i++) {
+      const px = 1 + L - Math.round(i * 0.55), py = y0 - i;
+      gbar(x, px - 1, py - 1, TH + 2, TH + 2, HP.ink);
+    }
+    for (let i = 0; i <= Math.round(3 * D); i++) {
+      const px = 1 + L - Math.round(i * 0.55), py = y0 - i;
+      gbar(x, px, py, TH, TH, i > 2 * D ? '#e9f2fb' : HP.steel);
+    }
+    return spr(c, 2, y0 + (TH >> 1));
   }
   function buildHarpoonGun() {
-    return rowsSprite([
-      '....kkkkkkk.',
-      '.kkkMMMMMMWk',
-      'kuUUXXXXXXMk',
-      'kuukkkkkkkk.',
-      '.kk.........',
-    ], 2, 2);
+    const L = Math.round(12 * D), H = Math.round(5 * D);
+    const c = hcan(L + 2, H + 2), x = c.getContext('2d');
+    const y0 = 2;
+    gbar(x, 0, y0 - 1, L + 2, Math.round(2.2 * D) + 2, HP.ink);
+    gbar(x, 1, y0, Math.round(L * 0.3), Math.round(2.2 * D), '#6b4a2a');       // stock
+    gbar(x, 1, y0, Math.round(L * 0.3), Math.max(1, D), '#8f5c2c');
+    gbar(x, 1 + Math.round(L * 0.3), y0, Math.round(L * 0.7), Math.round(2.2 * D), '#2e333a'); // body
+    gbar(x, 1 + Math.round(L * 0.3), y0, Math.round(L * 0.7), Math.max(1, D), HP.steelD);
+    gbar(x, 1 + Math.round(L * 0.62), y0 - 1, Math.round(L * 0.38), Math.max(1, D), HP.steel);  // the shaft on the rail
+    gbar(x, L - Math.round(D), y0 - 1, Math.round(D) + 1, Math.max(1, D), '#e9f2fb');
+    gbar(x, 1 + Math.round(L * 0.24), y0 + Math.round(2.2 * D), Math.round(1.6 * D), Math.round(1.6 * D), HP.ink); // grip
+    gbar(x, 1 + Math.round(L * 0.26), y0 + Math.round(2.2 * D), Math.max(1, D), Math.round(1.2 * D), '#5c3a1c');
+    return spr(c, Math.round(3 * D), y0 + Math.round(1.1 * D));
   }
   function buildHarpoonShot() {
-    return rowsSprite([
-      '........kM..',
-      'kuuTTTTMMMMW',
-      '........kM..',
-    ], 11, 1);
+    const L = Math.round(12 * D), TH = Math.max(2, Math.round(1.2 * D));
+    const c = hcan(L + 2, Math.round(3 * D) + 2), x = c.getContext('2d');
+    const y0 = Math.round(1.5 * D);
+    gbar(x, 0, y0 - 1, L + 2, TH + 2, HP.ink);
+    gbar(x, 1, y0, Math.round(L * 0.6), TH, HP.wood);
+    gbar(x, 1 + Math.round(L * 0.6), y0, Math.round(L * 0.4), TH, HP.steel);
+    gbar(x, 1 + Math.round(L * 0.6), y0, Math.round(L * 0.4), Math.max(1, TH >> 1), '#e9f2fb');
+    // barbs
+    gbar(x, 1 + Math.round(L * 0.74), y0 - Math.round(D), Math.max(1, D), Math.round(D) + 1, HP.steelD);
+    gbar(x, 1 + Math.round(L * 0.74), y0 + TH, Math.max(1, D), Math.round(D) + 1, HP.steelD);
+    return spr(c, L, y0 + (TH >> 1));
   }
+
+  // ---- a floating body, face down, arms splayed -------------------------
   function buildCorpse(look) {
-    const c = hcan(15, 11), x = c.getContext('2d');
-    const sh = shade(look.shirt, 0.6);
-    // face-down, arms splayed
-    for (let px = 1; px < 12; px++) {
-      const hw = px < 4 ? 1.8 : px < 9 ? 3.2 : 2.2;
-      const y0 = Math.round(5 - hw), y1 = Math.round(5 + hw);
-      for (let y = y0; y <= y1; y++) pset(x, (y === y0 || y === y1) ? HP.ink : (y - y0 <= 1 ? shade(sh, 1.2) : sh), px, y);
+    const bw = look.build || 1;
+    const L = Math.round(13 * D), SH = 3.0 * D * bw;
+    const W = L + Math.round(6 * D), H = Math.round(SH * 2) + Math.round(6 * D);
+    const c = hcan(W, H), x = c.getContext('2d');
+    const cy = (H - 1) / 2, x0 = 1;
+    const sh = shade(look.shirt, 0.62), shL = shade(look.shirt, 0.86), shD = shade(look.shirt, 0.42);
+    for (let px = 0; px < L; px++) {
+      const u = px / (L - 1), hw = torsoHalf(u) * SH;
+      const y0 = Math.round(cy - hw), y1 = Math.round(cy + hw);
+      for (let y = y0; y <= y1; y++) {
+        const edge = y === y0 || y === y1 || px === 0 || px === L - 1;
+        const dn = (y - cy) / (hw || 1);
+        pset(x, edge ? mix(HP.ink, WATER_TINT, 0.35) : dn < -0.5 ? shL : dn > 0.55 ? shD : sh, x0 + px, y);
+      }
     }
-    pline(x, 8, 4, 13, 1, 2, shade(look.skin, 0.7));
-    pline(x, 8, 6, 13, 9, 2, shade(look.skin, 0.7));
-    for (let y = -2; y <= 2; y++) for (let px = -2; px <= 2; px++) { if (Math.hypot(px, y) > 2.4) continue; pset(x, shade(look.hair, 0.8), 11 + px, 5 + y); }
-    return spr(c, 7, 5);
+    // arms, floating out sideways
+    const skinS = mix(shade(look.skin, 0.72), WATER_TINT, 0.45);
+    pline(x, x0 + Math.round(L * 0.72), cy - Math.round(SH * 0.6), x0 + L + Math.round(3.4 * D), cy - Math.round(SH * 1.9), Math.max(2, Math.round(1.4 * D)), skinS);
+    pline(x, x0 + Math.round(L * 0.72), cy + Math.round(SH * 0.6), x0 + L + Math.round(2.6 * D), cy + Math.round(SH * 2.1), Math.max(2, Math.round(1.4 * D)), skinS);
+    // legs trailing under
+    pline(x, x0 + Math.round(L * 0.12), cy - Math.round(SH * 0.4), x0 - Math.round(3 * D), cy - Math.round(SH * 1.1), Math.max(2, Math.round(1.5 * D)), mix(look.pants || '#55637a', WATER_TINT, 0.55));
+    pline(x, x0 + Math.round(L * 0.12), cy + Math.round(SH * 0.4), x0 - Math.round(3.4 * D), cy + Math.round(SH * 1.2), Math.max(2, Math.round(1.5 * D)), mix(look.pants || '#55637a', WATER_TINT, 0.55));
+    // the back of the head, face in the water
+    const r = 2.8 * D;
+    for (let y = -r; y <= r; y++) for (let px = -r; px <= r; px++) {
+      if (Math.hypot(px * 0.94, y) > r) continue;
+      const col = Math.hypot(px * 0.94, y) > r - D ? mix(HP.ink, WATER_TINT, 0.3) : (y < -r * 0.3 ? shade(look.hair, 1.1) : shade(look.hair, 0.72));
+      pset(x, col, x0 + L + Math.round(r * 0.5) + px, cy + y);
+    }
+    // blood, leaking out around him
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * TAU, rr = SH * (1.1 + (i % 3) * 0.3);
+      pset(x, (i & 1) ? HP.blood : HP.bloodD, x0 + Math.round(L * 0.6 + Math.cos(a) * rr * 1.3), cy + Math.round(Math.sin(a) * rr), Math.max(1, D - 1), Math.max(1, D - 1));
+    }
+    return spr(c, x0 + Math.round(L * 0.5), cy);
   }
 
   function buildSprites() {
@@ -498,10 +674,13 @@
     S.anchor = buildAnchor();
     S.ball = [buildBall(3), buildBall(4), buildBall(5), buildBall(6)];
     S.knife = buildKnife(); S.gaff = buildGaff(); S.hgun = buildHarpoonGun(); S.hshot = buildHarpoonShot();
-    S.torso = []; S.head = []; S.corpse = [];
+    S.torso = { shirt: [], vest: [], oil: [] };
+    S.head = []; S.headHurt = []; S.hat = []; S.corpse = [];
     for (let i = 0; i < LOOKS.length; i++) {
-      S.torso.push(buildTorso(LOOKS[i]));
-      S.head.push(buildHead(LOOKS[i]));
+      for (let k = 0; k < KITS.length; k++) S.torso[KITS[k]].push(buildTorso(LOOKS[i], KITS[k]));
+      S.head.push(buildHead(LOOKS[i], false));
+      S.headHurt.push(buildHead(LOOKS[i], true));
+      S.hat.push(buildHat(LOOKS[i], LOOKS[i].hat));
       S.corpse.push(buildCorpse(LOOKS[i]));
     }
     built = true;
@@ -804,6 +983,14 @@
     this.tethered = false; this.bite = 0;
     this.wobble = rand(0, TAU); this.side = Math.random() < 0.5 ? 1 : -1;
     this.dead = false; this.splashT = 0; this.foamT = 0;
+    // who he is: kit from his weapon, and the little accidents of a man in
+    // the water -- hat gone, blood on him, how hard he is working
+    this.kit = this.kind === 'harpoon' ? 'oil' : this.kind === 'gaff' ? 'vest' : 'shirt';
+    this.hatLost = LOOKS[this.look].hat === 0 || Math.random() < 0.3;
+    this.bloody = Math.random() < 0.12 ? 1 : 0;
+    this.sub = 0; this.effort = 1; this.panic = 0; this.climb = 0;
+    this.boat = null; this.boardA = 0; this.hesitate = 0; this.lx = 0; this.ly = 0;
+    this.gaspCd = rand(4, 11); this.wreckT = 0;
     this.slot = swimmers.length & 7;
     this.fx = 0; this.fy = 0;
   }
@@ -849,6 +1036,8 @@
   function hurtSwimmer(s, dmg, kx, ky, ang) {
     if (s.dead) return;
     s.hp -= dmg; s.flash = 0.09;
+    s.bloody = 1;
+    if (!s.hatLost && (dmg > 8 || Math.random() < 0.4)) s.hatLost = true;
     s.vx += kx || 0; s.vy += ky || 0;
     const g = gg();
     if (g && g.particles) { g.particles.blood(s.x, s.y, 0.6, ang); g.particles.text(s.x + rand(-4, 4), s.y - 14, Math.round(dmg) + '', '#fff', 7); }
@@ -879,6 +1068,54 @@
       s.stateT += dt; s.flash -= dt; s.stun -= dt; s.atk -= dt;
       const d = pAlive ? dist(s.x, s.y, p.x, p.y) : 1e9;
       const toP = pAlive ? angleTo(s.x, s.y, p.x, p.y) : s.ang;
+
+      // ---------------------------------------------------- over the gunwale
+      //  He does not teleport into the sea: he hauls himself up onto the rail,
+      //  hangs there a beat looking at what he is about to jump at, and goes.
+      if (s.state === 'climb') {
+        const e = s.boat;
+        if (!e || e.dead) { s.state = 'swim'; s.stateT = 0; s.z = 0; s.climb = 0; continue; }
+        s.x = e.x + Math.cos(s.boardA) * (e.radius + 2);
+        s.y = e.y + Math.sin(s.boardA) * (e.radius + 2);
+        s.ang = angleLerp(s.ang, s.boardA, Math.min(1, dt * 7));
+        s.climb = clamp(s.stateT / 0.55, 0, 1);
+        s.z = 1.5 + s.climb * 4.5;
+        if (s.stateT >= s.hesitate) launchLeap(s);
+        continue;
+      }
+
+      // ---------------------------------------------------- under, and back up
+      if (s.state === 'gasp') {
+        const T = 1.7;
+        s.sub = Math.sin(clamp(s.stateT / T, 0, 1) * Math.PI);
+        s.x += s.vx * dt; s.y += s.vy * dt;
+        s.vx *= Math.pow(0.2, dt); s.vy *= Math.pow(0.2, dt);
+        s.ph += dt * 3.4;
+        if (s.stateT < 0.12 && g.particles) g.particles.bubbles(s.x, s.y, 4);
+        if (s.stateT >= T) {
+          s.sub = 0; s.state = 'swim'; s.stateT = 0; s.gaspCd = rand(6, 14);
+          if (g.particles) { g.particles.splash(s.x, s.y, 1.3); g.particles.spray(s.x, s.y, rand(0, TAU), 4, 70); }
+          if (oc) { if (oc.ripple) oc.ripple(s.x, s.y, 28, 90, 0.6); if (oc.addFoam) oc.addFoam(s.x, s.y, 0.35); }
+          if (TOON) TOON.emote(s.x + 7, s.y - 16, '!');
+          snd('splash', 0.7);
+        }
+        continue;
+      }
+
+      // ---------------------------------------------------- hanging off wreckage
+      if (s.state === 'wreck') {
+        const w = s.wreckRef;
+        s.wreckT -= dt;
+        if (!w || s.wreckT <= 0) { s.state = 'swim'; s.stateT = 0; continue; }
+        const a = angleTo(w.x, w.y, s.x, s.y);
+        const r = (w.radius || 10) + 6;
+        s.x = lerp(s.x, w.x + Math.cos(a) * r, Math.min(1, dt * 3));
+        s.y = lerp(s.y, w.y + Math.sin(a) * r, Math.min(1, dt * 3));
+        s.ang = angleLerp(s.ang, a + Math.PI, Math.min(1, dt * 3));
+        s.ph += dt * 2;
+        s.effort = 0.15;
+        continue;
+      }
 
       // ---------------------------------------------------- leaping aboard
       if (s.state === 'leap') {
@@ -985,7 +1222,25 @@
       if (oc && oc.flow && ((mineFrame + s.slot) & 7) === 0) { const f = oc.flow(s.x, s.y); s.fx = f.x * 0.35; s.fy = f.y * 0.35; }
       s.x += (s.vx + s.fx) * dt; s.y += (s.vy + s.fy) * dt;
       const speed = Math.hypot(s.vx, s.vy);
-      s.ph += dt * (2.4 + speed * 0.07);
+      s.effort = clamp(speed / (s.speed || 60), 0, 1.3);
+      s.ph += dt * (2.0 + s.effort * 3.4);
+      // ---- a man who is losing this goes under and comes back up gasping
+      s.gaspCd -= dt;
+      if (s.gaspCd <= 0 && s.hp < s.maxHp * 0.6 && d > 40) {
+        s.state = 'gasp'; s.stateT = 0; s.sub = 0;
+        if (TOON) TOON.emote(s.x + 7, s.y - 16, '!');
+        if (g.particles) g.particles.splash(s.x, s.y, 0.9);
+        continue;
+      } else if (s.gaspCd <= 0) s.gaspCd = rand(3, 6);
+      // ---- the last man left, hurt, grabs the nearest floating thing instead
+      if (s.hp < s.maxHp * 0.5 && swimmers.length <= 2 && g.wrecks && g.wrecks.length && Math.random() < dt * 0.6) {
+        let best = null, bd = 150;
+        for (let k = 0; k < g.wrecks.length; k++) { const dw = dist(s.x, s.y, g.wrecks[k].x, g.wrecks[k].y); if (dw < bd) { bd = dw; best = g.wrecks[k]; } }
+        if (best) { s.state = 'wreck'; s.stateT = 0; s.wreckRef = best; s.wreckT = rand(3, 7); if (TOON) TOON.emote(s.x + 7, s.y - 16, '!'); continue; }
+      }
+      // ---- and the last one in the water panics: loud, wild, slower
+      s.panic = (swimmers.length === 1 && s.hp < s.maxHp * 0.7) ? Math.min(1, s.panic + dt) : Math.max(0, s.panic - dt);
+      if (s.panic > 0.2) { s.ph += dt * 4; if (Math.random() < dt * 0.7 && TOON) TOON.emote(s.x + 7, s.y - 16, '!'); }
       // the water answers back (only where the player can see it)
       const seenS = onScreenWorld(g, s.x, s.y);
       if (oc && seenS) {
@@ -1071,195 +1326,331 @@
     snd('shot', 'harpoon');
   }
 
-  // ---- swimmer rendering: a real front crawl, rigged every frame ---------
-  let _hx = 0, _hy = 0, _above = 0;
+  // ---- swimmer rendering -------------------------------------------------
+  //  Poses are rigged per frame in world units and rasterised onto the fine
+  //  (1/DETAIL) grid; head, torso and gear are prebuilt at DETAIL art pixels
+  //  per world unit and blitted at 1/DETAIL, so one art pixel = one screen
+  //  pixel. The stroke is a real front crawl: catch, pull, exit, recovery.
+  let _hx = 0, _hy = 0, _hz = 0, _above = 0;
   function armPose(u, sgn) {
-    if (u < Math.PI) {                     // recovery: the arm is out of the water
+    if (u < Math.PI) {                      // recovery: out of the water
       const q = u / Math.PI, e = q * q * (3 - 2 * q);
-      _hx = -4.5 + 13.2 * e; _hy = sgn * (3.0 + Math.sin(q * Math.PI) * 2.9); _above = 1;
-    } else {                                // catch and pull: under the surface
+      _hx = -5.2 + 15.0 * e;
+      _hy = sgn * (2.9 + Math.sin(q * Math.PI) * 3.0);
+      _hz = Math.sin(q * Math.PI);
+      _above = 1;
+    } else {                                 // catch and pull: under it
       const q = (u - Math.PI) / Math.PI, e = q * q * (3 - 2 * q);
-      _hx = 8.7 - 13.2 * e; _hy = sgn * (2.0 + Math.sin(q * Math.PI) * 1.5); _above = 0;
+      _hx = 9.8 - 15.0 * e;
+      _hy = sgn * (1.9 + Math.sin(q * Math.PI) * 1.7);
+      _hz = 0; _above = 0;
     }
   }
 
+  function bodySprite(s) { return S.torso[s.kit || 'shirt'][s.look]; }
+  function headSprite(s) { return (s.bloody ? S.headHurt : S.head)[s.look]; }
+
+  function drawHead(ctx, s, wx, wy, ang, scale) {
+    scale = scale === undefined ? 1 : scale;
+    drawSprite(ctx, headSprite(s), wx, wy, ang, IP * scale, IP * scale);
+    const hat = S.hat[s.look];
+    if (hat && !s.hatLost) drawSprite(ctx, hat, wx, wy, ang, IP * scale, IP * scale);
+  }
+
+  // the froth a body pushes up around itself, keyed to how hard he is working
+  function bodyFoam(ctx, ph, effort) {
+    const fa = 0.22 + effort * 0.26 + Math.sin(ph * 2) * 0.1;
+    ctx.fillStyle = 'rgba(234,248,255,' + clamp(fa + 0.2, 0, 1).toFixed(2) + ')';
+    fpx(ctx, LX(4.4, -4.8), LY(4.4, -4.8), 3, 2);
+    fpx(ctx, LX(4.4, 4.8), LY(4.4, 4.8), 3, 2);
+    ctx.fillStyle = 'rgba(200,236,255,' + clamp(fa, 0, 1).toFixed(2) + ')';
+    fpx(ctx, LX(-1, -5.2), LY(-1, -5.2), 4, 1);
+    fpx(ctx, LX(-1, 5.2), LY(-1, 5.2), 4, 1);
+    fpx(ctx, LX(-6, -4.2), LY(-6, -4.2), 3, 1);
+    fpx(ctx, LX(-6, 4.2), LY(-6, 4.2), 3, 1);
+  }
+
   function drawSwimmer(ctx, cam, t, s) {
-    const sx = Math.round(s.x - cam.x), sy = Math.round(s.y - cam.y);
-    if (!onScreen(sx, sy, 56)) return;
+    const sxw = s.x - cam.x, syw = s.y - cam.y;
+    if (!onScreen(sxw, syw, 56)) return;
     const L = LOOKS[s.look];
-    const body = S.torso[s.look], head = S.head[s.look];
-    const leap = s.state === 'leap', cling = s.state === 'cling';
-    const tread = s.kind === 'harpoon' && !leap && !cling;
-    const z = s.z, dy = sy - Math.round(z);
+    const body = bodySprite(s);
+    const leap = s.state === 'leap', cling = s.state === 'cling', climb = s.state === 'climb';
+    const gasp = s.state === 'gasp', wreck = s.state === 'wreck';
+    const tread = (s.kind === 'harpoon' && !leap && !cling && !climb && !gasp && !wreck) || s.state === 'stun';
+    const z = s.z, dyw = syw - z;
     const ink = HP.ink;
     const skin = L.skin, skinW = L.wetSkin, shirtW = L.wetShirt;
+    const sub = s.sub || 0;
+    const effort = clamp(s.effort === undefined ? 1 : s.effort, 0, 1.4);
 
     // ---- shadow / submerged smudge
-    if (leap) {
-      shadowBlob(ctx, sx + 2, sy + 4, Math.max(3, Math.round(8 - z * 0.07)), Math.max(2, Math.round(4 - z * 0.035)), 'rgba(6,18,48,0.38)');
+    if (leap || climb) {
+      shadowBlob(ctx, Math.round(sxw) + 2, Math.round(syw) + 4, Math.max(3, Math.round(8 - z * 0.07)), Math.max(2, Math.round(4 - z * 0.035)), 'rgba(6,18,48,0.38)');
     } else {
-      shadowBlob(ctx, sx + 2, sy + 4, 7, 3, 'rgba(6,18,48,0.22)');
+      shadowBlob(ctx, Math.round(sxw) + 2, Math.round(syw) + 4, 7, 3, 'rgba(6,18,48,' + (0.22 + sub * 0.16).toFixed(2) + ')');
     }
 
     const ph = s.ph;
-    setXf(sx, dy, s.ang);
+    setXf(sxw, dyw, s.ang);
+
+    if (sub > 0.92) {
+      // right under: a dark shape and the bubbles coming up off him
+      ctx.globalAlpha = 0.5;
+      drawSprite(ctx, body, sxw, syw + 1, s.ang, IP * 0.8, IP * 0.8);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(200,236,255,0.6)';
+      for (let i = 0; i < 3; i++) fpx(ctx, sxw + Math.sin(t * 6 + i * 2) * 2, syw - 2 - i * 2, 2, 2);
+      return;
+    }
+    if (sub > 0) { ctx.globalAlpha = 1 - sub * 0.45; }
 
     if (leap) {
-      // ---- a fisherman in mid-air: legs trailing, arms flailing
+      // ---- over the side: legs trailing, arms thrown forward
       const f = Math.sin(ph * 2);
       for (let i = 0; i < 2; i++) {
         const sg = i ? 1 : -1;
-        limb(ctx, -3.5, sg * 1.8, -10 + f * sg * 2, sg * (3 + f * 2), 3, i ? shade(L.pants, 0.7) : L.pants, ink);
+        limb(ctx, -3.6, sg * 1.5, -10.5 + f * sg * 2, sg * (3.2 + f * 2), Math.round(2.6 * D), i ? shade(L.pants, 0.7) : L.pants, ink);
       }
-      ctx.save(); ctx.translate(sx, dy); ctx.rotate(s.ang);
-      ctx.drawImage(body.c, -body.ax, -body.ay); ctx.restore();
+      drawSprite(ctx, body, sxw, dyw, s.ang, IP, IP);
       for (let i = 0; i < 2; i++) {
         const sg = i ? 1 : -1;
-        const hx2 = 2 + Math.sin(ph * 3 + i * 2) * 4, hy2 = sg * (6 + Math.cos(ph * 3 + i * 2) * 2);
-        ik(4.2, sg * 3, hx2, hy2, 3.6, 3.6, sg);
-        limb2(ctx, 4.2, sg * 3, _ikx, _iky, hx2, hy2, 3, 2, L.shirt, skin, ink);
+        const hx2 = 2.4 + Math.sin(ph * 3 + i * 2) * 4, hy2 = sg * (6.2 + Math.cos(ph * 3 + i * 2) * 2);
+        ik(4.3, sg * 2.3, hx2, hy2, 3.7, 3.7, sg);
+        limb2(ctx, 4.3, sg * 2.3, _ikx, _iky, hx2, hy2, Math.round(2.4 * D), Math.round(1.8 * D), L.shirt, L.litSkin, ink);
+        ldot(ctx, hx2, hy2, Math.round(1.8 * D), skin);
       }
-      drawSprite(ctx, head, LX(6.6, 0), LY(6.6, 0), s.ang + Math.sin(ph * 2) * 0.3);
-      drawGear(ctx, s, 8, 5, s.ang);
+      drawHead(ctx, s, LX(7.0, 0), LY(7.0, 0), s.ang + Math.sin(ph * 2) * 0.3);
+      drawGear(ctx, s, 8.2, 5, s.ang);
+      ctx.globalAlpha = 1;
       return;
     }
 
-    // ---- legs kicking below the surface
+    if (climb) {
+      // ---- hauling himself over the gunwale: hands planted, body rising,
+      //      legs still hanging in the water behind him
+      const k = clamp(s.climb || 0, 0, 1);
+      const strain = Math.sin(t * 22) * (0.25 + k * 0.35);
+      for (let i = 0; i < 2; i++) {
+        const sg = i ? 1 : -1;
+        limb(ctx, -3.4, sg * 1.4, -8.5 - (1 - k) * 2, sg * (2.4 + Math.sin(t * 8 + i) * 1.4), Math.round(2.4 * D), L.subPants, null);
+      }
+      ctx.save();
+      ctx.translate(snap(sxw), snap(dyw)); ctx.rotate(s.ang);
+      ctx.scale(IP, IP * (0.55 + 0.45 * k));
+      ctx.drawImage(body.c, -body.ax, -body.ay);
+      ctx.restore();
+      for (let i = 0; i < 2; i++) {
+        const sg = i ? 1 : -1;
+        const hx2 = 8.6, hy2 = sg * (3.4 + strain * 0.4);
+        ik(4.2, sg * 2.3, hx2, hy2, 3.9, 3.9, sg);
+        limb2(ctx, 4.2, sg * 2.3, _ikx, _iky, hx2, hy2, Math.round(2.4 * D), Math.round(1.8 * D), L.shirt, L.litSkin, ink);
+        ldot(ctx, hx2, hy2, Math.round(2 * D), L.litSkin);      // knuckles on the rail
+        ldot(ctx, hx2 + 0.6, hy2, Math.max(1, D), ink);
+      }
+      drawHead(ctx, s, LX(6.8 + k * 0.8, 0), LY(6.8 + k * 0.8, 0) - strain * 0.3, s.ang + Math.sin(t * 5) * 0.14, 0.94 + k * 0.06);
+      // water running off him
+      ctx.fillStyle = 'rgba(200,236,255,0.65)';
+      for (let i = 0; i < 3; i++) fpx(ctx, LX(-3 - i * 2, ((i & 1) ? 1 : -1) * 2.6), LY(-3 - i * 2, ((i & 1) ? 1 : -1) * 2.6) + Math.sin(t * 9 + i) * 0.5, 1, 2);
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    // ---- legs, always below the surface: dimmer, softer, no ink outline
     if (!cling) {
+      const kickAmp = wreck ? 0.6 : gasp ? 2.2 : 1 + effort * 0.9;
       for (let i = 0; i < 2; i++) {
         const sg = i ? 1 : -1;
         const k = Math.sin(ph * 2 + (i ? Math.PI : 0));
-        const fx2 = -10.5 + Math.abs(k) * 1.2, fy2 = sg * (1.8 + k * 2.6);
-        ik(-3.4, sg * 1.7, fx2, fy2, 3.4, 3.4, sg);
-        limb2(ctx, -3.4, sg * 1.7, _ikx, _iky, fx2, fy2, 3, 2, L.subPants, L.subPants, null);
-        ldot(ctx, fx2, fy2, 2, L.subPantsL);
-        // the churn the kick leaves behind
-        if (k > 0.85) { ctx.fillStyle = 'rgba(234,248,255,0.5)'; ctx.fillRect(Math.round(LX(fx2 - 2, fy2)) - 1, Math.round(LY(fx2 - 2, fy2)) - 1, 2, 2); }
+        const fx2 = -10.8 + Math.abs(k) * 1.3, fy2 = sg * (1.9 + k * 1.5 * kickAmp);
+        ik(-3.5, sg * 1.4, fx2, fy2, 3.5, 3.5, sg);
+        limb2(ctx, -3.5, sg * 1.4, _ikx, _iky, fx2, fy2, Math.round(3.2 * D), Math.round(2.2 * D), L.subPants, shade(L.subPants, 1.15), L.subInkD);
+        ldot(ctx, fx2, fy2, Math.round(1.6 * D), L.subPantsL);
+        if (k > 0.8 && !wreck) {                       // the churn the kick leaves
+          ctx.fillStyle = 'rgba(234,248,255,0.5)';
+          fpx(ctx, LX(fx2 - 2, fy2), LY(fx2 - 2, fy2), 2, 2);
+          fpx(ctx, LX(fx2 - 3.4, fy2 * 0.7), LY(fx2 - 3.4, fy2 * 0.7), 1, 1);
+        }
       }
     }
 
     if (cling) {
-      // ---- latched onto the manatee, knife working
+      // ---- latched onto the manatee, working the blade in
       const jab = s.atk < 0.2 ? 1 - s.atk / 0.2 : Math.max(0, 0.35 - s.stab) * 1.2;
-      const reach = 6 + jab * 5.5;
+      const reach = 6.2 + jab * 5.5;
       for (let i = 0; i < 2; i++) {
         const sg = i ? 1 : -1;
-        const hx2 = (i ? reach : 6.5), hy2 = sg * 2.6;
-        ik(4.2, sg * 3, hx2, hy2, 3.6, 3.6, sg);
-        limb2(ctx, 4.2, sg * 3, _ikx, _iky, hx2, hy2, 3, 2, i ? L.shirt : shirtW, i ? skin : skinW, i ? ink : null);
+        const hx2 = (i ? reach : 6.6), hy2 = sg * 2.7;
+        ik(4.3, sg * 2.3, hx2, hy2, 3.7, 3.7, sg);
+        limb2(ctx, 4.3, sg * 2.3, _ikx, _iky, hx2, hy2, Math.round(2.4 * D), Math.round(1.8 * D), i ? L.shirt : shirtW, i ? skin : skinW, i ? ink : null);
       }
-      ctx.save(); ctx.translate(sx, dy); ctx.rotate(s.ang);
-      ctx.scale(0.92, 1); ctx.drawImage(body.c, -body.ax, -body.ay); ctx.restore();
-      drawSprite(ctx, head, LX(6.4, 0), LY(6.4, 0), s.ang + Math.sin(t * 9) * 0.12);
-      drawGear(ctx, s, reach + 1.5, 2.6, s.ang);
-      if (jab > 0.6) { ctx.fillStyle = HP.blood; ctx.fillRect(Math.round(LX(reach + 3, 2.6)), Math.round(LY(reach + 3, 2.6)), 2, 1); }
+      drawSprite(ctx, body, sxw, dyw, s.ang, IP * 0.94, IP);
+      drawHead(ctx, s, LX(6.8, 0), LY(6.8, 0), s.ang + Math.sin(t * 9) * 0.12);
+      drawGear(ctx, s, reach + 1.5, 2.7, s.ang);
+      if (jab > 0.6) { ctx.fillStyle = HP.blood; fpx(ctx, LX(reach + 3, 2.7), LY(reach + 3, 2.7), 3, 2); }
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    if (gasp || wreck) {
+      // ---- vertical in the water, chin at the surface: slapping at it, or
+      //      hanging onto anything that floats. Not swimming. Not dangerous.
+      const flail = Math.sin(t * 9 + ph);
+      // the body is nearly end-on, so almost nothing of it is above water
+      ctx.save();
+      ctx.translate(snap(sxw), snap(dyw)); ctx.rotate(s.ang);
+      ctx.scale(IP * 0.5, IP * 0.86);
+      ctx.drawImage(body.c, -body.ax, -body.ay);
+      ctx.restore();
+      for (let i = 0; i < 2; i++) {
+        const sg = i ? 1 : -1;
+        const hx2 = wreck ? 6.4 : 2.6 + flail * sg * 2.8;
+        const hy2 = sg * (wreck ? 4.2 : 5.4 + Math.cos(t * 8 + i * 2) * 2.0);
+        ik(1.8, sg * 2.0, hx2, hy2, 3.5, 3.5, sg);
+        limb2(ctx, 1.8, sg * 2.0, _ikx, _iky, hx2, hy2, Math.round(2.4 * D), Math.round(2 * D), L.shirt, L.litSkin, ink);
+        ldot(ctx, hx2, hy2, Math.round(2 * D), L.litSkin);
+        if (gasp && Math.abs(flail) > 0.4) {
+          ctx.fillStyle = HP.foam;
+          fpx(ctx, LX(hx2 - 0.5, hy2 * 1.15), LY(hx2 - 0.5, hy2 * 1.15), 3, 2);
+          fpx(ctx, LX(hx2 + 1.4, hy2 * 1.3), LY(hx2 + 1.4, hy2 * 1.3), 2, 1);
+          fpx(ctx, LX(hx2 - 2.4, hy2 * 1.35), LY(hx2 - 2.4, hy2 * 1.35), 2, 1);
+        }
+      }
+      // head thrown back, mouth at the surface
+      drawHead(ctx, s, LX(2.2, 0), LY(2.2, 0) - 0.5, s.ang + Math.sin(t * 6) * 0.22, 1.12);
+      if (gasp) {
+        // the ring of water he is churning up around himself
+        const fa = 0.45 + Math.sin(t * 7) * 0.2;
+        ctx.fillStyle = 'rgba(234,248,255,' + clamp(fa, 0, 1).toFixed(2) + ')';
+        fpx(ctx, sxw - 5, syw + 3.4, 11, 1);
+        fpx(ctx, sxw - 7 + Math.sin(t * 9) * 2, syw + 2, 4, 1);
+        fpx(ctx, sxw + 4, syw + 1.6, 4, 1);
+        fpx(ctx, sxw - 3, syw - 4.5, 4, 1);
+      } else {
+        bodyFoam(ctx, ph, 0.4);
+      }
+      ctx.globalAlpha = 1;
       return;
     }
 
     if (tread) {
-      // ---- treading water: sculling, gun up when the shot is coming
-      const aiming = s.atk < 0.6 || (s.fireT || 0) > 0;
+      // ---- holding station: sculling, and the gun comes up well before it fires
+      const aiming = s.atk < 0.7 || (s.fireT || 0) > 0;
+      const wind = clamp(1 - s.atk / 0.7, 0, 1);
       for (let i = 0; i < 2; i++) {
         const sg = i ? 1 : -1;
-        const hx2 = aiming ? 6.5 : 1.5 + Math.sin(ph * 3 + i) * 1.5;
-        const hy2 = aiming ? sg * 2.2 : sg * (4.6 + Math.cos(ph * 3 + i) * 2.2);
-        ik(4.2, sg * 3, hx2, hy2, 3.6, 3.6, sg);
-        limb2(ctx, 4.2, sg * 3, _ikx, _iky, hx2, hy2, 3, 2, aiming ? L.shirt : shirtW, aiming ? skin : skinW, aiming ? ink : null);
+        const hx2 = aiming ? 5.4 + wind * 1.4 : 1.6 + Math.sin(ph * 3 + i) * 1.6;
+        const hy2 = aiming ? sg * (2.4 - wind * 0.6) : sg * (4.8 + Math.cos(ph * 3 + i) * 2.3);
+        ik(4.2, sg * 2.3, hx2, hy2, 3.7, 3.7, sg);
+        limb2(ctx, 4.2, sg * 2.3, _ikx, _iky, hx2, hy2, Math.round(2.4 * D), Math.round(1.8 * D), aiming ? L.shirt : shirtW, aiming ? skin : skinW, aiming ? ink : null);
       }
-      ctx.save(); ctx.translate(sx, dy + Math.round(Math.sin(ph * 2) * 0.8)); ctx.rotate(s.ang);
-      ctx.scale(0.78, 1); ctx.drawImage(body.c, -body.ax, -body.ay); ctx.restore();
-      drawSprite(ctx, head, LX(5.4, 0), LY(5.4, 0) + Math.round(Math.sin(ph * 2) * 0.8), s.ang);
-      if (aiming) drawGear(ctx, s, 8.5, 0, s.ang);
-      // foam ring: he is holding station, churning hard
-      const fa = 0.34 + Math.sin(t * 5 + ph) * 0.12;
+      const bob = Math.sin(ph * 2) * 0.8;
+      ctx.save();
+      ctx.translate(snap(sxw), snap(dyw + bob)); ctx.rotate(s.ang);
+      ctx.scale(IP * 0.78, IP);
+      ctx.drawImage(body.c, -body.ax, -body.ay);
+      ctx.restore();
+      drawHead(ctx, s, LX(5.8, 0), LY(5.8, 0) + bob, s.ang);
+      if (aiming) {
+        drawGear(ctx, s, 8.6 + wind, 0, s.ang);
+        // a readable wind-up: the muzzle glints brighter as the shot nears
+        if (wind > 0.45) {
+          ctx.fillStyle = wind > 0.82 ? '#ffffff' : '#ffe48f';
+          fpx(ctx, LX(12.4 + wind, 0), LY(12.4 + wind, 0), 2, 2);
+        }
+      }
+      // the foam ring of a man churning to stay put
+      const fa = 0.3 + Math.sin(t * 5 + ph) * 0.12;
       ctx.fillStyle = 'rgba(234,248,255,' + fa.toFixed(2) + ')';
-      ctx.fillRect(sx - 7, sy + 3, 14, 1);
-      ctx.fillRect(sx - 9 + Math.round(Math.sin(t * 6) * 2), sy + 4, 5, 1);
-      ctx.fillRect(sx + 4, sy + 4, 5, 1);
+      fpx(ctx, sxw - 7, syw + 3, 14, 1);
+      fpx(ctx, sxw - 9 + Math.sin(t * 6) * 2, syw + 4.2, 5, 1);
+      fpx(ctx, sxw + 4, syw + 4.2, 5, 1);
+      ctx.globalAlpha = 1;
       return;
     }
 
     // ---- front crawl -----------------------------------------------------
     const u1 = ph % TAU, u2 = (ph + Math.PI) % TAU;
-    // the pulling (underwater) arm goes down first
+    // the pulling arm, under the surface, goes down first
     for (let pass = 0; pass < 2; pass++) {
       const u = pass ? u2 : u1, sg = pass ? -1 : 1;
       armPose(u, sg);
       if (_above) continue;
-      ik(4.0, sg * 3.4, _hx, _hy, 4.3, 4.3, sg);
-      limb2(ctx, 4.0, sg * 3.4, _ikx, _iky, _hx, _hy, 3, 2, shirtW, skinW, null);
-      ldot(ctx, _hx, _hy, 2, mix(skinW, '#8fd4ff', 0.25));
+      ik(4.1, sg * 2.5, _hx, _hy, 4.4, 4.4, sg);
+      limb2(ctx, 4.1, sg * 2.5, _ikx, _iky, _hx, _hy, Math.round(2.4 * D), Math.round(1.8 * D), shirtW, skinW, null);
+      ldot(ctx, _hx, _hy, Math.round(1.8 * D), mix(skinW, '#8fd4ff', 0.25));
     }
-    // ---- the surface froth the body pushes up around itself
-    {
-      const fa = 0.30 + Math.sin(ph * 2) * 0.12;
-      ctx.fillStyle = 'rgba(234,248,255,' + (fa + 0.22).toFixed(2) + ')';
-      ctx.fillRect(Math.round(LX(4, -4.6)), Math.round(LY(4, -4.6)), 2, 1);
-      ctx.fillRect(Math.round(LX(4, 4.6)), Math.round(LY(4, 4.6)), 2, 1);
-      ctx.fillStyle = 'rgba(200,236,255,' + fa.toFixed(2) + ')';
-      ctx.fillRect(Math.round(LX(-1, -5)), Math.round(LY(-1, -5)), 3, 1);
-      ctx.fillRect(Math.round(LX(-1, 5)), Math.round(LY(-1, 5)), 3, 1);
-      ctx.fillRect(Math.round(LX(-6, -4)), Math.round(LY(-6, -4)), 2, 1);
-      ctx.fillRect(Math.round(LX(-6, 4)), Math.round(LY(-6, 4)), 2, 1);
-    }
-    // torso, rolling with the stroke
-    const roll = 1 - Math.abs(Math.sin(ph)) * 0.16;
-    ctx.save(); ctx.translate(sx, dy); ctx.rotate(s.ang); ctx.scale(1, roll);
-    ctx.drawImage(s.flash > 0 ? (S.torsoHurt[s.look] || body).c : body.c, -body.ax, -body.ay);
+    bodyFoam(ctx, ph, effort);
+    // torso, rolling onto its side with each stroke
+    const roll = 1 - Math.abs(Math.sin(ph)) * 0.2;
+    const heave = Math.sin(ph * 2) * 0.35 * effort;
+    ctx.save();
+    ctx.translate(snap(sxw), snap(dyw + heave)); ctx.rotate(s.ang);
+    ctx.scale(IP, IP * roll);
+    ctx.drawImage((s.flash > 0 && S.torsoHurt[s.kit] ? S.torsoHurt[s.kit][s.look] : body).c, -body.ax, -body.ay);
     ctx.restore();
-    // head, breathing to the side
-    const yaw = Math.sin(ph) * 0.42;
-    drawSprite(ctx, head, LX(6.6, Math.sin(ph) * 0.9), LY(6.6, Math.sin(ph) * 0.9), s.ang + yaw);
-    // the recovering arm sweeps over the top
+    // head, rolling to breathe on the recovery side
+    const yaw = Math.sin(ph) * 0.45;
+    const hxo = Math.sin(ph) * 0.9;
+    drawHead(ctx, s, LX(7.0, hxo), LY(7.0, hxo) + heave, s.ang + yaw);
+    // the recovering arm sweeps over the top of him
     for (let pass = 0; pass < 2; pass++) {
       const u = pass ? u2 : u1, sg = pass ? -1 : 1;
       armPose(u, sg);
       if (!_above) continue;
-      const lift = Math.sin(u) * 1.6;
-      ik(4.0, sg * 3.4, _hx, _hy - lift * sg * 0.2, 4.3, 4.3, sg);
-      limb2(ctx, 4.0, sg * 3.4, _ikx, _iky - lift, _hx, _hy - lift, 3, 2, L.shirt, L.litSkin, ink);
-      ldot(ctx, _hx, _hy - lift, 2, skin);
+      const lift = _hz * 1.8;
+      ik(4.1, sg * 2.5, _hx, _hy - lift * sg * 0.2, 4.4, 4.4, sg);
+      limb2(ctx, 4.1, sg * 2.5, _ikx, _iky - lift, _hx, _hy - lift, Math.round(2.4 * D), Math.round(1.8 * D), L.shirt, L.litSkin, ink);
+      ldot(ctx, _hx, _hy - lift, Math.round(2 * D), skin);
       if (sg > 0) drawGear(ctx, s, _hx + 1, _hy - lift, s.ang);
-      // the splash where the hand knifes back in
-      if (u > Math.PI * 0.78) {
-        const px2 = Math.round(LX(_hx, _hy)), py2 = Math.round(LY(_hx, _hy));
+      // the hand knifing back in, and the water it throws coming out
+      if (u > Math.PI * 0.80) {
+        const px2 = LX(_hx, _hy), py2 = LY(_hx, _hy);
         ctx.fillStyle = HP.foam;
-        ctx.fillRect(px2 - 2, py2 - 1, 4, 2); ctx.fillRect(px2 - 1, py2 - 3, 2, 2); ctx.fillRect(px2 - 1, py2 + 1, 3, 1);
+        fpx(ctx, px2 - 1, py2 - 0.5, 4, 2); fpx(ctx, px2 - 0.5, py2 - 1.5, 2, 2); fpx(ctx, px2 - 0.5, py2 + 0.5, 3, 1);
         ctx.fillStyle = 'rgba(200,236,255,0.8)';
-        ctx.fillRect(px2 - 4, py2 - 2, 2, 1); ctx.fillRect(px2 + 2, py2 + 1, 3, 1); ctx.fillRect(px2 + 3, py2 - 2, 1, 1);
+        fpx(ctx, px2 - 2, py2 - 1, 2, 1); fpx(ctx, px2 + 1, py2 + 0.5, 3, 1); fpx(ctx, px2 + 1.5, py2 - 1, 1, 1);
+      } else if (u < Math.PI * 0.3) {
+        const px2 = LX(_hx, _hy), py2 = LY(_hx, _hy);   // water off the exiting hand
+        ctx.fillStyle = 'rgba(200,236,255,0.6)';
+        fpx(ctx, px2 - 1, py2 + 1, 1, 2); fpx(ctx, px2 + 1, py2 + 1.5, 1, 1);
       }
     }
-    // bow wave off the head and the trailing wake
-    ctx.fillStyle = 'rgba(240,252,255,0.8)';
-    ctx.fillRect(Math.round(LX(10, -2.2)), Math.round(LY(10, -2.2)), 2, 1);
-    ctx.fillRect(Math.round(LX(10, 2.2)), Math.round(LY(10, 2.2)), 2, 1);
-    ctx.fillStyle = 'rgba(234,248,255,0.5)';
-    ctx.fillRect(Math.round(LX(12, -3.4)), Math.round(LY(12, -3.4)), 2, 1);
-    ctx.fillRect(Math.round(LX(12, 3.4)), Math.round(LY(12, 3.4)), 2, 1);
+    // bow wave off the head, then the wake he drags behind him
+    const bw = clamp(0.4 + effort * 0.6, 0, 1);
+    ctx.fillStyle = 'rgba(240,252,255,' + (0.5 + bw * 0.4).toFixed(2) + ')';
+    fpx(ctx, LX(10.2, -2.3), LY(10.2, -2.3), 3, 1);
+    fpx(ctx, LX(10.2, 2.3), LY(10.2, 2.3), 3, 1);
+    ctx.fillStyle = 'rgba(234,248,255,' + (0.3 + bw * 0.3).toFixed(2) + ')';
+    fpx(ctx, LX(12.4, -3.6), LY(12.4, -3.6), 3, 1);
+    fpx(ctx, LX(12.4, 3.6), LY(12.4, 3.6), 3, 1);
+    fpx(ctx, LX(14.2, -4.8), LY(14.2, -4.8), 2, 1);
+    fpx(ctx, LX(14.2, 4.8), LY(14.2, 4.8), 2, 1);
     const wob = Math.sin(t * 7 + ph) * 1.6, kick = Math.abs(Math.sin(ph * 2));
-    ctx.fillStyle = 'rgba(234,248,255,' + (0.35 + kick * 0.45).toFixed(2) + ')';
-    ctx.fillRect(Math.round(LX(-11, wob)), Math.round(LY(-11, wob)), 4, 2);
-    ctx.fillStyle = 'rgba(200,236,255,0.45)';
-    ctx.fillRect(Math.round(LX(-14, -wob)), Math.round(LY(-14, -wob)), 3, 1);
-    ctx.fillRect(Math.round(LX(-17, wob * 0.6)), Math.round(LY(-17, wob * 0.6)), 2, 1);
+    ctx.fillStyle = 'rgba(234,248,255,' + (0.25 + kick * 0.4 * bw).toFixed(2) + ')';
+    fpx(ctx, LX(-11, wob), LY(-11, wob), 5, 2);
+    ctx.fillStyle = 'rgba(200,236,255,' + (0.3 * bw + 0.15).toFixed(2) + ')';
+    fpx(ctx, LX(-14, -wob), LY(-14, -wob), 4, 1);
+    fpx(ctx, LX(-17.5, wob * 0.6), LY(-17.5, wob * 0.6), 3, 1);
+    ctx.globalAlpha = 1;
   }
 
   function drawGear(ctx, s, hx2, hy2, ang) {
     const gx = LX(hx2, hy2), gy = LY(hx2, hy2);
-    if (s.kind === 'knife') drawSprite(ctx, S.knife, gx, gy, ang - 0.15);
-    else if (s.kind === 'gaff') drawSprite(ctx, S.gaff, gx, gy, ang - 0.08);
-    else drawSprite(ctx, S.hgun, gx, gy, ang);
+    if (s.kind === 'knife') drawSprite(ctx, S.knife, gx, gy, ang - 0.15, IP, IP);
+    else if (s.kind === 'gaff') drawSprite(ctx, S.gaff, gx, gy, ang - 0.08, IP, IP);
+    else drawSprite(ctx, S.hgun, gx, gy, ang, IP, IP);
   }
 
   function renderCorpses(ctx, cam, t) {
     for (let i = 0; i < corpses.length; i++) {
       const c = corpses[i];
-      const sx = Math.round(c.x - cam.x), sy = Math.round(c.y - cam.y);
+      const sx = c.x - cam.x, sy = c.y - cam.y;
       if (!onScreen(sx, sy, 40)) continue;
       const k = c.t / c.life;
       ctx.globalAlpha = k > 0.75 ? clamp((1 - k) * 4, 0, 1) : 1;
-      shadowBlob(ctx, sx + 3, sy + 4, 7, 3, 'rgba(6,18,48,0.26)');
-      drawSprite(ctx, S.corpse[c.look], sx, sy + Math.sin(t * 2 + c.x) * 0.6, c.ang + c.rot, 1, 1 - k * 0.35);
+      shadowBlob(ctx, Math.round(sx) + 3, Math.round(sy) + 4, 7, 3, 'rgba(6,18,48,0.26)');
+      drawSprite(ctx, S.corpse[c.look], sx, sy + Math.sin(t * 2 + c.x) * 0.6, c.ang + c.rot, IP, IP * (1 - k * 0.3));
       ctx.globalAlpha = 1;
     }
   }
@@ -1454,16 +1845,15 @@
       const sx = e.x + Math.cos(off) * (e.radius + 3), sy = e.y + Math.sin(off) * (e.radius + 3);
       const kind = Math.random() < 0.18 ? 'harpoon' : (Math.random() < 0.34 ? 'gaff' : 'knife');
       const s = spawnSwimmer(sx, sy, kind);
-      // the leap: a real arc off the gunwale toward the water near the player
+      // he climbs the rail first, hesitates, and only then goes over the side
       const land = e.radius + rand(22, 58);
       const la = base + rand(-0.5, 0.5);
-      const lx2 = e.x + Math.cos(la) * land, ly2 = e.y + Math.sin(la) * land;
-      const flight = rand(0.5, 0.72);
-      s.state = 'leap'; s.stateT = 0;
-      s.x = sx; s.y = sy; s.z = 5;
-      s.vx = (lx2 - sx) / flight; s.vy = (ly2 - sy) / flight;
-      s.vz = 0.5 * 340 * flight;
-      s.ang = Math.atan2(s.vy, s.vx);
+      s.lx = e.x + Math.cos(la) * land; s.ly = e.y + Math.sin(la) * land;
+      s.state = 'climb'; s.stateT = 0; s.climb = 0;
+      s.boat = e; s.boardA = off;
+      s.hesitate = 0.55 + rand(0.15, 0.7) + i * 0.18;
+      s.x = sx; s.y = sy; s.z = 1.5;
+      s.ang = off;
       if (TOON) TOON.emote(sx + 6, sy - 20, '!');
       if (g.particles) g.particles.spray(sx, sy, off, 3, 60);
     }
@@ -1472,6 +1862,19 @@
     e.kx -= Math.cos(base) * 60; e.ky -= Math.sin(base) * 60;
     snd('tone', 420, 0.12, 'square', 0.07, 160);
     return n;
+  }
+
+  // the jump itself, once he has worked up the nerve
+  function launchLeap(s) {
+    const flight = rand(0.5, 0.72);
+    const g = gg();
+    s.state = 'leap'; s.stateT = 0;
+    s.vx = (s.lx - s.x) / flight; s.vy = (s.ly - s.y) / flight;
+    s.vz = 0.5 * 340 * flight;
+    s.ang = Math.atan2(s.vy, s.vx);
+    s.boat = null;
+    if (g && g.particles) g.particles.spray(s.x, s.y, s.ang, 3, 60);
+    snd('tone', 380, 0.08, 'square', 0.05, 120);
   }
 
   function stepCrews(dt, t, g) {
@@ -1818,16 +2221,20 @@
         const L = LOOKS[i];
         L.pants = PANTS[i % PANTS.length];
         L.pantsD = shade(L.pants, 0.52);
-        L.wetSkin = mix(shade(L.skin, 0.7), WATER_TINT, 0.6);
+        L.wetSkin = mix(shade(L.skin, 0.82), WATER_TINT, 0.38);
         L.litSkin = shade(L.skin, 1.18);
-        L.wetShirt = mix(shade(L.shirt, 0.68), WATER_TINT, 0.62);
-        L.subPants = mix(shade(L.pants, 0.8), WATER_TINT, 0.58);
-        L.subPantsL = mix(L.subPants, '#8fd4ff', 0.3);
+        L.wetShirt = mix(shade(L.shirt, 0.8), WATER_TINT, 0.4);
+        L.subPants = mix(shade(L.pants, 0.95), WATER_TINT, 0.32);
+        L.subPantsL = mix(L.subPants, '#a8e2ff', 0.42);
+        L.subInkD = mix(HP.ink, WATER_TINT, 0.45);
         L.subInk = mix(HP.ink, WATER_TINT, 0.62);
       }
       buildSprites();
-      S.torsoHurt = [];
-      for (let i = 0; i < S.torso.length; i++) S.torsoHurt.push(tintSprite(S.torso[i], '#ffffff', 0.82));
+      S.torsoHurt = {};
+      for (let k = 0; k < KITS.length; k++) {
+        const kit = KITS[k]; S.torsoHurt[kit] = [];
+        for (let i = 0; i < S.torso[kit].length; i++) S.torsoHurt[kit].push(tintSprite(S.torso[kit][i], '#ffffff', 0.82));
+      }
       return this;
     },
 
@@ -1876,14 +2283,14 @@
       renderShellShadows(ctx, cam, t);
       renderCorpses(ctx, cam, t);
       renderMines(ctx, cam, t);
-      for (let i = 0; i < swimmers.length; i++) if (swimmers[i].state !== 'leap') drawSwimmer(ctx, cam, t, swimmers[i]);
+      for (let i = 0; i < swimmers.length; i++) { const st = swimmers[i].state; if (st !== 'leap' && st !== 'climb') drawSwimmer(ctx, cam, t, swimmers[i]); }
     },
 
     // anything that must sit ON TOP: leaps in mid-air, ropes, markers, shells
     renderOver(ctx, cam, t) {
       if (!built || !cam) return;
       setView(ctx);
-      for (let i = 0; i < swimmers.length; i++) if (swimmers[i].state === 'leap') drawSwimmer(ctx, cam, t, swimmers[i]);
+      for (let i = 0; i < swimmers.length; i++) { const st = swimmers[i].state; if (st === 'leap' || st === 'climb') drawSwimmer(ctx, cam, t, swimmers[i]); }
       renderMinesOver(ctx, cam, t);
       renderCrewsOver(ctx, cam, t);
       renderImpactMarkers(ctx, cam, t);
