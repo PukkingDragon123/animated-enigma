@@ -272,68 +272,40 @@
   // ===========================================================================
   //  THE WATER — the living underwater backdrop, shared by both screens
   // ===========================================================================
-  const KELP_Y = 160, KELP_H = 200;      // the band of water the kelp lives in
+  const KELP_Y = 150, KELP_H = 210;      // the band of water the kelp lives in
+  const BED_Y = 326;                     // mean height of the seabed
+  const SURF_H = 26;                     // the underside of the surface
   const Deep = {
     built: false, t: 0,
     bg: null, rays: [], whale: null, whaleTail: null, wreck: null, bub: [], fgBub: [],
-    motes: [], drift: [], kelp: [], rise: [], big: [],
+    motes: [], drift: [], kelp: [], rise: [], big: [], glow: [], jelly: [], school: [], hulls: [], leak: [],
     kelpCan: [null, null], kelpCtx: [null, null], kelpAt: [-99, -99],
-    sky: null, skyCtx: null, skyAt: -99,
-    whaleX: 700, whaleY: 96,
+    sky: null, skyCtx: null, skyAt: -99, skyWreck: -1, slot: [-1, -1, -1],
+    surf: null, caust: [], fgRock: null, fish: [], manta: null, lampGlow: null,
+    whaleX: 700, whaleY: 96, mantaX: -120, mantaY: 210, crabX: 120, crabDir: 1,
+    weather: 0,
 
+    // =====================================================================
     build() {
       if (this.built) return; this.built = true;
       const rng = new SeededRandom(20260919);
+      this.rng = rng;
 
-      // ---- posterised depth gradient, ordered-dithered between bands -----
-      const ramp = ['#357aa0', '#2d6d92', '#266182', '#205673', '#1a4b66', '#154158', '#11384c', '#0d2f40', '#0a2634', '#081e2a', '#061820', '#041218'];
-      const c = can(640, 360), x = c.getContext('2d');
-      const rgbs = ramp.map(hexToRgb), N = ramp.length;
-      const img = x.createImageData(640, 360), d = img.data;
-      for (let y = 0; y < 360; y++) {
-        const f = Math.pow(y / 359, 0.82) * (N - 1);
-        const i0 = Math.floor(f), fr = f - i0;
-        for (let i = 0; i < 640; i++) {
-          let idx = i0 + (fr > bay(i, y) ? 1 : 0);
-          if (idx > N - 1) idx = N - 1;
-          const col = rgbs[idx], p = (y * 640 + i) * 4;
-          d[p] = col[0]; d[p + 1] = col[1]; d[p + 2] = col[2]; d[p + 3] = 255;
-        }
-      }
-      x.putImageData(img, 0, 0);
-      // distant gloom: vague darker masses far off in the water
-      for (let i = 0; i < 5; i++) {
-        const gx = rng.range(-40, 640), gy = rng.range(120, 300), gw = rng.range(80, 220), gh = rng.range(30, 70);
-        x.fillStyle = 'rgba(3,10,16,0.30)';
-        for (let yy = 0; yy < gh; yy++) {
-          const k = yy / gh, hw = Math.round(gw / 2 * Math.sin(Math.PI * Math.max(0.08, k)));
-          x.fillRect(Math.round(gx - hw), Math.round(gy + yy), hw * 2, 1);
-        }
-      }
-      // seabed
-      const bedY = 332;
-      for (let i = 0; i < 640; i++) {
-        const h = Math.round(bedY + Math.sin(i * 0.035) * 3 + Math.sin(i * 0.11) * 2);
-        x.fillStyle = '#0c2029'; x.fillRect(i, h, 1, 360 - h);
-        x.fillStyle = '#16323c'; x.fillRect(i, h, 1, 1);
-        x.fillStyle = '#1d4250'; if ((i & 7) === 0) x.fillRect(i, h, 2, 1);
-      }
-      for (let i = 0; i < 90; i++) {                    // pebbles + shells
-        const px2 = Math.round(rng.range(0, 640)), py2 = Math.round(rng.range(bedY + 4, 358));
-        x.fillStyle = rng.next() > 0.6 ? '#173540' : '#0a1a22';
-        x.fillRect(px2, py2, rng.int(1, 3), 1);
-      }
-      this.bg = c;
+      this.bg = this.buildWater(rng);
+      this.surf = this.buildSurface();
+      for (let i = 0; i < 4; i++) this.caust.push(this.buildCaustic(i / 4 * TAU));
+      this.fgRock = this.buildForeRock(new SeededRandom(5150));
 
-      // ---- god rays: three prerendered beams -----------------------------
-      for (let r = 0; r < 3; r++) this.rays.push(this.buildRay(70 + r * 34, 360, 0.55 + r * 0.22));
+      // ---- god rays: four prerendered beams -----------------------------
+      for (let r = 0; r < 4; r++) this.rays.push(this.buildRay(64 + r * 30, 330, 0.42 + r * 0.2));
 
-      // ---- whale silhouette ---------------------------------------------
       this.whale = this.buildWhale();
       this.whaleTail = this.buildWhaleTail();
-
-      // ---- wreck ---------------------------------------------------------
+      this.manta = this.buildManta();
       this.wreck = this.buildWreck();
+      this.lampGlow = this.buildGlow(13, [255, 206, 120]);
+      for (let i = 0; i < 3; i++) this.fish.push(this.buildFish(i));
+      for (let i = 0; i < 3; i++) this.hulls.push(this.buildHull(i));
 
       // ---- bubble sprites (ambient) --------------------------------------
       for (let r = 1; r <= 6; r++) this.bub.push(this.buildBubble(r, 0.55));
@@ -349,10 +321,18 @@
         ph: rng.range(0, TAU), w: rng.range(6, 20), len: rng.int(2, 4),
       });
       // ---- kelp forest (two depth layers) ---------------------------------
-      for (let i = 0; i < 26; i++) this.kelp.push({
-        x: rng.range(-20, 660), h: rng.range(60, 190), w: rng.int(2, 4),
-        ph: rng.range(0, TAU), sp: rng.range(0.4, 0.9), far: i < 15,
-      });
+      // three groves, so the middle of the frame stays open water
+      const GROVE = [[-24, 108], [446, 676], [150, 430]];
+      for (let i = 0; i < 26; i++) {
+        const g = GROVE[i < 10 ? 0 : i < 20 ? 1 : 2];
+        const far = (i % 5) < 2;
+        this.kelp.push({
+          x: rng.range(g[0], g[1]), h: rng.range(g === GROVE[2] ? 60 : 95, g === GROVE[2] ? 120 : 215),
+          w: far ? rng.int(3, 4) : rng.int(4, 6),
+          ph: rng.range(0, TAU), sp: rng.range(0.4, 0.9), far: far,
+          root: Math.round(rng.range(-3, 6)), n: rng.int(1, 3),
+        });
+      }
       // ---- rising bubble columns ------------------------------------------
       for (let i = 0; i < 80; i++) this.rise.push({
         x: rng.range(0, 640), y: rng.range(0, 380), r: rng.int(0, 5),
@@ -362,28 +342,326 @@
         x: rng.range(0, 640), y: rng.range(0, 420), r: rng.int(0, this.fgBub.length - 1),
         s: rng.range(34, 74), ph: rng.range(0, TAU), w: rng.range(6, 18),
       });
+      // ---- bioluminescence: slow cold sparks in the gloom ------------------
+      for (let i = 0; i < 44; i++) this.glow.push({
+        x: rng.range(0, 640), y: rng.range(140, 356), ph: rng.range(0, TAU),
+        sp: rng.range(0.5, 1.5), dx: rng.range(-4, 4), dy: rng.range(-7, -1),
+        col: rng.next() > 0.55 ? '#7dffd8' : '#9fd0ff',
+      });
+      // ---- a few drifting jellyfish ---------------------------------------
+      for (let i = 0; i < 4; i++) this.jelly.push({
+        x: rng.range(40, 600), y: rng.range(110, 300), r: rng.int(4, 7),
+        ph: rng.range(0, TAU), sp: rng.range(0.55, 0.95), vx: rng.range(-5, 5),
+      });
+      // ---- far schools of fish (baked with the slow layer) -----------------
+      for (let i = 0; i < 3; i++) {
+        const cx = rng.range(0, 640), cy = rng.range(120, 250), n = rng.int(11, 20);
+        const mem = [];
+        for (let j = 0; j < n; j++) mem.push({ ox: rng.range(-34, 34), oy: rng.range(-15, 15), ph: rng.range(0, TAU) });
+        this.school.push({ x: cx, y: cy, vx: rng.next() > 0.5 ? 8 : -8, size: rng.int(0, 2), mem: mem });
+      }
     },
 
-    // The water and the seven god rays over it. The rays drift and pulse very
-    // slowly, so the pair is baked into one opaque frame about twelve times a
-    // second; blitting that is one opaque copy a frame instead of eight
-    // blended ones, and it looks identical.
-    skyLayer(T) {
+    // ================================================== the water column
+    buildWater(rng) {
+      const ramp = ['#4b95ba', '#3f88ad', '#357ca1', '#2c7095', '#246489', '#1d597c',
+        '#174f70', '#124563', '#0e3c57', '#0b344c', '#082c41', '#062436',
+        '#051d2c', '#041723', '#03121c'];
+      const c = can(640, 360), x = c.getContext('2d');
+      const rgbs = ramp.map(hexToRgb), N = ramp.length;
+      const img = x.createImageData(640, 360), d = img.data;
+      for (let y = 0; y < 360; y++) {
+        const base = Math.pow(y / 359, 0.80) * (N - 2.2);
+        for (let i = 0; i < 640; i++) {
+          // light pools under the surface in the middle, gloom at the edges
+          const ex = Math.abs(i - 316) / 316;
+          let f = base + ex * ex * 2.5 - Math.max(0, 1 - y / 190) * 1.15;
+          if (f < 0) f = 0;
+          const i0 = Math.floor(f), fr = f - i0;
+          let idx = i0 + (fr > bay(i, y) ? 1 : 0);
+          if (idx > N - 1) idx = N - 1;
+          const col = rgbs[idx], p = (y * 640 + i) * 4;
+          d[p] = col[0]; d[p + 1] = col[1]; d[p + 2] = col[2]; d[p + 3] = 255;
+        }
+      }
+      x.putImageData(img, 0, 0);
+
+      // ---- far haze: vague darker masses lost in the water ---------------
+      for (let i = 0; i < 7; i++) {
+        const gx = rng.range(-40, 640), gy = rng.range(120, 300), gw = rng.range(90, 240), gh = rng.range(26, 66);
+        x.fillStyle = 'rgba(3,12,20,0.30)';
+        for (let yy = 0; yy < gh; yy++) {
+          const k = yy / gh, hw = gw / 2 * Math.sin(Math.PI * Math.max(0.08, k));
+          const x0 = Math.round(gx - hw), x1 = Math.round(gx + hw), y = Math.round(gy + yy);
+          for (let xx = x0; xx < x1; xx++) {
+            // feather the edge with the ordered dither so it never reads as
+            // a cut-out ellipse, only as water that has gone thick
+            const e = 1 - Math.abs((xx - gx) / (hw + 0.01));
+            const a = Math.min(1, e * 2.2) * Math.min(1, Math.sin(Math.PI * Math.max(0.02, k)) * 2);
+            if (a * a * 0.55 > bay(xx, y)) x.fillRect(xx, y, 1, 1);
+          }
+        }
+      }
+
+      // ---- the far ridge: a drowned skyline, barely a shade darker -------
+      this.ridge(x, rng, 268, 30, 'rgba(6,26,38,0.55)', 0.019, 1);
+      this.ridge(x, rng, 292, 40, 'rgba(5,21,32,0.75)', 0.031, 2);
+
+      // ---- mid rock stacks standing off the bed ---------------------------
+      for (let i = 0; i < 7; i++) {
+        const rx = Math.round(rng.range(-20, 640)), rh = Math.round(rng.range(28, 86));
+        const rw = Math.round(rng.range(22, 62));
+        this.stack(x, rx, BED_Y + 4, rw, rh, '#082330', '#0e3040', '#143f50');
+      }
+      // two sea stacks tall enough to carry the eye up through the water
+      this.stack(x, 104, BED_Y + 6, 74, 152, '#061d28', '#0c2c3a', '#154254');
+      this.stack(x, 522, BED_Y + 6, 58, 118, '#061d28', '#0c2c3a', '#154254');
+
+      // ---- the seabed ------------------------------------------------------
+      const bedTop = new Int16Array(640);
+      const sand = ['#2b6274', '#235667', '#1d4b5a', '#18404e', '#133643'];
+      for (let i = 0; i < 640; i++) {
+        const h = Math.round(BED_Y + Math.sin(i * 0.021) * 5 + Math.sin(i * 0.083 + 1.4) * 3 + Math.sin(i * 0.31) * 1);
+        bedTop[i] = h;
+        for (let y = h; y < 360; y++) {
+          // the sand is lit from above: brightest at the lip, falling away
+          const k = (y - h) / 30;
+          const f = Math.min(4, k * 4.2);
+          const i0 = Math.floor(f);
+          x.fillStyle = sand[Math.min(4, i0 + ((f - i0) > bay(i, y) ? 1 : 0))];
+          x.fillRect(i, y, 1, 1);
+        }
+        x.fillStyle = '#4e93a4'; x.fillRect(i, h, 1, 1);
+        x.fillStyle = '#367b8d'; x.fillRect(i, h + 1, 1, 1);
+      }
+      this.bedTop = bedTop;
+      // sand ripples: posterised bands running with the contour
+      for (let r = 0; r < 10; r++) {
+        const off = 3 + r * 3;
+        for (let i = 0; i < 640; i++) {
+          const y = bedTop[i] + off + Math.round(Math.sin(i * 0.05 + r * 1.7) * 2 + Math.sin(i * 0.013) * 2);
+          if (y >= 359) continue;
+          x.fillStyle = 'rgba(6,20,28,0.42)'; x.fillRect(i, y, 1, 2);
+          x.fillStyle = 'rgba(120,190,205,0.20)'; x.fillRect(i, y - 1, 1, 1);
+        }
+      }
+      // boulders and shells sitting on it
+      for (let i = 0; i < 12; i++) {
+        const px2 = Math.round(rng.range(0, 620));
+        this.boulder(x, px2, bedTop[px2] + 2, rng.int(6, 18), rng.int(4, 11));
+      }
+      for (let i = 0; i < 120; i++) {
+        const px2 = Math.round(rng.range(0, 638)), py2 = Math.round(rng.range(bedTop[px2 | 0] + 3, 359));
+        x.fillStyle = rng.next() > 0.55 ? '#3e8294' : '#0a1e27';
+        x.fillRect(px2, py2, rng.int(1, 3), 1);
+      }
+      // anemone tufts — the bases of the bioluminescence
+      this.anem = [];
+      for (let i = 0; i < 18; i++) {
+        const px2 = Math.round(rng.range(6, 632)), by = bedTop[px2];
+        const th = rng.int(4, 9);
+        x.fillStyle = '#0a2630';
+        for (let j = 0; j < 5; j++) x.fillRect(px2 - 2 + j, by - th - (j === 2 ? 2 : 0), 1, th + 10);
+        x.fillStyle = '#1d6660'; x.fillRect(px2 - 1, by - th - 1, 3, 2);
+        this.anem.push({ x: px2, y: by - th - 2, ph: rng.range(0, TAU),
+          col: rng.next() > 0.5 ? '#7dffd8' : '#a8b6ff' });
+      }
+      return c;
+    },
+
+    ridge(x, rng, baseY, amp, col, freq, step) {
+      x.fillStyle = col;
+      let h = 0;
+      for (let i = 0; i < 640; i += step) {
+        h = Math.round(baseY - amp * (0.5 + 0.5 * Math.sin(i * freq)) - amp * 0.4 * Math.sin(i * freq * 3.1 + 2));
+        x.fillRect(i, h, step, 360 - h);
+      }
+    },
+
+    stack(x, cx, baseY, w, h, dark, mid, lit) {
+      for (let j = 0; j < h; j++) {
+        const k = j / h;
+        const hw = Math.max(1, Math.round(w / 2 * (1 - k * 0.72) + Math.sin(j * 0.31) * 1.5));
+        const y = baseY - j;
+        x.fillStyle = dark; x.fillRect(cx - hw, y, hw * 2, 1);
+        if ((j & 3) === 0) { x.fillStyle = mid; x.fillRect(cx - hw, y, 2, 1); }
+      }
+      x.fillStyle = lit;
+      for (let j = 0; j < h; j += 5) {
+        const k = j / h, hw = Math.max(1, Math.round(w / 2 * (1 - k * 0.72)));
+        x.fillRect(cx - hw, baseY - j, 1, 1);
+      }
+    },
+
+    boulder(x, cx, cy, w, h) {
+      for (let j = 0; j < h; j++) {
+        const k = j / h, hw = Math.max(1, Math.round(w * Math.sqrt(Math.max(0.02, 1 - k * k))));
+        x.fillStyle = '#0a2029'; x.fillRect(cx - hw, cy - j, hw * 2, 1);
+      }
+      x.fillStyle = '#1b4655'; x.fillRect(cx - Math.round(w * 0.6), cy - h + 1, Math.round(w * 0.8), 1);
+      x.fillStyle = '#3d8194'; x.fillRect(cx - Math.round(w * 0.5), cy - h + 1, Math.round(w * 0.35), 1);
+    },
+
+    // ============================================== the surface overhead
+    // A 704-wide strip so it can scroll and wrap: the underside of the
+    // chop, silvered where the sky gets through.
+    buildSurface() {
+      const W = 704, c = can(W, SURF_H), x = c.getContext('2d');
+      const band = ['#f4feff', '#cdf1fc', '#a3ddf0', '#7cc4de', '#5fadcd', '#5fadcd'];
+      for (let i = 0; i < W; i++) {
+        const w = Math.sin(i * 0.055) * 4 + Math.sin(i * 0.131 + 1.1) * 2.5 + Math.sin(i * 0.29 + 0.4) * 1.2;
+        const lip = Math.round(13 + w);
+        for (let y = 0; y < SURF_H; y++) {
+          if (y > lip + 7) break;
+          let lv, a = 1;
+          if (y < 2) lv = 0;
+          else if (y < lip - 5) lv = 1 + ((y + (i >> 3)) % 3 === 0 ? 0 : 1);
+          else if (y < lip - 1) lv = 3;
+          else { lv = 4; a = 1 - (y - lip + 1) / 8; }        // dither out, never darker
+          if (a < 1 && a < bay(i, y)) continue;
+          x.fillStyle = band[Math.min(5, lv)];
+          x.fillRect(i, y, 1, 1);
+        }
+        // bright crest on the wave peaks
+        if (w > 4.6) { x.fillStyle = '#ffffff'; x.fillRect(i, Math.round(13 + w) - 1, 1, 2); }
+        if (w < -4.6) { x.fillStyle = '#cdeefb'; x.fillRect(i, 2, 1, 2); }
+      }
+      return c;
+    },
+
+    // a boat hull seen from below, crossing the surface
+    buildHull(k) {
+      const W = [54, 78, 40][k], H = 13, c = can(W, H + 7), x = c.getContext('2d');
+      for (let i = 0; i < W; i++) {
+        const u = i / (W - 1);
+        const dep = Math.round(H * Math.sin(Math.PI * Math.pow(u, 0.75)) * (0.55 + 0.45 * (1 - Math.abs(u - 0.45) * 1.6)));
+        if (dep <= 0) continue;
+        x.fillStyle = '#04141d'; x.fillRect(i, 0, 1, dep);
+        x.fillStyle = '#0b2c3a'; x.fillRect(i, dep - 1, 1, 1);
+      }
+      // churn behind the screw
+      x.fillStyle = 'rgba(224,248,255,0.5)';
+      for (let i = 0; i < 14; i++) x.fillRect(2 + i, 3 + ((i * 5) % 6), 2, 1);
+      return spr(c, W * 0.5, 0);
+    },
+
+    // =============================================== caustics on the floor
+    // Four phases of a posterised light net, cycled and scrolled.
+    buildCaustic(ph) {
+      const H = 84, c = can(640, H), x = c.getContext('2d');
+      const cols = ['rgba(150,225,255,0.10)', 'rgba(186,240,255,0.17)', 'rgba(232,252,255,0.28)'];
+      for (let y = 0; y < H; y++) {
+        const fade = Math.min(1, y / 26) * (1 - Math.max(0, (y - 52) / 34));
+        if (fade <= 0) continue;
+        for (let i = 0; i < 640; i++) {
+          const v = Math.sin(i * 0.072 + ph) + Math.sin(y * 0.115 - ph * 0.8)
+            + Math.sin((i + y * 1.6) * 0.055 + ph * 1.4) + Math.sin((i - y * 2.1) * 0.048 - ph);
+          const a = Math.max(0, (Math.abs(v) - 2.35) / 1.3) * fade;
+          const lv = Math.floor(a * 3 + bay(i, y) * 0.9);
+          if (lv <= 0) continue;
+          x.fillStyle = cols[Math.min(2, lv - 1)];
+          x.fillRect(i, y, 1, 1);
+        }
+      }
+      return c;
+    },
+
+    // =========================================== the near foreground frame
+    buildForeRock(rng) {
+      const c = can(640, 360), x = c.getContext('2d');
+      // broken rock crowding in at the very bottom corners: dead black,
+      // lumpy, and low enough that it frames rather than fills
+      const shelf = (x0, x1, peaks) => {
+        for (let i = x0; i < x1; i++) {
+          let h = 0;
+          for (const p of peaks) h = Math.max(h, p[2] * (1 - Math.min(1, Math.abs(i - p[0]) / p[1])));
+          h = Math.round(h + Math.sin(i * 0.23) * 1.6 + Math.sin(i * 0.77) * 0.9);
+          if (h <= 0) continue;
+          const y = 360 - h;
+          x.fillStyle = '#020a10'; x.fillRect(i, y, 1, h);
+          x.fillStyle = '#0b222c'; x.fillRect(i, y, 1, 1);
+          if ((i % 5) === 0) { x.fillStyle = '#11313c'; x.fillRect(i, y, 1, 1); }
+        }
+      };
+      shelf(0, 190, [[-26, 92, 40], [46, 40, 30], [118, 52, 22]]);
+      shelf(470, 640, [[668, 96, 38], [560, 44, 27], [498, 34, 16]]);
+      // a couple of near fronds leaning in, dead black
+      x.fillStyle = '#020a10';
+      for (let s = 0; s < 5; s++) {
+        const bx = [14, 70, 556, 604, 632][s], hh = [56, 38, 44, 60, 34][s];
+        for (let j = 0; j < hh; j++) {
+          const off = Math.round(Math.sin(j * 0.09 + s) * 7 * (j / hh));
+          x.fillRect(bx + off, 359 - j, 4 - (j / hh > 0.7 ? 2 : 0), 1);
+          if (j % 9 === 4) x.fillRect(bx + off - 5, 359 - j, 5, 2);
+        }
+      }
+      return c;
+    },
+
+    // The water, the wreck, the caustics and the god rays all move slowly,
+    // so the stack is baked into one opaque frame about twelve times a
+    // second; blitting that is a single opaque copy a frame.
+    skyLayer(T, wreckX) {
       if (!this.sky) {
         this.sky = can(640, 360);
         this.skyCtx = this.sky.getContext('2d');
         this.skyAt = -99;
       }
-      if (T - this.skyAt >= 0.08) {
-        this.skyAt = T;
+      const sl = Math.floor((T + 0.000) / 0.084);
+      if (sl !== this.slot[0] || wreckX !== this.skyWreck) {
+        this.slot[0] = sl; this.skyWreck = wreckX;
         const q = this.skyCtx;
         q.globalAlpha = 1;
         q.drawImage(this.bg, 0, 0);
-        for (let i = 0; i < 7; i++) {
-          const s = this.rays[i % 3];
-          const rx = ((i * 121 + Math.sin(T * 0.11 + i * 1.7) * 30) % 800) - 80;
-          q.globalAlpha = 0.55 + Math.sin(T * 0.45 + i * 1.3) * 0.32;
-          q.drawImage(s.c, Math.round(rx), -20);
+
+        // far schools, lost in the haze
+        for (const s of this.school) {
+          const f = this.fish[s.size], d = s.vx > 0 ? 1 : -1;
+          q.globalAlpha = 0.5;
+          for (const m of s.mem) {
+            const yy = Math.round(s.y + m.oy + Math.sin(T * 2.2 + m.ph) * 2);
+            q.drawImage(f.c, Math.round(s.x + m.ox * d) - (d > 0 ? 0 : f.w), yy, f.w, f.h);
+          }
+        }
+        q.globalAlpha = 1;
+
+        // the wreck, half-buried
+        blit(q, this.wreck, wreckX, BED_Y + 12);
+
+        // caustics crawling over the bed and the wreck
+        const ci = ((Math.floor(T * 7) % 4) + 4) % 4;
+        const cs = Math.round(Math.sin(T * 0.22) * 22);
+        q.globalAlpha = 0.85 + Math.sin(T * 0.7) * 0.15;
+        q.drawImage(this.caust[ci], cs, 280);
+        q.drawImage(this.caust[(ci + 2) & 3], -cs - 30, 288);
+        q.globalAlpha = 1;
+
+        // weather: a slow front passing over, dimming the light
+        const wx = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(T * 0.055));
+        this.weather = wx;
+
+        // god rays, hung off the surface
+        for (let i = 0; i < 5; i++) {
+          const s = this.rays[i % 4];
+          const rx = ((i * 137 + Math.sin(T * 0.11 + i * 1.7) * 30) % 800) - 80;
+          q.globalAlpha = (0.5 + Math.sin(T * 0.45 + i * 1.3) * 0.3) * wx;
+          q.drawImage(s.c, Math.round(rx), 8);
+        }
+        q.globalAlpha = 1;
+
+        // the surface overhead, chopping past
+        const so = -Math.round((T * 7) % 64);
+        q.drawImage(this.surf, so, 0);
+        q.drawImage(this.surf, so + 704, 0);
+        // hulls crossing it
+        for (let i = 0; i < 3; i++) {
+          const per = [46, 67, 33][i], sp = [26, 17, 34][i];
+          const hx = ((T * sp + i * 260) % (per * 18)) - 110;
+          if (hx > -100 && hx < 740) {
+            q.globalAlpha = 0.9;
+            blit(q, this.hulls[i], hx, 9 + i);
+            q.globalAlpha = 1;
+          }
         }
         q.globalAlpha = 1;
       }
@@ -392,7 +670,7 @@
 
     buildRay(w, h, slant) {
       const c = can(w + Math.round(h * slant * 0.34) + 6, h), x = c.getContext('2d');
-      const cols = ['rgba(150,205,240,0.055)', 'rgba(175,222,250,0.085)', 'rgba(205,238,255,0.115)'];
+      const cols = ['rgba(150,208,244,0.105)', 'rgba(182,231,253,0.175)', 'rgba(218,246,255,0.27)'];
       for (let y = 0; y < h; y++) {
         const k = y / h;
         const half = Math.max(1, Math.round(w * 0.22 + w * 0.30 * k));
@@ -405,8 +683,42 @@
           x.fillStyle = cols[Math.min(2, lv - 1)];
           x.fillRect(cx + i, y, 1, 1);
         }
+        // dust caught in the beam
+        if ((y % 7) === 0) {
+          const n = 1 + ((y * 37) % 3);
+          for (let d = 0; d < n; d++) {
+            const o = Math.round(Math.sin(y * 0.41 + d * 2.3) * half * 0.82);
+            x.fillStyle = d === 0 ? 'rgba(232,250,255,0.30)' : 'rgba(198,234,250,0.16)';
+            x.fillRect(cx + o, y, 1, 1);
+          }
+        }
       }
       return spr(c, w * 0.5, 0);
+    },
+
+    buildFish(k) {
+      const L = [3, 5, 7][k], c = can(L + 2, 4), x = c.getContext('2d');
+      x.fillStyle = '#06222e';
+      x.fillRect(1, 1, L, 2); x.fillRect(0, 0, 2, 1); x.fillRect(0, 3, 2, 1);
+      x.fillStyle = '#0d3a4a'; x.fillRect(2, 1, L - 2, 1);
+      return spr(c, 0, 0);
+    },
+
+    buildManta() {
+      const W = 96, H = 44, c = can(W, H), x = c.getContext('2d');
+      for (let i = 0; i < W; i++) {
+        const u = (i - W / 2) / (W / 2);
+        const span = Math.pow(1 - Math.abs(u), 0.55);
+        const th = Math.round(1 + span * 12 - Math.abs(u) * 2);
+        if (th <= 0) continue;
+        const cy = Math.round(H / 2 + Math.abs(u) * 6 - 3);
+        x.fillStyle = '#061a26'; x.fillRect(i, cy - (th >> 1), 1, th);
+        x.fillStyle = '#0f3346'; x.fillRect(i, cy - (th >> 1), 1, 1);
+      }
+      // tail
+      x.fillStyle = '#061a26';
+      for (let i = 0; i < 26; i++) x.fillRect(W / 2 - 1, H / 2 + 6 + i * 0, 1, 1);
+      return spr(c, W / 2, H / 2);
     },
 
     buildWhale() {
@@ -422,15 +734,11 @@
         x.fillStyle = '#123244'; x.fillRect(i, top, 1, 1);
         if (u > 0.12 && u < 0.86) { x.fillStyle = '#0d2534'; x.fillRect(i, bot - 2, 1, 2); }
       }
-      // throat pleats
       x.fillStyle = '#0b2130';
       for (let i = 6; i < 60; i += 4) x.fillRect(i, 30 + Math.round(Math.sin(i * 0.2) * 2), 1, 7);
-      // pectoral fin
       x.fillStyle = '#061520';
       for (let i = 0; i < 26; i++) x.fillRect(42 + i, 34 + Math.round(i * 0.35), 1, Math.max(1, 9 - Math.round(i * 0.3)));
-      // dorsal
       x.fillStyle = '#0d2534'; x.fillRect(96, 15, 9, 3); x.fillRect(99, 13, 5, 2);
-      // eye
       x.fillStyle = '#20455c'; x.fillRect(11, 26, 2, 2);
       return spr(c, 0, 26);
     },
@@ -446,52 +754,82 @@
       return spr(c, 1, 21);
     },
 
+    // ============================================================== wreck
     buildWreck() {
       const W = 250, H = 120, base = can(W, H), x = base.getContext('2d');
       const hullTop = 46, hullBot = 96;
-      // hull body
       for (let i = 20; i < 226; i++) {
         const u = (i - 20) / 206;
         const top = Math.round(hullTop + Math.sin(Math.PI * u) * -8 + 8);
         const bot = Math.round(hullBot - Math.pow(Math.abs(u - 0.5) * 2, 3) * 22);
         if (bot <= top) continue;
-        x.fillStyle = '#071a24'; x.fillRect(i, top, 1, bot - top);
-        x.fillStyle = '#0f2e3c'; x.fillRect(i, top, 1, 2);
-        if ((i % 11) === 0) { x.fillStyle = '#0b2430'; x.fillRect(i, top + 2, 1, bot - top - 2); }
+        x.fillStyle = '#0c2a37'; x.fillRect(i, top, 1, bot - top);
+        x.fillStyle = '#1b4e63'; x.fillRect(i, top, 1, 3);
+        x.fillStyle = '#3382a0'; x.fillRect(i, top, 1, 1);
+        if ((i % 11) === 0) { x.fillStyle = '#061a24'; x.fillRect(i, top + 3, 1, bot - top - 3); }
+        if ((i % 11) === 1) { x.fillStyle = '#17455a'; x.fillRect(i, top + 3, 1, bot - top - 3); }
+        // planking seams
+        if ((i % 3) === 0) { x.fillStyle = 'rgba(2,10,16,0.5)'; x.fillRect(i, top + 9, 1, 1); x.fillRect(i, top + 22, 1, 1); }
       }
-      // gunwale rail
-      x.fillStyle = '#13384a'; x.fillRect(20, hullTop + 6, 206, 2);
-      // broken ribs sticking up out of the deck
+      x.fillStyle = '#1b4e63'; x.fillRect(20, hullTop + 6, 206, 2);
+      x.fillStyle = '#3382a0'; x.fillRect(20, hullTop + 6, 206, 1);
       for (let i = 0; i < 7; i++) {
         const rx = 44 + i * 25, rh = 14 + ((i * 7) % 18);
-        x.fillStyle = '#0c2836';
-        for (let j = 0; j < rh; j++) x.fillRect(rx + Math.round(Math.sin(j * 0.22 + i) * 2), hullTop + 6 - j, 3, 1);
-        x.fillStyle = '#143f52'; x.fillRect(rx, hullTop + 6 - rh, 3, 1);
+        for (let j = 0; j < rh; j++) {
+          const bx = rx + Math.round(Math.sin(j * 0.22 + i) * 2);
+          x.fillStyle = '#10394a'; x.fillRect(bx, hullTop + 6 - j, 3, 1);
+          x.fillStyle = '#2a7590'; x.fillRect(bx, hullTop + 6 - j, 1, 1);
+        }
+        x.fillStyle = '#4a9cb8'; x.fillRect(rx, hullTop + 6 - rh, 3, 1);
       }
-      // a hole torn in the side
       x.fillStyle = '#03101a';
       for (let j = 0; j < 20; j++) { const hw = Math.round(11 * Math.sin(Math.PI * (j / 19))); x.fillRect(150 - hw, hullTop + 20 + j, hw * 2, 1); }
-      // snapped mast lying across
       x.save(); x.translate(90, hullTop + 4); x.rotate(-0.62);
-      x.fillStyle = '#0c2836'; x.fillRect(0, -3, 120, 6);
-      x.fillStyle = '#143f52'; x.fillRect(0, -3, 120, 1);
+      x.fillStyle = '#10394a'; x.fillRect(0, -3, 120, 6);
+      x.fillStyle = '#2f7e9a'; x.fillRect(0, -3, 120, 1);
       x.restore();
-      // bowsprit
-      x.fillStyle = '#0c2836'; x.fillRect(4, hullTop + 2, 24, 4);
-      // kelp growing on the wreck
+      x.fillStyle = '#10394a'; x.fillRect(4, hullTop + 2, 24, 4);
+      x.fillStyle = '#2f7e9a'; x.fillRect(4, hullTop + 2, 24, 1);
+      // torn net snagged on the ribs
+      x.strokeStyle = 'rgba(120,170,180,0.22)';
+      for (let i = 0; i < 26; i++) {
+        const nx = 96 + i * 3;
+        x.fillStyle = 'rgba(150,195,205,0.18)';
+        for (let j = 0; j < 22; j++) if (((i + j) & 1) === 0) x.fillRect(nx, hullTop - 14 + j + Math.round(Math.sin(i * 0.5) * 3), 1, 1);
+      }
       for (let i = 0; i < 10; i++) {
         const kx = 30 + i * 20, kh = 10 + ((i * 13) % 22);
         x.fillStyle = 'rgba(8,40,40,0.8)';
         for (let j = 0; j < kh; j++) x.fillRect(kx + Math.round(Math.sin(j * 0.4 + i) * 3), hullTop + 6 - j, 2, 1);
       }
-      // tilt it
       const c2 = can(W + 30, H + 30), x2 = c2.getContext('2d');
       x2.save(); x2.translate(15, 15); x2.translate(W / 2, H / 2); x2.rotate(-0.13); x2.translate(-W / 2, -H / 2);
       x2.drawImage(base, 0, 0); x2.restore();
+      // silt drifted up the leeward side
+      const q = c2.getContext('2d');
+      q.fillStyle = 'rgba(10,28,38,0.85)';
+      for (let i = 0; i < W + 30; i++) {
+        const u = i / (W + 30);
+        const hh = Math.round(14 * Math.sin(Math.PI * Math.pow(u, 0.8)));
+        q.fillRect(i, hullBot + 15 - hh, 1, hh + 2);
+      }
       return spr(c2, (W + 30) / 2, hullBot + 15);
     },
 
-    // a crisp little bubble: rim, refractive highlight, translucent core
+    buildGlow(r, rgb) {
+      const D = r * 2 + 1, c = can(D, D), x = c.getContext('2d');
+      for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) {
+        const d = Math.sqrt(xx * xx + yy * yy) / r;
+        if (d > 1) continue;
+        const a = Math.pow(1 - d, 2.1);
+        const lv = Math.floor(a * 4 + bay(xx + r, yy + r) * 0.9);
+        if (lv <= 0) continue;
+        x.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(0.06 * lv).toFixed(3)})`;
+        x.fillRect(xx + r, yy + r, 1, 1);
+      }
+      return spr(c, r, r);
+    },
+
     buildBubble(r, alpha) {
       const D = r * 2 + 3, c = can(D, D), x = c.getContext('2d'), cx = r + 1, cy = r + 1;
       for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) {
@@ -510,25 +848,59 @@
       return spr(c, cx, cy);
     },
 
+    // =============================================================== tick
     update(dt, t) {
       this.build();
+      // a scene change can hand us a stepped clock; time here only goes forward
+      dt = (dt > 0 && dt < 0.25) ? dt : 0;
       this.t += dt;
       const T = this.t;
       for (const m of this.motes) { m.y -= m.s * dt * 0.22; m.x += Math.sin(T * 0.3 + m.ph) * 3 * dt; m.ph += dt * 0.8; if (m.y < -3) { m.y = 363; m.x = rand(0, 640); } }
       for (const s of this.drift) { s.y -= s.s * dt * 0.16; s.x += Math.sin(T * 0.4 + s.ph) * 7 * dt; if (s.y < -4) { s.y = 364; s.x = rand(0, 640); } }
       for (const b of this.rise) { b.y -= b.s * dt; b.ph += dt * 1.3; if (b.y < -8) { b.y = rand(365, 400); b.x = rand(0, 640); } }
       for (const b of this.big) { b.y -= b.s * dt; b.ph += dt; if (b.y < -20) { b.y = rand(378, 440); b.x = rand(0, 640); } }
+      for (const g of this.glow) {
+        g.x += g.dx * dt * 0.2; g.y += g.dy * dt * 0.2; g.ph += dt * g.sp;
+        if (g.y < 110) { g.y = 356; g.x = rand(0, 640); }
+      }
+      for (const j of this.jelly) {
+        j.ph += dt * j.sp;
+        j.y -= (0.6 + Math.max(0, Math.sin(j.ph)) * 9) * dt;
+        j.x += j.vx * dt * 0.3;
+        if (j.y < 90) { j.y = 340; j.x = rand(30, 610); }
+        if (j.x < -20) j.x = 660; if (j.x > 660) j.x = -20;
+      }
+      for (const s of this.school) {
+        s.x += s.vx * dt;
+        if (s.x < -90) s.x = 730; if (s.x > 730) s.x = -90;
+      }
       this.whaleX -= dt * 11;
       if (this.whaleX < -220) { this.whaleX = 900; this.whaleY = rand(70, 140); }
+      this.mantaX += dt * 17;
+      if (this.mantaX > 780) { this.mantaX = -140; this.mantaY = rand(170, 262); }
+      this.crabX += this.crabDir * dt * 9;
+      if (this.crabX > 620) this.crabDir = -1; if (this.crabX < 20) this.crabDir = 1;
+      // the wreck is still bleeding air out of the torn plating
+      for (let i = this.leak.length - 1; i >= 0; i--) {
+        const b = this.leak[i];
+        b.y -= b.s * dt; b.ph += dt * 2.1;
+        if (b.y < 120) this.leak.splice(i, 1);
+      }
+      this.leakT = (this.leakT || 0) - dt;
+      if (this.leakT <= 0) {
+        this.leakT = rand(0.06, 0.2);
+        this.leak.push({ ox: rand(-7, 7), y: BED_Y - rand(2, 14), r: randi(0, 3), s: rand(16, 34), ph: rand(0, TAU), w: rand(2, 8) });
+      }
     },
 
-    // layers behind the UI
+    // ========================================================== the layers
     render(ctx, opt) {
       this.build();
       const T = this.t;
-      ctx.drawImage(this.skyLayer(T), 0, 0);
+      const wreckX = (opt && opt.wreckX) || 232;
+      ctx.drawImage(this.skyLayer(T, wreckX), 0, 0);
 
-      // the whale, very far off
+      // --- FAR: the whale and the manta, lost in the haze ---
       const wx = Math.round(this.whaleX), wy = Math.round(this.whaleY + Math.sin(T * 0.3) * 5);
       if (wx < 660 && wx > -230) {
         ctx.globalAlpha = 0.72;
@@ -540,6 +912,17 @@
         ctx.restore();
         ctx.globalAlpha = 1;
       }
+      const mx = Math.round(this.mantaX);
+      if (mx > -110 && mx < 760) {
+        ctx.globalAlpha = 0.55;
+        const flap = 1 + Math.sin(T * 1.1) * 0.22;
+        ctx.save();
+        ctx.translate(mx, Math.round(this.mantaY + Math.sin(T * 0.55) * 7));
+        ctx.scale(1, flap);
+        ctx.drawImage(this.manta.c, -this.manta.ax, -this.manta.ay);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
 
       // far silt
       for (const m of this.motes) {
@@ -548,16 +931,32 @@
         ctx.fillRect(m.x | 0, m.y | 0, 1, 1);
       }
 
-      // far kelp
+      // --- MID: kelp, the wreck lamp, the crab on the bed ---
       ctx.drawImage(this.kelpLayer(true, T), 0, KELP_Y);
-      // the wreck on the seabed
-      ctx.globalAlpha = 0.95;
-      blit(ctx, this.wreck, (opt && opt.wreckX) || 232, 340);
+
+      // a lamp still burning in the wreck, swinging
+      const lx = Math.round(wreckX - 46 + Math.sin(T * 0.9) * 3);
+      const ly = Math.round(BED_Y - 24 + Math.cos(T * 1.8) * 1);
+      const flick = 0.55 + Math.sin(T * 7.3) * 0.12 + Math.sin(T * 2.1) * 0.2;
+      ctx.globalAlpha = clamp(flick, 0.2, 0.95);
+      blit(ctx, this.lampGlow, lx, ly);
       ctx.globalAlpha = 1;
-      // near kelp
+      R(ctx, '#ffd98a', lx - 1, ly - 1, 3, 3); R(ctx, '#fff6d2', lx, ly, 1, 1);
+
+      // air still escaping the torn hull
+      for (const b of this.leak) blit(ctx, this.bub[b.r], wreckX + 22 + b.ox + Math.sin(b.ph) * b.w, b.y);
+
+      // the crab
+      const cx = Math.round(this.crabX), cy = this.bedTop ? this.bedTop[clamp(cx, 0, 639) | 0] : BED_Y;
+      const step = Math.floor(T * 7) & 1;
+      R(ctx, '#0d2f38', cx - 3, cy - 4, 7, 3);
+      R(ctx, '#1b4d55', cx - 3, cy - 4, 7, 1);
+      R(ctx, '#0d2f38', cx - 5, cy - 2 + step, 2, 1); R(ctx, '#0d2f38', cx + 4, cy - 2 - step, 2, 1);
+      R(ctx, '#0d2f38', cx - 5 - this.crabDir, cy - 5, 2, 2);
+
       ctx.drawImage(this.kelpLayer(false, T), 0, KELP_Y);
 
-      // mid silt + drifting flakes
+      // --- mid silt + drifting flakes ---
       for (const m of this.motes) {
         if (m.z === 0) continue;
         ctx.fillStyle = `rgba(196,232,255,${(m.b * (0.55 + Math.sin(m.ph) * 0.45)).toFixed(2)})`;
@@ -568,15 +967,59 @@
         ctx.fillRect(Math.round(s.x + Math.sin(T * 0.7 + s.ph) * s.w), s.y | 0, s.len, 1);
       }
 
+      // --- bioluminescence: the anemones breathe, then the drifting sparks ---
+      if (this.anem) for (const a of this.anem) {
+        const k = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(T * 0.8 + a.ph), 2.4);
+        ctx.globalAlpha = k * 0.85;
+        ctx.fillStyle = a.col;
+        ctx.fillRect(a.x - 1, a.y, 3, 2);
+        ctx.globalAlpha = k * 0.3;
+        ctx.fillRect(a.x - 3, a.y - 1, 7, 1); ctx.fillRect(a.x - 2, a.y + 2, 5, 1);
+      }
+      ctx.globalAlpha = 1;
+      for (const g of this.glow) {
+        const a = 0.25 + 0.75 * Math.pow(Math.max(0, Math.sin(g.ph)), 3);
+        if (a < 0.3) continue;
+        ctx.globalAlpha = a;
+        const gx = g.x | 0, gy = g.y | 0;
+        ctx.fillStyle = g.col; ctx.fillRect(gx, gy, 1, 1);
+        if (a > 0.7) { ctx.globalAlpha = a * 0.35; ctx.fillRect(gx - 1, gy, 3, 1); ctx.fillRect(gx, gy - 1, 1, 3); }
+      }
+      ctx.globalAlpha = 1;
+
+      // --- jellyfish ---
+      for (const j of this.jelly) this.drawJelly(ctx, j, T);
+
       // ambient rising bubbles
       for (const b of this.rise) blit(ctx, this.bub[b.r], b.x + Math.sin(b.ph) * b.w, b.y);
     },
 
+    drawJelly(ctx, j, T) {
+      const x = j.x | 0, y = j.y | 0, r = j.r;
+      const sq = 1 + Math.sin(j.ph) * 0.35;                 // the pulse
+      const rw = Math.max(2, Math.round(r * (2 - sq) * 0.9)), rh = Math.max(2, Math.round(r * sq * 0.8));
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#9fe6ff';
+      for (let i = -rh; i <= 0; i++) {
+        const k = 1 - Math.abs(i) / (rh + 1);
+        const hw = Math.round(rw * Math.sqrt(Math.max(0.02, k)));
+        ctx.fillRect(x - hw, y + i, hw * 2, 1);
+      }
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = '#e6fbff'; ctx.fillRect(x - rw, y - rh, 2, 1); ctx.fillRect(x - rw + 1, y - rh - 1, rw, 1);
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#7fd8f0';
+      for (let s = -1; s <= 1; s++) {
+        for (let i = 1; i < r * 2.2; i++) {
+          ctx.fillRect(x + s * Math.round(rw * 0.6) + Math.round(Math.sin(i * 0.5 + j.ph * 2 + s) * 1.6), y + i, 1, 1);
+        }
+      }
+      ctx.globalAlpha = 1;
+    },
+
     // 550-odd kelp segments is too many little rects to lay down every frame,
     // and the fronds sway slowly, so each layer is rasterised to a strip about
-    // 22 times a second and blitted in between. 'source-over' is associative,
-    // so stacking the translucent segments in the strip looks the same as
-    // stacking them straight onto the water.
+    // twelve times a second and blitted in between.
     kelpLayer(far, T) {
       const i = far ? 0 : 1;
       if (!this.kelpCan[i]) {
@@ -584,8 +1027,9 @@
         this.kelpCtx[i] = this.kelpCan[i].getContext('2d');
         this.kelpAt[i] = -99;
       }
-      if (T - this.kelpAt[i] >= 0.08) {
-        this.kelpAt[i] = T;
+      const sl = Math.floor((T + (far ? 0.028 : 0.056)) / 0.084);
+      if (sl !== this.slot[i + 1]) {
+        this.slot[i + 1] = sl;
         const q = this.kelpCtx[i];
         q.clearRect(0, 0, 640, KELP_H);
         q.save(); q.translate(0, -KELP_Y);
@@ -595,28 +1039,60 @@
       return this.kelpCan[i];
     },
 
+    // A stipe that tapers, sways more the higher up it goes, and carries
+    // blades that lag behind it. The far layer is washed out and slower.
     drawKelp(ctx, T, far) {
+      const col = far ? 'rgba(10,46,48,0.60)' : 'rgba(3,22,24,0.90)';
+      const lit = far ? 'rgba(32,96,84,0.55)' : 'rgba(22,92,80,0.85)';
+      const tip = far ? 'rgba(58,138,110,0.5)' : 'rgba(56,150,120,0.8)';
+      const amp = far ? 9 : 16;
       for (const k of this.kelp) {
         if (k.far !== far) continue;
-        const segs = Math.round(k.h / 6);
-        const col = far ? 'rgba(8,38,42,0.55)' : 'rgba(4,24,28,0.82)';
-        const lit = far ? 'rgba(20,70,66,0.5)' : 'rgba(12,52,50,0.7)';
-        for (let i = 0; i < segs; i++) {
-          const f = i / segs;
-          const off = Math.sin(T * k.sp + k.ph + f * 2.6) * (2 + f * 11);
-          const x = Math.round(k.x + off), y = 352 - i * 6;
-          ctx.fillStyle = col; ctx.fillRect(x, y, k.w, 7);
-          ctx.fillStyle = lit; ctx.fillRect(x, y, 1, 7);
-          if (i % 4 === 2) { ctx.fillStyle = col; ctx.fillRect(x - 4, y + 1, 4, 2); ctx.fillRect(x + k.w, y + 3, 4, 2); }
+        const rootY = 354 + k.root;
+        for (let st = 0; st < k.n; st++) {                 // a clump per root
+          const ox = (st - (k.n - 1) / 2) * 4;
+          const hh = k.h * (1 - st * 0.13), segs = Math.round(hh / 6);
+          const ph = k.ph + st * 1.1;
+          for (let i = 0; i < segs; i++) {
+            const f = i / segs;
+            const sway = Math.sin(T * k.sp + ph + f * 2.4) * (1 + f * f * amp);
+            const x = Math.round(k.x + ox + sway), y = rootY - i * 6;
+            const w = Math.max(2, k.w - (f > 0.78 ? 1 : 0));
+            ctx.fillStyle = col; ctx.fillRect(x, y, w, 7);
+            ctx.fillStyle = lit; ctx.fillRect(x, y, 1, 7);
+            if ((i % 3) === (st % 3)) {                    // long blades, lagging
+              const lag = Math.sin(T * k.sp + ph + f * 2.4 - 0.7);
+              const bl = 7 + Math.round(f * 8);
+              const side = ((i >> 1) & 1) ? 1 : -1;
+              const drop = 0.34 + lag * 0.26;
+              for (let b = 0; b < bl; b++) {
+                const bw = b < bl * 0.55 ? 3 : b < bl * 0.85 ? 2 : 1;
+                const bx = x + (side > 0 ? w + b : -1 - b);
+                const by = y + 1 + Math.round(b * drop);
+                ctx.fillStyle = col; ctx.fillRect(bx, by, 1, bw);
+                if (b === 1) { ctx.fillStyle = lit; ctx.fillRect(bx, by, 1, bw); }
+              }
+            }
+            if (i === segs - 1) {                          // the growing tip
+              ctx.fillStyle = tip; ctx.fillRect(x, y - 3, w, 4);
+              ctx.fillStyle = col; ctx.fillRect(x - 1, y - 6, w + 2, 3);
+            }
+          }
         }
       }
     },
 
-    // big foreground bubbles, drawn last, over the whole UI
+    // big foreground bubbles and the near rock frame, over the whole UI
     renderForeground(ctx) {
       ctx.globalAlpha = 0.5;
       for (const b of this.big) blit(ctx, this.fgBub[b.r], b.x + Math.sin(b.ph) * b.w, b.y);
       ctx.globalAlpha = 1;
+    },
+
+    // the dead-black near rocks — drawn over the water, under the UI
+    renderNear(ctx) {
+      this.build();
+      ctx.drawImage(this.fgRock, 0, 0);
     },
   };
 
@@ -1270,6 +1746,7 @@
       this.init();
       const T = this.T, tree = this.tree();
       Deep.render(ctx, { wreckX: 250 });
+      Deep.renderNear(ctx);
 
       // --- the otter, sinking in the open water on the left ---
       Otter.draw(ctx, 2.8);
@@ -1846,6 +2323,31 @@
   // ===========================================================================
   //  MAIN MENU
   // ===========================================================================
+  // A baked hollow of darker, siltier water for the pair to sit in, so the
+  // title screen has a figure/ground read instead of a flat wash.
+  function buildHalo() {
+    const W = 232, H = 132, c = can(W, H), x = c.getContext('2d');
+    const cx = W >> 1, cy = H >> 1;
+    for (let b = 0; b < 3; b++) {
+      const rw = 104 - b * 28, rh = 40 - b * 11;
+      x.fillStyle = 'rgba(4,18,28,0.17)';
+      for (let yy = -rh; yy <= rh; yy++) {
+        const hw = Math.round(rw * Math.sqrt(Math.max(0, 1 - (yy / rh) * (yy / rh))));
+        for (let xx = -hw; xx <= hw; xx++) {
+          const e = 1 - Math.max(Math.abs(xx) / (hw + 1), Math.abs(yy) / (rh + 1));
+          if (Math.min(1, e * 3) > bay(cx + xx, cy + yy)) x.fillRect(cx + xx, cy + yy, 1, 1);
+        }
+      }
+    }
+    // silt hanging beneath them
+    x.fillStyle = 'rgba(2,12,20,0.34)';
+    for (let i = 0; i < 88; i++) {
+      const u = i / 87, w2 = Math.round(44 * Math.sin(Math.PI * u));
+      if (w2 > 0) x.fillRect(cx - 44 + i, cy + 44, 1, Math.max(1, w2 >> 3));
+    }
+    return spr(c, cx, cy);
+  }
+
   const MainMenu = {
     ready: false, action: null, sel: 0, T: 0, hasRun: null, hero: { x: 320, y: 214 },
     buttons: [], fish: [],
@@ -1856,6 +2358,10 @@
       Deep.build();
       buildNodeBubbles();
       const rng = new SeededRandom(7788);
+      // a single wide shaft that the pair swim in, so the title screen has
+      // somewhere the eye is supposed to land
+      this.beam = Deep.buildRay(168, 300, 0.16);
+      this.halo = buildHalo();
       for (let i = 0; i < 14; i++) this.fish.push({
         x: rng.range(0, 640), y: rng.range(120, 300), s: rng.range(10, 26) * (rng.next() > 0.5 ? 1 : -1),
         ph: rng.range(0, TAU), len: rng.int(3, 6), col: rng.next() > 0.6 ? '#7fb8cf' : '#4f8fa8',
@@ -1916,6 +2422,13 @@
       const T = this.T;
       Deep.render(ctx, { wreckX: 430 });
 
+      // the key light: one broad shaft the pair hang in
+      ctx.globalAlpha = 0.85 + Math.sin(T * 0.6) * 0.14;
+      blit(ctx, this.beam, 300 + Math.sin(T * 0.23) * 5, 6);
+      ctx.globalAlpha = 1;
+
+      Deep.renderNear(ctx);
+
       // little fish schooling past
       for (const f of this.fish) {
         const d = f.s > 0 ? 1 : -1;
@@ -1927,7 +2440,9 @@
 
       // ---- the hero: war manatee + armed otter, bobbing in the current ----
       if (typeof CH !== 'undefined' && CH.manatee && typeof Rig !== 'undefined') {
-        const hx = 312 + Math.sin(T * 0.4) * 9, hy = 238 + Math.sin(T * 0.8) * 4;
+        const hx = 298 + Math.sin(T * 0.4) * 8, hy = 250 + Math.sin(T * 0.8) * 4;
+        // stage them: a hollow of darker water behind, baked once
+        blit(ctx, this.halo, hx, hy + 6);
         ctx.save();
         ctx.translate(Math.round(hx), Math.round(hy));
         ctx.scale(2, 2);
@@ -1938,21 +2453,26 @@
         });
         ctx.restore();
         // wake bubbles behind him
-        if (Math.random() < 0.4) Deep.rise.push({ x: hx - 74, y: hy + 6, r: randi(0, 3), s: rand(20, 46), ph: rand(0, TAU), w: rand(3, 8) });
+        if (Math.random() < 0.4) Deep.rise.push({ x: hx - 84, y: hy + 6, r: randi(0, 3), s: rand(20, 46), ph: rand(0, TAU), w: rand(3, 8) });
         if (Deep.rise.length > 110) Deep.rise.splice(0, Deep.rise.length - 110);
       }
 
-      // ---- title ----
-      R(ctx, 'rgba(4,12,22,0.55)', 0, 18, 640, 66);
-      R(ctx, 'rgba(127,212,238,0.35)', 0, 18, 640, 1);
-      R(ctx, 'rgba(127,212,238,0.35)', 0, 83, 640, 1);
+      // ---- title: a posterised plate under the surface, not a flat wash ---
+      const TY = 26, TH = 62;
+      R(ctx, 'rgba(3,11,19,0.40)', 0, TY, 640, TH);
+      R(ctx, 'rgba(4,15,25,0.46)', 0, TY + 4, 640, TH - 8);
+      R(ctx, 'rgba(3,10,17,0.52)', 0, TY + 10, 640, TH - 20);
+      for (let i = 0; i < 640; i += 2) R(ctx, 'rgba(120,200,230,0.10)', i, TY + 1, 1, 1);
+      R(ctx, 'rgba(150,224,246,0.45)', 0, TY, 640, 1);
+      R(ctx, 'rgba(110,180,210,0.30)', 0, TY + TH - 1, 640, 1);
+      R(ctx, 'rgba(255,228,143,0.22)', 0, TY + 1, 640, 1);
       const title = 'MANATEE VS BOATS';
       const ts = fitSize(title, 600, [30, 24, 20, 18]);
-      pixelTextOutlined(ctx, title, 321, 28, ts, '#6b4a06', '#14141c', 'center');
-      pixelTextOutlined(ctx, title, 320, 26, ts, '#ffe48f', '#2a1d08', 'center');
-      UIKit.divider(ctx, 150, 60, 340);
+      pixelTextOutlined(ctx, title, 321, TY + 10, ts, '#6b4a06', '#14141c', 'center');
+      pixelTextOutlined(ctx, title, 320, TY + 8, ts, '#ffe48f', '#2a1d08', 'center');
+      UIKit.divider(ctx, 150, TY + 42, 340);
       pixelTextOutlined(ctx, 'A DROWNED MOTHER. AN ARMED OTTER. ONE VERY BAD DAY FOR THE FISHING FLEET.',
-        320, 68, 6, '#cfe6f2', '#06121d', 'center');
+        320, TY + 50, 6, '#cfe6f2', '#06121d', 'center');
 
       // ---- buttons ----
       const m = Input.mouse;
