@@ -175,6 +175,26 @@ const Wildlife = (function () {
     }
     return out;
   }
+  // The fish bank is large (every species x every depth layer x every tail
+  // frame x 16 headings), so those go into ONE strip canvas per frame instead
+  // of a canvas per heading: 86 canvases in the bank rather than 1376, and the
+  // draw is still a single blit out of a fixed source cell.
+  function rotStrip(s, n) {
+    let d = Math.ceil(Math.sqrt(s.w * s.w + s.h * s.h)) + 2; if (d & 1) d++;
+    const c = can(d * n, d), x = c.getContext('2d');
+    x.imageSmoothingEnabled = false;
+    for (let i = 0; i < n; i++) {
+      x.save();
+      x.translate(d * i + d / 2, d / 2);
+      x.rotate(i / n * TAU);
+      x.drawImage(s.c, -s.ax, -s.ay);
+      x.restore();
+    }
+    return { c: c, d: d, n: n, o: d / 2 };
+  }
+  function blitStrip(ctx, st, ai, x, y) {
+    ctx.drawImage(st.c, st.d * ai, 0, st.d, st.d, Math.round(x) - st.o, Math.round(y) - st.o, st.d, st.d);
+  }
   const A16 = 16 / TAU;
   function angIdx(a) { return ((((a * A16 + 0.5) | 0) + 160) & 15); }
 
@@ -304,7 +324,7 @@ const Wildlife = (function () {
       const out = [];
       for (let i = 0; i < n; i++) {
         const fr = fishFrame(o, flexes[i]);
-        out.push(rotSet(spr(fr.c, fr.ax, fr.ay), 16));
+        out.push(rotStrip(spr(fr.c, fr.ax, fr.ay), 16));
       }
       return out;
     }
@@ -408,12 +428,12 @@ const Wildlife = (function () {
     // ---- the water between the fish and you -------------------------------
     // the same swell (and the same jelly field) that refracts the seabed in
     // water.js, so a fish wobbles with the water it is seen through
-    const _REF = { x: 0, y: 0 };
+    const _REF = { x: 0, y: 0, w: 0 };
     function refractAt(x, y, t, dp) {
       const o = OC();
-      if (!o || !o.waveHeight) { _REF.x = 0; _REF.y = 0; return _REF; }
+      if (!o || !o.waveHeight) { _REF.x = 0; _REF.y = 0; _REF.w = 0; return _REF; }
       const b = clamp((dp * 15.999) | 0, 0, 15);
-      const wv = o.waveHeight(x, y, t) * (o.shoalLUT ? o.shoalLUT[b] : 1);
+      const wv = _REF.w = o.waveHeight(x, y, t) * (o.shoalLUT ? o.shoalLUT[b] : 1);
       let gx = 0, gy = 0;
       if (o.jelOn && o.jgx) { gx = o.sample(o.jgx, x, y); gy = o.sample(o.jgy, x, y); }
       _REF.x = clamp(wv * 2.4 + gx * 12, -6, 6);
@@ -423,10 +443,9 @@ const Wildlife = (function () {
     // how much of the seabed shows through here: no visible bottom, no shadow
     function visAt(dp) { const o = OC(); return (o && o.visLUT) ? o.visLUT[clamp((dp * 15.999) | 0, 0, 15)] : 0.3; }
     function foamAt(x, y) { const o = OC(); return (o && o.foamOn && o.foam) ? o.sample(o.foam, x, y) : 0; }
-    function crestAt(x, y, t) { const o = OC(); return (o && o.waveHeight) ? o.waveHeight(x, y, t) : 0; }
 
     // scratch for the two-pass fish draw (shadows first, then the fish)
-    const _PX = new Float32Array(192), _PY = new Float32Array(192), _PS = new Array(192);
+    const _PX = new Float32Array(192), _PY = new Float32Array(192), _PS = new Array(192), _PI = new Uint8Array(192);
     // above this optical depth a shoal draws in the under pass, so the wakes,
     // the drifting foam and the surface glitter all travel over the top of it
     const DEEP_CUT = 0.40;
@@ -1359,7 +1378,7 @@ const Wildlife = (function () {
         const ang = sc.a + Math.cos(t * sc.swSp + q.ph) * swirl * 0.22 * q.turn;
         const set = tiers[k];
         const fi = set.length > 1 ? FLEX_CYCLE[((t * q.bf * beat + q.ph) | 0) & 3] : 0;
-        _PX[live] = px0; _PY[live] = py0; _PS[live] = set[fi][angIdx(ang)];
+        _PX[live] = px0; _PY[live] = py0; _PS[live] = set[fi]; _PI[live] = angIdx(ang);
         live++;
       }
       if (!live) return;
@@ -1373,14 +1392,11 @@ const Wildlife = (function () {
         ctx.fillStyle = 'rgba(6,18,44,' + (sv * (1 - baseOd * 0.45) * 0.62).toFixed(3) + ')';
         for (let i = 0; i < live; i++) ctx.fillRect(Math.round(_PX[i]) - (sl >> 1) + sepx, Math.round(_PY[i]) + sepy, sl, 1);
       }
-      for (let i = 0; i < live; i++) {
-        const s2 = _PS[i];
-        ctx.drawImage(s2.c, Math.round(_PX[i] - s2.ax), Math.round(_PY[i] - s2.ay));
-      }
+      for (let i = 0; i < live; i++) blitStrip(ctx, _PS[i], _PI[i], _PX[i], _PY[i]);
       // --- the surface passing over them ---------------------------------
       // when a crest rolls through, the glare off it lands on top of the fish
       if (baseOd < 0.52) {
-        const wv = crestAt(sc.x, sc.y, t);
+        const wv = ref.w;                       // the crest height refractAt already worked out
         if (wv > 0.74) {
           ctx.fillStyle = wv > 0.92 ? '#e6fbff' : '#b9e6f4';
           const gt = (t * 7) | 0;
@@ -1462,7 +1478,7 @@ const Wildlife = (function () {
         let k = ((od * DTIER) | 0) + bias; if (k > maxT) k = maxT; else if (k < 0) k = 0;
         const set = tiers[k];
         const fi = (f.peck > 0 || set.length < 2) ? 0 : FLEX_CYCLE[((t * f.bf * (1 + g.fear) + f.ph) | 0) & 3];
-        _PX[live] = px0; _PY[live] = py0; _PS[live] = set[fi][angIdx(f.a)];
+        _PX[live] = px0; _PY[live] = py0; _PS[live] = set[fi]; _PI[live] = angIdx(f.a);
         live++;
       }
       if (!live) return;
@@ -1473,10 +1489,7 @@ const Wildlife = (function () {
         ctx.fillStyle = 'rgba(6,18,44,' + (sv * (1 - baseOd * 0.4) * 0.70).toFixed(3) + ')';
         for (let i = 0; i < live; i++) ctx.fillRect(Math.round(_PX[i]) - 2 + (dp * 4 | 0), Math.round(_PY[i]) + sepy, 5, 1);
       }
-      for (let i = 0; i < live; i++) {
-        const s2 = _PS[i];
-        ctx.drawImage(s2.c, Math.round(_PX[i] - s2.ax), Math.round(_PY[i] - s2.ay));
-      }
+      for (let i = 0; i < live; i++) blitStrip(ctx, _PS[i], _PI[i], _PX[i], _PY[i]);
     }
 
     // ====================================================================

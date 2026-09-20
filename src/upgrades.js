@@ -278,6 +278,7 @@
     bg: null, rays: [], whale: null, whaleTail: null, wreck: null, bub: [], fgBub: [],
     motes: [], drift: [], kelp: [], rise: [], big: [],
     kelpCan: [null, null], kelpCtx: [null, null], kelpAt: [-99, -99],
+    sky: null, skyCtx: null, skyAt: -99,
     whaleX: 700, whaleY: 96,
 
     build() {
@@ -361,6 +362,32 @@
         x: rng.range(0, 640), y: rng.range(0, 420), r: rng.int(0, this.fgBub.length - 1),
         s: rng.range(34, 74), ph: rng.range(0, TAU), w: rng.range(6, 18),
       });
+    },
+
+    // The water and the seven god rays over it. The rays drift and pulse very
+    // slowly, so the pair is baked into one opaque frame about twelve times a
+    // second; blitting that is one opaque copy a frame instead of eight
+    // blended ones, and it looks identical.
+    skyLayer(T) {
+      if (!this.sky) {
+        this.sky = can(640, 360);
+        this.skyCtx = this.sky.getContext('2d');
+        this.skyAt = -99;
+      }
+      if (T - this.skyAt >= 0.08) {
+        this.skyAt = T;
+        const q = this.skyCtx;
+        q.globalAlpha = 1;
+        q.drawImage(this.bg, 0, 0);
+        for (let i = 0; i < 7; i++) {
+          const s = this.rays[i % 3];
+          const rx = ((i * 121 + Math.sin(T * 0.11 + i * 1.7) * 30) % 800) - 80;
+          q.globalAlpha = 0.55 + Math.sin(T * 0.45 + i * 1.3) * 0.32;
+          q.drawImage(s.c, Math.round(rx), -20);
+        }
+        q.globalAlpha = 1;
+      }
+      return this.sky;
     },
 
     buildRay(w, h, slant) {
@@ -499,16 +526,7 @@
     render(ctx, opt) {
       this.build();
       const T = this.t;
-      ctx.drawImage(this.bg, 0, 0);
-
-      // god rays from the surface far above
-      for (let i = 0; i < 7; i++) {
-        const s = this.rays[i % 3];
-        const bx = ((i * 121 + Math.sin(T * 0.11 + i * 1.7) * 30) % 800) - 80;
-        ctx.globalAlpha = 0.55 + Math.sin(T * 0.45 + i * 1.3) * 0.32;
-        ctx.drawImage(s.c, Math.round(bx), -20);
-      }
-      ctx.globalAlpha = 1;
+      ctx.drawImage(this.skyLayer(T), 0, 0);
 
       // the whale, very far off
       const wx = Math.round(this.whaleX), wy = Math.round(this.whaleY + Math.sin(T * 0.3) * 5);
@@ -566,7 +584,7 @@
         this.kelpCtx[i] = this.kelpCan[i].getContext('2d');
         this.kelpAt[i] = -99;
       }
-      if (T - this.kelpAt[i] >= 0.5) {
+      if (T - this.kelpAt[i] >= 0.08) {
         this.kelpAt[i] = T;
         const q = this.kelpCtx[i];
         q.clearRect(0, 0, 640, KELP_H);

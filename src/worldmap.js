@@ -106,11 +106,11 @@
     // water, shoal -> abyss
     sea0: '#eee2bb', sea1: '#ded0a6', sea2: '#cbbd91', sea3: '#b9a97e', sea4: '#a89870',
     seaL: '#f4ead0', seaX: '#9a8a63',
-    stain: '#d7c79a', stain2: '#cbb684', foxing: '#a98d5c',
+    stain: '#dacea4', stain2: '#ccbd92', foxing: '#a98d5c',
     // land ramp, lit / mid / shaded
     lit: ['#fbf0d3', '#f2e2b4', '#e6cf94', '#d6ba76', '#c4a35c'],
     mid: ['#f3e7c4', '#e8d5a2', '#d9c086', '#c7a868', '#b4904f'],
-    shd: ['#e2d2ab', '#d5be8c', '#c3a670', '#ae8d55', '#9a7844'],
+    shd: ['#e8dab6', '#dbc796', '#c9ae79', '#b4955e', '#a1804c'],
     sand: '#f7ecd0', beach: '#efdcac',
     ink: '#3d2a11', ink2: '#664a22', inkL: '#8d6d3c', faint: '#b59b6a', hair: '#c9b184',
     forest: '#4c6a31', forestD: '#33501f', forestL: '#6b8642',
@@ -144,7 +144,7 @@
     },
     {
       name: 'SALT PIER', x: 246, y: 84, rx: 54, ry: 32, seed: 2207, rough: 1.20,
-      hills: 7, woods: 6, label: [238, 68], ls: 5,
+      hills: 7, woods: 6, label: [264, 62], ls: 5,
       spits: [[3.32, 22, 4], [0.35, 16, 3]],
       lobes: [{ dx: -34, dy: 14, rx: 26, ry: 16 }, { dx: 30, dy: 16, rx: 26, ry: 14 }, { dx: 6, dy: -22, rx: 28, ry: 14 }],
     },
@@ -170,7 +170,7 @@
   const HOME = { x: 34, y: 240 };
   const DEST = [
     {
-      name: 'FISHER VILLAGE', chapter: 'I', kind: 'village', x: 172, y: 228, lab: 'below', threat: 0.22,
+      name: 'FISHER VILLAGE', chapter: 'I', kind: 'village', x: 176, y: 218, lab: 'below', threat: 0.22,
       blurb: 'Where they took her. The nets still hang wet on the racks, and every hut on that pier keeps a gun behind the door.',
       foes: ['dinghy', 'netter', 'harpooner'], need: null, note: 'HUTS ON PILES. A SHINGLE BEACH.',
     },
@@ -195,7 +195,7 @@
       foes: ['trawler', 'speedboat', 'netter'], need: 'BLACKBONE STATION', note: 'DRIFT NETS. NO BOTTOM FOUND.',
     },
     {
-      name: 'THE DEEP ROADS', chapter: 'VI', kind: 'deep', x: 594, y: 74, lab: 'below', threat: 1, open: true,
+      name: 'THE DEEP ROADS', chapter: 'VI', kind: 'deep', x: 588, y: 76, lab: 'below', threat: 1, open: true,
       blurb: 'Past the last light on the chart. The Chief runs these roads, and the fleet that took her family runs with him.',
       foes: ['gunboat', 'dynaboat', 'chief'], need: 'THE GREY SHOALS', note: 'UNSURVEYED. THE CHART ENDS HERE.',
     },
@@ -222,12 +222,12 @@
   const DOODLES = [
     { k: 'serpent', x: 40, y: 110, f: 1 },
     { k: 'lugger', x: 186, y: 150, f: -1 },
-    { k: 'whale', x: 252, y: 152, f: -1 },
-    { k: 'kraken', x: 602, y: 98 },
-    { k: 'ray', x: 486, y: 168 },
+    { k: 'whale', x: 474, y: 236, f: -1 },
+    { k: 'fish', x: 256, y: 166, f: -1 },
+    { k: 'kraken', x: 602, y: 152 },
+    { k: 'ray', x: 300, y: 242 },
     { k: 'fish', x: 96, y: 178, f: 1 },
     { k: 'fish', x: 520, y: 56, f: -1 },
-    { k: 'fish', x: 310, y: 242, f: 1 },
   ];
 
   // reef / shoal fields
@@ -245,12 +245,11 @@
 
   // names of the water itself, set wide the way a chart letters an open sea
   const SEA_NAMES = [
-    ['MOTHER DEEP', 100, 138, 6, 3],
-    ['THE NARROWS', 214, 190, 5, 2],
-    ['BONE CHANNEL', 392, 118, 5, 2],
-    ['THE SOUTH ROADS', 298, 258, 5, 2],
-    ['OPEN SEA', 592, 236, 6, 3],
-    ['NO SOUNDINGS', 592, 247, 5, 1],
+    ['MOTHER DEEP', 96, 136, 6, 3],
+    ['THE NARROWS', 232, 196, 5, 2],
+    ['BONE CHANNEL', 372, 132, 5, 2],
+    ['OPEN SEA', 580, 228, 6, 3],
+    ['NO SOUNDINGS', 580, 239, 5, 1],
   ];
 
   // =========================================================================
@@ -356,13 +355,13 @@
       const dep = m[i] ? 0 : dOut[i];
       // fine grain that wobbles the band edges by a step
       const n = vnoise(x * 0.055 + 30, y * 0.055 + 11) * 0.62 + hash2(x, y) * 0.38;
-      const j = (n - 0.5) * 5.5;
+      const j = (n - 0.5) * 4.0;
       const dd = dep + j;
       let b = dd < 5 ? 0 : dd < 13 ? 1 : dd < 24 ? 2 : dd < 38 ? 3 : 4;
       let c = band[b];
       // broad tea stains and a wash across the whole sheet, hard edged
       const s = vnoise(x * 0.011 + 77, y * 0.011 + 21);
-      if (s > 0.71) c = s > 0.79 ? stain2 : stain;
+      if (s > 0.755) c = s > 0.825 ? stain2 : stain;
       // surf: the first fathom off every beach is scrubbed bright
       if (dep >= 1 && dep <= 2 && ((x * 2 + y) % 5) < 3) c = surf;
       // laid lines of the paper + foxing specks
@@ -417,10 +416,10 @@
           col = ramp[b];
           // hachures down the shaded flanks: the steeper, the denser
           const steep = Math.max(0, -(lum + jit)) * 26;
-          if (steep > 0.35 && hash2(x * 7 + 1, y * 11 + 9) < Math.min(0.55, steep * 0.34)) col = b > 2 ? ink2 : inkL;
+          if (steep > 0.55 && hash2(x * 7 + 1, y * 11 + 9) < Math.min(0.40, steep * 0.20)) col = b > 2 ? ink2 : inkL;
           // shore shading, tucked against the coastline
-          else if (din <= 6 && hash2(x * 3 + 7, y * 9 + 5) < (7 - din) * 0.10) col = ink2;
-          else if (din > 8 && hash2(x * 3 + 7, y * 5 + 1) > 0.982) col = inkL;
+          else if (din <= 5 && hash2(x * 3 + 7, y * 9 + 5) < (6 - din) * 0.075) col = ink2;
+          else if (din > 8 && hash2(x * 3 + 7, y * 5 + 1) > 0.990) col = inkL;
         }
         d[p] = col[0]; d[p + 1] = col[1]; d[p + 2] = col[2]; d[p + 3] = 255;
       } else {
@@ -590,19 +589,41 @@
     D1(ctx, P.inkL, x - 7, y); D1(ctx, P.inkL, x + 7, y);
   }
 
-  // a scrubbed patch of paper, dithered at the rim, so a drawing can sit on
-  // the sea without the water texture eating its ink
-  function scrub(ctx, col, cx, cy, rx, ry) {
-    for (let y = -ry - 2; y <= ry + 2; y++) {
-      for (let x = -rx - 2; x <= rx + 2; x++) {
-        const u = (x / rx) * (x / rx) + (y / ry) * (y / ry);
-        if (u > 1.30) continue;
-        if (u > 0.80 && hash2((cx + x) * 7 + 3, (cy + y) * 5 + 9) < (u - 0.80) * 1.9) continue;
-        const px = cx + x, py = cy + y;
-        if (px < IN.x0 || py < IN.y0 || px > IN.x1 || py > IN.y1) continue;
-        D1(ctx, col, px, py);
+  // a cut-out halo of clean paper, dilated from a drawing's own ink, so a
+  // figure reads over water, stipple and rhumb lines alike.  The outermost
+  // ring is checkered, which keeps the cut from looking like a sticker.
+  function haloed(src, col, r, soft) {
+    const w = src.width, h = src.height, rr = r + (soft ? 1 : 0);
+    const c = can(w, h), cx = c.getContext('2d');
+    const d = src.getContext('2d').getImageData(0, 0, w, h).data;
+    const img = cx.createImageData(w, h), o = img.data;
+    const rgb = hexToRgb(col);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (d[i + 3]) continue;
+      let best = 99;
+      for (let dy = -rr; dy <= rr; dy++) {
+        const ny = y + dy; if (ny < 0 || ny >= h) continue;
+        for (let dx = -rr; dx <= rr; dx++) {
+          const nx = x + dx; if (nx < 0 || nx >= w) continue;
+          if (!d[(ny * w + nx) * 4 + 3]) continue;
+          const m = Math.max(Math.abs(dx), Math.abs(dy));
+          if (m < best) best = m;
+        }
       }
+      if (best > rr) continue;
+      if (best > r && ((x + y) & 1)) continue;
+      o[i] = rgb[0]; o[i + 1] = rgb[1]; o[i + 2] = rgb[2]; o[i + 3] = 255;
     }
+    cx.putImageData(img, 0, 0);
+    cx.drawImage(src, 0, 0);
+    return c;
+  }
+  // draw a figure into its own plate, cut it out, and lay it on the chart
+  function vignette(dst, fn, x, y, bw, bh, f) {
+    const c = can(bw, bh), cx = c.getContext('2d');
+    fn(cx, bw >> 1, bh >> 1, f);
+    dst.drawImage(haloed(c, P.sea0, 1, false), x - (bw >> 1), y - (bh >> 1));
   }
 
   // sea doodles ------------------------------------------------------------
@@ -625,6 +646,7 @@
     }
   }
   function drawSerpent(ctx, x, y, f) {
+    x -= f * 22; y += 8;
     for (let c = 0; c < 3; c++) {
       const cx = x + f * (c * 19), r = 9 - c;
       arcOver(ctx, P.ink, cx, y, r, true);
@@ -655,6 +677,7 @@
     D1(ctx, P.ink, x - f * 16, y - 8); D1(ctx, P.ink, x - f * 16, y + 6);
   }
   function drawWhale(ctx, x, y, f) {
+    y += 6;
     const W = 32;
     const fat = u => u < 0.78 ? Math.pow(u / 0.78, 0.45) : Math.sqrt(Math.max(0, 1 - Math.pow((u - 0.78) / 0.23, 2)));
     let lastT = 0, lastB = 0;
@@ -662,6 +685,7 @@
       const u = i / (W - 1), k = fat(u);
       const t = Math.round(9 * k), b2 = Math.round(6.5 * k);
       const cx = x + f * Math.round(i - W * 0.55);
+      for (let q = -t + 1; q < b2; q++) D1(ctx, P.sand, cx, y + q);
       D1(ctx, P.ink, cx, y - t); D1(ctx, P.ink, cx, y + b2);
       for (let q = Math.min(t, lastT); q < Math.max(t, lastT); q++) D1(ctx, P.ink, cx, y - q);
       for (let q = Math.min(b2, lastB); q < Math.max(b2, lastB); q++) D1(ctx, P.ink, cx, y + q);
@@ -686,6 +710,7 @@
     D1(ctx, P.ink, hx - f * 9, y - 24); D1(ctx, P.ink, hx - f * 11, y - 22); D1(ctx, P.ink, hx + f * 6, y - 23);
   }
   function drawKraken(ctx, x, y) {
+    y += 4;
     for (let a = 0; a < 5; a++) {
       const dir = a - 2;
       let px2 = x + dir * 5, py = y + 7;
@@ -704,9 +729,11 @@
     for (let i = -9; i < 10; i += 4) D1(ctx, P.inkL, x + i, y + 10);
   }
   function drawRay(ctx, x, y) {
+    x -= 6;
     for (let i = -10; i <= 10; i++) {
       const u = Math.abs(i) / 10;
       const h = Math.round(5 * (1 - u * u));
+      for (let k = -h + 1; k < h; k++) D1(ctx, P.sand, x + i, y + k);
       D1(ctx, P.ink, x + i, y - h); D1(ctx, P.ink, x + i, y + h);
       if ((i & 1) === 0) for (let k = -h + 1; k < h; k += 2) D1(ctx, P.ink2, x + i, y + k);
     }
@@ -715,6 +742,7 @@
   }
   // a little shoal of fish, engraved side-on
   function drawFish(ctx, x, y, f) {
+    x -= f * 4;
     for (let k = 0; k < 3; k++) {
       const fx = x + f * (k % 2 ? 9 : 0), fy = y + (k * 5) - 5;
       for (let i = -4; i <= 4; i++) {
@@ -728,6 +756,7 @@
   }
   // a two-masted lugger heeled over under full sail — the chart's ship vignette
   function drawLugger(ctx, x, y, f) {
+    y += 8;
     const H = P.ink, L = P.sand;
     // hull: a sheer curve with a transom and a bowsprit
     for (let i = -14; i <= 14; i++) {
@@ -968,48 +997,46 @@
   // VI. THE DEEP ROADS — the survey simply stops, and something waits in it
   function gDeep(ctx, C) {
     const gy = GAY;
-    // the void: the paper goes black at the edge of the world
-    for (let x = 20; x < GW; x++) {
-      const n = vnoise(x * 0.20, 3.7) * 0.6 + vnoise(x * 0.55, 8.1) * 0.4;
-      const top = Math.round(gy - 27 + n * 9);
-      const lean = Math.round((GW - x) * 0.20);
-      for (let y = top + lean; y < gy + 9; y++) {
-        if (y < top + lean + 2 && hash2(x * 5, y * 7) < 0.45) continue;   // ragged rim
-        D1(ctx, C.void, x, y);
+    // the void: the paper goes dark at the edge of the world, and the edge of
+    // it frays instead of cutting
+    for (let x = 18; x < GW; x++) {
+      const n = vnoise(x * 0.17, 3.7) * 0.55 + vnoise(x * 0.52, 8.1) * 0.45;
+      const edge = gy - 29 + n * 11 + (GW - x) * 0.40;
+      for (let y = Math.round(edge) - 7; y < gy + 1; y++) {
+        const t = (y - edge) / 7;
+        if (t < 0 && hash2(x * 5 + 1, y * 7 + 3) > 0.30 + (t + 1) * 0.66) continue;
+        if (t < 0 && hash2(x * 5 + 1, y * 7 + 3) < 0.04) continue;
+        D1(ctx, t < -0.45 ? C.k : C.void, x, y);
       }
-      if (hash2(x * 11, 5) > 0.72) D1(ctx, C.k, x, top + lean - 1);
     }
-    // ink running out of it, down the sheet
-    for (const dx of [25, 33, 44, 55]) {
-      const len = 4 + Math.round(hash2(dx, 17) * 7);
-      for (let k = 0; k < len; k++) D1(ctx, C.void, dx, gy + 9 + k);
-      D1(ctx, C.void, dx - 1, gy + 9 + len - 2); D1(ctx, C.void, dx + 1, gy + 9 + len - 2);
+    // ink running out of the bottom of it, down the sheet
+    for (const dx of [23, 31, 42, 53]) {
+      const len = 3 + Math.round(hash2(dx, 17) * 6);
+      for (let k = 0; k < len; k++) D1(ctx, C.void, dx, gy + 1 + k);
+      D1(ctx, C.void, dx - 1, gy + len); D1(ctx, C.void, dx + 1, gy + len);
     }
     // a bow coming out of the dark, harpoon gun on the forecastle
-    const bx = 38, by = gy + 1;
-    for (let i = 0; i <= 15; i++) {
-      const w = Math.round(1 + i * 0.62);
-      R(ctx, C.pale, bx - w, by - i, w * 2 + 1, 1);
-      D1(ctx, C.void, bx - w, by - i); D1(ctx, C.void, bx + w, by - i);
+    const bx = 41, by = gy - 6;
+    for (let i = 0; i <= 17; i++) {
+      const w = Math.round(1 + i * 0.66);
+      D1(ctx, C.pale, bx - w, by - i); D1(ctx, C.pale, bx + w, by - i);
+      if (i > 12) R(ctx, C.pale, bx - w, by - i, w * 2 + 1, 1);
+      if ((i & 3) === 1) { D1(ctx, C.pale, bx - w + 2, by - i); D1(ctx, C.pale, bx + w - 2, by - i); }
     }
-    R(ctx, C.void, bx - 10, by - 15, 21, 1);
-    R(ctx, C.pale, bx - 3, by - 20, 7, 5); box(ctx, C.void, bx - 3, by - 20, 7, 5);
-    R(ctx, C.pale, bx - 1, by - 24, 2, 4);
-    for (let i = 0; i < 9; i++) D1(ctx, C.pale, bx + 2 + i, by - 22 - Math.round(i * 0.4));
-    D1(ctx, C.void, bx + 10, by - 26); D1(ctx, C.void, bx + 11, by - 25);
-    // and a skull on this side of the line, where the soundings stop
-    const sx = 10, sy = gy - 12;
-    R(ctx, C.p, sx - 4, sy - 5, 9, 7); box(ctx, C.k, sx - 4, sy - 5, 9, 7);
-    R(ctx, C.k, sx - 3, sy - 3, 2, 2); R(ctx, C.k, sx + 2, sy - 3, 2, 2);
-    R(ctx, C.k, sx - 1, sy, 1, 2); R(ctx, C.k, sx - 4, sy + 2, 9, 1);
-    for (let i = 0; i < 3; i++) { D1(ctx, C.k, sx - 3 + i * 3, sy + 3); D1(ctx, C.k, sx - 3 + i * 3, sy + 4); }
-    for (let i = -6; i <= 6; i++) { D1(ctx, C.k2, sx + i, sy - 8 + Math.abs(i >> 1)); }
-    // a note in the margin
-    for (let i = 0; i < 3; i++) D1(ctx, C.k2, 4, sy + 9 + i * 2);
+    R(ctx, C.pale, bx - 12, by - 18, 25, 1);
+    R(ctx, C.void, bx - 11, by - 17, 23, 1);
+    // wheelhouse and the gun
+    R(ctx, C.void, bx - 4, by - 24, 9, 6); box(ctx, C.pale, bx - 4, by - 24, 9, 6);
+    D1(ctx, C.pale, bx - 2, by - 22); D1(ctx, C.pale, bx + 1, by - 22); D1(ctx, C.pale, bx + 3, by - 22);
+    R(ctx, C.pale, bx - 1, by - 29, 2, 5);
+    for (let i = 0; i < 10; i++) D1(ctx, C.pale, bx + 2 + i, by - 27 - Math.round(i * 0.42));
+    D1(ctx, C.pale, bx + 11, by - 32); D1(ctx, C.pale, bx + 12, by - 31); D1(ctx, C.pale, bx + 12, by - 33);
+    // her bow wave
+    for (let i = -10; i < 12; i += 3) { D1(ctx, C.pale, bx + i, by + 2); D1(ctx, C.pale, bx + i + 1, by + 2); }
   }
 
   const PLACE_FN = { village: gVillage, cannery: gCannery, marrow: gMarrow, blackbone: gBlackbone, shoals: gShoals, deep: gDeep };
-  const INK_ON = { k: P.ink, k2: P.ink2, kL: P.inkL, p: P.sand, r: P.red, void: '#1a1208', pale: P.faint };
+  const INK_ON = { k: P.ink, k2: P.ink2, kL: P.inkL, p: P.sand, r: P.red, void: '#2a1d0e', pale: P.faint };
   const INK_OFF = { k: '#4b4230', k2: '#6e6247', kL: '#8f8365', p: '#d3c8a8', r: '#6e6247', void: '#241c10', pale: '#8f8365' };
 
   function buildPlaceGlyphs() {
@@ -1018,26 +1045,31 @@
       const on = can(GW, GH), off = can(GW, GH);
       PLACE_FN[key](on.getContext('2d'), INK_ON);
       PLACE_FN[key](off.getContext('2d'), INK_OFF);
-      out[key] = { on: on, off: off, ax: GAX, ay: GAY };
+      out[key] = { on: haloed(on, P.beach, 1, true), off: haloed(off, '#d9cfb2', 1, true), ax: GAX, ay: GAY };
     }
     return out;
   }
 
   // rhumb lines, graticule and the border ----------------------------------
+  // how far a ray from (x,y) can run before it leaves the interior
+  function rayLen(x, y, ca, sa) {
+    let t = 1e9;
+    if (ca > 1e-6) t = Math.min(t, (IN.x1 - x) / ca); else if (ca < -1e-6) t = Math.min(t, (IN.x0 - x) / ca);
+    if (sa > 1e-6) t = Math.min(t, (IN.y1 - y) / sa); else if (sa < -1e-6) t = Math.min(t, (IN.y0 - y) / sa);
+    return Math.max(0, Math.min(t, 900));
+  }
   function drawRhumbs(ctx) {
-    ctx.save();
-    ctx.beginPath(); ctx.rect(IN.x0, IN.y0, IN.x1 - IN.x0, IN.y1 - IN.y0); ctx.clip();
     for (let n = 0; n < RHUMB.length; n++) {
       const node = RHUMB[n];
       for (let i = 0; i < 16; i++) {
-        const a = i / 16 * TAU + 0.0001;
+        const a = i / 16 * TAU + 0.0001, ca = Math.cos(a), sa = Math.sin(a);
+        const L = rayLen(node[0], node[1], ca, sa);
         const col = (i % 4 === 0) ? P.faint : P.hair;
-        line(ctx, col, node[0], node[1], node[0] + Math.cos(a) * 900, node[1] + Math.sin(a) * 900, 2, 3, 0);
+        line(ctx, col, node[0], node[1], node[0] + ca * L, node[1] + sa * L, 2, 3, 0);
       }
       ring(ctx, P.faint, node[0], node[1], 4, 0);
       D1(ctx, P.ink2, node[0], node[1]);
     }
-    ctx.restore();
   }
   function degRing(ctx, col, x, y) { box(ctx, col, x, y, 3, 3); D1(ctx, P.sea0, x + 1, y + 1); }
   function drawGraticule(ctx) {
@@ -1159,30 +1191,20 @@
   }
 
   // scale bar --------------------------------------------------------------
+  // drawn bare; the cartouche supplies the plate it is engraved on
   function drawScale(ctx, x, y) {
-    const seg = 16, n = 5, w = seg * n;
-    // the plate it is engraved on
-    for (let yy = y - 12; yy <= y + 12; yy++) for (let xx = x - 20; xx <= x + w + 7; xx++) {
-      if ((xx === x - 20 || xx === x + w + 7 || yy === y - 14 || yy === y + 14) && hash2(xx * 3, yy * 5) < 0.25) continue;
-      D1(ctx, P.sea0, xx, yy);
-    }
-    box(ctx, P.ink2, x - 20, y - 12, w + 28, 25);
-    box(ctx, P.ink, x - 18, y - 10, w + 24, 21);
-    // a pair of dividers standing at the left of the plate
-    R(ctx, P.ink, x - 14, y - 9, 1, 1);
-    for (let i = 0; i < 10; i++) { D1(ctx, P.ink, x - 14 - Math.round(i * 0.42), y - 8 + i); D1(ctx, P.ink, x - 14 + Math.round(i * 0.42), y - 8 + i); }
-    D1(ctx, P.ink, x - 19, y + 2); D1(ctx, P.ink, x - 9, y + 2);
-    // the bar itself
-    box(ctx, P.ink, x, y, w, 6);
-    for (let i = 0; i < n; i++) R(ctx, (i & 1) ? P.sand : P.ink, x + i * seg + 1, y + 1, seg - (i === n - 1 ? 2 : 0), 4);
-    R(ctx, P.ink, x, y, w, 1); R(ctx, P.ink, x, y + 5, w, 1);
-    // the first league divided into quarters
-    for (let q = 1; q < 4; q++) R(ctx, P.ink, x + Math.round(seg * q / 4), y + 1, 1, 4);
+    const seg = 17, n = 5, w = seg * n;
+    txt(ctx, 'SEA LEAGUES', x + w / 2, y, 5, { color: P.ink2, align: 'center', tracking: 1 });
     for (let i = 0; i <= n; i++) {
-      R(ctx, P.ink, x + i * seg - (i === n ? 1 : 0), y - 4, 1, 4);
-      if (i % 2 === 0) txt(ctx, String(i * 2), x + i * seg, y - 10, 5, { color: P.ink, align: 'center' });
+      if (i % 2 === 0) txt(ctx, String(i * 2), x + i * seg, y + 7, 5, { color: P.ink, align: 'center' });
     }
-    txt(ctx, 'SEA LEAGUES', x + w / 2, y + 8, 5, { color: P.ink2, align: 'center', tracking: 1 });
+    const by = y + 14;
+    box(ctx, P.ink, x, by, w, 6);
+    for (let i = 0; i < n; i++) R(ctx, (i & 1) ? P.sand : P.ink, x + i * seg + 1, by + 1, seg - (i === n - 1 ? 2 : 0), 4);
+    R(ctx, P.ink, x, by, w, 1); R(ctx, P.ink, x, by + 5, w, 1);
+    for (let q = 1; q < 4; q++) R(ctx, P.ink, x + Math.round(seg * q / 4), by + 1, 1, 4);
+    for (let i = 0; i <= n; i++) R(ctx, P.ink, x + i * seg - (i === n ? 1 : 0), by - 3, 1, 3);
+    return w;
   }
 
   // title cartouche --------------------------------------------------------
@@ -1224,7 +1246,14 @@
     ty += 5;
     txt(ctx, 'SOUNDINGS IN FATHOMS', x + w / 2, ty, 5, { color: P.ink2, align: 'center', tracking: 1 }); ty += 8;
     txt(ctx, 'DRAWN BY THE OTTER, WHO', x + w / 2, ty, 5, { color: P.ink2, align: 'center' }); ty += 7;
-    txt(ctx, 'HAS NEVER BEEN WRONG YET', x + w / 2, ty, 5, { color: P.ink2, align: 'center' });
+    txt(ctx, 'HAS NEVER BEEN WRONG YET', x + w / 2, ty, 5, { color: P.ink2, align: 'center' }); ty += 10;
+    // a second rule, then the scale engraved into the foot of the plaque
+    R(ctx, P.ink2, x + 22, ty, w - 44, 1);
+    for (const dx of [-1, 0, 1]) D1(ctx, P.ink, x + w / 2 + dx, ty);
+    D1(ctx, P.ink, x + w / 2, ty - 1); D1(ctx, P.ink, x + w / 2, ty + 1);
+    ty += 5;
+    const sw = drawScale(ctx, Math.round(x + w / 2 - 43), ty);
+    void sw;
   }
 
   // a little scrolled note pinned anywhere on the sheet
@@ -1530,16 +1559,22 @@
   function tearRgt(i) { return Math.round(vnoise(i * 0.23, 83.5) * 3.2 + vnoise(i * 1.0, 37.8) * 1.5); }
 
   function paintTable(ctx) {
-    R(ctx, P.table, 0, 0, 640, 360);
+    const base = hexToRgb(P.table), lo = hexToRgb(P.tableD), hi = hexToRgb(P.tableL), ink = hexToRgb(P.tableG);
+    const img = ctx.createImageData(640, 360), d = img.data;
     for (let y = 0; y < 360; y++) {
+      const plank = (y % 27), grainY = (y * 0.11) | 0;
       for (let x = 0; x < 640; x++) {
+        const p = (y * 640 + x) * 4;
         const n = hash2(x * 3 + 1, y * 7);
-        const g = vnoise(x * 0.09, y * 0.012);
-        if (n > 0.93 || g > 0.72) D1(ctx, P.tableL, x, y);
-        else if (n < 0.07 || g < 0.28) D1(ctx, P.tableD, x, y);
+        const g = vnoise(x * 0.10, grainY * 0.9);
+        let c = base;
+        if (n > 0.93 || g > 0.74) c = hi;
+        else if (n < 0.07 || g < 0.26) c = lo;
+        if (plank === 0) c = ink; else if (plank === 1) c = hi;
+        d[p] = c[0]; d[p + 1] = c[1]; d[p + 2] = c[2]; d[p + 3] = 255;
       }
-      if (y % 27 === 0) { R(ctx, P.tableD, 0, y, 640, 1); R(ctx, P.tableL, 0, y + 1, 640, 1); }
     }
+    ctx.putImageData(img, 0, 0);
   }
 
   // a brass tack, holding a corner of the sheet to the table
@@ -1555,9 +1590,12 @@
   function buildChart(self) {
     const out = can(640, 360), octx = out.getContext('2d');
     paintTable(octx);
-    // the shadow the sheet casts on the table, before the sheet goes down
+    // the shadow the sheet casts on the table: only the strip the sheet
+    // itself will not cover once it is laid down
     for (let y = PAPER.y0 + 3; y <= PAPER.y1 + 4; y++) {
+      const inner = y <= PAPER.y1 - 1;
       for (let x = PAPER.x0 + 3; x <= PAPER.x1 + 4; x++) {
+        if (inner && x <= PAPER.x1 - 7) { x = PAPER.x1 - 7; continue; }
         if (hash2(x * 5, y * 3) < 0.12) continue;
         D1(octx, hash2(x, y) > 0.7 ? P.tableD : P.tableG, x, y);
       }
@@ -1597,15 +1635,13 @@
 
     // the places, and the patch of paper scrubbed clear behind each drawing
     const keepOut = [];
-    for (const d of DEST) {
-      scrub(cx, P.sea0, d.x, d.y - 14, 26, 19);
-      keepOut.push({ x: d.x, y: d.y - 12, rx: 34, ry: 30 });
-    }
-    scrub(cx, P.sea0, HOME.x + 14, HOME.y, 26, 12);
-    keepOut.push({ x: HOME.x + 14, y: HOME.y, rx: 40, ry: 18 });
+    for (const d of DEST) keepOut.push({ x: d.x, y: d.y - 12, rx: 34, ry: 28 });
+    keepOut.push({ x: HOME.x + 14, y: HOME.y, rx: 42, ry: 18 });
     keepOut.push({ x: ROSE.x, y: ROSE.y, rx: ROSE.r + 18, ry: ROSE.r + 20 });
-    keepOut.push({ x: 114, y: 52, rx: 104, ry: 44 });      // cartouche
-    keepOut.push({ x: 503, y: 238, rx: 60, ry: 18 });      // scale plate
+    keepOut.push({ x: 109, y: 66, rx: 101, ry: 60 });      // cartouche
+    for (const sn of SEA_NAMES) keepOut.push({ x: sn[1], y: sn[2] + 2, rx: mText(sn[0], sn[3]) / 2 + sn[4] * 3 + 6, ry: 8 });
+    for (const is of ISLES) if (is.name && is.label) keepOut.push({ x: is.label[0], y: is.label[1] + 2, rx: mText(is.name, is.ls || 5) / 2 + (is.ls || 5) + 6, ry: 8 });
+    keepOut.push({ x: 580, y: 234, rx: 44, ry: 14 });      // the open-sea note
     for (const w of WRECKS) keepOut.push({ x: w[0], y: w[1], rx: 13, ry: 11 });
     for (const dd of DOODLES) {
       const rx = dd.k === 'serpent' ? 62 : dd.k === 'whale' ? 28 : dd.k === 'lugger' ? 32 : 18;
@@ -1617,26 +1653,28 @@
     // soundings, set out on a jittered lattice so they read as a survey
     // rather than as litter, and deepened as the bottom falls away
     const rng = new SeededRandom(9137);
-    for (let gy = IN.y0 + 10; gy < IN.y1 - 6; gy += 21) {
-      for (let gx = IN.x0 + 12; gx < IN.x1 - 10; gx += 25) {
-        const x = Math.round(gx + rng.range(-7, 7)), y = Math.round(gy + rng.range(-6, 6));
+    for (let gy = IN.y0 + 12; gy < IN.y1 - 8; gy += 24) {
+      for (let gx = IN.x0 + 14; gx < IN.x1 - 12; gx += 30) {
+        const x = Math.round(gx + rng.range(-8, 8)), y = Math.round(gy + rng.range(-7, 7));
+        if (rng.next() < 0.09) continue;
         const cl = clearance(dOut, mask, x, y);
         if (cl < 4) continue;
         let clash = false;
         for (const k of keepOut) if (Math.abs(x - k.x) < k.rx && Math.abs(y - k.y) < k.ry) { clash = true; break; }
         if (clash) continue;
         const v = Math.max(2, Math.round(cl * 1.15 + vnoise(x * 0.04, y * 0.04) * 11));
-        txt(cx, String(v), x, y, 5, { color: cl > 16 ? P.ink2 : P.inkL, align: 'center' });
+        txt(cx, String(v), x, y, 5, { color: cl > 22 ? P.ink2 : P.inkL, align: 'center' });
       }
     }
     for (const w of WRECKS) drawWreck(cx, w[0], w[1]);
     for (const d of DOODLES) {
-      if (d.k === 'serpent') drawSerpent(cx, d.x, d.y, d.f || 1);
-      else if (d.k === 'whale') drawWhale(cx, d.x, d.y, d.f || 1);
-      else if (d.k === 'kraken') drawKraken(cx, d.x, d.y);
-      else if (d.k === 'ray') drawRay(cx, d.x, d.y);
-      else if (d.k === 'fish') drawFish(cx, d.x, d.y, d.f || 1);
-      else if (d.k === 'lugger') drawLugger(cx, d.x, d.y, d.f || 1);
+      const f = d.f || 1;
+      if (d.k === 'serpent') vignette(cx, drawSerpent, d.x + f * 22, d.y - 8, 140, 76, f);
+      else if (d.k === 'whale') vignette(cx, drawWhale, d.x, d.y - 6, 74, 76, f);
+      else if (d.k === 'kraken') vignette(cx, drawKraken, d.x, d.y - 4, 44, 44, f);
+      else if (d.k === 'ray') vignette(cx, drawRay, d.x + 6, d.y, 52, 26, f);
+      else if (d.k === 'fish') vignette(cx, drawFish, d.x + f * 4, d.y, 40, 30, f);
+      else if (d.k === 'lugger') vignette(cx, drawLugger, d.x, d.y - 8, 80, 58, f);
     }
     // ---- shipping lanes (dotted), drawn under the ships that ride them
     for (const ln of LANES) {
@@ -1663,8 +1701,7 @@
 
     // ---- furniture on top
     drawRose(cx, ROSE.x, ROSE.y, ROSE.r);
-    drawScale(cx, 470, 238);
-    drawCartouche(cx, 16, 14, 196, 76);
+    drawCartouche(cx, 14, 12, 190, 108);
     drawBorder(cx);
 
     // ---- tear the sheet out of its rectangle
@@ -1801,7 +1838,13 @@
       }
       this.chart = buildChart(this);          // this also snaps the ports to the coast
       for (const d of DEST) {
-        const r = plaqueRect(d);
+        let r = plaqueRect(d);
+        // if the sheet has no room left below the mark, hang the label off
+        // the side instead of letting the clamp drop it onto the mark
+        if (d.lab === 'below' && d.y + 11 > IN.y1 - r.h - 3) {
+          d.lab = (d.x + 12 + r.w < IN.x1 - 3) ? 'right' : 'left';
+          r = plaqueRect(d);
+        }
         r.x = clamp(r.x, IN.x0 + 3, IN.x1 - r.w - 3);
         r.y = clamp(r.y, IN.y0 + 3, IN.y1 - r.h - 3);
         d.plaque = r;
@@ -2004,7 +2047,7 @@
       const shown = total * this.routeT;
       const live = d.unlocked;
       // 1) a scrubbed light underlay so the track reads over stipple and rhumbs
-      this.walk(pts, shown, 1, (x, y) => { D1(ctx, P.sand, x, y); D1(ctx, P.beach, x, y - 1); });
+      this.walk(pts, shown, 1, (x, y) => { D1(ctx, P.sand, x, y); D1(ctx, P.sand, x, y - 1); D1(ctx, P.beach, x, y + 1); });
       // 2) the dashed track itself, crawling forward
       const ph = Math.floor(T * 14), per = live ? 8 : 6, on = live ? 5 : 2;
       this.walk(pts, shown, 1, (x, y, s) => {
@@ -2038,14 +2081,16 @@
         D1(ctx, live ? P.red : P.greyD, b.x, b.y);
         if (shownLab < 3 && b.len > 46) {
           shownLab++;
+          const col = live ? P.redD : P.greyD;
           const lab = (b.brg < 100 ? (b.brg < 10 ? '00' : '0') : '') + b.brg;
-          const up = (i & 1) ? -11 : 7;
-          const w = mText(lab, 5) + 8;
-          R(ctx, P.sand, b.x - (w >> 1), b.y + up, w, 8);
-          box(ctx, live ? P.redD : P.greyD, b.x - (w >> 1), b.y + up, w, 8);
-          txt(ctx, lab, b.x - 2, b.y + up + 2, 5, { color: live ? P.redD : P.greyD, align: 'center' });
-          D1(ctx, live ? P.redD : P.greyD, b.x + (w >> 1) - 4, b.y + up + 2);
-          box(ctx, live ? P.redD : P.greyD, b.x + (w >> 1) - 5, b.y + up + 2, 3, 3);
+          const tw = mText(lab, 5), w = tw + 12;
+          const lx = clamp(b.x - (w >> 1), IN.x0 + 2, IN.x1 - w - 2);
+          const ly = (i & 1) ? b.y - 13 : b.y + 7;
+          R(ctx, P.stain2, lx + 1, ly + 9, w - 1, 1);
+          R(ctx, P.sand, lx, ly, w, 9);
+          box(ctx, col, lx, ly, w, 9);
+          txt(ctx, lab, lx + 3, ly + 2, 5, { color: col });
+          box(ctx, col, lx + 4 + tw, ly + 2, 3, 3);
         }
       }
     },
@@ -2095,7 +2140,7 @@
       const brg = d.book.length ? d.book[0].brg : 0;
       const legs = Math.max(1, Math.round(d.routeLen / 10));
       const crs = 'CRS ' + ((brg < 100 ? (brg < 10 ? '00' : '0') : '') + brg) + '   ' + legs + ' LEAGUES';
-      pixelText(ctx, crs, CARD.x + CARD.w - 18 - textWidth(crs, 6) - 148, 295, 6, '#c9a86a', 'left', false);
+      pixelText(ctx, crs, X + 178, 295, 6, '#c9a86a', 'left', false);
       UIKit.divider(ctx, X, 306, 288);
       let y = 312;
       for (const l of d.lines) { pixelText(ctx, l, X, y, 6, '#cfe6f2', 'left', false); y += 9; }

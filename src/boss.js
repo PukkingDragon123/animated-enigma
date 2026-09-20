@@ -355,8 +355,9 @@ function mbBuildIronjaw() {
   px(ctx, '#1a1220', cx + 13, cy - 4, 1, 8);
   // ---- the chain winch: a fat drum across the beam, wound with chain
   const dx0 = cx + Math.round(L * 0.34);
-  mbDrum(ctx, dx0, cy - 11, 14, 23, steel, 4);
+  mbDrum(ctx, dx0, cy - 11, 14, 23, steel, 0);
   mbMesh(ctx, dx0 + 2, cy - 9, 10, 19, '#99a3b1', 3);
+  for (const q of [3, 7, 11]) { px(ctx, '#2a2f38', dx0 + q, cy - 10, 1, 21); px(ctx, '#c3cedd', dx0 + q - 1, cy - 10, 1, 21); }
   px(ctx, '#2a2f38', dx0, cy - 11, 14, 1); px(ctx, '#2a2f38', dx0, cy + 11, 14, 1);
   // gantry rails running forward from the winch to the tubes
   px(ctx, steel.dark, dx0 + 14, cy - 6, Math.round(L * 0.34), 2);
@@ -376,10 +377,19 @@ function mbBuildIronjaw() {
   // ---- anchor davits at the four corners
   for (const fx of [0.18, 0.56]) for (const s of [-1, 1]) {
     const ax = cx + Math.round(L * fx), hw = h.half(ax);
-    const ay = Math.round(cy + s * (hw + 1));
+    const ay = Math.round(cy + s * (hw - 1));
     px(ctx, '#1a1220', ax - 2, ay - 1, 5, 3);
-    px(ctx, steel.lit, ax - 1, ay - (s > 0 ? 0 : 0), 3, 1);
-    px(ctx, brass.mid, ax, ay + s, 1, 2);
+    px(ctx, steel.lit, ax - 1, ay, 3, 1);
+    px(ctx, brass.mid, ax, ay + s, 1, 1);
+  }
+  // ---- bow ram plate
+  {
+    const bx0 = cx + L - 5;
+    for (let x = bx0; x <= cx + L; x++) {
+      const hw = h.half(x); if (hw < 1) continue;
+      for (let y = Math.round(cy - hw) + 1; y <= Math.round(cy + hw) - 1; y++)
+        px(ctx, (y < cy - hw * 0.35) ? '#c3cedd' : (y > cy + hw * 0.35) ? '#414954' : '#8a94a3', x, y);
+    }
   }
   // ---- deck clutter: a coil of chain and two crates
   mbMesh(ctx, cx + 18, cy - 4, 8, 9, '#8c9099', 2);
@@ -467,12 +477,15 @@ function mbBuildDragnet() {
     if (d > 8) continue;
     const X = bl - 4 + x, Y = by + y;
     if (d > 6.6) { px(bx, '#1a1220', X, Y); continue; }
-    px(bx, ((X + Y) & 1) ? '#dfe8ef' : (d > 4 ? '#7d8a96' : '#aab6c2'), X, Y);
+    px(bx, ((X + Y) & 1) ? '#b8c6cf' : (d > 4 ? '#5d6b72' : '#7f8f94'), X, Y);
   }
-  for (const [lx, ly] of [[-4, -4], [3, -2], [-1, 4], [4, 3]])
-    px(bx, '#4a515a', bl - 4 + lx, by + ly, 2, 2);
+  for (const [lx, ly] of [[-4, -4], [3, -2], [-1, 4], [4, 3], [1, 0]]) {
+    px(bx, '#1a1220', bl - 5 + lx, by - 1 + ly, 4, 4);
+    px(bx, '#5c6168', bl - 4 + lx, by + ly, 2, 2);
+    px(bx, '#8c9099', bl - 4 + lx, by + ly, 2, 1);
+  }
   const boom = spriteFrom(bc, 3, by);
-  return { hull, hurt: tintSprite(hull, '#ffffff', 0.8), boom, boomHot: tintSprite(boom, '#ffe48f', 0.55), r: 26 };
+  return { hull, hurt: tintSprite(hull, '#ffffff', 0.8), boom, boomHot: tintSprite(boom, '#ffd27a', 0.34), r: 26 };
 }
 
 // ---- EMBER QUEEN: a squat fuel barge. One fat riveted tank amidships, pipes
@@ -552,8 +565,12 @@ function mbBuildSlicks() {
     const cold = newCan(D, D), cc = cold.getContext('2d');
     for (let y = 0; y < D; y++) for (let x = 0; x < D; x++) {
       const k = mask(x, y); if (k < 0) continue;
-      if (k > 0.86) { if (((x + y) & 1) === 0) px(cc, '#101820', x, y); continue; }
-      px(cc, k > 0.62 ? '#12202a' : k > 0.34 ? '#1b2c33' : (((x * 3 + y) & 7) === 0 ? '#3b4a3a' : '#22343a'), x, y);
+      if (k > 0.84) { if (((x + y) & 1) === 0) px(cc, '#0d141c', x, y); continue; }
+      const sh = vnoise(x * 0.3 + R, y * 0.3 - R);
+      let col = k > 0.60 ? '#131f2a' : k > 0.32 ? '#1c2b36' : '#24343e';
+      if (sh > 0.70 && ((x + y) & 1) === 0) col = '#3d5a4a';        // green sheen
+      else if (sh < 0.26 && ((x - y) & 3) === 0) col = '#4a3559';   // violet sheen
+      px(cc, col, x, y);
     }
     const frames = [];
     for (let f = 0; f < 3; f++) {
@@ -603,25 +620,44 @@ function mbRing(ctx, cx, cy, r, col, n, squash, rot, gap) {
     ctx.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r * sq), 1, 1);
   }
 }
-function mbArcDots(ctx, cx, cy, r, a0, a1, col, gap) {
-  const span = a1 - a0;
-  const n = Math.max(2, Math.round(Math.abs(span) * r / 3));
+function mbArcDots(ctx, cx, cy, r, a0, a1, col, gap, w) {
+  const span = a1 - a0, s = w || 2;
+  const n = Math.max(2, Math.round(Math.abs(span) * r / 4));
   ctx.fillStyle = col;
   for (let q = 0; q <= n; q++) {
     if (gap && (q % gap) >= gap - 1) continue;
     const a = a0 + span * q / n;
-    ctx.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 1, 1);
+    ctx.fillRect(Math.round(cx + Math.cos(a) * r) - (s >> 1), Math.round(cy + Math.sin(a) * r) - (s >> 1), s, s);
   }
 }
+// a landing marker: a ring that closes on the mark, with corner brackets, sized
+// to sit OUTSIDE the manatee (who is drawn over anything an enemy paints)
+function mbMark(ctx, x, y, k, t, col, col2) {
+  const r = Math.round(42 - k * 19), ry = Math.round(r * 0.76);
+  ctx.fillStyle = col;
+  for (let q = 0; q < 40; q++) {
+    if ((q & 3) === 3) continue;
+    const a = -t * 2 + q / 40 * TAU;
+    ctx.fillRect(Math.round(x + Math.cos(a) * r) - 1, Math.round(y + Math.sin(a) * ry) - 1, 2, 2);
+  }
+  ctx.fillStyle = col2;
+  for (let q = 0; q < 4; q++) {
+    const dx = (q & 1) ? 1 : -1, dy = (q & 2) ? 1 : -1;
+    const bx = x + dx * (r + 4), by = y + dy * (ry + 4);
+    ctx.fillRect(bx - (dx > 0 ? 0 : 5), by - 1, 6, 2);
+    ctx.fillRect(bx - 1, by - (dy > 0 ? 0 : 5), 2, 6);
+  }
+}
+
 // a chunky chain / cable between two points
-function mbChain(ctx, x0, y0, x1, y1, slack, c1, c2) {
+function mbChain(ctx, x0, y0, x1, y1, slack, c1, c2, w) {
   const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1;
   const n = Math.max(2, Math.round(len / 4));
-  const nx = -dy / len, ny = dx / len;
+  const nx = -dy / len, ny = dx / len, s = w || 2;
   for (let q = 0; q <= n; q++) {
     const u = q / n, sag = Math.sin(u * Math.PI) * (slack || 0);
     ctx.fillStyle = (q & 1) ? c1 : c2;
-    ctx.fillRect(Math.round(x0 + dx * u + nx * sag), Math.round(y0 + dy * u + ny * sag), 2, 2);
+    ctx.fillRect(Math.round(x0 + dx * u + nx * sag) - (s >> 1), Math.round(y0 + dy * u + ny * sag) - (s >> 1), s, s);
   }
 }
 
@@ -756,8 +792,9 @@ class MiniBoss {
         if (d > 250) desired = toP;
         else if (d < 150) desired = toP + Math.PI * 0.85 * this.orbitDir;
         else desired = toP + 0.5 * this.orbitDir;
-        speed = this.speed;
-        if (this.stateT > 2.4 && d < 280) { this.setState('anchor'); this.dropAnchors(); }
+        speed = this.speed * (d < 120 ? 1.3 : 1);
+        // it only sets its anchors at a range where you can read the aim line
+        if (this.stateT > 2.4 && d > 115 && d < 280) { this.setState('anchor'); this.dropAnchors(); }
         break;
       }
       case 'anchor': {                      // 0.9s: the anchors go over the side
@@ -875,17 +912,17 @@ class MiniBoss {
     this.stepCast(dt, p, d, toP);
     switch (this.state) {
       case 'cruise': {
-        const r = 120;
+        const r = 78;
         if (d > r + 60) desired = toP;
-        else if (d < r - 45) desired = toP + Math.PI;
+        else if (d < r - 34) desired = toP + Math.PI;
         else desired = toP + Math.PI / 2 * this.orbitDir;
         speed = this.speed;
         this.boomA = angleLerp(this.boomA, this.ang + Math.PI, Math.min(1, dt * 2));
-        if (this.stateT > 3.2 && d < 150) {
+        if (this.stateT > 2.8 && d < 105) {
           this.setState('wind');
           this.sweepDir = this.orbitDir;
-          this.sweepFrom = toP - this.sweepDir * 2.0;
-          this.sweepTo = this.sweepFrom + this.sweepDir * 4.0;
+          this.sweepFrom = toP - this.sweepDir * 1.35;
+          this.sweepTo = this.sweepFrom + this.sweepDir * 2.7;
           this.sweepHit = false;
           this.say('HAULING BACK', '#ffe48f');
           Audio_.tone(150, 0.3, 'sawtooth', 0.12, 60);
@@ -894,7 +931,7 @@ class MiniBoss {
         break;
       }
       case 'wind': {                         // 1.3s telegraph: boom hauls back
-        desired = toP; speed = this.speed * 0.25;
+        desired = toP; speed = d > 58 ? this.speed * 0.62 : 0;
         this.boomA = angleLerp(this.boomA, this.sweepFrom, Math.min(1, dt * 5));
         if (Math.random() < 0.4) G.particles.spray(this.x + Math.cos(this.boomA) * 44, this.y + Math.sin(this.boomA) * 44, this.boomA, 1, 60);
         if (Math.floor(this.stateT * 6) !== Math.floor((this.stateT - dt) * 6)) Audio_.tone(760, 0.05, 'square', 0.05);
@@ -903,7 +940,7 @@ class MiniBoss {
       }
       case 'sweep': {                        // 0.55s: the net comes round
         desired = toP; speed = this.speed * 0.15;
-        const k = clamp(this.stateT / 0.55, 0, 1);
+        const k = clamp(this.stateT / 0.62, 0, 1);
         this.boomA = this.sweepFrom + (this.sweepTo - this.sweepFrom) * (k * k * (3 - 2 * k));
         const tipX = this.x + Math.cos(this.boomA) * 44, tipY = this.y + Math.sin(this.boomA) * 44;
         G.particles.spray(tipX, tipY, this.boomA + Math.PI / 2 * this.sweepDir, 2, 150);
@@ -921,7 +958,7 @@ class MiniBoss {
             G.shake(9);
           }
         }
-        if (this.stateT >= 0.55) { this.setState('recover'); this.say('BOOM JAMMED', '#ffe48f'); }
+        if (this.stateT >= 0.62) { this.setState('recover'); this.say('BOOM JAMMED', '#ffe48f'); }
         break;
       }
       case 'recover': {                      // 1.6s: dead in the water, open
@@ -967,15 +1004,15 @@ class MiniBoss {
     this.stepCanister(dt, p, d);
     switch (this.state) {
       case 'run': {
-        const r = 150;
+        const r = 128;
         if (d > r + 70) desired = toP;
         else if (d < r - 50) desired = toP + Math.PI * 0.8 * this.orbitDir;
         else desired = toP + Math.PI / 2 * this.orbitDir;
         speed = this.speed;
         // it bleeds oil the whole time it runs
         this.slickT -= dt;
-        if (this.slickT <= 0 && this.slicks.length < 18) {
-          this.slickT = 0.42;
+        if (this.slickT <= 0 && this.slicks.length < 14) {
+          this.slickT = 0.5;
           this.addSlick(this.x - Math.cos(this.ang) * (this.radius + 4) + rand(-5, 5),
             this.y - Math.sin(this.ang) * (this.radius + 4) + rand(-5, 5), randi(0, 2));
         }
@@ -1019,6 +1056,7 @@ class MiniBoss {
   }
   stepSlicks(dt, p) {
     const warn = this.state === 'vent';
+    const cx = G.cam.x + 320, cy = G.cam.y + 180;
     this.fireTick -= dt;
     let touching = false;
     for (let i = this.slicks.length - 1; i >= 0; i--) {
@@ -1027,8 +1065,11 @@ class MiniBoss {
       if (s.burn > 0) {
         s.burn -= dt;
         const r = this.art.slicks[s.s].r;
-        if (Math.random() < 0.55) G.particles.fire(s.x + rand(-r, r) * 0.7, s.y + rand(-r, r) * 0.6, 1);
-        if (Math.random() < 0.28) G.particles.smoke(s.x + rand(-r, r) * 0.5, s.y + rand(-r, r) * 0.5, 1, 'rgba(30,26,24,', 4);
+        const seen = Math.abs(s.x - cx) < 360 && Math.abs(s.y - cy) < 220;
+        if (seen) {
+          if (Math.random() < 0.24) G.particles.fire(s.x + rand(-r, r) * 0.7, s.y + rand(-r, r) * 0.6, 1);
+          if (Math.random() < 0.10) G.particles.smoke(s.x + rand(-r, r) * 0.5, s.y + rand(-r, r) * 0.5, 1, 'rgba(30,26,24,', 4);
+        }
         if (!p.dead && !p.rolling && !p.diving && dist(s.x, s.y, p.x, p.y) < r * 0.92) touching = true;
       }
       if (s.life <= 0) this.slicks.splice(i, 1);
@@ -1201,9 +1242,10 @@ MiniBoss.prototype.render = function (ctx, cam, t) {
     if (this.anchors.length) {
       for (const a of this.anchors) {
         const ax = Math.round(a.x - cam.x), ay = Math.round(a.y - cam.y);
-        mbChain(ctx, sx, sy, ax, ay, 3, '#6d7684', '#2a2f38');
+        mbChain(ctx, sx, sy, ax, ay, 3, '#c3cedd', '#414954', 3);
+        ctx.fillStyle = '#1a1220'; ctx.fillRect(ax - 4, ay - 2, 9, 4); ctx.fillRect(ax - 2, ay - 4, 4, 9);
         ctx.fillStyle = '#aab4c2'; ctx.fillRect(ax - 3, ay - 1, 7, 2); ctx.fillRect(ax - 1, ay - 3, 2, 7);
-        ctx.fillStyle = '#1a1220'; ctx.fillRect(ax - 1, ay - 1, 2, 2);
+        ctx.fillStyle = '#ffd27a'; ctx.fillRect(ax - 1, ay - 1, 2, 2);
       }
     }
     if (this.state === 'aim') {
@@ -1213,7 +1255,8 @@ MiniBoss.prototype.render = function (ctx, cam, t) {
         hot && Math.sin(t * 40) > 0 ? '#ffffff' : '#ff6161', '#ffd27a', 2);
       // reticle closing on the mark
       const rr = Math.round(28 - k * 15);
-      const tx = Math.round(mx + Math.cos(this.ang) * 150), ty = Math.round(my + Math.sin(this.ang) * 150);
+      const reach = clamp(dist(this.x, this.y, p.x, p.y), 70, 330);
+      const tx = Math.round(mx + Math.cos(this.ang) * reach), ty = Math.round(my + Math.sin(this.ang) * reach);
       mbRing(ctx, tx, ty, rr, hot ? '#ffffff' : '#ff6161', 34, 0.74, -t * 2.2, 4);
       ctx.fillStyle = hot ? '#ffffff' : '#ffd27a';
       ctx.fillRect(tx - 4, ty, 9, 1); ctx.fillRect(tx, ty - 4, 1, 9);
@@ -1221,15 +1264,21 @@ MiniBoss.prototype.render = function (ctx, cam, t) {
     if (this.state === 'fire' && this.harp) {
       const hx = Math.round(this.harp.x - cam.x), hy = Math.round(this.harp.y - cam.y);
       const mx = sx + Math.cos(this.ang) * (this.radius + 4), my = sy + Math.sin(this.ang) * (this.radius + 4);
-      mbChain(ctx, mx, my, hx, hy, 2, '#aab4c2', '#414954');
+      mbChain(ctx, mx, my, hx, hy, 2, '#c3cedd', '#414954', 3);
       drawSprite(ctx, this.gfx.head, hx, hy, this.harp.a);
     }
     if (this.state === 'tether') {
       const mx = sx + Math.cos(this.ang) * (this.radius + 4), my = sy + Math.sin(this.ang) * (this.radius + 4);
       const bright = Math.sin(t * 24) > 0;
-      mbChain(ctx, mx, my, px2, py2, 0, bright ? '#ffe48f' : '#aab4c2', '#2a2f38');
+      mbChain(ctx, mx, my, px2, py2, 0, bright ? '#ffe48f' : '#c3cedd', '#2a2f38', 3);
       drawSprite(ctx, this.gfx.head, px2, py2, angleTo(this.x, this.y, p.x, p.y) + Math.PI);
-      mbRing(ctx, px2, py2, 20 + Math.round(Math.sin(t * 14) * 2), bright ? '#ffe48f' : '#ff6161', 30, 0.8, t * 3, 3);
+      const rr2 = 36 + Math.round(Math.sin(t * 14) * 3), rc = bright ? '#ffe48f' : '#ff6161';
+      for (let q = 0; q < 28; q++) {
+        if ((q & 3) === 3) continue;
+        const a = t * 3 + q / 28 * TAU;
+        ctx.fillStyle = rc;
+        ctx.fillRect(Math.round(px2 + Math.cos(a) * rr2) - 1, Math.round(py2 + Math.sin(a) * rr2 * 0.74) - 1, 2, 2);
+      }
     }
   } else if (this.type === 'netHauler') {
     if (this.state === 'wind' || this.state === 'sweep') {
@@ -1237,7 +1286,9 @@ MiniBoss.prototype.render = function (ctx, cam, t) {
       const a0 = Math.min(this.sweepFrom, this.sweepTo), a1 = Math.max(this.sweepFrom, this.sweepTo);
       const hot = this.state === 'sweep' || k > 0.82;
       const col = hot ? (Math.sin(t * 40) > 0 ? '#ffffff' : '#ffe48f') : '#ffd27a';
-      for (const r of [30, 42, 54]) mbArcDots(ctx, sx, sy, r, a0, a1, col, hot ? 0 : 3);
+      for (const r of [28, 40, 52]) mbArcDots(ctx, sx, sy, r, a0, a1, col, hot ? 0 : 3, hot ? 3 : 2);
+      // the leading edge of the swing, so you can see which way it is coming
+      if (this.state === 'sweep') mbArcDots(ctx, sx, sy, 46, this.boomA - this.sweepDir * 0.22, this.boomA, '#ffffff', 0, 3);
       for (const ae of [a0, a1]) mbDashLine(ctx, sx + Math.cos(ae) * 26, sy + Math.sin(ae) * 26,
         sx + Math.cos(ae) * 58, sy + Math.sin(ae) * 58, t, col, '#e6802a', 1);
       if (this.state === 'wind') {
@@ -1251,17 +1302,15 @@ MiniBoss.prototype.render = function (ctx, cam, t) {
       }
     }
     if (this.cast && !this.cast.thrown) {
-      const cx2 = Math.round(this.cast.x - cam.x), cy2 = Math.round(this.cast.y - cam.y);
       const k = clamp(this.cast.t / 0.9, 0, 1);
-      mbRing(ctx, cx2, cy2, Math.round(26 - k * 12), k > 0.8 ? '#ffffff' : '#8ac6ff', 28, 0.76, t * 2, 3);
-      ctx.fillStyle = '#dfe8ef'; ctx.fillRect(cx2 - 3, cy2, 7, 1); ctx.fillRect(cx2, cy2 - 3, 1, 7);
+      mbMark(ctx, Math.round(this.cast.x - cam.x), Math.round(this.cast.y - cam.y), k, t,
+        k > 0.8 ? '#ffffff' : '#8ac6ff', '#dfe8ef');
     }
   } else {
     if (this.can && !this.can.thrown) {
-      const cx2 = Math.round(this.can.x - cam.x), cy2 = Math.round(this.can.y - cam.y);
       const k = clamp(this.can.t / 0.9, 0, 1);
-      mbRing(ctx, cx2, cy2, Math.round(24 - k * 11), k > 0.8 ? '#ffffff' : '#ff9a3c', 26, 0.76, -t * 2, 3);
-      ctx.fillStyle = '#ffd27a'; ctx.fillRect(cx2 - 3, cy2, 7, 1); ctx.fillRect(cx2, cy2 - 3, 1, 7);
+      mbMark(ctx, Math.round(this.can.x - cam.x), Math.round(this.can.y - cam.y), k, t,
+        k > 0.8 ? '#ffffff' : '#ff9a3c', '#ffd27a');
     }
     if (this.can && this.can.thrown) {
       const u = clamp(this.can.ft / this.can.flight, 0, 1);
@@ -1301,10 +1350,14 @@ MiniBoss.prototype.render = function (ctx, cam, t) {
       ctx.fillRect(19 - back, s * 5 - 2, 4, 5);
     }
     if (this.exposed) {           // plates hinged open while it reloads
-      ctx.fillStyle = '#ffd27a';
-      ctx.fillRect(-6, -13, 14, 2); ctx.fillRect(-6, 11, 14, 2);
-      ctx.fillStyle = '#7a1414'; ctx.fillRect(-4, -11, 10, 22);
-      ctx.fillStyle = '#c8302e'; ctx.fillRect(-3, -10, 8, 20);
+      ctx.fillStyle = '#ffd27a'; ctx.fillRect(-7, -13, 16, 2); ctx.fillRect(-7, 11, 16, 2);
+      ctx.fillStyle = '#e6802a'; ctx.fillRect(-7, -13, 16, 1); ctx.fillRect(-7, 12, 16, 1);
+      ctx.fillStyle = '#1a1220'; ctx.fillRect(-5, -11, 12, 22);
+      ctx.fillStyle = '#7a1414'; ctx.fillRect(-4, -10, 10, 20);
+      const fl = Math.floor(t * 10) % 2;
+      ctx.fillStyle = fl ? '#ffe48f' : '#ff9a3c';
+      for (let q = -9; q <= 7; q += 4) ctx.fillRect(-3, q, 8, 2);
+      ctx.fillStyle = '#c8302e'; ctx.fillRect(-3, -9, 2, 18);
     }
   } else if (this.type === 'fuelBarge') {
     const f = this.gfx.hull.flare;
