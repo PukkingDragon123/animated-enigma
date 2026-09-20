@@ -94,576 +94,826 @@
   const BLOOD = ['#ff5a5a', '#e0322e', '#c8302e', '#9e1f22', '#7c1414', '#55090c', '#3b0508'];
 
   /* ======================================================================
-     1.  PROP SPRITES  --  hand-drawn with makeSprite + the PAL palette
+     1.  PROPS  --  procedural, built at K art pixels per world unit
      ====================================================================== */
-  const P = {}; // prop sprites (makeSprite objects with ax/ay)
-  const XPAL = {
-    // extra characters for props
-    '1': W.ink, '2': W.post1, '3': W.post2, '4': W.deck1, '5': W.deck2, '6': W.deck3, '7': W.deck4,
-    '8': W.rope1, '9': W.rope2, '0': W.rope0,
-    'F': W.float0, 'H': W.float1, 'J': W.float2, 'N': W.net1, 'V': W.net2, 'Q': W.wet,
-    'I': W.met1, 'C': W.met2, 'Z': W.met3, 'W': '#e6f2ff',
-  };
-  const ms = (rows, ax, ay, extra) => makeSprite(rows, { ax, ay, pal: Object.assign({}, XPAL, extra || {}) });
+  // K art pixels per world unit. Everything baked in this file is drawn at
+  // that resolution and blitted at 1/K, so one art pixel lands on one screen
+  // pixel. World footprints are unchanged.
+  const K = (typeof DETAIL === 'number' && DETAIL > 0) ? DETAIL : 2;
+  const U = K;                                  // one world unit, in art px
+  const uw = v => Math.max(1, Math.round(v * U));  // world -> art px
 
-  P.barrel = ms([
-    '.11111111.',
-    '1466666641',
-    '1222222221',
-    '1566666651',
-    '1466666641',
-    '1222222221',
-    '1566666651',
-    '1466666641',
-    '1222222221',
-    '.11111111.',
-  ], 5, 10);
-  P.barrelOpen = ms([
-    '.11111111.',
-    '1QQQQQQQQ1',
-    '1Q2222QQ21',
-    '1566666651',
-    '1466666641',
-    '1222222221',
-    '1566666651',
-    '1466666641',
-    '.11111111.',
-  ], 5, 9);
-  P.crate = ms([
-    '1111111111',
-    '1655555561',
-    '1516665151',
-    '1551665511',
-    '1556666511',
-    '1565665651',
-    '1516665151',
-    '1655555561',
-    '1111111111',
-  ], 5, 9);
-  P.crateSm = ms([
-    '1111111',
-    '1655561',
-    '1516151',
-    '1556551',
-    '1516151',
-    '1655561',
-    '1111111',
-  ], 3, 7);
-  P.ropeCoil = ms([
-    '..11111...',
-    '.19889981.',
-    '180899081.',
-    '1898009891',
-    '1809889081',
-    '.18999881.',
-    '..111111..',
-  ], 5, 7);
-  P.buoyProp = ms([
-    '...1..',
-    '..181.',
-    '.11111',
-    '1FHHF1',
-    '1HJJH1',
-    '1FHHF1',
-    '1FFFF1',
-    '.1111.',
-  ], 3, 8);
-  P.buoyBall = ms([
-    '.111.',
-    '1HJH1',
-    '1JHF1',
-    '1FHF1',
-    '.111.',
-  ], 2, 5);
-  P.fish = ms([
-    '..111..1.',
-    '.1WCC11C1',
-    '1CZZCCCC1',
-    '1CZCCCC1.',
-    '.11111...',
-  ], 4, 5);
-  P.fishFat = ms([
-    '..1111..1..',
-    '.1CZZCC11C1',
-    '1ZWZZZCCCC1',
-    '1CZZZZCCC1.',
-    '.111111....',
-  ], 5, 5);
-  P.anchor = ms([
-    '..1C1..',
-    '.1CIC1.',
-    '..1C1..',
-    '1CCCCC1',
-    '..1C1..',
-    '..1C1..',
-    '1.1C1.1',
-    'C11C11C',
-    'IC1C1CI',
-    '1CCCCC1',
-    '.11111.',
-  ], 3, 11);
-  P.lantern = ms([
-    '..1..',
-    '.101.',
-    '1111.',
-    '1y1..',
-    '11111',
-    '1YfY1',
-    '1fwf1',
-    '1YfY1',
-    '11Y11',
-    '.111.',
-  ], 2, 0);
-  P.lanternOut = ms([
-    '..1..',
-    '.101.',
-    '1111.',
-    '1y1..',
-    '11111',
-    '13231',
-    '12221',
-    '13231',
-    '11211',
-    '.111.',
-  ], 2, 0);
-  P.tyre = ms([
-    '.1111.',
-    '111111',
-    '11..11',
-    '11..11',
-    '111111',
-    '.1111.',
-  ], 3, 0, { '1': '#211b1e' });
-  P.gull = ms([
-    '.1..1.',
-    '1W11W1',
-    '.1WW1.',
-    '..y1..',
-  ], 3, 2);
-  P.bucket = ms([
-    '1111111',
-    '1ICCCI1',
-    '1ICCCI1',
-    '.1ICI1.',
-    '.11111.',
-  ], 3, 5);
-  P.pot = ms([
-    '.1111.',
-    '122221',
-    '133331',
-    '133331',
-    '.1331.',
-    '.1111.',
-  ], 3, 6);
-  P.sack = ms([
-    '..101..',
-    '.18881.',
-    '1899981',
-    '1899981',
-    '1889881',
-    '.11111.',
-  ], 3, 6);
+  const P = {};   // prop sprites: {c,w,h,ax,ay} in ART pixels
+  let _propN = 0;
+  function prop(wu, hu, fn, o) {
+    o = o || {};
+    const w = uw(wu), h = uw(hu);
+    const c = cv(w, h);
+    fn(c, new SeededRandom(4210 + (++_propN) * 613), w, h);
+    return { c: c.canvas, w, h, ax: o.ax === undefined ? (w >> 1) : uw(o.ax), ay: o.ay === undefined ? h : uw(o.ay) };
+  }
+  // speckle helper: scatter n single pixels in a box
+  function fleck(c, rng, x, y, w, h, n, cols) {
+    for (let i = 0; i < n; i++) R(c, x + Math.floor(rng.next() * w), y + Math.floor(rng.next() * h), 1, 1, cols[Math.floor(rng.next() * cols.length)]);
+  }
+
+  // --- barrels ------------------------------------------------------------
+  function barrelBody(c, rng, w, h, open) {
+    R(c, 0, 1, w, h - 2, W.ink);
+    for (let i = 1; i < w - 1; i++) {
+      const k = Math.abs(i - (w - 1) / 2) / (w / 2);
+      const col = k < 0.22 ? W.deck3 : k < 0.5 ? W.deck2 : k < 0.8 ? W.deck1 : W.deck0;
+      R(c, i, 2, 1, h - 4, col);
+      if ((i % 3) === 0) R(c, i, 2, 1, h - 4, shade(col, 0.82));
+      if (rng.next() < 0.35) R(c, i, 3 + Math.floor(rng.next() * (h - 7)), 1, 1 + Math.floor(rng.next() * 3), W.deck0);
+    }
+    for (const hy of [3, Math.round(h * 0.45), h - 6]) {
+      R(c, 1, hy, w - 2, 2, W.met1);
+      R(c, 1, hy, w - 2, 1, W.met2);
+      for (let i = 1; i < w - 1; i += 3) if (rng.next() < 0.3) R(c, i, hy, 1, 1, W.rust1);
+    }
+    if (open) {
+      R(c, 1, 1, w - 2, 4, W.ink);
+      R(c, 2, 2, w - 4, 3, W.wet);
+      R(c, 3, 2, w - 6, 1, mix(W.wet, W.net2, 0.35));
+      fleck(c, rng, 2, 2, w - 4, 3, 4, [W.alg, W.met3]);
+    } else {
+      R(c, 1, 1, w - 2, 3, W.deck4);
+      R(c, 2, 1, w - 4, 1, mix(W.deck4, '#ffffff', 0.25));
+      R(c, 1, 4, w - 2, 1, W.deck0);
+    }
+    R(c, 1, h - 2, w - 2, 1, W.ink);
+  }
+  P.barrel = prop(10, 10, (c, rng, w, h) => barrelBody(c, rng, w, h, false));
+  P.barrelOpen = prop(10, 9, (c, rng, w, h) => barrelBody(c, rng, w, h, true));
+  P.keg = prop(7, 6, (c, rng, w, h) => barrelBody(c, rng, w, h, false));
+
+  // --- crates / fish boxes ------------------------------------------------
+  function crateBody(c, rng, w, h, fishy) {
+    R(c, 0, 0, w, h, W.ink);
+    R(c, 1, 1, w - 2, h - 2, W.deck2);
+    for (let y = 1; y < h - 1; y += 3) { R(c, 1, y, w - 2, 1, W.deck3); R(c, 1, y + 2, w - 2, 1, W.deck1); }
+    // corner posts + diagonal batten
+    R(c, 1, 1, 2, h - 2, W.deck1); R(c, w - 3, 1, 2, h - 2, W.deck0);
+    pline(c, 2, h - 3, w - 3, 2, 2, W.deck1);
+    pline(c, 2, h - 3, w - 3, 2, 1, W.deck3);
+    fleck(c, rng, 1, 1, w - 2, h - 2, Math.round(w * 0.4), [W.deck0, W.deck4]);
+    // nail heads
+    for (const nx of [2, w - 3]) for (let y = 2; y < h - 2; y += 4) R(c, nx, y, 1, 1, W.met2);
+    if (fishy) { // ice + a tail sticking out
+      R(c, 2, 1, w - 4, 2, '#cfe4ee');
+      fleck(c, rng, 2, 1, w - 4, 2, 4, ['#ffffff', '#a9c6d4']);
+      R(c, Math.round(w * 0.55), 0, 3, 2, W.met3); R(c, Math.round(w * 0.55) + 1, 0, 1, 1, W.ink);
+    }
+  }
+  P.crate = prop(10, 9, (c, rng, w, h) => crateBody(c, rng, w, h, false));
+  P.crateSm = prop(7, 6, (c, rng, w, h) => crateBody(c, rng, w, h, false));
+  P.fishBox = prop(11, 6, (c, rng, w, h) => crateBody(c, rng, w, h, true));
+
+  // --- crab / lobster pot -------------------------------------------------
+  P.crabPot = prop(11, 8, (c, rng, w, h) => {
+    // domed wicker cage: ribs + mesh, a dark mouth in the side
+    for (let i = 0; i < w; i++) {
+      const k = i / (w - 1);
+      const top = Math.round(h - 2 - Math.sin(k * Math.PI) * (h - 3));
+      R(c, i, top, 1, h - 1 - top, W.ink);
+      R(c, i, top + 1, 1, h - 2 - top, i % 3 === 0 ? W.rope0 : W.rope1);
+      if (rng.next() < 0.3) R(c, i, top + 1 + Math.floor(rng.next() * Math.max(1, h - 3 - top)), 1, 1, W.rope2);
+    }
+    for (let y = 2; y < h - 1; y += 2) R(c, 1, y, w - 2, 1, 'rgba(26,16,21,0.45)');
+    R(c, Math.round(w * 0.42), h - 5, 3, 3, W.ink);
+    R(c, 0, h - 2, w, 2, W.ink);
+    R(c, 1, h - 2, w - 2, 1, W.post1);
+  });
+
+  // --- rope coil ----------------------------------------------------------
+  P.ropeCoil = prop(10, 7, (c, rng, w, h) => {
+    const cx = w / 2, cy = h * 0.55;
+    for (let r = Math.min(cx, cy) - 0.5; r > 0.8; r -= 1.6) {
+      for (let a = 0; a < TAU; a += 0.22) {
+        const x = Math.round(cx + Math.cos(a) * r), y = Math.round(cy + Math.sin(a) * r * 0.66);
+        R(c, x, y, 1, 1, ((x + y) & 1) ? W.rope1 : W.rope0);
+        if (rng.next() < 0.18) R(c, x, y, 1, 1, W.rope2);
+      }
+    }
+    for (let a = 0; a < TAU; a += 0.18) R(c, Math.round(cx + Math.cos(a) * (cx - 0.5)), Math.round(cy + Math.sin(a) * (cy * 0.88)), 1, 1, W.ink);
+    // loose tail
+    pline(c, cx, cy, w - 1, h - 1, 1, W.rope1);
+  });
+
+  // --- floats / buoys -----------------------------------------------------
+  P.buoyProp = prop(6, 8, (c, rng, w, h) => {
+    R(c, Math.round(w / 2) - 1, 0, 2, 3, W.ink);
+    R(c, Math.round(w / 2) - 1, 1, 1, 2, W.rope1);
+    R(c, 0, 3, w, h - 3, W.ink);
+    R(c, 1, 4, w - 2, h - 5, W.float0);
+    R(c, 1, 4, w - 2, 2, W.float1);
+    R(c, 2, 4, w - 4, 1, W.float2);
+    R(c, 1, Math.round(h * 0.72), w - 2, 1, W.ink);
+    fleck(c, rng, 1, 5, w - 2, h - 7, 3, [W.barn, W.alg]);
+  });
+  P.buoyBall = prop(5, 5, (c, rng, w, h) => {
+    R(c, 1, 0, w - 2, h, W.ink); R(c, 0, 1, w, h - 2, W.ink);
+    R(c, 1, 1, w - 2, h - 2, W.float0);
+    R(c, 1, 1, w - 2, 1, W.float1); R(c, 2, 1, 1, 1, W.float2);
+  });
+
+  // --- fish ---------------------------------------------------------------
+  function fishBody(c, rng, w, h, fat) {
+    const cy = h / 2;
+    for (let i = 0; i < w - uw(2); i++) {
+      const k = i / (w - uw(2));
+      const r = Math.max(1, Math.round(Math.sin(Math.pow(k, 0.7) * Math.PI) * (fat ? h * 0.5 : h * 0.4)));
+      R(c, i, Math.round(cy - r), 1, r * 2, W.ink);
+      R(c, i, Math.round(cy - r) + 1, 1, Math.max(1, r * 2 - 2), k < 0.45 ? W.met3 : W.met2);
+      R(c, i, Math.round(cy - r) + 1, 1, 1, '#e8f4fb');
+      if (rng.next() < 0.3) R(c, i, Math.round(cy) + (rng.next() < 0.5 ? 0 : 1), 1, 1, W.met1);
+    }
+    // tail
+    const tx = w - uw(2);
+    for (let i = 0; i < uw(2); i++) { const r = 1 + i; R(c, tx + i, Math.round(cy - r), 1, r * 2, W.ink); R(c, tx + i, Math.round(cy - r) + 1, 1, Math.max(1, r * 2 - 2), W.met2); }
+    R(c, 1, Math.round(cy) - 1, 1, 1, '#ffffff'); R(c, 2, Math.round(cy) - 1, 1, 1, W.ink);  // eye
+  }
+  P.fish = prop(9, 5, (c, rng, w, h) => fishBody(c, rng, w, h, false), { ay: 2.5 });
+  P.fishFat = prop(11, 6, (c, rng, w, h) => fishBody(c, rng, w, h, true), { ay: 3 });
+
+  // --- anchor / bucket / pot / sack ---------------------------------------
+  P.anchor = prop(7, 11, (c, rng, w, h) => {
+    const cx = (w >> 1);
+    R(c, cx - 1, 1, 3, h - 3, W.ink); R(c, cx, 2, 1, h - 5, W.met2);
+    R(c, cx - 2, 1, 5, 2, W.ink); R(c, cx - 1, 1, 3, 1, W.met3);      // ring
+    R(c, 1, uw(2), w - 2, 2, W.ink); R(c, 1, uw(2), w - 2, 1, W.met2); // stock
+    for (let i = 0; i < w; i++) {   // flukes
+      const k = Math.abs(i - cx) / cx;
+      const y = h - 2 - Math.round((1 - k) * uw(1.5));
+      R(c, i, y - 2, 1, 3, W.ink); R(c, i, y - 1, 1, 1, W.met1);
+    }
+    fleck(c, rng, 1, 2, w - 2, h - 3, 4, [W.rust1, W.rust0]);
+  });
+  P.bucket = prop(7, 6, (c, rng, w, h) => {
+    R(c, 0, 0, w, h, W.ink);
+    for (let y = 1; y < h - 1; y++) { const in0 = Math.round((y / h) * 1.2); R(c, 1 + in0, y, w - 2 - in0 * 2, 1, y < 2 ? W.met3 : W.met2); }
+    R(c, 1, 1, w - 2, 1, W.met3); R(c, 2, h - 2, w - 4, 1, W.met1);
+    R(c, 1, 0, 1, 2, W.met1); R(c, w - 2, 0, 1, 2, W.met1);
+    fleck(c, rng, 1, 2, w - 2, h - 3, 3, [W.rust1]);
+  });
+  P.pot = prop(6, 6, (c, rng, w, h) => {
+    R(c, 0, 1, w, h - 1, W.ink);
+    R(c, 1, 2, w - 2, h - 3, W.met0); R(c, 1, 2, w - 2, 1, W.met1);
+    R(c, 0, 0, w, 2, W.ink); R(c, 1, 0, w - 2, 1, W.met2);
+    void rng;
+  });
+  P.sack = prop(7, 6, (c, rng, w, h) => {
+    R(c, 1, 0, w - 2, h, W.ink); R(c, 0, 2, w, h - 2, W.ink);
+    R(c, 1, 1, w - 2, h - 2, W.rope1);
+    R(c, 1, 1, w - 2, 1, W.rope2);
+    R(c, 2, 1, 1, h - 2, W.rope2); R(c, w - 3, 2, 1, h - 3, W.rope0);
+    R(c, Math.round(w / 2) - 1, 0, 2, 2, W.rope0);
+    fleck(c, rng, 1, 2, w - 2, h - 3, 4, [W.rope0, W.rope2]);
+  });
+  P.tyre = prop(6, 6, (c, rng, w, h) => {
+    const cx = w / 2 - 0.5, cy = h / 2 - 0.5, r = Math.min(cx, cy) + 0.5;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const d = Math.hypot(x - cx, y - cy);
+      if (d > r) continue;
+      if (d < r * 0.45) continue;
+      R(c, x, y, 1, 1, d > r * 0.85 ? '#100c0e' : ((x + y) & 1 ? '#2a2226' : '#211b1e'));
+    }
+    void rng;
+  });
+
+  // --- lanterns -----------------------------------------------------------
+  function lanternBody(c, w, h, lit) {
+    R(c, Math.round(w / 2) - 1, 0, 2, 2, W.ink);
+    R(c, 1, 2, w - 2, 2, W.ink); R(c, 2, 2, w - 4, 1, W.met2);
+    R(c, 0, 3, w, h - 3, W.ink);
+    R(c, 1, 4, w - 2, h - 6, lit ? '#ffe9a6' : W.met0);
+    if (lit) { R(c, 2, 5, w - 4, h - 8, '#fff6d5'); R(c, 1, 4, w - 2, 1, '#ffd27a'); }
+    else { R(c, 2, 5, w - 4, h - 8, W.met1); }
+    R(c, 1, h - 2, w - 2, 1, W.met1);
+    for (let y = 4; y < h - 2; y += 3) R(c, 1, y, w - 2, 1, 'rgba(26,16,21,0.5)');
+  }
+  P.lantern = prop(5, 10, (c, rng, w, h) => lanternBody(c, w, h, true), { ay: 0 });
+  P.lanternOut = prop(5, 10, (c, rng, w, h) => lanternBody(c, w, h, false), { ay: 0 });
+
+  // --- gulls (small, drawn in world space at 1/K) --------------------------
+  P.gull = prop(6, 4, (c) => {
+    R(c, 0, 1, 2, 1, W.ink); R(c, uw(4), 1, 2, 1, W.ink);
+    R(c, 1, 0, 1, 1, '#e6f2ff'); R(c, uw(4), 0, 1, 1, '#e6f2ff');
+    R(c, 2, 1, uw(2), 2, '#ffffff'); R(c, 2, 2, uw(2), 1, '#c9d8e4');
+    R(c, uw(2) + 2, 2, 1, 1, '#f2c744');
+  }, { ax: 3, ay: 2 });
+  P.gull2 = prop(6, 4, (c) => {
+    R(c, 0, 2, 2, 1, W.ink); R(c, uw(4), 2, 2, 1, W.ink);
+    R(c, 2, 1, uw(2), 2, '#ffffff'); R(c, 2, 2, uw(2), 1, '#c9d8e4');
+    R(c, uw(2) + 2, 2, 1, 1, '#f2c744');
+  }, { ax: 3, ay: 2 });
 
   /* ======================================================================
-     2.  KIT  --  procedural wood/architecture pieces drawn into a bake ctx
+     2.  KIT  --  procedural architecture, all arguments in ART pixels
      ====================================================================== */
   const Kit = {};
 
-  // -- a weathered plank surface seen edge-on (the deck top) ---------------
-  // x,y = top-left of the deck surface. thickness 6px, boards run across.
+  // -- side-on deck slab: the edge of a boardwalk seen from slightly above --
   Kit.deck = function (c, x, y, w, rng, o) {
     o = o || {};
-    const th = o.th || 6;
+    const th = o.th || uw(3);
     x = Math.round(x); y = Math.round(y); w = Math.round(w);
-    // under-shadow first
     R(c, x, y + th, w, 1, W.shadow);
-    // body
     R(c, x, y, w, th, W.deck1);
-    // individual boards (vertical seams), each with its own tone
     let bx = x;
     while (bx < x + w) {
-      const bw = Math.min(x + w - bx, 5 + Math.floor(rng.next() * 6));
+      const bw = Math.min(x + w - bx, uw(2.5) + Math.floor(rng.next() * uw(3)));
       const t = rng.next();
       const top = t > 0.72 ? W.deck4 : t > 0.4 ? W.deck3 : W.deck2;
-      const mid = t > 0.72 ? W.deck2 : t > 0.4 ? W.deck2 : W.deck1;
       R(c, bx, y, bw, 1, top);
-      R(c, bx, y + 1, bw, 2, mid);
-      R(c, bx, y + 3, bw, th - 4, W.deck0);
+      R(c, bx, y + 1, bw, Math.max(1, th - 4), t > 0.5 ? W.deck2 : W.deck1);
+      R(c, bx, y + th - 3, bw, 2, W.deck0);
       R(c, bx, y + th - 1, bw, 1, W.ink);
-      // grain / wear
-      if (rng.next() < 0.5) R(c, bx + 1 + Math.floor(rng.next() * (bw - 2)), y + 1, 1, 1, W.deck4);
-      if (rng.next() < 0.3) R(c, bx + 1, y + 2, Math.max(1, bw - 3), 1, W.deck0);
-      // seam + nails
+      if (rng.next() < 0.5) R(c, bx + 1 + Math.floor(rng.next() * Math.max(1, bw - 2)), y + 1, 1, Math.max(1, th - 4), W.deck0);
       R(c, bx, y, 1, th - 1, W.deck0);
-      if (rng.next() < 0.55) R(c, bx + 1, y, 1, 1, W.met2);
-      if (rng.next() < 0.35) R(c, bx + bw - 2, y, 1, 1, W.met1);
+      if (rng.next() < 0.5) R(c, bx + 1, y, 1, 1, W.met2);
       bx += bw;
     }
-    R(c, x, y, w, 1, W.deck3);           // catch the very top as a bright edge
-    for (let i = 0; i < w; i += 1) if (rng.next() < 0.14) R(c, x + i, y, 1, 1, W.deck4);
-    R(c, x, y + th - 1, w, 1, W.ink);    // hard bottom line
+    R(c, x, y, w, 1, W.deck3);
+    for (let i = 0; i < w; i++) if (rng.next() < 0.12) R(c, x + i, y, 1, 1, W.deck4);
+    R(c, x, y + th - 1, w, 1, W.ink);
     return y + th;
   };
 
-  // -- a support pillar ----------------------------------------------------
-  // style: 0 plain, 1 rope-lashed, 2 braced (adds a diagonal), 3 doubled
-  Kit.pillar = function (c, x, yTop, yBot, wdt, rng, style, waterY) {
-    wdt = wdt || 5;
+  // -- a driven pile -------------------------------------------------------
+  Kit.pile = function (c, x, yTop, yBot, wdt, rng, style, waterY) {
+    wdt = wdt || uw(2.5);
     x = Math.round(x); yTop = Math.round(yTop); yBot = Math.round(yBot);
-    const h = yBot - yTop; if (h <= 0) return;
-    const lean = style === 3 ? 0 : (rng.next() - 0.5) * 2;
+    const h = yBot - yTop; if (h <= 0) return null;
+    const lean = style === 3 ? 0 : (rng.next() - 0.5) * U * 1.5;
     for (let i = 0; i < h; i++) {
-      const yy = yTop + i;
-      const off = Math.round(lean * (i / h));
+      const yy = yTop + i, off = Math.round(lean * (i / h));
       R(c, x + off, yy, wdt, 1, W.post1);
-      R(c, x + off, yy, 1, 1, W.post2);                    // lit edge
-      R(c, x + off + wdt - 1, yy, 1, 1, W.post0);          // shade edge
-      if (wdt > 4 && ((i + (x * 3)) % 7 === 0)) R(c, x + off + 1, yy, 1, 1, W.post2);
+      R(c, x + off, yy, 1, 1, W.post2);
+      R(c, x + off + 1, yy, 1, 1, W.post3);
+      R(c, x + off + wdt - 1, yy, 1, 1, W.post0);
+      R(c, x + off + wdt - 2, yy, 1, 1, shade(W.post1, 0.8));
       if (rng.next() < 0.10) R(c, x + off + 1 + Math.floor(rng.next() * (wdt - 2)), yy, 1, 1, W.post0);
-      if (rng.next() < 0.05) R(c, x + off + 1 + Math.floor(rng.next() * (wdt - 2)), yy, 1, 1, W.post3);
+      if (rng.next() < 0.06) R(c, x + off + 1 + Math.floor(rng.next() * (wdt - 2)), yy, 1, 1, W.post3);
     }
-    // outline
     for (let i = 0; i < h; i++) {
       const off = Math.round(lean * (i / h));
       R(c, x + off - 1, yTop + i, 1, 1, W.ink);
       R(c, x + off + wdt, yTop + i, 1, 1, W.ink);
     }
-    // knot
-    if (rng.next() < 0.5 && h > 14) {
-      const ky = yTop + 4 + Math.floor(rng.next() * (h - 10));
-      R(c, x + 1, ky, 2, 2, W.post0); R(c, x + 1, ky, 1, 1, W.post2);
+    // iron bolt plates
+    const bolts = Math.max(1, Math.floor(h / uw(14)));
+    for (let b = 0; b < bolts; b++) {
+      const by = yTop + uw(4) + Math.round(rng.next() * (h - uw(8))) - b * uw(9);
+      if (by < yTop + 2 || by > yBot - 3) continue;
+      const off = Math.round(lean * ((by - yTop) / h));
+      R(c, x + off - 1, by, wdt + 2, 2, W.met0);
+      R(c, x + off - 1, by, wdt + 2, 1, W.met2);
+      R(c, x + off + 1, by, 1, 2, W.met3);
+      if (rng.next() < 0.5) R(c, x + off + wdt - 2, by, 1, 2, W.rust1);
     }
-    // wet / weedy base where it meets the water
-    if (waterY !== undefined && yBot >= waterY - 2) {
-      const wetTop = Math.max(yTop, waterY - 9 - Math.floor(rng.next() * 4));
+    // wet, weedy, barnacled base
+    if (waterY !== undefined && yBot >= waterY - U) {
+      const wetTop = Math.max(yTop, waterY - uw(6) - Math.floor(rng.next() * uw(3)));
       for (let yy = wetTop; yy < yBot; yy++) {
         const off = Math.round(lean * ((yy - yTop) / h));
-        R(c, x + off, yy, wdt, 1, yy > waterY - 4 ? W.wet : mix(W.post1, W.wet, 0.55));
+        R(c, x + off, yy, wdt, 1, yy > waterY - U * 2 ? W.wet : mix(W.post1, W.wet, 0.55));
         if (rng.next() < 0.3) R(c, x + off + Math.floor(rng.next() * wdt), yy, 1, 1, W.alg);
         if (rng.next() < 0.12) R(c, x + off + Math.floor(rng.next() * wdt), yy, 1, 1, W.alg2);
-        if (rng.next() < 0.07) R(c, x + off + Math.floor(rng.next() * wdt), yy, 1, 1, W.barn);
+        if (rng.next() < 0.09) R(c, x + off + Math.floor(rng.next() * wdt), yy, 1, 1, W.barn);
       }
     }
-    // rope lashing
-    if (style === 1 || style === 3 || rng.next() < 0.3) {
-      const ly = yTop + 5 + Math.floor(rng.next() * Math.max(1, h - 16));
-      Kit.lashing(c, x - 2, ly, wdt + 4, rng);
+    if (style === 1 || style === 3 || rng.next() < 0.25) {
+      const ly = yTop + uw(3) + Math.floor(rng.next() * Math.max(1, h - uw(9)));
+      Kit.lashing(c, x - 1, ly, wdt + 2, rng);
     }
     return { x, top: yTop, bot: yBot, w: wdt, lean };
   };
+  Kit.pillar = Kit.pile;
 
   Kit.lashing = function (c, x, y, w, rng) {
+    const th = uw(2);
     R(c, x, y - 1, w, 1, W.ink);
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < th; i++) {
       R(c, x, y + i, w, 1, i % 2 ? W.rope0 : W.rope1);
       for (let k = 0; k < w; k += 2) if (rng.next() < 0.5) R(c, x + k, y + i, 1, 1, i % 2 ? W.rope1 : W.rope2);
     }
-    R(c, x, y + 4, w, 1, W.ink);
-    // trailing tail
-    if (rng.next() < 0.5) { R(c, x + w - 1, y + 4, 1, 3, W.rope0); R(c, x + w - 1, y + 7, 1, 1, W.rope1); }
+    R(c, x, y + th, w, 1, W.ink);
+    if (rng.next() < 0.5) { R(c, x + w - 1, y + th, 1, uw(1.5), W.rope0); }
   };
 
   Kit.brace = function (c, x0, y0, x1, y1, th) {
-    pline(c, x0, y0, x1, y1, (th || 3) + 2, W.ink);
-    pline(c, x0, y0, x1, y1, th || 3, W.post1);
-    pline(c, x0 + 0.5, y0, x1 + 0.5, y1, Math.max(1, (th || 3) - 2), W.post2);
+    th = th || uw(1.5);
+    pline(c, x0, y0, x1, y1, th + 2, W.ink);
+    pline(c, x0, y0, x1, y1, th, W.post1);
+    pline(c, x0, y0, x1, y1, Math.max(1, th - 2), W.post2);
+    // bolt at each end
+    R(c, Math.round(x0) - 1, Math.round(y0) - 1, 2, 2, W.met2);
+    R(c, Math.round(x1) - 1, Math.round(y1) - 1, 2, 2, W.met2);
   };
 
   // -- railing along a deck -------------------------------------------------
   Kit.railing = function (c, x, y, w, rng, o) {
     o = o || {};
-    const h = o.h || 13, spacing = o.spacing || 12;
+    const h = o.h || uw(7), spacing = o.spacing || uw(6);
     x = Math.round(x); y = Math.round(y);
-    for (let px = 0; px <= w - 2; px += spacing) {
+    for (let px2 = 0; px2 <= w - 2; px2 += spacing) {
       const broken = o.broken && rng.next() < 0.25;
       const ph = broken ? Math.floor(h * rng.range(0.3, 0.6)) : h;
-      const tilt = broken ? Math.round(rng.range(-2, 2)) : 0;
-      pline(c, x + px, y, x + px + tilt, y - ph, 4, W.ink);
-      pline(c, x + px, y, x + px + tilt, y - ph, 2, W.post1);
-      R(c, x + px, y - ph, 1, Math.max(1, ph - 2), W.post2);
-      if (broken) { R(c, x + px + tilt, y - ph, 2, 1, W.deck4); R(c, x + px + tilt - 1, y - ph - 1, 1, 1, W.deck3); }
+      const tilt = broken ? Math.round(rng.range(-U, U)) : 0;
+      pline(c, x + px2, y, x + px2 + tilt, y - ph, uw(2), W.ink);
+      pline(c, x + px2, y, x + px2 + tilt, y - ph, uw(1), W.post1);
+      R(c, x + px2, y - ph, 1, Math.max(1, ph - 2), W.post2);
+      if (broken) { R(c, x + px2 + tilt, y - ph, 2, 1, W.deck4); R(c, x + px2 + tilt - 1, y - ph - 1, 1, 1, W.deck3); }
     }
     if (o.rope) {
-      // sagging rope rail
-      for (let px = 0; px < w; px++) {
-        const seg = (px % spacing) / spacing;
-        const sag = Math.sin(seg * Math.PI) * 3;
-        R(c, x + px, y - h + 1 + Math.round(sag), 1, 1, px % 3 ? W.rope1 : W.rope2);
-        R(c, x + px, y - h + 2 + Math.round(sag), 1, 1, W.rope0);
+      for (let px2 = 0; px2 < w; px2++) {
+        const s = (px2 % spacing) / spacing;
+        const sag = Math.sin(s * Math.PI) * U * 1.5;
+        R(c, x + px2, y - h + 1 + Math.round(sag), 1, 1, px2 % 3 ? W.rope1 : W.rope2);
+        R(c, x + px2, y - h + 2 + Math.round(sag), 1, 1, W.rope0);
       }
     } else {
       R(c, x, y - h - 1, w, 1, W.ink);
-      R(c, x, y - h, w, 2, W.deck2);
+      R(c, x, y - h, w, uw(1.5), W.deck2);
       R(c, x, y - h, w, 1, W.deck3);
-      R(c, x, y - h + 2, w, 1, W.ink);
-      R(c, x, y - Math.round(h * 0.45), w, 1, W.deck1);
-      R(c, x, y - Math.round(h * 0.45) + 1, w, 1, W.ink);
-      for (let px = 0; px < w; px += 3) if (rng.next() < 0.25) R(c, x + px, y - h, 1, 1, W.deck4);
+      R(c, x, y - h + uw(1.5), w, 1, W.ink);
+      R(c, x, y - Math.round(h * 0.45), w, uw(1), W.deck1);
+      R(c, x, y - Math.round(h * 0.45) + uw(1), w, 1, W.ink);
+      for (let px2 = 0; px2 < w; px2 += 3) if (rng.next() < 0.22) R(c, x + px2, y - h, 1, 1, W.deck4);
     }
   };
 
-  // -- hanging fishing net with float balls --------------------------------
+  // -- hanging net ---------------------------------------------------------
   Kit.net = function (c, x, y, w, h, rng, o) {
     o = o || {};
     x = Math.round(x); y = Math.round(y);
-    const sag = o.sag === undefined ? 3 : o.sag;
-    for (let i = 0; i < w; i += 2) {
+    const sag = o.sag === undefined ? uw(1.5) : o.sag;
+    const g = uw(1);
+    for (let i = 0; i < w; i += g + 1) {
       const s = Math.round(Math.sin(i / w * Math.PI) * sag);
       const hh = h + s;
-      for (let j = 0; j < hh; j += 2) {
+      for (let j = 0; j < hh; j += g + 1) {
         R(c, x + i, y + j, 1, 1, W.net1);
-        if ((i + j) % 4 === 0) R(c, x + i + 1, y + j + 1, 1, 1, W.net0);
+        if ((i + j) % (2 * (g + 1)) === 0) R(c, x + i + 1, y + j + 1, 1, 1, W.net0);
         if (rng.next() < 0.08) R(c, x + i, y + j, 1, 1, W.net2);
       }
-      // bottom edge rope
       R(c, x + i, y + hh, 1, 1, W.rope0);
       R(c, x + i + 1, y + hh, 1, 1, W.rope1);
     }
-    // top rope
     R(c, x, y - 1, w, 1, W.rope0);
-    // float balls along the bottom
-    for (let i = 2; i < w - 2; i += 7 + Math.floor(rng.next() * 4)) {
+    for (let i = uw(1); i < w - uw(1); i += uw(4) + Math.floor(rng.next() * uw(2))) {
       const s = Math.round(Math.sin(i / w * Math.PI) * sag);
-      const fy = y + h + s + 1;
-      const hot = rng.next() < 0.6;
-      R(c, x + i - 1, fy, 3, 3, W.ink);
-      R(c, x + i - 1, fy, 3, 1, hot ? W.float1 : W.float2);
-      R(c, x + i - 1, fy + 1, 3, 2, hot ? W.float0 : W.rope1);
-      R(c, x + i - 1, fy, 1, 1, hot ? W.float2 : '#ffffff');
+      const fy = y + h + s + 1, hot = rng.next() < 0.6;
+      R(c, x + i - 1, fy, uw(1.5), uw(1.5), W.ink);
+      R(c, x + i - 1, fy, uw(1.5), 1, hot ? W.float1 : W.float2);
+      R(c, x + i - 1, fy + 1, uw(1.5), uw(1), hot ? W.float0 : W.rope1);
     }
   };
 
   // -- ladder ---------------------------------------------------------------
   Kit.ladder = function (c, x, y, h, rng) {
     x = Math.round(x); y = Math.round(y);
-    R(c, x - 1, y, 1, h, W.ink); R(c, x + 6, y, 1, h, W.ink);
-    R(c, x, y, 2, h, W.post1); R(c, x + 4, y, 2, h, W.post1);
-    R(c, x, y, 1, h, W.post2); R(c, x + 4, y, 1, h, W.post2);
-    for (let i = 3; i < h - 1; i += 5) {
-      R(c, x, y + i, 6, 1, W.ink);
-      R(c, x, y + i - 1, 6, 1, W.deck2);
-      if (rng.next() < 0.3) R(c, x + 1 + Math.floor(rng.next() * 4), y + i - 1, 1, 1, W.deck4);
+    const rail = uw(1), gap = uw(3);
+    R(c, x - 1, y, 1, h, W.ink); R(c, x + gap + rail, y, 1, h, W.ink);
+    R(c, x, y, rail, h, W.post1); R(c, x + gap, y, rail, h, W.post1);
+    R(c, x, y, 1, h, W.post2); R(c, x + gap, y, 1, h, W.post2);
+    for (let i = uw(1.5); i < h - 1; i += uw(2.5)) {
+      R(c, x, y + i, gap + rail, 1, W.ink);
+      R(c, x, y + i - 1, gap + rail, 1, W.deck2);
+      if (rng.next() < 0.3) R(c, x + 1 + Math.floor(rng.next() * gap), y + i - 1, 1, 1, W.deck4);
     }
   };
 
-  // -- stairs (down to the left or right) ----------------------------------
+  // -- stairs ---------------------------------------------------------------
   Kit.stairs = function (c, x, y, w, h, dir, rng) {
-    const steps = Math.max(2, Math.round(h / 4));
-    const sw = Math.max(4, Math.round(w / steps));
+    const rise = uw(2);
+    const steps = Math.max(2, Math.round(h / rise));
+    const sw = Math.max(uw(2), Math.round(w / steps));
     for (let i = 0; i < steps; i++) {
       const sx = dir > 0 ? x + i * sw : x + w - (i + 1) * sw;
-      const sy = y + i * 4;
+      const sy = y + i * rise;
       R(c, sx - 1, sy - 1, sw + 2, 1, W.ink);
       R(c, sx, sy, sw, 1, W.deck3);
-      R(c, sx, sy + 1, sw, 2, W.deck1);
-      R(c, sx, sy + 3, sw, 1, W.deck0);
-      R(c, sx, sy + 4, sw, 1, W.ink);
+      R(c, sx, sy + 1, sw, rise - 2, W.deck1);
+      R(c, sx, sy + rise - 1, sw, 1, W.deck0);
       if (rng.next() < 0.4) R(c, sx + 1 + Math.floor(rng.next() * (sw - 2)), sy, 1, 1, W.deck4);
     }
-    // stringer
     for (let i = 0; i < steps; i++) {
       const sx = dir > 0 ? x + i * sw : x + w - (i + 1) * sw;
-      R(c, dir > 0 ? sx : sx + sw - 2, y + i * 4 + 4, 2, 4, W.post0);
+      R(c, dir > 0 ? sx : sx + sw - uw(1), y + i * rise + rise, uw(1), rise, W.post0);
     }
   };
 
   // -- drying rack with hanging fish ---------------------------------------
-  Kit.fishRack = function (c, x, y, w, rng) {
-    // y = base line
-    const h = 22;
+  Kit.fishRack = function (c, x, y, w, rng, o) {
+    o = o || {};
+    const h = o.h || uw(11), leg = uw(1);
     R(c, x - 1, y - h, 1, h, W.ink); R(c, x + w, y - h, 1, h, W.ink);
-    R(c, x, y - h, 2, h, W.post1); R(c, x + w - 2, y - h, 2, h, W.post1);
-    R(c, x, y - h, 1, h, W.post2); R(c, x + w - 2, y - h, 1, h, W.post2);
-    R(c, x - 2, y - h - 1, w + 4, 1, W.ink);
-    R(c, x - 2, y - h, w + 4, 2, W.deck2);
-    R(c, x - 2, y - h + 2, w + 4, 1, W.ink);
-    // hanging line + fish
-    for (let i = 3; i < w - 3; i += 6) {
-      const ln = 3 + Math.floor(rng.next() * 3);
-      R(c, x + i, y - h + 3, 1, ln, W.rope0);
-      const f = rng.next() < 0.4 ? P.fishFat : P.fish;
-      c.drawImage(f.c, x + i - Math.round(f.ax) + 1, y - h + 3 + ln);
+    R(c, x, y - h, leg, h, W.post1); R(c, x + w - leg, y - h, leg, h, W.post1);
+    R(c, x, y - h, 1, h, W.post2); R(c, x + w - leg, y - h, 1, h, W.post2);
+    // two cross beams
+    for (const by of [y - h, y - Math.round(h * 0.58)]) {
+      R(c, x - uw(1), by - 1, w + uw(2), 1, W.ink);
+      R(c, x - uw(1), by, w + uw(2), uw(1), W.deck2);
+      R(c, x - uw(1), by + uw(1), w + uw(2), 1, W.ink);
     }
-    // cross brace
-    Kit.brace(c, x + 1, y - 3, x + w - 2, y - h + 6, 2);
+    for (let i = uw(1.5); i < w - uw(1.5); i += uw(3)) {
+      const ln = uw(1.5) + Math.floor(rng.next() * uw(1.5));
+      const top = rng.next() < 0.5 ? y - h : y - Math.round(h * 0.58);
+      R(c, x + i, top + uw(1), 1, ln, W.rope0);
+      const f = rng.next() < 0.4 ? P.fishFat : P.fish;
+      // hung by the tail: rotate by drawing the sprite column-flipped-ish
+      c.save(); c.translate(x + i + 1, top + uw(1) + ln); c.rotate(Math.PI / 2); c.drawImage(f.c, -Math.round(f.h / 2), -f.w); c.restore();
+    }
+    Kit.brace(c, x + 1, y - 2, x + w - 2, y - h + uw(3), uw(1));
+  };
+
+  // -- mooring bollard (post with a rope turn) ------------------------------
+  Kit.bollard = function (c, x, y, rng, o) {
+    o = o || {};
+    const w = uw(3), h = o.h || uw(5);
+    R(c, x - 1, y - h - 1, w + 2, h + 2, W.ink);
+    R(c, x, y - h, w, h, W.post1);
+    R(c, x, y - h, 1, h, W.post2);
+    R(c, x + w - 1, y - h, 1, h, W.post0);
+    R(c, x - 1, y - h - uw(1), w + 2, uw(1), W.ink);
+    R(c, x, y - h - uw(1) + 1, w, uw(1) - 1 || 1, W.post3);   // mushroom cap
+    Kit.lashing(c, x - 1, y - Math.round(h * 0.55), w + 2, rng);
+  };
+
+  // -- deck cleat -----------------------------------------------------------
+  Kit.cleat = function (c, x, y) {
+    R(c, x, y, uw(3), uw(1), W.ink);
+    R(c, x, y, uw(3), 1, W.met2);
+    R(c, x - 1, y - 1, 2, 2, W.met1); R(c, x + uw(3) - 1, y - 1, 2, 2, W.met1);
+  };
+
+  // -- hand winch / capstan on a deck ---------------------------------------
+  Kit.winch = function (c, x, y, rng) {
+    const w = uw(6), h = uw(5);
+    R(c, x, y - uw(1), w, uw(1), W.ink);
+    R(c, x + 1, y - h, w - 2, h - 1, W.ink);
+    R(c, x + uw(1), y - h + 1, w - uw(2), h - uw(1.5), W.met1);
+    for (let i = 0; i < w - uw(2); i += 2) R(c, x + uw(1) + i, y - h + 1, 1, h - uw(1.5), i % 4 ? W.met2 : W.rope1);
+    R(c, x + uw(1), y - h + 1, w - uw(2), 1, W.met3);
+    // crank handle
+    R(c, x + w - 1, y - h + uw(1), uw(2), 1, W.ink);
+    R(c, x + w + uw(1) - 1, y - h + uw(1), 1, uw(2), W.met2);
+    fleck(c, rng, x + uw(1), y - h + 1, w - uw(2), h - uw(2), 4, [W.rust1, W.rust2]);
+  };
+
+  // -- davit / small crane over the water -----------------------------------
+  Kit.davit = function (c, x, y, rng, dir) {
+    dir = dir || 1;
+    const h = uw(14), reach = uw(9);
+    R(c, x - 1, y - h, uw(2) + 2, h, W.ink);
+    R(c, x, y - h, uw(2), h, W.met1);
+    R(c, x, y - h, 1, h, W.met2);
+    // arm, curving out over the water
+    let ax = x, ay = y - h;
+    for (let i = 0; i < reach; i++) {
+      const yy = ay + Math.round(Math.pow(i / reach, 2.2) * uw(2));
+      R(c, ax + dir * i, yy - 1, 1, uw(1.5) + 1, W.ink);
+      R(c, ax + dir * i, yy, 1, uw(1.5) - 1 || 1, W.met2);
+    }
+    // stay wire + hanging block and hook
+    pline(c, x + uw(1), y - h + uw(3), x + dir * reach, ay + uw(1), 1, W.met0);
+    const hx = x + dir * reach, hy = ay + uw(2);
+    R(c, hx - 1, hy, uw(1.5), uw(2), W.ink); R(c, hx, hy + 1, 1, uw(1), W.met3);
+    for (let i = 0; i < uw(4); i++) R(c, hx, hy + uw(2) + i, 1, 1, i % 2 ? W.met1 : W.met2);
+    R(c, hx - 1, hy + uw(6), uw(2), 1, W.met2);
+    void rng;
+  };
+
+  // -- stack of crab pots ---------------------------------------------------
+  Kit.crabPots = function (c, x, y, n, rng) {
+    for (let i = 0; i < n; i++) {
+      const px2 = x + Math.round(rng.range(-uw(1), uw(1)));
+      c.drawImage(P.crabPot.c, px2, y - P.crabPot.h * (i + 1) + i * uw(1));
+    }
+  };
+
+  // -- slipway: timber rails running down into the water --------------------
+  Kit.slipway = function (c, x, y, w, len, rng) {
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      R(c, x, y + i, w, 1, mix(W.deck1, W.wet, Math.min(1, t * 1.25)));
+      if (i % uw(3) === 0) R(c, x, y + i, w, 1, W.deck0);
+      if (rng.next() < 0.25) R(c, x + Math.floor(rng.next() * w), y + i, 1, 1, t > 0.5 ? W.alg : W.deck2);
+    }
+    for (const rx of [x + uw(2), x + w - uw(3)]) {
+      for (let i = 0; i < len; i++) {
+        const t = i / len;
+        R(c, rx - 1, y + i, uw(1) + 2, 1, W.ink);
+        R(c, rx, y + i, uw(1), 1, t > 0.62 ? mix(W.post1, W.wet, 0.7) : W.post1);
+        if (i % uw(4) === 0) R(c, rx, y + i, uw(1), 1, W.post2);
+      }
+    }
+    // sleepers
+    for (let i = uw(2); i < len; i += uw(5)) { R(c, x + 1, y + i, w - 2, uw(1), W.post0); R(c, x + 1, y + i, w - 2, 1, W.post1); }
+  };
+
+  // -- a hull up in a cradle, mid-repair ------------------------------------
+  Kit.cradleHull = function (c, x, y, len, rng) {
+    const h = uw(7);
+    // cradle timbers
+    for (const kx of [x + uw(3), x + len - uw(5)]) {
+      R(c, kx - 1, y - uw(3), uw(1) + 2, uw(3), W.ink);
+      R(c, kx, y - uw(3), uw(1), uw(3), W.post1);
+      R(c, kx - uw(2), y - uw(3) - 1, uw(5), uw(1), W.post2);
+    }
+    // planked hull, some planks missing
+    const top = y - uw(3) - h;
+    for (let i = 0; i < len; i++) {
+      const k = i / len;
+      const rise = Math.round(Math.pow(Math.abs(k - 0.45) * 2, 2.1) * uw(3));
+      const yy = top - rise;
+      R(c, x + i, yy, 1, h + rise, W.deck1);
+      R(c, x + i, yy, 1, 1, W.ink);
+      R(c, x + i, yy + 1, 1, 1, W.deck3);
+      if (i === 0 || i === len - 1) R(c, x + i, yy, 1, h + rise, W.ink);
+      if ((i % uw(6)) === 0) R(c, x + i, yy + 1, 1, h + rise - 1, W.deck0);
+    }
+    // ribs showing through a hole in the planking
+    const hx = x + Math.round(len * 0.45), hw = uw(5);
+    R(c, hx, top + uw(1), hw, uw(4), W.tar);
+    for (let i = 0; i < hw; i += uw(1.5)) R(c, hx + i, top + uw(1), 1, uw(4), W.deck2);
+    R(c, hx - 1, top + uw(1) - 1, hw + 2, 1, W.deck4);
+    // a ladder leaning on it and a bucket of tar
+    Kit.ladder(c, x + len - uw(8), top + uw(1), uw(9), rng);
+    c.drawImage(P.bucket.c, x + uw(1), y - P.bucket.h);
   };
 
   // -- a moored rowboat, side view -----------------------------------------
   Kit.rowboat = function (c, x, y, len, rng) {
-    const h = 9;
-    // hull
+    const h = uw(4.5);
     for (let i = 0; i < len; i++) {
       const k = i / len;
-      const bowRise = Math.round(Math.pow(Math.abs(k - 0.5) * 2, 2.2) * 5);
-      const top = y - h + bowRise * -1 + (bowRise ? 0 : 0);
+      const bowRise = Math.round(Math.pow(Math.abs(k - 0.5) * 2, 2.2) * uw(2.5));
       const yy = y - h - bowRise;
       R(c, x + i, yy, 1, h + bowRise, W.deck1);
       R(c, x + i, yy, 1, 1, W.deck3);
       R(c, x + i, yy + 1, 1, 1, W.deck2);
-      R(c, x + i, y - 3, 1, 3, W.deck0);
+      R(c, x + i, y - uw(1.5), 1, uw(1.5), W.deck0);
       R(c, x + i, y, 1, 1, W.ink);
-      if (rng.next() < 0.12) R(c, x + i, yy + 2 + Math.floor(rng.next() * 4), 1, 1, W.deck0);
+      if ((i % uw(5)) === 0) R(c, x + i, yy + 2, 1, h + bowRise - 3, W.deck0);
+      if (rng.next() < 0.1) R(c, x + i, yy + 2 + Math.floor(rng.next() * uw(2)), 1, 1, W.deck0);
       if (i === 0 || i === len - 1) R(c, x + i, yy, 1, h + bowRise, W.ink);
-      void top;
     }
-    R(c, x, y - h - 5, len, 1, W.ink);
-    // interior shadow + thwarts
-    R(c, x + 2, y - h + 1, len - 4, 3, W.shadow);
-    R(c, x + Math.round(len * 0.3), y - h + 1, 3, 3, W.deck2);
-    R(c, x + Math.round(len * 0.65), y - h + 1, 3, 3, W.deck2);
-    // oar
-    pline(c, x + 3, y - h + 2, x + len - 5, y - h - 6, 3, W.ink);
-    pline(c, x + 3, y - h + 2, x + len - 5, y - h - 6, 1, W.deck3);
-    R(c, x + len - 7, y - h - 8, 3, 4, W.ink); R(c, x + len - 6, y - h - 7, 2, 3, W.deck2);
+    R(c, x, y - h - uw(2.5), len, 1, W.ink);
+    R(c, x + uw(1), y - h + 1, len - uw(2), uw(1.5), W.shadow);
+    // thwarts
+    for (const tk of [0.3, 0.65]) { R(c, x + Math.round(len * tk), y - h + 1, uw(1.5), uw(1.5), W.deck2); R(c, x + Math.round(len * tk), y - h + 1, uw(1.5), 1, W.deck3); }
+    // oar across the gunwale
+    pline(c, x + uw(1.5), y - h + 1, x + len - uw(2.5), y - h - uw(3), uw(1) + 1, W.ink);
+    pline(c, x + uw(1.5), y - h + 1, x + len - uw(2.5), y - h - uw(3), 1, W.deck3);
+    R(c, x + len - uw(3.5), y - h - uw(4), uw(1.5), uw(2), W.ink);
+    R(c, x + len - uw(3), y - h - uw(4) + 1, uw(1), uw(1.5), W.deck2);
+    // a coil of rope in the bow
+    c.drawImage(P.ropeCoil.c, x + uw(1), y - h - uw(1));
   };
 
-  // -- a house on stilts ----------------------------------------------------
-  // x,y = bottom-left of the walls (floor line). Returns {lights, smoke}
+  // -- roofs ----------------------------------------------------------------
+  // corrugated iron: hard vertical ribs, rust streaks, a ridge cap
+  Kit.roofCorrugated = function (c, x, top, w, roofH, col, rng) {
+    for (let i = 0; i < roofH; i++) {
+      const k = i / roofH;
+      const rw = Math.round(lerp(uw(2), w, Math.pow(k, 0.9)));
+      const rx = Math.round(x + w / 2 - rw / 2);
+      const ry = top - roofH + i;
+      for (let q = 0; q < rw; q++) {
+        const rib = q % uw(2);
+        R(c, rx + q, ry, 1, 1, rib === 0 ? shade(col.roof[2], 1.12) : rib === 1 ? col.roof[1] : col.roof[0]);
+      }
+      if (i % uw(4) === 0) R(c, rx, ry, rw, 1, col.roof[0]);
+      if (rng.next() < 0.35) R(c, rx + Math.floor(rng.next() * rw), ry, 1, uw(2), W.rust1);
+      R(c, rx - 1, ry, 1, 1, W.ink); R(c, rx + rw, ry, 1, 1, W.ink);
+    }
+  };
+  // shingles: overlapping courses with staggered tabs
+  Kit.roofShingle = function (c, x, top, w, roofH, col, rng) {
+    const course = uw(1.5);
+    for (let i = 0; i < roofH; i++) {
+      const k = i / roofH;
+      const rw = Math.round(lerp(uw(2), w, Math.pow(k, 0.92)));
+      const rx = Math.round(x + w / 2 - rw / 2);
+      const ry = top - roofH + i;
+      const row = Math.floor(i / course);
+      R(c, rx, ry, rw, 1, row % 2 ? col.roof[1] : col.roof[2]);
+      if (i % course === course - 1) {
+        R(c, rx, ry, rw, 1, col.roof[0]);
+        for (let q = (row * uw(1.5)) % uw(3); q < rw; q += uw(3)) R(c, rx + q, ry - 1, 1, 1, col.roof[0]);
+      }
+      if (i % course === 0) for (let q = 0; q < rw; q += 2) if (rng.next() < 0.18) R(c, rx + q, ry, 1, 1, col.roof[2]);
+      R(c, rx - 1, ry, 1, 1, W.ink); R(c, rx + rw, ry, 1, 1, W.ink);
+    }
+  };
+
+  // -- a building -----------------------------------------------------------
+  // kinds: cottage | shed | loft (two storey, hoist beam) | boathouse (open end)
+  //        | office (harbour master, balcony) | market (open front, awning)
   Kit.house = function (c, x, y, w, wallH, col, rng, o) {
     o = o || {};
+    const kind = o.kind || 'cottage';
     const lights = [];
     let smoke = null;
-    const roofH = Math.round(w * 0.36) + 4;
-    const over = 5;
+    const roofH = o.roofH || (Math.round(w * 0.30) + uw(3));
+    const over = uw(2.5);
     const top = y - wallH;
+    const corr = kind === 'shed' || kind === 'boathouse' || kind === 'market';
 
-    // --- floor joists under the walls
-    R(c, x - 2, y, w + 4, 1, W.ink);
-    R(c, x - 2, y - 2, w + 4, 2, W.post1);
-    R(c, x - 1, y - 2, w + 2, 1, W.post2);
+    // floor joists
+    R(c, x - uw(1), y, w + uw(2), 1, W.ink);
+    R(c, x - uw(1), y - uw(1), w + uw(2), uw(1), W.post1);
+    R(c, x - uw(1) + 1, y - uw(1), w + uw(2) - 2, 1, W.post2);
 
-    // --- wall: vertical board siding
+    // ---- wall: vertical board-and-batten siding
     R(c, x, top, w, wallH, col.wall[1]);
     let bx = x;
     while (bx < x + w) {
-      const bw = 3 + Math.floor(rng.next() * 2);
+      const bw = uw(1.5) + Math.floor(rng.next() * uw(1));
       const t = rng.next();
       R(c, bx, top, Math.min(bw, x + w - bx), wallH, t > 0.66 ? col.wall[2] : t > 0.3 ? col.wall[1] : col.wall[0]);
       R(c, bx, top, 1, wallH, col.dk);
-      // weathering streaks
-      if (rng.next() < 0.22) R(c, bx + 1, top + Math.floor(rng.next() * wallH * 0.4), 1, Math.floor(rng.range(3, wallH * 0.5)), col.dk);
+      if (rng.next() < 0.22) R(c, bx + 1, top + Math.floor(rng.next() * wallH * 0.4), 1, Math.floor(rng.range(uw(2), wallH * 0.5)), col.dk);
       bx += bw;
     }
-    // battens top & bottom, corner posts
     R(c, x, top, w, 1, col.wall[2]);
-    R(c, x, y - 3, w, 3, col.dk);
-    R(c, x, y - 4, w, 1, mix(col.wall[0], W.ink, 0.3));
-    R(c, x, top, 2, wallH, col.wall[0]); R(c, x + w - 2, top, 2, wallH, col.dk);
+    R(c, x, y - uw(1.5), w, uw(1.5), col.dk);
+    R(c, x, top, uw(1), wallH, col.wall[0]); R(c, x + w - uw(1), top, uw(1), wallH, col.dk);
     R(c, x - 1, top, 1, wallH, W.ink); R(c, x + w, top, 1, wallH, W.ink);
-    // damp stain along the bottom
-    for (let i = 0; i < w; i++) if (rng.next() < 0.5) R(c, x + i, y - 5 - Math.floor(rng.next() * 3), 1, 2, mix(col.dk, W.wet, 0.4));
+    // damp / salt stain along the bottom
+    for (let i = 0; i < w; i++) if (rng.next() < 0.5) R(c, x + i, y - uw(2.5) - Math.floor(rng.next() * uw(1.5)), 1, uw(1), mix(col.dk, W.wet, 0.4));
 
-    // --- door
-    const doorW = 9, doorH = Math.min(15, wallH - 8);
-    const doorX = x + (o.doorLeft ? 3 : Math.round(w * (o.doorAt === undefined ? 0.62 : o.doorAt)));
-    const doorY = y - doorH - 3;
-    R(c, doorX - 1, doorY - 1, doorW + 2, doorH + 2, W.ink);
-    R(c, doorX, doorY, doorW, doorH, W.deck1);
-    for (let i = 0; i < doorW; i += 3) { R(c, doorX + i, doorY, 1, doorH, W.deck0); R(c, doorX + i + 1, doorY, 1, doorH, W.deck2); }
-    R(c, doorX, doorY, doorW, 1, W.deck3);
-    R(c, doorX + doorW - 3, doorY + Math.round(doorH / 2), 2, 1, W.met3);
-    if (o.doorOpen) {
-      R(c, doorX + 3, doorY + 1, doorW - 3, doorH - 1, '#160f14');
-      lights.push({ x: doorX + 3, y: doorY + doorH - 6, w: doorW - 3, h: 5, ph: rng.range(0, TAU), k: 0.5 });
+    // ---- openings by kind -------------------------------------------------
+    const doorW = uw(4.5), doorH = Math.min(uw(8), wallH - uw(4));
+    const doorX = x + (o.doorLeft ? uw(1.5) : Math.round(w * (o.doorAt === undefined ? 0.62 : o.doorAt)));
+    const doorY = y - doorH - uw(1.5);
+
+    if (kind === 'boathouse' || kind === 'market') {
+      // a big open mouth: dark interior, a boat or a counter inside
+      const ow = Math.round(w * (kind === 'boathouse' ? 0.62 : 0.72));
+      const ox2 = x + Math.round((w - ow) / 2);
+      const oh = wallH - uw(3);
+      R(c, ox2 - 1, y - oh - 1, ow + 2, oh + 1, W.ink);
+      R(c, ox2, y - oh, ow, oh, '#150f14');
+      // header beam
+      R(c, ox2 - uw(1), y - oh - uw(1), ow + uw(2), uw(1), W.post1);
+      R(c, ox2 - uw(1), y - oh - uw(1), ow + uw(2), 1, W.post2);
+      if (kind === 'boathouse') {
+        // hull nose in the shadow, and rails running out
+        const bl = Math.round(ow * 0.7);
+        for (let i = 0; i < bl; i++) {
+          const k = i / bl, rise = Math.round(Math.pow(1 - k, 1.8) * uw(3));
+          R(c, ox2 + Math.round((ow - bl) / 2) + i, y - uw(4) - rise, 1, uw(4) + rise, i % uw(4) === 0 ? W.deck0 : W.deck1);
+          R(c, ox2 + Math.round((ow - bl) / 2) + i, y - uw(4) - rise, 1, 1, W.deck3);
+        }
+        for (const rx of [ox2 + uw(1), ox2 + ow - uw(2)]) R(c, rx, y - uw(1), uw(1), uw(1), W.post2);
+        lights.push({ x: ox2 + uw(1), y: y - uw(3), w: ow - uw(2), h: uw(2), ph: rng.range(0, TAU), k: 0.35 });
+      } else {
+        // market counter with fish laid out
+        R(c, ox2, y - uw(4), ow, uw(1.5), W.deck2);
+        R(c, ox2, y - uw(4), ow, 1, W.deck4);
+        R(c, ox2, y - uw(4) + uw(1.5), ow, 1, W.ink);
+        for (let i = uw(1); i < ow - uw(3); i += uw(3)) c.drawImage(P.fish.c, ox2 + i, y - uw(5) - 1);
+        lights.push({ x: ox2 + uw(1), y: y - oh + uw(1), w: ow - uw(2), h: uw(2), ph: rng.range(0, TAU), k: 0.5 });
+      }
+      // roller-door tracks either side
+      R(c, ox2 - uw(1), y - oh, 1, oh, col.dk); R(c, ox2 + ow + 1, y - oh, 1, oh, col.dk);
+    } else {
+      // plain plank door
+      R(c, doorX - 1, doorY - 1, doorW + 2, doorH + 2, W.ink);
+      R(c, doorX, doorY, doorW, doorH, W.deck1);
+      for (let i = 0; i < doorW; i += uw(1.5)) { R(c, doorX + i, doorY, 1, doorH, W.deck0); R(c, doorX + i + 1, doorY, 1, doorH, W.deck2); }
+      R(c, doorX, doorY, doorW, 1, W.deck3);
+      R(c, doorX, doorY + Math.round(doorH * 0.32), doorW, 1, W.deck0);   // ledge brace
+      R(c, doorX + doorW - uw(1.5), doorY + Math.round(doorH / 2), uw(1), 1, W.met3);
+      if (o.doorOpen) {
+        R(c, doorX + uw(1.5), doorY + 1, doorW - uw(1.5), doorH - 1, '#160f14');
+        lights.push({ x: doorX + uw(1.5), y: doorY + doorH - uw(3), w: doorW - uw(1.5), h: uw(2.5), ph: rng.range(0, TAU), k: 0.5 });
+      }
+      // a step / threshold stone
+      R(c, doorX - uw(1), y - uw(1.5), doorW + uw(2), uw(1), W.met1);
+      R(c, doorX - uw(1), y - uw(1.5), doorW + uw(2), 1, W.met2);
     }
 
-    // --- windows (with shutters); the lit interior is drawn at runtime
-    const winY = top + 5 + Math.floor(rng.next() * 3);
-    const nWin = w > 44 ? 2 : 1;
+    // ---- windows -----------------------------------------------------------
+    const nWin = kind === 'shed' ? (rng.next() < 0.6 ? 1 : 0) : (w > uw(22) ? 2 : 1);
+    const winY = top + uw(2.5) + Math.floor(rng.next() * uw(1.5));
     for (let i = 0; i < nWin; i++) {
-      const wx = x + 5 + Math.round((w - 16) * (nWin === 1 ? (o.doorAt > 0.5 ? 0.12 : 0.7) : i * 0.62));
-      const ww = 9, wh = 10;
-      R(c, wx - 2, winY - 2, ww + 4, wh + 4, W.ink);
+      const wx = x + uw(2.5) + Math.round((w - uw(8)) * (nWin === 1 ? (o.doorAt > 0.5 ? 0.12 : 0.7) : i * 0.62));
+      const ww = uw(4.5), wh = uw(5);
+      R(c, wx - uw(1), winY - uw(1), ww + uw(2), wh + uw(2), W.ink);
       R(c, wx - 1, winY - 1, ww + 2, wh + 2, col.trim);
       R(c, wx, winY, ww, wh, '#1a1218');
-      // mullions drawn over the runtime glow -> keep them as a mask list
       lights.push({ x: wx, y: winY, w: ww, h: wh, ph: rng.range(0, TAU), k: 1, mull: true });
-      // sill
-      R(c, wx - 3, winY + wh + 1, ww + 6, 2, col.trim);
-      R(c, wx - 3, winY + wh + 3, ww + 6, 1, W.ink);
-      // shutters
-      const sw = 4;
+      R(c, wx - uw(1.5), winY + wh + 1, ww + uw(3), uw(1), col.trim);
+      R(c, wx - uw(1.5), winY + wh + 1 + uw(1), ww + uw(3), 1, W.ink);
+      const sw = uw(2);
       for (const s of [-1, 1]) {
-        if (rng.next() < 0.25) continue;
-        const sx = s < 0 ? wx - 2 - sw : wx + ww + 2;
-        R(c, sx - 1, winY - 2, sw + 2, wh + 4, W.ink);
-        R(c, sx, winY - 1, sw, wh + 2, col.wall[0]);
-        for (let k = 0; k < wh + 2; k += 2) R(c, sx, winY - 1 + k, sw, 1, col.dk);
-        R(c, sx, winY - 1, 1, wh + 2, col.wall[2]);
+        if (rng.next() < 0.3) continue;
+        const sx2 = s < 0 ? wx - uw(1) - sw : wx + ww + uw(1);
+        R(c, sx2 - 1, winY - uw(1), sw + 2, wh + uw(2), W.ink);
+        R(c, sx2, winY - 1, sw, wh + uw(1), col.wall[0]);
+        for (let q = 0; q < wh + uw(1); q += uw(1)) R(c, sx2, winY - 1 + q, sw, 1, col.dk);
+        R(c, sx2, winY - 1, 1, wh + uw(1), col.wall[2]);
       }
     }
 
-    // --- roof: pitched shingles with an overhang
-    for (let i = 0; i < roofH; i++) {
-      const k = i / roofH;
-      const rw = Math.round(lerp(3, w + over * 2, Math.pow(k, 0.92)));
-      const rx = Math.round(x + w / 2 - rw / 2);
-      const ry = top - roofH + i;
-      const row = Math.floor(i / 3);
-      const cl = row % 2 ? col.roof[1] : col.roof[2];
-      R(c, rx, ry, rw, 1, cl);
-      // shingle tabs
-      if (i % 3 === 2) {
-        R(c, rx, ry, rw, 1, col.roof[0]);
-        for (let q = (row * 3) % 6; q < rw; q += 6) R(c, rx + q, ry - 1, 1, 1, col.roof[0]);
-      }
-      if (i % 3 === 0) for (let q = 0; q < rw; q += 2) if (rng.next() < 0.2) R(c, rx + q, ry, 1, 1, col.roof[2]);
-      R(c, rx - 1, ry, 1, 1, W.ink); R(c, rx + rw, ry, 1, 1, W.ink);
-      if (i === roofH - 1) { R(c, rx - 1, ry + 1, rw + 2, 1, W.ink); R(c, rx, ry, rw, 1, col.roof[0]); }
-    }
+    // ---- roof --------------------------------------------------------------
+    if (corr) Kit.roofCorrugated(c, x - over, top, w + over * 2, roofH, col, rng);
+    else Kit.roofShingle(c, x - over, top, w + over * 2, roofH, col, rng);
+    // eaves line + gutter + a downpipe
+    R(c, x - over - 1, top, w + over * 2 + 2, 1, W.ink);
+    R(c, x - over, top - 1, w + over * 2, uw(1), shade(col.roof[0], 1.1));
+    R(c, x - over, top, w + over * 2, 1, W.met0);
+    R(c, x - over + 1, top - 1, w + over * 2 - 2, 1, W.met2);
+    const dp = rng.next() < 0.5 ? x + uw(1) : x + w - uw(2);
+    R(c, dp, top, uw(1), wallH - uw(2), W.met1);
+    R(c, dp, top, 1, wallH - uw(2), W.met3);
+    R(c, dp - 1, top + Math.round(wallH * 0.5), uw(1) + 2, 1, W.met0);
     // ridge cap
-    R(c, Math.round(x + w / 2 - 3), top - roofH - 1, 6, 2, W.ink);
-    R(c, Math.round(x + w / 2 - 2), top - roofH - 1, 4, 1, col.roof[2]);
-    // moss / patch on the roof
+    R(c, Math.round(x + w / 2 - uw(1.5)), top - roofH - 1, uw(3), uw(1) + 1, W.ink);
+    R(c, Math.round(x + w / 2 - uw(1)), top - roofH - 1, uw(2), 1, col.roof[2]);
+    // moss patch
     if (rng.next() < 0.6) {
-      const mx = Math.round(x + rng.range(4, w - 10)), my = top - Math.round(roofH * rng.range(0.25, 0.7));
-      for (let i = 0; i < 9; i++) R(c, mx + Math.floor(rng.range(0, 7)), my + Math.floor(rng.range(0, 4)), 1, 1, rng.next() < 0.5 ? W.alg : W.alg2);
+      const mx = Math.round(x + rng.range(uw(2), w - uw(5))), my = top - Math.round(roofH * rng.range(0.25, 0.7));
+      for (let i = 0; i < uw(6); i++) R(c, mx + Math.floor(rng.range(0, uw(3.5))), my + Math.floor(rng.range(0, uw(2))), 1, 1, rng.next() < 0.5 ? W.alg : W.alg2);
     }
 
-    // --- gable vent
-    const gy = top - Math.round(roofH * 0.45);
-    R(c, Math.round(x + w / 2 - 4), gy, 8, 6, W.ink);
-    R(c, Math.round(x + w / 2 - 3), gy + 1, 6, 4, '#221a1c');
-    for (let i = 0; i < 4; i += 2) R(c, Math.round(x + w / 2 - 3), gy + 1 + i, 6, 1, col.trim);
+    // ---- gable vent / hoist beam ------------------------------------------
+    const gy = top - Math.round(roofH * 0.5);
+    if (kind === 'loft') {
+      // loft door up in the gable with a hoist beam and a block & tackle
+      const lw = uw(4), lh = uw(4);
+      R(c, Math.round(x + w / 2 - lw / 2) - 1, gy - 1, lw + 2, lh + 2, W.ink);
+      R(c, Math.round(x + w / 2 - lw / 2), gy, lw, lh, '#150f14');
+      lights.push({ x: Math.round(x + w / 2 - lw / 2), y: gy, w: lw, h: lh, ph: rng.range(0, TAU), k: 0.6 });
+      const bmY = gy - uw(2);
+      R(c, Math.round(x + w / 2) - 1, bmY - 1, uw(5), uw(1) + 2, W.ink);
+      R(c, Math.round(x + w / 2), bmY, uw(4), uw(1), W.post1);
+      const bx2 = Math.round(x + w / 2) + uw(4);
+      for (let i = 0; i < uw(5); i++) R(c, bx2, bmY + uw(1) + i, 1, 1, i % 2 ? W.rope0 : W.rope1);
+      R(c, bx2 - 1, bmY + uw(6), uw(2), uw(2), W.ink);
+      R(c, bx2 - 1, bmY + uw(6), uw(2), 1, W.met2);
+    } else {
+      R(c, Math.round(x + w / 2 - uw(2)), gy, uw(4), uw(3), W.ink);
+      R(c, Math.round(x + w / 2 - uw(2)) + 1, gy + 1, uw(4) - 2, uw(3) - 2, '#221a1c');
+      for (let i = 0; i < uw(3) - 2; i += 2) R(c, Math.round(x + w / 2 - uw(2)) + 1, gy + 1 + i, uw(4) - 2, 1, col.trim);
+    }
 
-    // --- chimney
-    if (o.chimney !== false) {
+    // ---- chimney -----------------------------------------------------------
+    if (o.chimney !== false && kind !== 'boathouse' && kind !== 'market') {
       const cxp = Math.round(x + (o.chimneyLeft ? w * 0.22 : w * 0.76));
       const rowK = Math.abs(cxp - (x + w / 2)) / (w / 2 + over);
       const roofTopY = top - roofH + Math.round(rowK * roofH);
-      const ch = 12;
-      R(c, cxp - 4, roofTopY - ch, 9, ch + 3, W.ink);
-      R(c, cxp - 3, roofTopY - ch + 1, 7, ch + 2, '#6b4a3c');
-      for (let i = 0; i < ch; i += 3) {
-        R(c, cxp - 3, roofTopY - ch + 1 + i, 7, 1, '#4a3128');
-        R(c, cxp - 3 + ((i / 3) % 2 ? 2 : 5), roofTopY - ch + 2 + i, 1, 2, '#4a3128');
+      const ch2 = uw(6);
+      R(c, cxp - uw(2), roofTopY - ch2, uw(4) + 1, ch2 + uw(1.5), W.ink);
+      R(c, cxp - uw(2) + 1, roofTopY - ch2 + 1, uw(4) - 1, ch2 + uw(1), '#6b4a3c');
+      for (let i = 0; i < ch2; i += uw(1.5)) {
+        R(c, cxp - uw(2) + 1, roofTopY - ch2 + 1 + i, uw(4) - 1, 1, '#4a3128');
+        R(c, cxp - uw(2) + 1 + (((i / uw(1.5)) % 2) ? uw(1) : uw(2)), roofTopY - ch2 + 2 + i, 1, uw(1), '#4a3128');
       }
-      R(c, cxp - 5, roofTopY - ch - 2, 11, 3, W.ink);
-      R(c, cxp - 4, roofTopY - ch - 1, 9, 1, '#8a6154');
-      smoke = { x: cxp, y: roofTopY - ch - 3 };
+      R(c, cxp - uw(2.5), roofTopY - ch2 - uw(1), uw(5) + 1, uw(1.5), W.ink);
+      R(c, cxp - uw(2), roofTopY - ch2 - uw(1) + 1, uw(4), 1, '#8a6154');
+      smoke = { x: cxp / K, y: (roofTopY - ch2 - uw(1.5)) / K };
     }
 
-    // --- porch awning over the door
-    if (o.awning !== false) {
-      const ay = doorY - 4;
-      R(c, doorX - 5, ay - 1, doorW + 10, 1, W.ink);
-      R(c, doorX - 5, ay, doorW + 10, 3, col.roof[1]);
-      R(c, doorX - 5, ay + 1, doorW + 10, 1, col.roof[0]);
-      R(c, doorX - 5, ay + 3, doorW + 10, 1, W.ink);
-      R(c, doorX - 4, ay + 4, 1, doorY - ay - 4, W.post1);
-      R(c, doorX + doorW + 3, ay + 4, 1, doorY - ay - 4, W.post1);
-      // hanging lantern
-      R(c, doorX + doorW + 5, ay, 1, 3, W.ink);
-      c.drawImage(P.lantern.c, doorX + doorW + 3, ay + 1);
-      lights.push({ x: doorX + doorW + 3, y: ay + 6, w: 5, h: 5, ph: rng.range(0, TAU), k: 1.3, lantern: true });
+    // ---- awning / porch ----------------------------------------------------
+    if (o.awning !== false && kind !== 'boathouse') {
+      const ay = (kind === 'market' ? y - wallH + uw(2) : doorY - uw(2));
+      const aw = kind === 'market' ? w + uw(4) : doorW + uw(5);
+      const ax2 = kind === 'market' ? x - uw(2) : doorX - uw(2.5);
+      R(c, ax2, ay - 1, aw, 1, W.ink);
+      for (let i = 0; i < aw; i++) R(c, ax2 + i, ay, 1, uw(1.5), (Math.floor(i / uw(2)) % 2) ? col.roof[1] : col.trim);
+      R(c, ax2, ay + uw(1.5), aw, 1, W.ink);
+      R(c, ax2 + 1, ay + uw(2), uw(1), (kind === 'market' ? wallH - uw(3) : doorY - ay - uw(2)), W.post1);
+      R(c, ax2 + aw - uw(1) - 1, ay + uw(2), uw(1), (kind === 'market' ? wallH - uw(3) : doorY - ay - uw(2)), W.post1);
+      // hanging lamp
+      const lxp = ax2 + aw - uw(2);
+      R(c, lxp, ay, 1, uw(1), W.ink);
+      c.drawImage(P.lantern.c, lxp - uw(1), ay + uw(1));
+      lights.push({ x: lxp - uw(1), y: ay + uw(3), w: uw(2.5), h: uw(2.5), ph: rng.range(0, TAU), k: 1.3, lantern: true });
     }
 
-    // --- wall clutter: net, buoys, oar
-    if (rng.next() < 0.6) Kit.net(c, x + 2, top + wallH - 16, Math.min(18, w - 6), 10, rng, { sag: 2 });
+    // ---- working clutter on the wall ---------------------------------------
+    if (kind === 'loft' || kind === 'shed') {
+      Kit.net(c, x + uw(1), top + wallH - uw(8), Math.min(uw(9), w - uw(3)), uw(5), rng, { sag: uw(1) });
+    }
+    if (rng.next() < 0.55) {
+      const bx2 = x + w - uw(4.5);
+      R(c, bx2 + uw(1), top + uw(1.5), 1, uw(2), W.rope0);
+      c.drawImage(P.buoyProp.c, bx2, top + uw(3));
+    }
     if (rng.next() < 0.5) {
-      const bx2 = x + w - 9;
-      R(c, bx2 + 2, top + 3, 1, 4, W.rope0);
-      c.drawImage(P.buoyProp.c, bx2, top + 6);
+      // oars leaning on the wall
+      const ox3 = x + uw(1);
+      for (let i = 0; i < 2; i++) {
+        pline(c, ox3 + i * uw(1.5), y - 1, ox3 + i * uw(1.5) + uw(1), y - wallH + uw(2), uw(1) + 1, W.ink);
+        pline(c, ox3 + i * uw(1.5), y - 1, ox3 + i * uw(1.5) + uw(1), y - wallH + uw(2), 1, W.deck2);
+      }
     }
     return { lights, smoke, roofH };
   };
@@ -671,31 +921,30 @@
   // -- a tree / palm for the land behind ------------------------------------
   Kit.tree = function (c, x, y, rng, kind) {
     if (kind === 'palm') {
-      const h = Math.round(rng.range(22, 34));
+      const h = Math.round(rng.range(uw(11), uw(17)));
       for (let i = 0; i < h; i++) {
-        const bend = Math.round(Math.sin(i / h * 1.2) * 4);
-        R(c, x + bend - 1, y - i, 3, 1, i % 4 === 0 ? '#5c3a1c' : '#7a4f28');
-        R(c, x + bend - 2, y - i, 1, 1, W.ink); R(c, x + bend + 2, y - i, 1, 1, W.ink);
+        const bend = Math.round(Math.sin(i / h * 1.2) * uw(2));
+        R(c, x + bend - uw(1), y - i, uw(1.5), 1, i % uw(2) === 0 ? '#5c3a1c' : '#7a4f28');
+        R(c, x + bend - uw(1) - 1, y - i, 1, 1, W.ink); R(c, x + bend + uw(1), y - i, 1, 1, W.ink);
       }
-      const tx = x + Math.round(Math.sin(1.2) * 4), ty = y - h;
+      const tx = x + Math.round(Math.sin(1.2) * uw(2)), ty = y - h;
       for (let a = 0; a < 7; a++) {
         const ang = -Math.PI / 2 + (a - 3) * 0.44 + rng.range(-0.08, 0.08);
-        const L = rng.range(9, 15);
-        const ex = tx + Math.cos(ang) * L, ey = ty + Math.sin(ang) * L * 0.8 + 4;
-        pline(c, tx, ty, ex, ey, 4, W.ink);
-        pline(c, tx, ty, ex, ey, 2, a % 2 ? '#2f7e4b' : '#3f9e5b');
+        const L = rng.range(uw(4.5), uw(7.5));
+        const ex = tx + Math.cos(ang) * L, ey = ty + Math.sin(ang) * L * 0.8 + uw(2);
+        pline(c, tx, ty, ex, ey, uw(2), W.ink);
+        pline(c, tx, ty, ex, ey, uw(1), a % 2 ? '#2f7e4b' : '#3f9e5b');
         pline(c, tx, ty, (tx + ex) / 2, (ty + ey) / 2, 1, '#6fd88e');
       }
-      R(c, tx - 2, ty, 4, 3, W.ink); R(c, tx - 1, ty + 1, 2, 1, '#8a5a33');
+      R(c, tx - uw(1), ty, uw(2), uw(1.5), W.ink); R(c, tx, ty + 1, uw(1), 1, '#8a5a33');
     } else {
-      const h = Math.round(rng.range(16, 26)), r = Math.round(rng.range(8, 13));
-      R(c, x - 2, y - h, 4, h, W.ink);
-      R(c, x - 1, y - h, 2, h, '#43281a');
-      R(c, x - 1, y - h, 1, h, '#5c3a1c');
-      // blobby canopy out of chunky rows
+      const h = Math.round(rng.range(uw(8), uw(13))), r = Math.round(rng.range(uw(4), uw(6.5)));
+      R(c, x - uw(1), y - h, uw(2), h, W.ink);
+      R(c, x - uw(0.5), y - h, uw(1), h, '#43281a');
+      R(c, x - uw(0.5), y - h, 1, h, '#5c3a1c');
       for (let i = -r; i <= r; i++) {
         const ww = Math.round(Math.sqrt(Math.max(0, r * r - i * i)) * 1.25);
-        const yy = y - h - r + i + 2;
+        const yy = y - h - r + i + uw(1);
         R(c, x - ww - 1, yy, ww * 2 + 2, 1, W.ink);
         R(c, x - ww, yy, ww * 2, 1, i < -r * 0.2 ? '#4fb373' : i < r * 0.4 ? '#2f9e5b' : '#1d6b3c');
         for (let q = -ww; q < ww; q += 2) if (rng.next() < 0.2) R(c, x + q, yy, 1, 1, '#6fd88e');
@@ -703,93 +952,138 @@
     }
   };
 
-  // -- top-down pier decking (the jetty that runs out into the water) -------
+  // -- top-down pier decking, with real gaps you can see water through -----
   Kit.jetty = function (c, x, y, w, len, rng, o) {
     o = o || {};
-    // boards run across the jetty
+    const board = uw(2.5) | 0;            // board pitch down the pier
     for (let i = 0; i < len; i++) {
-      const row = (i / 5) | 0, k = i % 5;
-      // one board every 5px: bright top edge, body, dark seam
-      let col = k === 0 ? W.deck3 : k === 4 ? W.deck0 : W.deck2;
-      if (row % 3 === 1 && k > 0 && k < 4) col = W.deck1;
+      const k = i % board;
+      const row = (i / board) | 0;
+      let col;
+      if (k === 0) col = W.deck3;
+      else if (k === board - 1) col = W.deck0;
+      else col = (row % 3 === 1) ? W.deck1 : W.deck2;
       R(c, x, y + i, w, 1, col);
-      if (k === 1) for (let q = (row * 3) % 5; q < w; q += 5) { if (rng.next() < 0.5) R(c, x + q, y + i, 1, 1, W.deck3); }
-      for (let q = 0; q < w; q += 1) if (rng.next() < 0.035) R(c, x + q, y + i, 1, 1, rng.next() < 0.5 ? W.deck4 : W.deck0);
+      if (k === 1) for (let q = (row * uw(2)) % uw(3); q < w; q += uw(3)) if (rng.next() < 0.45) R(c, x + q, y + i, 1, 1, W.deck3);
+      for (let q = 0; q < w; q++) if (rng.next() < 0.03) R(c, x + q, y + i, 1, 1, rng.next() < 0.5 ? W.deck4 : W.deck0);
     }
-    // occasional plank butt-joint + nail heads
-    for (let i = 0; i < len; i += 15) {
-      const jx = x + 5 + Math.floor(rng.next() * (w - 10));
-      R(c, jx, y + i, 1, 5, W.deck0);
+    // a worn walking path down the middle, greyed and scuffed by boots
+    const pw = Math.round(w * 0.42), px0 = x + Math.round((w - pw) / 2);
+    for (let i = 0; i < len; i++) {
+      if ((i % board) === 0) continue;                 // keep the board edges clean
+      for (let q = 0; q < pw; q++) {
+        if (rng.next() < 0.10) R(c, px0 + q, y + i, 1, 1, mix(W.deck2, '#9a8a78', 0.5));
+      }
     }
-    for (let i = 1; i < len; i += 5) {
-      if (rng.next() < 0.5) R(c, x + 3, y + i, 1, 1, W.met1);
-      if (rng.next() < 0.5) R(c, x + w - 4, y + i, 1, 1, W.met1);
+    R(c, px0 - 1, y, 1, len, 'rgba(30,18,14,0.12)');
+    R(c, px0 + pw, y, 1, len, 'rgba(30,18,14,0.12)');
+    // gaps between boards: every few courses a board is missing and the water
+    // shows through, which is what makes a deck read as a deck from above
+    for (let row = 1; row * board < len; row++) {
+      if (rng.next() > 0.26) continue;
+      const gy = y + row * board;
+      const gx0 = x + Math.floor(rng.next() * (w - uw(6))), gw = uw(3) + Math.floor(rng.next() * uw(4));
+      c.clearRect(gx0, gy, gw, 1);
+      R(c, gx0, gy - 1, gw, 1, W.deck0);
+      R(c, gx0, gy + 1, gw, 1, W.deck4);
     }
-    // the deck is raised: darker along both edges
-    R(c, x + 2, y, 2, len, 'rgba(30,18,14,0.22)');
-    R(c, x + w - 4, y, 3, len, 'rgba(30,18,14,0.30)');
-    // stringers / kerb both sides
+    // butt joints + nail heads
+    for (let i = 0; i < len; i += uw(8)) {
+      const jx = x + uw(2) + Math.floor(rng.next() * (w - uw(4)));
+      R(c, jx, y + i, 1, uw(2.5), W.deck0);
+    }
+    for (let i = 1; i < len; i += board) {
+      if (rng.next() < 0.5) R(c, x + uw(1.5), y + i, 1, 1, W.met1);
+      if (rng.next() < 0.5) R(c, x + w - uw(2), y + i, 1, 1, W.met1);
+    }
+    // raised deck: shading down both edges
+    R(c, x + 1, y, uw(1), len, 'rgba(30,18,14,0.22)');
+    R(c, x + w - uw(1.5), y, uw(1.5), len, 'rgba(30,18,14,0.30)');
+    // kerb stringers
     R(c, x - 1, y, 1, len, W.ink); R(c, x + w, y, 1, len, W.ink);
-    R(c, x, y, 2, len, W.deck1); R(c, x + w - 2, y, 2, len, W.deck0);
-    // side rails (drawn as a dark band + posts poking out)
+    R(c, x, y, uw(1), len, W.deck1); R(c, x + w - uw(1), y, uw(1), len, W.deck0);
+
+    // head beams across the pier: every bent shows as a heavier timber
+    const pitch = uw(14);
+    for (let i = uw(2); i < len - uw(2); i += pitch) {
+      R(c, x, y + i - 1, w, 1, W.ink);
+      R(c, x, y + i, w, uw(2), W.deck1);
+      R(c, x, y + i, w, 1, W.deck4);
+      R(c, x, y + i + uw(2), w, 1, 'rgba(30,18,14,0.45)');
+      for (let q = uw(2); q < w; q += uw(5)) R(c, x + q, y + i, 1, uw(2), W.deck0);
+    }
+    // piles + braces poking out along both sides, below the deck line
+    for (let i = uw(2); i < len - uw(3); i += pitch) {
+      for (const s of [0, 1]) {
+        const px2 = s ? x + w + 1 : x - uw(2.5);
+        R(c, px2 - 1, y + i - 1, uw(2.5) + 2, uw(5) + 2, W.ink);
+        R(c, px2, y + i, uw(2.5), uw(5), W.post1);
+        R(c, px2, y + i, 1, uw(5), W.post2);
+        R(c, px2, y + i + uw(3), uw(2.5), uw(2), W.wet);
+        if (rng.next() < 0.6) R(c, px2 + 1, y + i + uw(4), uw(1), 1, W.alg);
+        if (rng.next() < 0.4) R(c, px2 + Math.floor(rng.next() * uw(2)), y + i + uw(3.5), 1, 1, W.barn);
+        // diagonal brace back under the deck
+        Kit.brace(c, px2 + uw(1), y + i + uw(4), s ? x + w - uw(2) : x + uw(2), y + i - uw(1), uw(1));
+      }
+    }
+    // pile heads, bolted through the deck, sitting proud of the boards
+    for (let i = uw(2); i < len - uw(2); i += pitch) {
+      for (const s of [0, 1]) {
+        const px2 = s ? x + w - uw(5) : x + uw(2);
+        R(c, px2 - 1, y + i - 1, uw(3) + 2, uw(3) + 2, W.ink);
+        R(c, px2, y + i, uw(3), uw(3), W.post2);
+        R(c, px2, y + i, uw(3), 1, W.post3);
+        R(c, px2, y + i + uw(2), uw(3), uw(1), W.post0);
+        R(c, px2 + uw(1), y + i + uw(1), uw(1), uw(1), W.met2);
+      }
+    }
     if (o.rails !== false) {
       for (const s of [0, 1]) {
-        const rx = s ? x + w - 3 : x;
-        for (let i = 2; i < len - 2; i += 11) {
-          R(c, rx - 2, y + i, 5, 3, W.ink);
-          R(c, rx - 1, y + i, 3, 2, W.post2);
-          R(c, rx - 1, y + i, 1, 1, W.post3);
+        const rx = s ? x + w - uw(1) : x;
+        for (let i = uw(1); i < len - uw(1); i += uw(5.5)) {
+          R(c, rx - uw(1), y + i, uw(2.5), uw(1.5), W.ink);
+          R(c, rx - uw(1) + 1, y + i, uw(1.5), uw(1), W.post2);
+          R(c, rx - uw(1) + 1, y + i, 1, 1, W.post3);
         }
-        R(c, rx - 2, y, 2, len, W.post1);
-        R(c, rx - 2, y, 1, len, W.post2);
-        R(c, rx - 3, y, 1, len, W.ink);
+        R(c, rx - uw(1), y, uw(1), len, W.post1);
+        R(c, rx - uw(1), y, 1, len, W.post2);
+        R(c, rx - uw(1) - 1, y, 1, len, W.ink);
         R(c, rx, y, 1, len, W.ink);
       }
     }
-    // pillars poking out along the sides, with wet bases
-    for (let i = 3; i < len - 3; i += 14) {
-      for (const s of [0, 1]) {
-        const px = s ? x + w + 1 : x - 5;
-        R(c, px - 1, y + i - 1, 6, 9, W.ink);
-        R(c, px, y + i, 4, 7, W.post1);
-        R(c, px, y + i, 1, 7, W.post2);
-        R(c, px, y + i + 5, 4, 2, W.wet);
-        if (rng.next() < 0.5) R(c, px + 1, y + i + 6, 2, 1, W.alg);
-      }
-    }
   };
-
   /* ======================================================================
      3.  DAMAGE  --  punch holes / crack / lean a baked structure canvas
      ====================================================================== */
   function damagePass(c, amount, seed, lean) {
     const rng = new SeededRandom(seed + 7717);
     const w = c.canvas.width, h = c.canvas.height;
-    const holes = Math.round(amount * 7);
+    const holes = Math.round(amount * 7 * U);
     for (let i = 0; i < holes; i++) {
       const hx = Math.round(rng.range(2, w - 6)), hy = Math.round(rng.range(2, h - 6));
-      const hw = Math.round(rng.range(3, 4 + amount * 6)), hh = Math.round(rng.range(2, 3 + amount * 5));
+      const hw = Math.round(rng.range(uw(1.5), uw(2) + amount * uw(3))), hh = Math.round(rng.range(uw(1), uw(1.5) + amount * uw(2.5)));
       // jagged clear
       for (let q = 0; q < hh; q++) {
-        const inset = Math.round(rng.range(0, 2));
+        const inset = Math.round(rng.range(0, U));
         c.clearRect(hx + inset, hy + q, hw - inset * 2, 1);
       }
       // splinter rim
-      for (let q = 0; q < 7; q++) {
+      for (let q = 0; q < 7 * U; q++) {
         const sx = hx + Math.round(rng.range(-1, hw)), sy = hy + Math.round(rng.range(-1, hh));
         c.fillStyle = rng.next() < 0.5 ? W.deck4 : W.deck0;
         c.fillRect(sx, sy, 1, 1);
       }
     }
     // cracks
-    const cracks = Math.round(amount * 4);
+    const cracks = Math.round(amount * 4 * U);
     for (let i = 0; i < cracks; i++) {
       let x = rng.range(4, w - 4), y = rng.range(4, h - 4);
       let a = rng.range(0, TAU);
       c.fillStyle = W.ink;
-      for (let q = 0; q < 10 + amount * 12; q++) {
+      for (let q = 0; q < (10 + amount * 12) * U; q++) {
         c.fillRect(Math.round(x), Math.round(y), 1, 1);
         a += rng.range(-0.6, 0.6); x += Math.cos(a) * 1.6; y += Math.sin(a) * 1.6;
+        if (U > 1) c.fillRect(Math.round(x), Math.round(y), 1, 1);
         if (x < 0 || y < 0 || x > w || y > h) break;
       }
     }
@@ -834,9 +1128,10 @@
 
   // --- baked pools & splats ---
   const POOLS = [];
-  function poolSprite(r) {
-    if (POOLS[r]) return POOLS[r];
-    const size = r * 2 + 4, c = cv(size, size), rng = new SeededRandom(900 + r * 13);
+  function poolSprite(rw) {
+    const r = Math.round(rw * U);
+    if (POOLS[rw]) return POOLS[rw];
+    const size = r * 2 + uw(4), c = cv(size, size), rng = new SeededRandom(900 + r * 13);
     const cxp = size / 2, cyp = size / 2;
     for (let dy = -r; dy <= r; dy++) {
       const hw = Math.round(Math.sqrt(Math.max(0, r * r - dy * dy)) * 1.22);
@@ -850,23 +1145,24 @@
     }
     // stray droplets
     for (let i = 0; i < r; i++) {
-      const a = rng.range(0, TAU), d = rng.range(r, r + 3);
-      R(c, cxp + Math.cos(a) * d, cyp + Math.sin(a) * d * 0.8, rng.next() < 0.4 ? 2 : 1, 1, '#7c1414');
+      const a = rng.range(0, TAU), d = rng.range(r, r + uw(1.5));
+      R(c, cxp + Math.cos(a) * d, cyp + Math.sin(a) * d * 0.8, rng.next() < 0.4 ? U : 1, 1, '#7c1414');
     }
-    return POOLS[r] = sprite(c, -Math.round(size / 2), -Math.round(size / 2));
+    return POOLS[rw] = { c: c.canvas, w: size, h: size, ox: -size / (2 * K), oy: -size / (2 * K), wu: size / K, hu: size / K };
   }
   const SPLATS = [];
   for (let i = 0; i < 8; i++) {
     const rng = new SeededRandom(311 + i * 97);
-    const size = 18, c = cv(size, size);
-    const n = 3 + Math.floor(rng.next() * 4);
+    const size = uw(18), c = cv(size, size);
+    const n = 4 + Math.floor(rng.next() * 5);
     for (let k = 0; k < n; k++) {
-      const bx = rng.range(4, size - 6), by = rng.range(4, size - 6), bw = rng.range(2, 6), bh = rng.range(2, 4);
+      const bx = rng.range(uw(2), size - uw(3)), by = rng.range(uw(2), size - uw(3)), bw = rng.range(uw(1), uw(3)), bh = rng.range(uw(1), uw(2));
       R(c, bx, by, bw, bh, k === 0 ? '#9e1f22' : '#7c1414');
       R(c, bx + 1, by, bw - 2, 1, '#c8302e');
+      R(c, bx, by + bh - 1, bw, 1, '#55090c');
     }
-    for (let k = 0; k < 10; k++) R(c, rng.range(1, size - 2), rng.range(1, size - 2), 1, 1, rng.next() < 0.5 ? '#7c1414' : '#55090c');
-    SPLATS.push(sprite(c, -9, -9));
+    for (let k = 0; k < 10 * U; k++) R(c, rng.range(1, size - 2), rng.range(1, size - 2), 1, 1, rng.next() < 0.5 ? '#7c1414' : '#55090c');
+    SPLATS.push({ c: c.canvas, w: size, h: size, ox: -size / (2 * K), oy: -size / (2 * K), wu: size / K, hu: size / K });
   }
 
   let _goreSfx = 0;
@@ -1026,8 +1322,8 @@
         const sx = d.x - cam.x, sy = d.y - cam.y;
         if (sx < -24 || sy < -24 || sx > 668 || sy > 388) continue;
         ctx.globalAlpha = d.a;
-        if (d.kind === 0) blit(ctx, d.s, sx, sy);
-        else blit(ctx, poolSprite(Math.max(2, Math.round(d.r))), sx, sy);
+        const dsp = d.kind === 0 ? d.s : poolSprite(Math.max(2, Math.round(d.r)));
+        ctx.drawImage(dsp.c, Math.round(sx * K) / K + dsp.ox, Math.round(sy * K) / K + dsp.oy, dsp.wu, dsp.hu);
       }
       ctx.globalAlpha = 1;
     },
@@ -1121,15 +1417,17 @@
   };
 
   // chunky, gradient-free glow (nested translucent diamonds)
+  // x,y in world units; r in ART pixels. Steps on the art grid so it stays hard-edged.
   function drawGlow(ctx, x, y, r, col, a) {
     ctx.fillStyle = col;
+    const ax = Math.round(x * K), ay = Math.round(y * K);
     for (let i = 3; i >= 1; i--) {
       const rr = Math.round(r * i / 3);
       ctx.globalAlpha = a * (0.16 + (3 - i) * 0.14);
       for (let dy = -rr; dy <= rr; dy += 2) {
         const hw = rr - Math.abs(dy);
         if (hw <= 0) continue;
-        ctx.fillRect(x - hw, y + dy, hw * 2, 2);
+        ctx.fillRect((ax - hw) / K, (ay + dy) / K, (hw * 2) / K, 2 / K);
       }
     }
     ctx.globalAlpha = 1;
@@ -1146,7 +1444,8 @@
       this.x = o.x; this.y = o.y;
       this.seed = o.seed || 12345;
       this.draw = o.draw;                       // (ctx, rng, stage) drawing in canvas space
-      this.cw = o.cw; this.ch = o.ch;           // canvas size
+      this.cw = o.cw; this.ch = o.ch;           // canvas size, in WORLD units
+      this.aw = Math.round(o.cw * K); this.ah = Math.round(o.ch * K);  // ...in art px
       this.ox = o.ox; this.oy = o.oy;           // canvas top-left relative to (x,y)
       this.bx = o.bx === undefined ? o.ox : o.bx;   // hit box, relative to (x,y)
       this.by = o.by === undefined ? o.oy : o.by;
@@ -1165,7 +1464,7 @@
       this.bake(0);
     }
     bake(stage) {
-      const c = cv(this.cw, this.ch);
+      const c = cv(this.aw, this.ah);
       const rng = new SeededRandom(this.seed);
       const res = this.draw(c, rng, stage) || {};
       if (stage === 0) { this.lights = res.lights || []; this.smoke = res.smoke || null; }
@@ -1206,7 +1505,7 @@
         const a = a0 + rand(-1, 1), sp = rand(30, 130);
         this.debris.push({
           x, y: base, z: Math.max(2, base - y), vx: Math.cos(a) * sp, vy: rand(-8, 10), vz: rand(40, 170) - Math.sin(a) * sp * 0.5,
-          rot: rand(0, TAU), vr: rand(-12, 12), w: randi(2, 7), h: randi(1, 3), col: pick(WOODC),
+          rot: rand(0, TAU), vr: rand(-12, 12), w: randi(uw(1), uw(3.5)), h: randi(1, uw(1.5)), col: pick(WOODC),
           life: rand(5, 11), t: 0, plain: true,
         });
       }
@@ -1223,9 +1522,9 @@
       const ax = Math.atan2(ky || -0.5, kx || 0);
       let count = 0;
       for (let cy = 0; cy < ch; ) {
-        const sh = Math.min(ch - cy, 3 + Math.floor(rng.next() * 7));
+        const sh = Math.min(ch - cy, uw(2) + Math.floor(rng.next() * uw(3.5)));
         for (let cx2 = 0; cx2 < cw; ) {
-          const sw = Math.min(cw - cx2, 3 + Math.floor(rng.next() * 9));
+          const sw = Math.min(cw - cx2, uw(2) + Math.floor(rng.next() * uw(4.5)));
           // skip empty cells
           let any = !data;
           if (data) {
@@ -1237,9 +1536,9 @@
             count++;
             // the canvas' vertical axis is HEIGHT here, so a piece from high up
             // is launched upward (z) and falls back down, it does not fly inland
-            const wx = this.x + this.ox + cx2 + sw / 2;
+            const wx = this.x + this.ox + (cx2 + sw / 2) / K;
             const baseY = this.y + this.by + this.bh;               // the structure's footing
-            const hgt = (baseY - (this.y + this.oy + cy + sh / 2));  // how high this piece sat
+            const hgt = (baseY - (this.y + this.oy + (cy + sh / 2) / K));  // how high this piece sat
             const relX = wx - (this.x + this.bx + this.bw * 0.5);
             const spd = rand(0.5, 1.8);
             this.debris.push({
@@ -1268,14 +1567,14 @@
       try { Audio_.noise(0.55, 0.4, 900, 70); Audio_.tone(90, 0.35, 'square', 0.18, -50); } catch (e) { }
       // leave a ruin (stumps of the pillars / the floor)
       if (this.leaveRuin && this.ruinKeep > 0) {
-        const c = cv(this.cw, this.ch);
+        const c = cv(this.aw, this.ah);
         c.drawImage(src, 0, 0);
-        const cut = this.by - this.oy + this.bh - this.ruinKeep;
-        c.clearRect(0, 0, this.cw, Math.max(0, cut));
+        const cut = Math.round((this.by - this.oy + this.bh - this.ruinKeep) * K);
+        c.clearRect(0, 0, this.aw, Math.max(0, cut));
         // splintered top edge
         const r2 = new SeededRandom(this.seed + 5);
-        for (let x = 0; x < this.cw; x++) {
-          if (r2.next() < 0.5) R(c, x, cut - 1 - Math.floor(r2.next() * 3), 1, 3, r2.next() < 0.5 ? W.deck4 : W.deck0);
+        for (let x = 0; x < this.aw; x++) {
+          if (r2.next() < 0.5) R(c, x, cut - 1 - Math.floor(r2.next() * uw(1.5)), 1, uw(1.5), r2.next() < 0.5 ? W.deck4 : W.deck0);
         }
         damagePass(c, 0.9, this.seed + 3, 0);
         wash(c, '#2a1a20', 0.25);
@@ -1343,38 +1642,40 @@
     renderBody(ctx, cam, t) {
       const sx0 = this.x - cam.x + this.ox, sy0 = this.y - cam.y + this.oy;
       if (sx0 > 660 || sx0 + this.cw < -20 || sy0 > 400 || sy0 + this.ch < -40) return;
-      let sx = Math.round(sx0), sy = Math.round(sy0);
-      if (this.shk > 0) { sx += Math.round(Math.cos(this.shkA) * this.shk * 8 * Math.sin(t * 60)); sy += Math.round(this.shk * 3 * Math.sin(t * 47)); }
-      if (this.bobA) sy += Math.round(Math.sin(t * 1.7 + this.bobPh) * this.bobA);
+      let ax = Math.round(sx0 * K), ay = Math.round(sy0 * K);
+      if (this.shk > 0) { ax += Math.round(Math.cos(this.shkA) * this.shk * 8 * Math.sin(t * 60) * K); ay += Math.round(this.shk * 3 * Math.sin(t * 47) * K); }
+      if (this.bobA) ay += Math.round(Math.sin(t * 1.7 + this.bobPh) * this.bobA * K);
       const img = this.collapsed ? this.ruin : this.canvas;
       if (!img) return;
+      const sx = ax / K, sy = ay / K;
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, sx, sy);
+      ctx.drawImage(img, sx, sy, this.cw, this.ch);
       if (this.flash > 0) {
         ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, this.flash * 3);
-        ctx.drawImage(img, sx, sy); ctx.restore(); ctx.globalAlpha = 1;
+        ctx.drawImage(img, sx, sy, this.cw, this.ch); ctx.restore(); ctx.globalAlpha = 1;
       }
       if (this.collapsed) return;
       // warm interior light, flickering
+      // lights are recorded in art pixels; A() fills an art-pixel rect
+      const A = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect((ax + x) / K, (ay + y) / K, w / K, h / K); };
       for (const l of this.lights) {
         const fl = 0.72 + 0.16 * Math.sin(t * 2.3 + l.ph) + 0.12 * Math.sin(t * 11.7 + l.ph * 3);
-        const lx = sx + l.x, ly = sy + l.y;
+        const gx = (ax + l.x + (l.w >> 1)) / K, gy = (ay + l.y + (l.h >> 1)) / K;
         if (l.lantern) {
-          drawGlow(ctx, lx + (l.w >> 1), ly + (l.h >> 1), Math.round(9 * fl * l.k), W.glow, 0.85);
-          R(ctx, lx + 1, ly + 1, l.w - 2, l.h - 2, fl > 0.78 ? W.glowHot : W.glow);
-          R(ctx, lx + 2, ly + 2, l.w - 4, l.h - 3, '#fff8de');
+          drawGlow(ctx, gx, gy, Math.round(uw(4.5) * fl * l.k), W.glow, 0.85);
+          A(l.x + 1, l.y + 1, l.w - 2, l.h - 2, fl > 0.78 ? W.glowHot : W.glow);
+          A(l.x + 2, l.y + 2, l.w - 4, l.h - 3, '#fff8de');
         } else {
-          R(ctx, lx, ly, l.w, l.h, fl > 0.8 ? '#ffe6a8' : '#f2c85f');
-          R(ctx, lx, ly + l.h - 2, l.w, 2, '#e0a23c');
-          R(ctx, lx + 1, ly + 1, l.w - 2, 2, '#fff6d5');
+          A(l.x, l.y, l.w, l.h, fl > 0.8 ? '#ffe6a8' : '#f2c85f');
+          A(l.x, l.y + l.h - uw(1), l.w, uw(1), '#e0a23c');
+          A(l.x + 1, l.y + 1, l.w - 2, uw(1), '#fff6d5');
           if (l.mull) {
-            R(ctx, lx + ((l.w >> 1) - 1), ly, 1, l.h, '#3a2a20');
-            R(ctx, lx, ly + ((l.h >> 1) - 1), l.w, 1, '#3a2a20');
-            // somebody moving about inside
+            A(l.x + ((l.w >> 1) - 1), l.y, 1, l.h, '#3a2a20');
+            A(l.x, l.y + ((l.h >> 1) - 1), l.w, 1, '#3a2a20');
             const mv = Math.sin(t * 0.7 + l.ph * 2.1);
-            if (mv > 0.72) R(ctx, lx + 1 + Math.round((l.w - 4) * (mv - 0.72) * 3), ly + 3, 3, l.h - 3, '#4a2f28');
+            if (mv > 0.72) A(l.x + 1 + Math.round((l.w - uw(2)) * (mv - 0.72) * 3), l.y + uw(1.5), uw(1.5), l.h - uw(1.5), '#4a2f28');
           }
-          drawGlow(ctx, lx + (l.w >> 1), ly + (l.h >> 1), Math.round(7 * fl * l.k), W.glow, 0.4);
+          drawGlow(ctx, gx, gy, Math.round(uw(3.5) * fl * l.k), W.glow, 0.4);
         }
       }
     }
@@ -1383,15 +1684,15 @@
       if (!this.debris.length) return;
       ctx.imageSmoothingEnabled = false;
       for (const d of this.debris) {
-        const sx = Math.round(d.x - cam.x), sy = Math.round(d.y - cam.y - d.z + (d.bob || 0));
+        const sx = Math.round((d.x - cam.x) * K) / K, sy = Math.round((d.y - cam.y - d.z + (d.bob || 0)) * K) / K;
         if (sx < -24 || sy < -24 || sx > 664 || sy > 384) continue;
         const fade = d.life - d.t < 2 ? (d.life - d.t) / 2 : 1;
         ctx.globalAlpha = Math.max(0, fade);
         if (d.floating) { ctx.fillStyle = 'rgba(8,22,52,0.30)'; ctx.fillRect(sx - 4, sy + 2, 9, 3); }
         else if (d.z > 2) { ctx.globalAlpha = 0.22 * fade; ctx.fillStyle = '#0a0812'; ctx.fillRect(sx - 3, Math.round(d.y - cam.y), 7, 2); ctx.globalAlpha = Math.max(0, fade); }
         ctx.save(); ctx.translate(sx, sy); ctx.rotate(d.rot);
-        if (d.plain) { ctx.fillStyle = d.col; ctx.fillRect(-(d.w >> 1), -(d.h >> 1), d.w, d.h); }
-        else ctx.drawImage(d.src, d.sx, d.sy, d.sw, d.sh, -(d.sw >> 1), -(d.sh >> 1), d.sw, d.sh);
+        if (d.plain) { ctx.fillStyle = d.col; ctx.fillRect(-(d.w >> 1) / K, -(d.h >> 1) / K, d.w / K, d.h / K); }
+        else ctx.drawImage(d.src, d.sx, d.sy, d.sw, d.sh, -(d.sw >> 1) / K, -(d.sh >> 1) / K, d.sw / K, d.sh / K);
         ctx.restore();
       }
       ctx.globalAlpha = 1;
@@ -1413,23 +1714,39 @@
     const ux = dx / d, uy = dy / d;
     _ikx = ax + ux * a - uy * h; _iky = ay + uy * a + ux * h;
   }
-  // local(forward,up) -> screen, with body rotation (used for ragdolls)
+  // local(forward,up) in WORLD units -> ART pixels on screen, with body
+  // rotation. Everything about a villager is stamped on the art grid, which is
+  // where the extra resolution in their limbs and faces comes from.
   let _tx = 0, _ty = 0;
   function T(v, lx, ly) {
-    const wx = lx * v._face, wy = -ly;
-    _tx = v._sx + wx * v._c - wy * v._s;
-    _ty = v._sy + wx * v._s + wy * v._c;
+    const wx = lx * v._face * K, wy = -ly * K;
+    _tx = v._ax + wx * v._c - wy * v._s;
+    _ty = v._ay + wx * v._s + wy * v._c;
   }
+  // art-pixel chunky line: square stamps, drawn at 1/K so they land on the grid
+  function plineA(c, x0, y0, x1, y1, th, col) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const len = Math.max(Math.abs(dx), Math.abs(dy));
+    const n = Math.max(1, Math.ceil(len / Math.max(1, th * 0.5)));
+    const h = th >> 1;
+    c.fillStyle = col;
+    const s = th / K;
+    for (let i = 0; i <= n; i++) {
+      const x = Math.round(x0 + dx * i / n) - h, y = Math.round(y0 + dy * i / n) - h;
+      c.fillRect(x / K, y / K, s, s);
+    }
+  }
+  // th is in ART pixels
   function seg(ctx, v, x0, y0, x1, y1, th, col, ink) {
     T(v, x0, y0); const ax = _tx, ay = _ty;
     T(v, x1, y1); const bx = _tx, by = _ty;
-    if (ink) pline(ctx, ax, ay, bx, by, th + 2, ink);
-    pline(ctx, ax, ay, bx, by, th, col);
+    if (ink) plineA(ctx, ax, ay, bx, by, th + 2, ink);
+    plineA(ctx, ax, ay, bx, by, th, col);
   }
   function dot(ctx, v, x, y, s, col) {
     T(v, x, y);
     ctx.fillStyle = col;
-    ctx.fillRect(Math.round(_tx) - (s >> 1), Math.round(_ty) - (s >> 1), s, s);
+    ctx.fillRect((Math.round(_tx) - (s >> 1)) / K, (Math.round(_ty) - (s >> 1)) / K, s / K, s / K);
   }
 
   const GLYPHS = {
@@ -1441,18 +1758,21 @@
     'x': ['1.1', '.1.', '1.1', '...', '...'],
     '-': ['...', '...', '111', '...', '...'],
   };
+  // x,y in ART pixels
   function bubble(ctx, x, y, str, col, tailDir) {
-    const gw = 4, w = str.length * gw + 3, h = 9;
+    const gs2 = Math.max(1, Math.round(K / 2));           // glyph pixel size
+    const gw = 4 * gs2, w = str.length * gw + 3 * gs2, h = 9 * gs2;
     x = Math.round(x - w / 2); y = Math.round(y - h);
-    R(ctx, x - 1, y - 1, w + 2, h + 2, W.ink);
-    R(ctx, x, y, w, h, col || '#f4efe0');
-    R(ctx, x + 1, y + 1, w - 2, 1, '#ffffff');
-    R(ctx, x + (tailDir > 0 ? w - 4 : 2), y + h, 2, 2, col || '#f4efe0');
-    R(ctx, x + (tailDir > 0 ? w - 4 : 2), y + h + 2, 1, 1, W.ink);
+    const A = (px2, py, pw, ph, c2) => { ctx.fillStyle = c2; ctx.fillRect(px2 / K, py / K, pw / K, ph / K); };
+    A(x - gs2, y - gs2, w + gs2 * 2, h + gs2 * 2, W.ink);
+    A(x, y, w, h, col || '#f4efe0');
+    A(x + gs2, y + gs2, w - gs2 * 2, gs2, '#ffffff');
+    A(x + (tailDir > 0 ? w - 4 * gs2 : 2 * gs2), y + h, gs2 * 2, gs2 * 2, col || '#f4efe0');
+    A(x + (tailDir > 0 ? w - 4 * gs2 : 2 * gs2), y + h + gs2 * 2, gs2, gs2, W.ink);
     for (let i = 0; i < str.length; i++) {
       const g = GLYPHS[str[i]]; if (!g) continue;
       for (let r = 0; r < 5; r++) for (let c = 0; c < 3; c++)
-        if (g[r][c] === '1') R(ctx, x + 2 + i * gw + c, y + 2 + r, 1, 1, '#241a22');
+        if (g[r][c] === '1') A(x + 2 * gs2 + i * gw + c * gs2, y + 2 * gs2 + r * gs2, gs2, gs2, '#241a22');
     }
   }
 
@@ -1476,11 +1796,16 @@
       this.onJetty = !!opts.onJetty;
       this.waterY = opts.waterY === undefined ? y + 40 : opts.waterY;
       // ---- body build (variation so a crowd reads as a crowd)
-      this.legL = rand(4.6, 5.8); this.legL2 = this.legL * rand(0.92, 1.08);
-      this.torso = rand(7, 9.5);
-      this.armL = rand(3.6, 4.6); this.armL2 = this.armL * rand(0.9, 1.05);
-      this.head = randi(5, 6);
-      this.bulk = Math.random() < 0.3 ? 8 : Math.random() < 0.55 ? 7 : 6;
+      // build: man | woman | child | boss (the harbour master) | old
+      this.build = opts.build || (Math.random() < 0.1 ? 'child' : Math.random() < 0.42 ? 'woman' : Math.random() < 0.12 ? 'old' : 'man');
+      const B = this.build;
+      const tall = B === 'child' ? 0.68 : B === 'woman' ? rand(0.92, 1.0) : B === 'boss' ? 1.08 : B === 'old' ? 0.94 : rand(0.96, 1.08);
+      this.scaleB = B === 'child' ? 0.75 : 1;
+      this.legL = rand(4.6, 5.8) * tall; this.legL2 = this.legL * rand(0.92, 1.08);
+      this.torso = rand(7, 9.5) * tall;
+      this.armL = rand(3.6, 4.6) * tall; this.armL2 = this.armL * rand(0.9, 1.05);
+      this.head = B === 'child' ? 5 : randi(5, 6);
+      this.bulk = B === 'child' ? 4.5 : B === 'woman' ? rand(5.2, 6.4) : B === 'boss' ? 7.5 : (Math.random() < 0.3 ? 8 : Math.random() < 0.55 ? 7 : 6);
       this.skin = opts.skin || pick(SKIN);
       this.shirt = opts.shirt || pick(SHIRT);
       this.shirt2 = Math.random() < 0.45 ? pick(SHIRT) : shade(this.shirt, 0.78);
@@ -1488,10 +1813,22 @@
       this.shirtLt = shade(this.shirt, 1.32); this.pantsLt = shade(this.pants, 1.3);
       this.boots = pick(['#5a3c28', '#4a3a42', '#6b4a30', '#3e3a30']);
       this.hair = pick(['#2b1f1a', '#4a3020', '#6b5030', '#8a7a60', '#7a2a1a', '#1c1418']);
-      this.hat = randi(0, 5); this.hatCol = pick(HATCOL);
-      this.beard = Math.random() < 0.4 ? this.hair : null;
-      this.apron = Math.random() < 0.3;
-      this.vest = !this.apron && Math.random() < 0.4;
+      if (B === 'boss') { this.hat = 6; this.hatCol = '#25313f'; }
+      else if (B === 'woman') { this.hat = Math.random() < 0.5 ? 7 : randi(0, 2); this.hatCol = pick(HATCOL); }
+      else if (B === 'child') { this.hat = Math.random() < 0.5 ? 0 : randi(1, 4); this.hatCol = pick(HATCOL); }
+      else { this.hat = randi(0, 5); this.hatCol = pick(HATCOL); }
+      this.beard = (B === 'man' || B === 'old') && Math.random() < 0.5 ? (B === 'old' ? '#b9b4ac' : this.hair) : null;
+      if (B === 'old') this.hair = '#b9b4ac';
+      this.longHair = B === 'woman' && Math.random() < 0.7;
+      this.skirt = B === 'woman' && Math.random() < 0.55;
+      this.skirtCol = pick(['#4a5a74', '#6b4a5e', '#3f5b4a', '#7a6244', '#5b4a68']);
+      this.apron = (this.role === 'gut' || this.role === 'market') ? true : Math.random() < (B === 'woman' ? 0.45 : 0.25);
+      this.apronCol = Math.random() < 0.5 ? '#cfc6ad' : '#b7c3c8';
+      this.apronStain = pick(['#9e3a34', '#8a5a33', '#7c4a4a']);
+      this.coat = B === 'boss';
+      this.coatCol = '#28384a';
+      this.gloves = Math.random() < 0.2 ? '#7a5a3a' : null;
+      this.vest = !this.apron && !this.coat && Math.random() < 0.4;
       this.item = opts.item || null;
       this.shirtDk = shade(this.shirt, 0.66); this.shirt2Dk = shade(this.shirt2, 0.66);
       this.pantsDk = shade(this.pants, 0.66); this.skinDk = shade(this.skin, 0.72);
@@ -1501,8 +1838,9 @@
       this.bob = 0; this.lean = 0; this.crouch = 0;
       this.workPh = rand(0, TAU);
       this.fishLine = 0; this.catchT = 0;
-      this._sx = 0; this._sy = 0; this._c = 1; this._s = 0; this._face = this.face;
-      if (this.role === 'fish' || this.role === 'hammer' || this.role === 'chat' || this.role === 'idle') this.setState(this.role === 'chat' ? 'idle' : this.role);
+      this._ax = 0; this._ay = 0; this._c = 1; this._s = 0; this._face = this.face;
+      if (this.role === 'watch_deck') this.setState('idle');
+      else if (['fish', 'hammer', 'chat', 'idle', 'mend', 'gut'].indexOf(this.role) >= 0) this.setState(this.role === 'chat' ? 'idle' : this.role);
       else this.setState('idle');
     }
     // ------------------------------------------------------------ behaviour
@@ -1510,6 +1848,8 @@
       this.state = s; this.stateT = 0;
       if (s === 'walk') this.pickWalkTarget();
       if (s === 'fish') { this.face = this.onJetty ? this.face : 1; this.fishLine = 0; }
+      if (s === 'mend') { this.item = 'net'; this.crouch = 0; }
+      if (s === 'gut') { this.item = 'knife'; }
     }
     say(str, dur, col) { this.speech = { s: str, t: 0, dur: dur || 1.4, col: col }; }
     laneAt(u) {
@@ -1636,7 +1976,10 @@
             const r = Math.random();
             if (this.role === 'fish') this.setState('fish');
             else if (this.role === 'hammer' && r < 0.6) this.setState('hammer');
-            else if (this.role === 'haul' && r < 0.7) { this.item = 'crate'; this.setState('walk'); }
+            else if (this.role === 'mend' && r < 0.75) this.setState('mend');
+            else if (this.role === 'gut' && r < 0.75) this.setState('gut');
+            else if (this.role === 'watch_deck' && r < 0.7) { this.face = -this.face; this.stateT = -2; }
+            else if (this.role === 'haul' && r < 0.7) { this.item = Math.random() < 0.5 ? 'box' : 'crate'; this.setState('walk'); }
             else this.setState('walk');
           }
           break;
@@ -1645,7 +1988,7 @@
           const arrived = this.moveTo(this.tx, this.ty, dt, this.speed);
           this.gait += dt * this.speed * 0.42;
           if (arrived) {
-            if (this.item === 'crate' && Math.random() < 0.6) { this.item = null; this.setState('idle'); this.say(':', 0.8); }
+            if ((this.item === 'crate' || this.item === 'box') && Math.random() < 0.6) { this.item = null; this.setState('idle'); this.say(':', 0.8); }
             else this.setState(Math.random() < 0.35 && this.role !== 'walk' ? this.role : 'idle');
           }
           break;
@@ -1657,6 +2000,22 @@
           if (this.catchT > 0) { this.catchT -= dt; if (this.catchT <= 0) this.say('o', 1, '#dff0ff'); }
           else if (Math.random() < dt * 0.06) { this.catchT = 0.9; }
           if (this.stateT > 16) { this.item = null; this.setState('walk'); }
+          break;
+        }
+        case 'mend': {
+          this.moveStop(dt);
+          this.item = 'net';
+          this.workPh += dt * 3.4;
+          if (!this.speech && Math.random() < dt * 0.10) this.say('~', 1.1);
+          if (this.stateT > 14) { this.item = null; this.setState('walk'); }
+          break;
+        }
+        case 'gut': {
+          this.moveStop(dt);
+          this.item = 'knife';
+          this.workPh += dt * 4.6;
+          if (Math.sin(this.workPh * 2.4) > 0.97 && Math.random() < 0.3) Gore.splat(this.x + this.face * 5, this.y + rand(-1, 2), 0.16);
+          if (this.stateT > 12) { this.item = null; this.setState('walk'); }
           break;
         }
         case 'hammer': {
@@ -1766,11 +2125,11 @@
       if (sx < -36 || sx > 676 || sy < -48 || sy > 412) return;
       ctx.imageSmoothingEnabled = false;
       const swim = this.state === 'swim';
-      this._sx = Math.round(sx); this._sy = Math.round(sy);
+      this._ax = Math.round(sx * K); this._ay = Math.round(sy * K);
       if (swim) {
         // only the head and shoulders stay above the surface
-        ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 640, Math.round(sy)); ctx.clip();
-        this._sy = Math.round(sy) + 11;
+        ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 640, Math.round(sy * K) / K); ctx.clip();
+        this._ay = Math.round(sy * K) + uw(5.5);
       }
       this._face = this.face;
       this._c = Math.cos(this.rot); this._s = Math.sin(this.rot);
@@ -1781,31 +2140,40 @@
       const run = this.state === 'panic';
       const g = this.gait;
       const crouch = this.crouch * 3;
-      let bob = walking ? Math.abs(Math.sin(g)) * (run ? 1.7 : 1.1) : Math.sin(this.t * 1.7) * 0.35;
+      // a walk with weight in it: the body drops onto the planted foot and
+      // rises over it, so the bob runs at twice the stride frequency
+      let bob = walking ? (Math.abs(Math.sin(g)) * (run ? 1.5 : 0.9) - (run ? 0.7 : 0.45)) : Math.sin(this.t * 1.7) * 0.3;
       if (swim) bob = Math.sin(this.t * 6) * 1.2;
-      const hipY = this.legL + this.legL2 - crouch + bob - (swim ? 6 : 0);
+      if (this.state === 'mend' || this.state === 'gut') bob = Math.sin(this.workPh * 0.5) * 0.25;
+      const hipY = this.legL + this.legL2 - crouch + bob - (swim ? 6 : 0) - (this.state === 'mend' ? this.legL * 0.75 : 0);
       const torsoH = this.torso - crouch * 0.6;
-      let lean = walking ? (run ? 3.2 : 1.2) : 0;
-      if (this.item === 'crate') lean = -1.6;
+      let lean = walking ? (run ? 3.0 : 1.1) : 0;
+      if (walking) lean += Math.sin(g * 2) * (run ? 0.5 : 0.25);
+      if (this.item === 'crate') lean = -1.5;
       if (this.state === 'hammer') lean = 2.2 + Math.sin(this.workPh) * 1.4;
+      if (this.state === 'gut') lean = 2.4 + Math.sin(this.workPh * 2) * 0.5;
+      if (this.state === 'mend') lean = 2.8;
       if (this.crouch > 0) lean = 2.6;
       if (swim) lean = 4.5;
       const neckX = lean * 0.55, neckY = hipY + torsoH;
       const headY = neckY + this.head * 0.62;
-      const headX = neckX * 1.25 + (this.state === 'notice' ? 1 : 0);
+      const headX = neckX * 1.25 + (this.state === 'notice' ? 1 : 0) + (this.state === 'gut' ? 1.2 : 0);
 
       // legs
-      const stride = run ? 5.2 : 3.4, lift = run ? 3.4 : 2.2;
+      const stride = run ? 5.4 : 3.2, lift = run ? 3.4 : 1.9;
       let f1x, f1y, f2x, f2y;
       if (swim) {
         f1x = -2 + Math.sin(g) * 2.5; f1y = -1 + Math.cos(g) * 1.5;
         f2x = -3 + Math.sin(g + 2) * 2.5; f2y = -2 + Math.cos(g + 2) * 1.5;
       } else if (walking) {
-        f1x = 1 + Math.sin(g) * stride; f1y = Math.max(0, Math.cos(g)) * lift;
-        f2x = -1 + Math.sin(g + Math.PI) * stride; f2y = Math.max(0, Math.cos(g + Math.PI)) * lift;
+        // the foot hangs in front on the swing and stays put on the plant
+        const sw1 = Math.sin(g), sw2 = Math.sin(g + Math.PI);
+        f1x = 0.8 + sw1 * stride; f1y = Math.max(0, Math.cos(g)) * lift;
+        f2x = -0.8 + sw2 * stride; f2y = Math.max(0, Math.cos(g + Math.PI)) * lift;
       } else if (this.state === 'cower') { f1x = 0.4; f1y = 0; f2x = -2.2; f2y = 0; }
-      else { f1x = 1.6; f1y = 0; f2x = -1.9; f2y = 0; }
-      const legThick = this.bulk > 7 ? 4 : 3;
+      else if (this.state === 'mend') { f1x = 3.2; f1y = 0.2; f2x = 1.4; f2y = -0.4; }
+      else { f1x = 1.5; f1y = 0; f2x = -1.8; f2y = 0; }
+      const legThick = Math.round((this.bulk > 7 ? 3.4 : 2.8) * U * this.scaleB);
       ik(0, hipY, f1x, f1y, this.legL, this.legL2, 1);
       const k1x = _ikx, k1y = _iky;
       ik(0, hipY, f2x, f2y, this.legL, this.legL2, 1);
@@ -1815,12 +2183,22 @@
       const shY = neckY - 1.2, shX = neckX + 0.8;
       let h1x, h1y, h2x, h2y;
       const arm = this.armL + this.armL2;
-      if (this.item === 'crate') { h1x = 5; h1y = hipY + torsoH * 0.45; h2x = 4.6; h2y = hipY + torsoH * 0.5; }
-      else if (this.item === 'rod') { h1x = 3.6; h1y = shY - 2.6; h2x = 1.6; h2y = shY - 4.2; }
+      if (this.item === 'crate' || this.item === 'box') {
+        // carried in both hands, out in front, which is why they lean back
+        h1x = 5.2; h1y = hipY + torsoH * 0.5; h2x = 4.4; h2y = hipY + torsoH * 0.56;
+      } else if (this.item === 'rod') { h1x = 3.6; h1y = shY - 2.6; h2x = 1.6; h2y = shY - 4.2; }
       else if (this.state === 'hammer') {
         const sw = Math.sin(this.workPh);
         h1x = 5 + sw * 2.5; h1y = shY - 4 + (sw > 0 ? sw * 7 : sw * 2);
         h2x = 3.2; h2y = shY - 5.5;
+      } else if (this.state === 'mend') {
+        const q = Math.sin(this.workPh * 1.6);
+        h1x = 4.6 + q * 1.6; h1y = shY - 3.2 + Math.cos(this.workPh * 1.6) * 1.1;
+        h2x = 3.4; h2y = shY - 4.4;
+      } else if (this.state === 'gut') {
+        const q = Math.sin(this.workPh * 2.4);
+        h1x = 4.4 + q * 1.2; h1y = shY - 4.2 - q * 0.6;
+        h2x = 3.4 - q * 0.5; h2y = shY - 4.0;
       } else if (this.state === 'notice') {
         h1x = arm * 0.98; h1y = shY + 1.5 + Math.sin(this.t * 9) * 0.6; h2x = -1.5; h2y = shY - 5;
       } else if (this.state === 'panic' || swim) {
@@ -1831,10 +2209,10 @@
         const q = Math.sin(this.t * 3.4 + this.workPh);
         h1x = 3 + q * 1.6; h1y = shY - 3 + Math.cos(this.t * 3.4) * 1.8; h2x = -1.6; h2y = shY - 5.5;
       } else {
-        const swA = walking ? Math.sin(g + Math.PI) * (run ? 3.6 : 2.4) : Math.sin(this.t * 1.5) * 0.5;
-        const swB = walking ? Math.sin(g) * (run ? 3.6 : 2.4) : Math.sin(this.t * 1.5 + 1) * 0.5;
-        h1x = swA + 1.6; h1y = shY - arm * 0.9;
-        h2x = swB - 1.4; h2y = shY - arm * 0.9;
+        const swA = walking ? Math.sin(g + Math.PI) * (run ? 3.4 : 2.2) : Math.sin(this.t * 1.5) * 0.5;
+        const swB = walking ? Math.sin(g) * (run ? 3.4 : 2.2) : Math.sin(this.t * 1.5 + 1) * 0.5;
+        h1x = swA + 1.5; h1y = shY - arm * 0.9 + (walking ? Math.abs(swA) * 0.25 : 0);
+        h2x = swB - 1.3; h2y = shY - arm * 0.9 + (walking ? Math.abs(swB) * 0.25 : 0);
       }
       ik(shX - 1.8, shY, h2x, h2y, this.armL, this.armL2, -1);
       const e2x = _ikx, e2y = _iky;
@@ -1842,124 +2220,164 @@
       const e1x = _ikx, e1y = _iky;
 
       // ---- draw: far side first --------------------------------------
-      // contact shadow so they sit on the planks
       if (!this.dead && !swim && this.z < 6) {
         ctx.fillStyle = 'rgba(18,8,18,0.26)';
-        ctx.fillRect(this._sx - 4, this._sy - 1, 9, 2);
-        ctx.fillRect(this._sx - 2, this._sy - 2, 5, 1);
+        const bw = 4 + this.bulk * 0.35;
+        ctx.fillRect((this._ax - uw(bw * 0.5)) / K, (this._ay - 1) / K, uw(bw) / K, uw(1) / K);
+        ctx.fillRect((this._ax - uw(bw * 0.3)) / K, (this._ay - uw(1)) / K, uw(bw * 0.6) / K, 1 / K);
       }
+      const A1 = Math.round(U * this.scaleB);
       // far leg
-      seg(ctx, this, -1.3, hipY, k2x, k2y, legThick, this.pantsDk);
-      seg(ctx, this, k2x, k2y, f2x, f2y, legThick - 1, this.pantsDk, ink);
-      seg(ctx, this, f2x - 0.8, f2y + 0.6, f2x + 1.2, f2y + 0.6, 2, this.bootsDk, ink);
+      seg(ctx, this, -1.2, hipY, k2x, k2y, legThick, this.pantsDk);
+      seg(ctx, this, k2x, k2y, f2x, f2y, legThick - A1, this.pantsDk, ink);
+      seg(ctx, this, f2x - 0.8, f2y + 0.5, f2x + 1.3, f2y + 0.5, Math.round(1.4 * U), this.bootsDk, ink);
       // far arm
-      seg(ctx, this, shX - 1.8, shY, e2x, e2y, 3, this.shirtDk);
-      seg(ctx, this, e2x, e2y, h2x, h2y, 2, this.skinDk, ink);
+      seg(ctx, this, shX - 1.8, shY, e2x, e2y, Math.round(2.2 * U * this.scaleB), this.shirtDk);
+      seg(ctx, this, e2x, e2y, h2x, h2y, Math.round(1.5 * U * this.scaleB), this.skinDk, ink);
+      dot(ctx, this, h2x, h2y, Math.round(1.6 * U), this.skinDk);
       // near leg
       seg(ctx, this, 1.1, hipY, k1x, k1y, legThick, this.pants);
-      seg(ctx, this, k1x, k1y, f1x, f1y, legThick - 1, this.pants, ink);
-      seg(ctx, this, k1x + 0.9, k1y, f1x + 0.9, f1y, 1, this.pantsLt);
-      seg(ctx, this, f1x - 0.8, f1y + 0.6, f1x + 1.5, f1y + 0.6, 2, this.boots, ink);
-      dot(ctx, this, f1x + 1.3, f1y + 0.6, 1, shade(this.boots, 1.45));
+      seg(ctx, this, k1x, k1y, f1x, f1y, legThick - A1, this.pants, ink);
+      seg(ctx, this, k1x + 0.7, k1y, f1x + 0.7, f1y, 1, this.pantsLt);
+      seg(ctx, this, f1x - 0.9, f1y + 0.5, f1x + 1.5, f1y + 0.5, Math.round(1.4 * U), this.boots, ink);
+      dot(ctx, this, f1x + 1.4, f1y + 0.5, 1, shade(this.boots, 1.45));
+      // a skirt hides the legs from the knee up
+      if (this.skirt) {
+        seg(ctx, this, 0, hipY - 0.4, 0, hipY + 1.4, Math.round(this.bulk * U * 0.62), this.skirtCol, ink);
+        seg(ctx, this, 0, hipY - 1.6, 0, hipY - 1.5, Math.round(this.bulk * U * 0.78), this.skirtCol, ink);
+        seg(ctx, this, 0.8, hipY - 1.5, 0.8, hipY + 1, 1, shade(this.skirtCol, 1.25));
+      }
       // torso
-      seg(ctx, this, 0, hipY - 0.5, neckX, neckY, this.bulk, this.shirt, ink);
-      const bh2 = this.bulk * 0.5 - 0.4;
-      seg(ctx, this, bh2, hipY, neckX + bh2, neckY - 0.8, 1, this.shirtLt);     // lit front edge
-      seg(ctx, this, -bh2, hipY, neckX - bh2, neckY - 0.8, 1, this.shirtDk);    // shaded back
+      const bulkA = Math.round(this.bulk * U * 0.52);
+      seg(ctx, this, 0, hipY - 0.5, neckX, neckY, bulkA, this.shirt, ink);
+      const bh2 = this.bulk * 0.26;
+      seg(ctx, this, bh2, hipY, neckX + bh2, neckY - 0.8, 1, this.shirtLt);
+      seg(ctx, this, -bh2, hipY, neckX - bh2, neckY - 0.8, 1, this.shirtDk);
+      // seams across the chest
+      seg(ctx, this, -bh2 * 0.6, hipY + torsoH * 0.55, bh2 * 0.6, hipY + torsoH * 0.55, 1, this.shirtDk);
       if (this.apron) {
-        seg(ctx, this, 0.4, hipY + 0.4, neckX * 0.7, hipY + torsoH * 0.6, this.bulk - 2, '#cfc6ad');
-        seg(ctx, this, 0.4, hipY + torsoH * 0.6, neckX * 0.7, hipY + torsoH * 0.62, this.bulk - 3, '#a89a80');
+        seg(ctx, this, 0.4, hipY + 0.3, neckX * 0.7, hipY + torsoH * 0.62, bulkA - A1, this.apronCol);
+        seg(ctx, this, 0.4, hipY + torsoH * 0.62, neckX * 0.7, hipY + torsoH * 0.64, bulkA - A1 * 2, shade(this.apronCol, 0.8));
+        // stains down the front
+        dot(ctx, this, 0.8, hipY + torsoH * 0.3, Math.round(1.2 * U), this.apronStain);
+        dot(ctx, this, -0.4, hipY + torsoH * 0.5, A1, this.apronStain);
+      } else if (this.coat) {
+        seg(ctx, this, neckX * 0.4, hipY + torsoH * 0.15, neckX, neckY - 1, bulkA + A1, this.coatCol, ink);
+        seg(ctx, this, neckX * 0.4 + bh2 * 0.8, hipY + torsoH * 0.15, neckX + bh2 * 0.8, neckY - 1, 1, shade(this.coatCol, 1.3));
+        for (let i = 0; i < 3; i++) dot(ctx, this, bh2 * 0.5, hipY + torsoH * (0.35 + i * 0.2), A1, W.met3);
       } else if (this.vest) {
-        seg(ctx, this, neckX * 0.55, hipY + torsoH * 0.45, neckX, neckY - 1.2, this.bulk - 4, this.shirt2);
+        seg(ctx, this, neckX * 0.55, hipY + torsoH * 0.45, neckX, neckY - 1.2, bulkA - A1 * 2, this.shirt2);
         seg(ctx, this, neckX * 0.55 + 1, hipY + torsoH * 0.45, neckX + 1, neckY - 1.2, 1, shade(this.shirt2, 1.25));
       }
       // belt
-      seg(ctx, this, -0.6, hipY + 0.7, 0.6, hipY + 0.7, this.bulk - 1, '#40291f');
-      dot(ctx, this, 0.6, hipY + 0.7, 1, W.met3);
+      seg(ctx, this, -0.6, hipY + 0.7, 0.6, hipY + 0.7, bulkA - A1, '#40291f');
+      dot(ctx, this, 0.6, hipY + 0.7, A1, W.met3);
       // collar
-      seg(ctx, this, neckX - 1, neckY - 0.6, neckX + 1, neckY - 0.6, 2, this.shirtLt);
+      seg(ctx, this, neckX - 1, neckY - 0.6, neckX + 1, neckY - 0.6, A1, this.shirtLt);
       // neck
-      seg(ctx, this, neckX, neckY - 1, headX, headY - this.head * 0.45, 2, this.skinDk, ink);
+      seg(ctx, this, neckX, neckY - 1, headX, headY - this.head * 0.45, Math.round(1.3 * U * this.scaleB), this.skinDk, ink);
       // head
-      seg(ctx, this, headX, headY, headX, headY, this.head + 2, ink);
-      seg(ctx, this, headX, headY, headX, headY, this.head, this.skin);
-      // hair / ear
-      seg(ctx, this, headX - this.head * 0.4, headY + this.head * 0.42, headX + this.head * 0.36, headY + this.head * 0.42, 2, this.hair);
-      seg(ctx, this, headX - this.head * 0.44, headY + this.head * 0.1, headX - this.head * 0.44, headY + this.head * 0.42, 2, this.hair);
-      dot(ctx, this, headX - this.head * 0.42, headY - this.head * 0.05, 1, this.skinDk);
+      const headA = Math.round(this.head * U * 0.62);
+      seg(ctx, this, headX, headY, headX, headY, headA + 2, ink);
+      seg(ctx, this, headX, headY, headX, headY, headA, this.skin);
+      seg(ctx, this, headX - this.head * 0.18, headY + this.head * 0.1, headX - this.head * 0.18, headY + this.head * 0.1, Math.round(headA * 0.7), this.skinDk);
+      // hair
+      seg(ctx, this, headX - this.head * 0.4, headY + this.head * 0.42, headX + this.head * 0.34, headY + this.head * 0.42, Math.round(1.3 * U), this.hair);
+      seg(ctx, this, headX - this.head * 0.46, headY + this.head * 0.06, headX - this.head * 0.46, headY + this.head * 0.42, Math.round(1.3 * U), this.hair);
+      if (this.longHair) seg(ctx, this, headX - this.head * 0.5, headY - this.head * 0.35, headX - this.head * 0.46, headY + this.head * 0.3, Math.round(1.8 * U), this.hair, ink);
+      dot(ctx, this, headX - this.head * 0.44, headY - this.head * 0.05, A1, this.skinDk);
       // face
       const blink = (Math.sin(this.t * 1.3 + this.workPh) > 0.985) ? 0 : 1;
       if (blink) {
-        dot(ctx, this, headX + this.head * 0.3, headY + 0.5, 1, '#241a22');
-        if (this.head > 5) dot(ctx, this, headX - this.head * 0.08, headY + 0.5, 1, '#241a22');
-      } else dot(ctx, this, headX + this.head * 0.22, headY + 0.5, 1, this.skinDk);
-      dot(ctx, this, headX + this.head * 0.52, headY - 0.1, 1, this.skinDk);   // nose
-      if (this.beard) seg(ctx, this, headX - 0.5, headY - this.head * 0.34, headX + this.head * 0.3, headY - this.head * 0.34, 3, this.beard);
-      // open mouth when shouting
-      if (this.speech || this.state === 'panic') dot(ctx, this, headX + this.head * 0.3, headY - this.head * 0.28, 2, '#5e2a2a');
+        dot(ctx, this, headX + this.head * 0.3, headY + 0.6, A1, '#241a22');
+        dot(ctx, this, headX + this.head * 0.32, headY + 0.75, 1, '#e8f0ff');
+        if (this.head > 5) dot(ctx, this, headX - this.head * 0.06, headY + 0.6, A1, '#241a22');
+      } else dot(ctx, this, headX + this.head * 0.22, headY + 0.5, A1, this.skinDk);
+      dot(ctx, this, headX + this.head * 0.54, headY - 0.1, A1, this.skinDk);   // nose
+      dot(ctx, this, headX + this.head * 0.3, headY - this.head * 0.3, A1, shade(this.skin, 0.8)); // mouth line
+      if (this.beard) {
+        seg(ctx, this, headX - 0.4, headY - this.head * 0.3, headX + this.head * 0.34, headY - this.head * 0.34, Math.round(1.6 * U), this.beard);
+        seg(ctx, this, headX + this.head * 0.1, headY - this.head * 0.5, headX + this.head * 0.2, headY - this.head * 0.5, A1, shade(this.beard, 0.8));
+      }
+      if (this.speech || this.state === 'panic') dot(ctx, this, headX + this.head * 0.3, headY - this.head * 0.28, Math.round(1.4 * U), '#5e2a2a');
       // hat
       this.drawHat(ctx, headX, headY, ink);
       // near arm (over the torso)
-      seg(ctx, this, shX, shY, e1x, e1y, 3, this.shirt);
-      seg(ctx, this, shX, shY - 0.7, e1x, e1y - 0.5, 1, this.shirtLt);
-      seg(ctx, this, e1x, e1y, h1x, h1y, 2, this.skin, ink);
-      dot(ctx, this, h1x, h1y, 2, this.skin);
+      seg(ctx, this, shX, shY, e1x, e1y, Math.round(2.2 * U * this.scaleB), this.shirt);
+      seg(ctx, this, shX, shY - 0.6, e1x, e1y - 0.4, 1, this.shirtLt);
+      seg(ctx, this, e1x, e1y, h1x, h1y, Math.round(1.5 * U * this.scaleB), this.skin, ink);
+      dot(ctx, this, h1x, h1y, Math.round(1.7 * U), this.gloves || this.skin);
       // ---- item -------------------------------------------------------
       this.drawItem(ctx, cam, t, h1x, h1y, h2x, h2y, ink);
       // ---- speech -----------------------------------------------------
       if (this.speech && !this.dead) {
         T(this, headX, headY + this.head * 0.8 + 2);
-        bubble(ctx, _tx, Math.min(_ty - 2, swim ? sy - 12 : 1e9), this.speech.s, this.speech.col, this.face);
+        bubble(ctx, _tx, Math.min(_ty - 2, swim ? sy * K - uw(6) : 1e9), this.speech.s, this.speech.col, this.face);
       }
       // ---- water bits --------------------------------------------------
       if (swim) {
         ctx.restore();
-        const wsx = Math.round(sx), wsy = Math.round(sy);
-        ctx.fillStyle = 'rgba(235,250,255,0.8)';
-        ctx.fillRect(wsx - 7, wsy, 15, 1);
-        ctx.fillRect(wsx - 9 + Math.round(Math.sin(t * 6) * 2), wsy + 1, 5, 1);
-        ctx.fillRect(wsx + 5, wsy + 1, 5, 1);
-        ctx.fillStyle = 'rgba(200,236,255,0.5)';
-        ctx.fillRect(wsx - 11 + Math.round(Math.sin(t * 4 + 1) * 3), wsy + 2, 7, 1);
+        const wsx = Math.round(sx * K), wsy = Math.round(sy * K);
+        const A = (px2, py, pw, ph, c2) => { ctx.fillStyle = c2; ctx.fillRect(px2 / K, py / K, pw / K, ph / K); };
+        A(wsx - uw(3.5), wsy, uw(7), 1, 'rgba(235,250,255,0.8)');
+        A(wsx - uw(4.5) + Math.round(Math.sin(t * 6) * U), wsy + 1, uw(2.5), 1, 'rgba(235,250,255,0.8)');
+        A(wsx + uw(2.5), wsy + 1, uw(2.5), 1, 'rgba(235,250,255,0.8)');
+        A(wsx - uw(5.5) + Math.round(Math.sin(t * 4 + 1) * U * 1.5), wsy + U, uw(3.5), 1, 'rgba(200,236,255,0.5)');
       }
     }
     drawHat(ctx, hx, hy, ink) {
       const r = this.head * 0.5;          // head half-height; the crown sits at hy + r
+      const th = v => Math.max(1, Math.round(v * U));
       switch (this.hat) {
         case 1: // knitted beanie
-          seg(ctx, this, hx - r * 0.7, hy + r * 1.05, hx + r * 0.7, hy + r * 1.05, 4, ink);
-          seg(ctx, this, hx - r * 0.7, hy + r * 1.0, hx + r * 0.7, hy + r * 1.0, 2, this.hatCol);
-          seg(ctx, this, hx - r, hy + r * 0.72, hx + r, hy + r * 0.72, 3, ink);
+          seg(ctx, this, hx - r * 0.7, hy + r * 1.05, hx + r * 0.7, hy + r * 1.05, th(2), ink);
+          seg(ctx, this, hx - r * 0.7, hy + r * 1.0, hx + r * 0.7, hy + r * 1.0, th(1), this.hatCol);
+          seg(ctx, this, hx - r, hy + r * 0.72, hx + r, hy + r * 0.72, th(1.5), ink);
           seg(ctx, this, hx - r, hy + r * 0.7, hx + r, hy + r * 0.7, 1, shade(this.hatCol, 1.25));
+          for (let i = -2; i <= 2; i++) if (i % 2) dot(ctx, this, hx + r * 0.3 * i, hy + r * 1.0, 1, shade(this.hatCol, 0.7));
           break;
         case 2: // wide straw brim
-          seg(ctx, this, hx - r * 2, hy + r * 0.85, hx + r * 2, hy + r * 0.85, 3, ink);
+          seg(ctx, this, hx - r * 2, hy + r * 0.85, hx + r * 2, hy + r * 0.85, th(1.5), ink);
           seg(ctx, this, hx - r * 1.9, hy + r * 0.8, hx + r * 1.9, hy + r * 0.8, 1, '#dcb872');
-          seg(ctx, this, hx - r * 0.7, hy + r * 1.45, hx + r * 0.7, hy + r * 1.45, 4, ink);
-          seg(ctx, this, hx - r * 0.7, hy + r * 1.4, hx + r * 0.7, hy + r * 1.4, 2, '#eccf90');
+          seg(ctx, this, hx - r * 0.7, hy + r * 1.45, hx + r * 0.7, hy + r * 1.45, th(2), ink);
+          seg(ctx, this, hx - r * 0.7, hy + r * 1.4, hx + r * 0.7, hy + r * 1.4, th(1), '#eccf90');
           seg(ctx, this, hx - r * 0.7, hy + r * 1.05, hx + r * 0.7, hy + r * 1.05, 1, '#a8813f');
           break;
         case 3: // cap with a peak
-          seg(ctx, this, hx - r * 0.8, hy + r * 1.2, hx + r * 0.8, hy + r * 1.2, 4, ink);
-          seg(ctx, this, hx - r * 0.8, hy + r * 1.15, hx + r * 0.8, hy + r * 1.15, 2, this.hatCol);
-          seg(ctx, this, hx + r * 0.4, hy + r * 0.85, hx + r * 1.9, hy + r * 0.85, 2, ink);
+          seg(ctx, this, hx - r * 0.8, hy + r * 1.2, hx + r * 0.8, hy + r * 1.2, th(2), ink);
+          seg(ctx, this, hx - r * 0.8, hy + r * 1.15, hx + r * 0.8, hy + r * 1.15, th(1), this.hatCol);
+          seg(ctx, this, hx + r * 0.4, hy + r * 0.85, hx + r * 1.9, hy + r * 0.85, th(1), ink);
           seg(ctx, this, hx + r * 0.4, hy + r * 0.8, hx + r * 1.8, hy + r * 0.8, 1, shade(this.hatCol, 0.75));
           break;
         case 4: // bandana with a knot tail
-          seg(ctx, this, hx - r, hy + r * 0.95, hx + r, hy + r * 0.95, 3, ink);
-          seg(ctx, this, hx - r, hy + r * 0.9, hx + r, hy + r * 0.9, 2, this.hatCol);
-          seg(ctx, this, hx - r * 0.9, hy + r * 0.8, hx - r * 1.9, hy + r * 0.25, 2, ink);
+          seg(ctx, this, hx - r, hy + r * 0.95, hx + r, hy + r * 0.95, th(1.5), ink);
+          seg(ctx, this, hx - r, hy + r * 0.9, hx + r, hy + r * 0.9, th(1), this.hatCol);
+          seg(ctx, this, hx - r * 0.9, hy + r * 0.8, hx - r * 1.9, hy + r * 0.25, th(1), ink);
           seg(ctx, this, hx - r * 0.9, hy + r * 0.75, hx - r * 1.8, hy + r * 0.25, 1, shade(this.hatCol, 1.2));
           break;
         case 5: // sou'wester
-          seg(ctx, this, hx - r * 2.1, hy + r * 0.75, hx + r * 1.5, hy + r * 0.95, 3, ink);
+          seg(ctx, this, hx - r * 2.1, hy + r * 0.75, hx + r * 1.5, hy + r * 0.95, th(1.5), ink);
           seg(ctx, this, hx - r * 2, hy + r * 0.7, hx + r * 1.4, hy + r * 0.9, 1, '#e0a02a');
-          seg(ctx, this, hx - r * 0.6, hy + r * 1.45, hx + r * 0.5, hy + r * 1.45, 5, ink);
-          seg(ctx, this, hx - r * 0.6, hy + r * 1.4, hx + r * 0.5, hy + r * 1.4, 3, '#f0b23a');
+          seg(ctx, this, hx - r * 0.6, hy + r * 1.45, hx + r * 0.5, hy + r * 1.45, th(2.5), ink);
+          seg(ctx, this, hx - r * 0.6, hy + r * 1.4, hx + r * 0.5, hy + r * 1.4, th(1.5), '#f0b23a');
           seg(ctx, this, hx - r * 0.6, hy + r * 1.05, hx + r * 0.5, hy + r * 1.05, 1, '#b8791f');
           break;
+        case 6: // peaked officer's cap (the harbour master)
+          seg(ctx, this, hx - r * 0.9, hy + r * 1.3, hx + r * 0.9, hy + r * 1.3, th(2.5), ink);
+          seg(ctx, this, hx - r * 0.9, hy + r * 1.25, hx + r * 0.9, hy + r * 1.25, th(1.5), this.hatCol);
+          seg(ctx, this, hx - r * 0.9, hy + r * 0.95, hx + r * 0.9, hy + r * 0.95, th(1), '#1b1a20');
+          seg(ctx, this, hx + r * 0.5, hy + r * 0.85, hx + r * 2.1, hy + r * 0.8, th(1), ink);
+          seg(ctx, this, hx + r * 0.5, hy + r * 0.8, hx + r * 2, hy + r * 0.75, 1, '#3b3a44');
+          dot(ctx, this, hx + r * 0.2, hy + r * 1.35, Math.max(1, Math.round(U * 0.8)), '#f2c744');
+          break;
+        case 7: // headscarf
+          seg(ctx, this, hx - r * 1.05, hy + r * 1.0, hx + r * 0.95, hy + r * 1.0, th(2), ink);
+          seg(ctx, this, hx - r * 1.0, hy + r * 0.95, hx + r * 0.9, hy + r * 0.95, th(1.2), this.hatCol);
+          seg(ctx, this, hx - r * 1.0, hy + r * 0.9, hx - r * 1.1, hy + r * 0.1, th(1.2), ink);
+          seg(ctx, this, hx - r * 1.0, hy + r * 0.85, hx - r * 1.05, hy + r * 0.15, 1, shade(this.hatCol, 1.2));
+          break;
         default: // bare head, a bit more hair
-          seg(ctx, this, hx - r * 0.85, hy + r * 1.0, hx + r * 0.85, hy + r * 1.0, 3, this.hair);
+          seg(ctx, this, hx - r * 0.85, hy + r * 1.0, hx + r * 0.85, hy + r * 1.0, th(1.5), this.hair);
           seg(ctx, this, hx - r * 0.85, hy + r * 0.82, hx + r * 0.3, hy + r * 0.82, 1, shade(this.hair, 1.35));
           break;
       }
@@ -1967,46 +2385,56 @@
     drawItem(ctx, cam, t, h1x, h1y, h2x, h2y, ink) {
       void h2x; void h2y;
       if (!this.item) return;
+      const th = v => Math.max(1, Math.round(v * U));
       if (this.item === 'rod') {
         const bend = this.catchT > 0 ? 1 : 0;
         const tipX = h1x + 13 - bend * 3, tipY = h1y + 9 - bend * 5;
-        seg(ctx, this, h1x - 3, h1y - 2, tipX, tipY, 3, ink);
+        seg(ctx, this, h1x - 3, h1y - 2, tipX, tipY, th(1.5), ink);
         seg(ctx, this, h1x - 3, h1y - 2, tipX, tipY, 1, '#6b4a2a');
-        dot(ctx, this, h1x + 1, h1y, 2, W.met2);
-        // line down to the water, with a float
+        dot(ctx, this, h1x + 1, h1y, th(1), W.met2);
         T(this, tipX, tipY);
         const lx = Math.round(_tx), ly = Math.round(_ty);
-        const wy = Math.round(this.waterY - cam.y);
+        const wy = Math.round((this.waterY - cam.y) * K);
         if (wy > ly) {
           ctx.fillStyle = 'rgba(232,244,255,0.30)';
-          const drift = Math.sin(t * 1.3 + this.workPh) * 3;
-          for (let y = ly; y < wy; y += 3) ctx.fillRect(Math.round(lx + drift * (y - ly) / Math.max(1, wy - ly)), y, 1, 1);
-          const fx = Math.round(lx + drift), fy = wy + Math.round(Math.sin(t * 3 + this.workPh) * 1.5);
-          if (this.catchT > 0) {
-            R(ctx, fx - 1, fy - 3, 3, 3, W.ink); R(ctx, fx - 1, fy - 3, 3, 1, '#ffffff'); R(ctx, fx - 1, fy - 2, 3, 1, '#e0322e');
-            ctx.fillStyle = 'rgba(235,250,255,0.8)'; ctx.fillRect(fx - 4, fy, 9, 1);
-          } else {
-            R(ctx, fx - 1, fy - 2, 3, 3, W.ink); R(ctx, fx - 1, fy - 2, 3, 1, '#ffffff'); R(ctx, fx - 1, fy - 1, 3, 1, '#e0322e');
-          }
+          const drift = Math.sin(t * 1.3 + this.workPh) * 3 * K;
+          for (let y = ly; y < wy; y += 3) ctx.fillRect(Math.round(lx + drift * (y - ly) / Math.max(1, wy - ly)) / K, y / K, 1 / K, 1 / K);
+          const fx = Math.round(lx + drift), fy = wy + Math.round(Math.sin(t * 3 + this.workPh) * 1.5 * K);
+          const A = (px2, py, pw, ph, c2) => { ctx.fillStyle = c2; ctx.fillRect(px2 / K, py / K, pw / K, ph / K); };
+          A(fx - th(0.8), fy - th(1.4), th(1.6), th(1.6), W.ink);
+          A(fx - th(0.6), fy - th(1.2), th(1.2), th(0.6), '#ffffff');
+          A(fx - th(0.6), fy - th(0.6), th(1.2), th(0.6), '#e0322e');
+          if (this.catchT > 0) A(fx - th(2), fy + th(0.4), th(4), 1, 'rgba(235,250,255,0.8)');
         }
-      } else if (this.item === 'crate') {
-        T(this, h1x + 2.5, h1y + 2);
-        ctx.drawImage(P.crateSm.c, Math.round(_tx - P.crateSm.ax), Math.round(_ty - P.crateSm.ay));
+      } else if (this.item === 'crate' || this.item === 'box') {
+        const spr = this.item === 'box' ? P.fishBox : P.crateSm;
+        T(this, h1x + 2.2, h1y + 2.2);
+        ctx.drawImage(spr.c, (Math.round(_tx) - (spr.w >> 1)) / K, (Math.round(_ty) - (spr.h >> 1)) / K, spr.w / K, spr.h / K);
       } else if (this.item === 'hammer') {
         const a = Math.sin(this.workPh);
         const ex = h1x + 5, ey = h1y + (a > 0 ? 3 : -2);
-        seg(ctx, this, h1x, h1y, ex, ey, 3, ink);
+        seg(ctx, this, h1x, h1y, ex, ey, th(1.5), ink);
         seg(ctx, this, h1x, h1y, ex, ey, 1, '#7a5230');
-        seg(ctx, this, ex - 0.6, ey + 1.4, ex + 0.6, ey - 1.4, 4, ink);
-        seg(ctx, this, ex - 0.4, ey + 1.2, ex + 0.4, ey - 1.2, 2, W.met2);
+        seg(ctx, this, ex - 0.6, ey + 1.4, ex + 0.6, ey - 1.4, th(2), ink);
+        seg(ctx, this, ex - 0.4, ey + 1.2, ex + 0.4, ey - 1.2, th(1), W.met2);
       } else if (this.item === 'fish') {
         T(this, h1x + 2, h1y - 1);
-        ctx.drawImage(P.fish.c, Math.round(_tx - P.fish.ax), Math.round(_ty - P.fish.ay));
+        ctx.drawImage(P.fish.c, (Math.round(_tx) - (P.fish.w >> 1)) / K, (Math.round(_ty) - (P.fish.h >> 1)) / K, P.fish.w / K, P.fish.h / K);
+      } else if (this.item === 'knife') {
+        // gutting: a short blade and a fish held down on the board
+        seg(ctx, this, h1x, h1y, h1x + 1.6, h1y - 1.4, th(1.4), ink);
+        seg(ctx, this, h1x, h1y, h1x + 1.5, h1y - 1.3, 1, W.met3);
+        T(this, h1x + 1.2, h1y - 3.4);
+        ctx.drawImage(P.fish.c, (Math.round(_tx) - (P.fish.w >> 1)) / K, (Math.round(_ty) - (P.fish.h >> 1)) / K, P.fish.w / K, P.fish.h / K);
       } else if (this.item === 'net') {
-        seg(ctx, this, h1x, h1y, h1x + 3, h1y - 6, 2, ink);
-        T(this, h1x + 3, h1y - 7);
+        // a lap full of net, mended stitch by stitch
+        seg(ctx, this, h1x - 1, h1y - 2.4, h1x + 3.4, h1y - 2.4, th(2.6), W.net0);
         ctx.fillStyle = W.net1;
-        for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) if ((i + j) % 2 === 0 && i * i + j * j < 10) ctx.fillRect(Math.round(_tx) + i, Math.round(_ty) + j, 1, 1);
+        T(this, h1x + 1.4, h1y - 2.4);
+        const cx2 = Math.round(_tx), cy2 = Math.round(_ty);
+        for (let i = -uw(2.5); i <= uw(2.5); i++) for (let j = -uw(1.5); j <= uw(1.5); j++)
+          if (((i + j) & 1) === 0) ctx.fillRect((cx2 + i) / K, (cy2 + j) / K, 1 / K, 1 / K);
+        seg(ctx, this, h1x, h1y, h1x + 0.8, h1y - 1.2, 1, W.met3);
       }
       void ink;
     }
@@ -2035,103 +2463,114 @@
   /* ======================================================================
      8.  VILLAGE  --  layout, ownership, update & render
      ====================================================================== */
-  P.gull2 = ms([
-    '......',
-    '1WW11W',
-    '.1WW1.',
-    '..y1..',
-  ], 3, 2);
-
-  // ---- bake: a boardwalk platform on pillars -----------------------------
+  // ---- bake: a working deck on driven piles -------------------------------
+  // o.x,o.w,o.deckY,o.waterY in world units. o.job picks what stands on it.
   function makePlatform(o) {
-    const pad = 18, topPad = 44;
+    const pad = 20, topPad = 46;                 // world units of canvas margin
     const drop = o.waterY - o.deckY;
-    const ch = topPad + drop + 22;
+    const ch = topPad + drop + 24;
     const lights = [];
+    const job = o.job || 'general';
     const draw = (c, rng) => {
-      const L = pad, D = topPad, wb = o.w, waterL = topPad + drop;
+      const L = uw(pad), D = uw(topPad), wb = uw(o.w), waterL = uw(topPad + drop);
       // water shadow under the structure
-      R(c, L - 6, waterL, wb + 12, 5, 'rgba(6,20,52,0.34)');
-      R(c, L - 3, waterL + 5, wb + 6, 3, 'rgba(6,20,52,0.20)');
-      // pillars
+      R(c, L - uw(3), waterL, wb + uw(6), uw(2.5), 'rgba(6,20,52,0.34)');
+      R(c, L - uw(1.5), waterL + uw(2.5), wb + uw(3), uw(1.5), 'rgba(6,20,52,0.20)');
+      // ---- piles
       const px = [];
-      const step = 24 + Math.floor(rng.next() * 10);
-      for (let x = 5; x < wb - 4; x += step) px.push(x);
-      if (px.length < 2) px.push(wb - 7);
+      const step = uw(12) + Math.floor(rng.next() * uw(5));
+      for (let x = uw(2.5); x < wb - uw(2); x += step) px.push(x);
+      if (px.length < 2) px.push(wb - uw(3.5));
       for (let i = 0; i < px.length; i++) {
         const style = rng.next() < 0.3 ? 1 : rng.next() < 0.3 ? 2 : 0;
-        Kit.pillar(c, L + px[i], D + 3, waterL + 6 + Math.floor(rng.next() * 4), rng.next() < 0.35 ? 6 : 5, rng, style, waterL);
+        Kit.pile(c, L + px[i], D + uw(1.5), waterL + uw(3) + Math.floor(rng.next() * uw(2)), rng.next() < 0.35 ? uw(3) : uw(2.5), rng, style, waterL);
       }
-      // cross bracing between pillars
+      // ---- cross bracing between piles
       for (let i = 0; i < px.length - 1; i++) {
-        const a = L + px[i] + 2, b = L + px[i + 1] + 2;
-        const y0 = D + 8, y1 = waterL - 6;
+        const a = L + px[i] + uw(1), b = L + px[i + 1] + uw(1);
+        const y0 = D + uw(4), y1 = waterL - uw(3);
         const kind = rng.next();
-        if (kind < 0.42) { Kit.brace(c, a, y1, b, y0 + 4, 3); }
-        else if (kind < 0.72) { Kit.brace(c, a, y1, b, y0 + 4, 3); Kit.brace(c, b, y1, a, y0 + 4, 3); }
-        else { Kit.brace(c, a, y0 + 6, b, y0 + 6, 3); Kit.brace(c, a + 2, y1 - 2, b - 2, y0 + 8, 2); }
-        // rope lashing over the joint
-        if (rng.next() < 0.5) Kit.lashing(c, a - 3, y0 + 4 + Math.floor(rng.range(0, 8)), 9, rng);
+        if (kind < 0.36) { Kit.brace(c, a, y1, b, y0 + uw(2), uw(1.5)); }
+        else if (kind < 0.74) { Kit.brace(c, a, y1, b, y0 + uw(2), uw(1.5)); Kit.brace(c, b, y1, a, y0 + uw(2), uw(1.5)); }
+        else {
+          Kit.brace(c, a, y0 + uw(3), b, y0 + uw(3), uw(1.5));
+          Kit.brace(c, a + uw(1), y1 - uw(1), b - uw(1), y0 + uw(4), uw(1));
+        }
+        if (rng.next() < 0.45) Kit.lashing(c, a - uw(1.5), y0 + uw(2) + Math.floor(rng.range(0, uw(4))), uw(4.5), rng);
       }
-      // a horizontal stringer beam under the deck
-      R(c, L - 2, D + 6, wb + 4, 1, W.ink);
-      R(c, L - 2, D + 7, wb + 4, 3, W.post1);
-      R(c, L - 2, D + 7, wb + 4, 1, W.post2);
-      R(c, L - 2, D + 10, wb + 4, 1, W.ink);
-      // deck surface
+      // ---- stringer beams under the deck
+      R(c, L - uw(1), D + uw(3), wb + uw(2), 1, W.ink);
+      R(c, L - uw(1), D + uw(3) + 1, wb + uw(2), uw(1.5), W.post1);
+      R(c, L - uw(1), D + uw(3) + 1, wb + uw(2), 1, W.post2);
+      R(c, L - uw(1), D + uw(4.5) + 1, wb + uw(2), 1, W.ink);
+      // ---- deck surface
       Kit.deck(c, L, D, wb, rng);
-      // hanging nets / tyres off the edge
-      let hx = 8;
-      while (hx < wb - 24) {
+      // ---- things hung off the edge
+      let hx = uw(4);
+      while (hx < wb - uw(12)) {
         const r = rng.next();
-        if (r < 0.28) { Kit.net(c, L + hx, D + 12, 18 + Math.floor(rng.next() * 12), 10 + Math.floor(rng.next() * 8), rng, { sag: 3 }); hx += 34; }
-        else if (r < 0.42) { c.drawImage(P.tyre.c, L + hx, D + 10); R(c, L + hx + 2, D + 6, 1, 5, W.rope0); hx += 16; }
-        else hx += 14 + Math.floor(rng.next() * 20);
+        if (r < 0.30) { Kit.net(c, L + hx, D + uw(6), uw(9) + Math.floor(rng.next() * uw(6)), uw(5) + Math.floor(rng.next() * uw(4)), rng, { sag: uw(1.5) }); hx += uw(17); }
+        else if (r < 0.44) { c.drawImage(P.tyre.c, L + hx, D + uw(5)); R(c, L + hx + uw(1), D + uw(3), 1, uw(2.5), W.rope0); hx += uw(8); }
+        else hx += uw(7) + Math.floor(rng.next() * uw(10));
       }
-      // railing (with an opening where people step down / onto the jetty)
+      // ---- railing, with an opening where people step down
       if (o.rail !== false) {
-        const gap0 = o.openX0 === undefined ? -1 : o.openX0, gap1 = o.openX1 === undefined ? -1 : o.openX1;
+        const gap0 = o.openX0 === undefined ? -1 : uw(o.openX0), gap1 = o.openX1 === undefined ? -1 : uw(o.openX1);
         let rx = 0;
         while (rx < wb) {
-          let seg2 = Math.min(wb - rx, 40);
-          if (gap0 >= 0 && rx + seg2 > gap0 && rx < gap1) { // skip the opening
+          let seg2 = Math.min(wb - rx, uw(20));
+          if (gap0 >= 0 && rx + seg2 > gap0 && rx < gap1) {
             if (rx < gap0) seg2 = gap0 - rx;
             else { rx = gap1; continue; }
           }
-          if (seg2 > 6) Kit.railing(c, L + rx, D, seg2, rng, { h: 13, spacing: 11, broken: rng.next() < 0.25, rope: rng.next() < 0.22 });
-          rx += Math.max(seg2, 8);
+          if (seg2 > uw(3)) Kit.railing(c, L + rx, D, seg2, rng, { broken: rng.next() < 0.22, rope: rng.next() < 0.2 });
+          rx += Math.max(seg2, uw(4));
         }
       }
-      // steps down to the water (boat landing)
+      // ---- steps down to the water
       if (o.stair !== undefined) {
-        const sxp = L + o.stair;
-        Kit.stairs(c, sxp, D + 2, 16, 16, o.stairDir === undefined ? 1 : o.stairDir, rng);
-        R(c, sxp - 1, D + 1, 18, 1, W.ink);
-        // a hand rope down the side
-        for (let i = 0; i < 18; i += 2) R(c, sxp + i, D - 5 + Math.round(i * 0.9), 1, 1, i % 4 ? W.rope1 : W.rope0);
-        R(c, sxp + 17, D - 6, 2, 8, W.ink); R(c, sxp + 17, D - 6, 1, 8, W.post2);
+        const sxp = L + uw(o.stair);
+        Kit.stairs(c, sxp, D + uw(1), uw(8), uw(8), o.stairDir === undefined ? 1 : o.stairDir, rng);
+        R(c, sxp - 1, D, uw(9), 1, W.ink);
+        for (let i = 0; i < uw(9); i += 2) R(c, sxp + i, D - uw(2.5) + Math.round(i * 0.9), 1, 1, i % 4 ? W.rope1 : W.rope0);
+        R(c, sxp + uw(8.5), D - uw(3), uw(1), uw(4), W.ink); R(c, sxp + uw(8.5), D - uw(3), 1, uw(4), W.post2);
       }
-      // deck clutter
-      let cx2 = 4;
-      while (cx2 < wb - 8) {
+      if (o.ladder !== undefined) Kit.ladder(c, L + uw(o.ladder), D + uw(1), uw(drop - 1), rng);
+      // ---- what this deck is FOR ------------------------------------------
+      const put = (spr, x, yOff) => c.drawImage(spr.c, L + x, D - spr.h + (yOff || 0));
+      let cx2 = uw(2);
+      const room = () => wb - uw(5) - cx2;
+      const W8 = { general: 0, dry: 0, pots: 0, repair: 0, market: 0, store: 0 }; void W8;
+      while (room() > uw(5)) {
         const r = rng.next();
-        if (r < 0.13) { c.drawImage(P.barrel.c, L + cx2, D - P.barrel.h); cx2 += 12; if (rng.next() < 0.5) { c.drawImage(P.barrelOpen.c, L + cx2, D - P.barrelOpen.h); cx2 += 12; } }
-        else if (r < 0.24) { c.drawImage(P.crate.c, L + cx2, D - P.crate.h); cx2 += 12; if (rng.next() < 0.4) { c.drawImage(P.crateSm.c, L + cx2 - 10, D - P.crate.h - P.crateSm.h); } }
-        else if (r < 0.31) { c.drawImage(P.ropeCoil.c, L + cx2, D - P.ropeCoil.h); cx2 += 12; }
-        else if (r < 0.37) { c.drawImage(P.bucket.c, L + cx2, D - P.bucket.h); cx2 += 9; }
-        else if (r < 0.42) { c.drawImage(P.sack.c, L + cx2, D - P.sack.h); cx2 += 9; }
-        else if (r < 0.47) { c.drawImage(P.pot.c, L + cx2, D - P.pot.h); cx2 += 9; }
-        else if (r < 0.53) { c.drawImage(P.anchor.c, L + cx2, D - P.anchor.h); cx2 += 12; }
-        else if (r < 0.62 && cx2 < wb - 34) { Kit.fishRack(c, L + cx2, D, 28, rng); cx2 += 34; }
-        else if (r < 0.70) { // lantern post
-          const ph2 = L + cx2, top = D - 22;
-          R(c, ph2 - 1, top, 1, 22, W.ink); R(c, ph2, top, 2, 22, W.post1); R(c, ph2, top, 1, 22, W.post2); R(c, ph2 + 2, top, 1, 22, W.ink);
-          R(c, ph2 + 2, top, 5, 1, W.post1); R(c, ph2 + 2, top - 1, 5, 1, W.ink);
-          c.drawImage(P.lantern.c, ph2 + 4, top + 1);
-          lights.push({ x: ph2 + 5, y: top + 6, w: 5, h: 5, ph: rng.range(0, TAU), k: 1.25, lantern: true });
-          cx2 += 16;
-        } else cx2 += 10 + Math.floor(rng.next() * 22);
+        if (job === 'dry' && r < 0.55 && room() > uw(16)) { Kit.fishRack(c, L + cx2, D, uw(14), rng); cx2 += uw(17); continue; }
+        if (job === 'pots' && r < 0.6 && room() > uw(7)) { Kit.crabPots(c, L + cx2, D, 2 + Math.floor(rng.next() * 3), rng); cx2 += uw(7); continue; }
+        if (job === 'repair' && r < 0.4 && room() > uw(9)) { Kit.winch(c, L + cx2, D, rng); cx2 += uw(8); continue; }
+        if (job === 'market' && r < 0.45 && room() > uw(8)) { put(P.fishBox, cx2); put(P.fishBox, cx2 + uw(1), -P.fishBox.h + uw(1)); cx2 += uw(7); continue; }
+        if (job === 'store' && r < 0.5 && room() > uw(8)) { put(P.barrel, cx2); put(P.keg, cx2 + uw(5)); cx2 += uw(9); continue; }
+        if (r < 0.10) { put(P.barrel, cx2); cx2 += uw(6); if (rng.next() < 0.5) { put(P.barrelOpen, cx2); cx2 += uw(6); } }
+        else if (r < 0.20) { put(P.crate, cx2); if (rng.next() < 0.45) put(P.crateSm, cx2 + uw(1), -P.crate.h); cx2 += uw(6); }
+        else if (r < 0.27) { put(P.ropeCoil, cx2); cx2 += uw(6); }
+        else if (r < 0.33) { put(P.bucket, cx2); cx2 += uw(5); }
+        else if (r < 0.38) { put(P.sack, cx2); cx2 += uw(5); }
+        else if (r < 0.42) { put(P.pot, cx2); cx2 += uw(4); }
+        else if (r < 0.47) { put(P.anchor, cx2); cx2 += uw(6); }
+        else if (r < 0.53) { Kit.bollard(c, L + cx2, D, rng); cx2 += uw(5); }
+        else if (r < 0.58 && room() > uw(16)) { Kit.fishRack(c, L + cx2, D, uw(14), rng); cx2 += uw(17); }
+        else if (r < 0.63 && room() > uw(8)) { Kit.crabPots(c, L + cx2, D, 2 + Math.floor(rng.next() * 2), rng); cx2 += uw(7); }
+        else if (r < 0.68 && room() > uw(9)) { Kit.winch(c, L + cx2, D, rng); cx2 += uw(8); }
+        else if (r < 0.74) { // lamp post
+          const ph2 = L + cx2, top = D - uw(11);
+          R(c, ph2 - 1, top, 1, uw(11), W.ink); R(c, ph2, top, uw(1), uw(11), W.post1);
+          R(c, ph2, top, 1, uw(11), W.post2); R(c, ph2 + uw(1), top, 1, uw(11), W.ink);
+          R(c, ph2 + uw(1), top, uw(2.5), 1, W.post1); R(c, ph2 + uw(1), top - 1, uw(2.5), 1, W.ink);
+          c.drawImage(P.lantern.c, ph2 + uw(2), top + 1);
+          lights.push({ x: ph2 + uw(2.5), y: top + uw(3), w: uw(2.5), h: uw(2.5), ph: rng.range(0, TAU), k: 1.25, lantern: true });
+          cx2 += uw(8);
+        }
+        else cx2 += uw(5) + Math.floor(rng.next() * uw(11));
       }
+      if (o.davit) Kit.davit(c, L + uw(o.davit), D, rng, o.davitDir || 1);
       return { lights, haze: o.haze ? ['#bcd8ea', o.haze] : null };
     };
     const d = new Destructible({
@@ -2145,42 +2584,40 @@
     return d;
   }
 
-  // ---- bake: a stilt house -----------------------------------------------
+  // ---- bake: a building, optionally on stilts over the water --------------
   function makeHouse(o) {
-    const pad = 16, wallH = o.wallH, w = o.w;
-    const roofH = Math.round(w * 0.36) + 4;
-    const topPad = wallH + roofH + 20;
+    const pad = 18, wallH = o.wallH, w = o.w;
+    const kind = o.kind || 'cottage';
+    const roofH = Math.round(w * 0.30) + 3;
+    const topPad = wallH + roofH + 22;
     const drop = o.stilts ? (o.waterY - o.y) : 0;
-    const ch = topPad + drop + 24;
-    const cwid = w + pad * 2;
+    const ch = topPad + drop + 26;
     const draw = (c, rng) => {
-      const L = pad, base = topPad;
-      let res;
+      const L = uw(pad), base = uw(topPad), wa = uw(w);
       if (o.stilts) {
-        const waterL = topPad + drop;
-        R(c, L - 6, waterL, w + 12, 5, 'rgba(6,20,52,0.34)');
+        const waterL = uw(topPad + drop);
+        R(c, L - uw(3), waterL, wa + uw(6), uw(2.5), 'rgba(6,20,52,0.34)');
         const n = w > 44 ? 4 : 3;
         for (let i = 0; i < n; i++) {
-          const px = Math.round(L + 3 + (w - 9) * i / (n - 1));
-          Kit.pillar(c, px, base, waterL + 6, 6, rng, i % 2 ? 1 : 2, waterL);
+          const px2 = Math.round(L + uw(1.5) + (wa - uw(4.5)) * i / (n - 1));
+          Kit.pile(c, px2, base, waterL + uw(3), uw(3), rng, i % 2 ? 1 : 2, waterL);
         }
         for (let i = 0; i < n - 1; i++) {
-          const a = Math.round(L + 5 + (w - 9) * i / (n - 1)), b = Math.round(L + 5 + (w - 9) * (i + 1) / (n - 1));
-          Kit.brace(c, a, waterL - 6, b, base + 8, 3);
-          Kit.brace(c, b, waterL - 6, a, base + 8, 3);
+          const a = Math.round(L + uw(2.5) + (wa - uw(4.5)) * i / (n - 1)), b = Math.round(L + uw(2.5) + (wa - uw(4.5)) * (i + 1) / (n - 1));
+          Kit.brace(c, a, waterL - uw(3), b, base + uw(4), uw(1.5));
+          Kit.brace(c, b, waterL - uw(3), a, base + uw(4), uw(1.5));
         }
-        R(c, L - 3, base - 1, w + 6, 1, W.ink);
-        R(c, L - 3, base, w + 6, 3, W.post1);
-        R(c, L - 3, base + 3, w + 6, 1, W.ink);
-        // ladder down to the water
-        Kit.ladder(c, L + w - 10, base + 4, drop - 2, rng);
+        R(c, L - uw(1.5), base - 1, wa + uw(3), 1, W.ink);
+        R(c, L - uw(1.5), base, wa + uw(3), uw(1.5), W.post1);
+        R(c, L - uw(1.5), base + uw(1.5), wa + uw(3), 1, W.ink);
+        Kit.ladder(c, L + wa - uw(5), base + uw(2), uw(drop - 1), rng);
       }
-      res = Kit.house(c, L, base, w, wallH, o.col, rng, o);
+      const res = Kit.house(c, L, base, wa, uw(wallH), o.col, rng, Object.assign({ kind, roofH: uw(roofH) }, o));
       return { lights: res.lights, smoke: res.smoke, haze: o.haze ? ['#bcd8ea', o.haze] : null };
     };
     const d = new Destructible({
       kind: 'house', x: o.x, y: o.y, seed: o.seed,
-      cw: cwid, ch, ox: -pad, oy: -topPad,
+      cw: w + pad * 2, ch, ox: -pad, oy: -topPad,
       bx: -2, by: -(wallH + roofH), bw: w + 4, bh: wallH + roofH + drop,
       hp: o.hp || (150 + w * 2), waterY: o.waterY, ruinKeep: o.stilts ? Math.min(30, drop + 10) : 10,
       draw,
@@ -2189,30 +2626,43 @@
     return d;
   }
 
-  // ---- bake: a section of the jetty running out into the water -----------
+  // ---- bake: a section of the pier running out into the water -------------
   function makeJetty(o) {
-    const pad = 14;
+    const pad = 16;
     const cwid = o.w + pad * 2, ch = o.len + 4;
     const lights = [];
     const draw = (c, rng) => {
-      Kit.jetty(c, pad, 2, o.w, o.len, rng, { rails: o.rails !== false });
-      // clutter along the deck
-      let y = 6;
-      while (y < o.len - 12) {
+      const L = uw(pad), wa = uw(o.w), la = uw(o.len);
+      Kit.jetty(c, L, uw(1), wa, la, rng, { rails: o.rails !== false });
+      // furniture along the pier: bollards with rope, cleats, pots, lamps
+      let y = uw(3);
+      while (y < la - uw(6)) {
         const r = rng.next();
         const sideL = rng.next() < 0.5;
-        const cx2 = sideL ? pad + 4 : pad + o.w - 12;
-        if (r < 0.16) c.drawImage(P.crate.c, cx2, y);
-        else if (r < 0.28) c.drawImage(P.barrel.c, cx2, y);
-        else if (r < 0.36) c.drawImage(P.ropeCoil.c, cx2, y);
-        else if (r < 0.44) c.drawImage(P.bucket.c, cx2 + 2, y);
-        else if (r < 0.52 && o.rails !== false) { // lantern post at the rail
-          const lx = sideL ? pad - 1 : pad + o.w - 3;
-          R(c, lx, y - 14, 3, 16, W.ink); R(c, lx, y - 14, 2, 16, W.post1);
-          c.drawImage(P.lantern.c, lx - 1, y - 20);
-          lights.push({ x: lx, y: y - 15, w: 5, h: 5, ph: rng.range(0, TAU), k: 1.3, lantern: true });
-        } else if (r < 0.6) { c.drawImage(P.fish.c, cx2 + 2, y + 2); }
-        y += 14 + Math.floor(rng.next() * 22);
+        const cx2 = sideL ? L + uw(5) : L + wa - uw(11);
+        if (r < 0.13) { Kit.bollard(c, cx2, y + uw(4), rng); if (rng.next() < 0.7) { // rope run to the rail
+            for (let i = 0; i < uw(6); i++) R(c, cx2 + (sideL ? -i : uw(3) + i), y + uw(2) + Math.round(Math.sin(i / uw(6) * Math.PI) * uw(1)), 1, 1, i % 3 ? W.rope1 : W.rope0); } }
+        else if (r < 0.22) c.drawImage(P.crate.c, cx2, y);
+        else if (r < 0.30) c.drawImage(P.barrel.c, cx2, y);
+        else if (r < 0.37) c.drawImage(P.ropeCoil.c, cx2, y);
+        else if (r < 0.45) Kit.crabPots(c, cx2, y + uw(4), 2 + Math.floor(rng.next() * 2), rng);
+        else if (r < 0.50) c.drawImage(P.bucket.c, cx2 + uw(1), y);
+        else if (r < 0.55) Kit.cleat(c, cx2, y);
+        else if (r < 0.62) c.drawImage(P.fishBox.c, cx2 - uw(1), y);
+        else if (r < 0.70 && o.rails !== false) {
+          const lx = sideL ? L - 1 : L + wa - uw(1.5);
+          R(c, lx, y - uw(7), uw(1.5), uw(8), W.ink); R(c, lx, y - uw(7), uw(1), uw(8), W.post1);
+          c.drawImage(P.lantern.c, lx - 1, y - uw(10));
+          lights.push({ x: lx - 1, y: y - uw(8), w: uw(2.5), h: uw(2.5), ph: rng.range(0, TAU), k: 1.3, lantern: true });
+        } else if (r < 0.76) c.drawImage(P.fish.c, cx2 + uw(1), y + uw(1));
+        y += uw(4) + Math.floor(rng.next() * uw(7));
+      }
+      // a ladder down the side into the water
+      if (o.sideLadder) {
+        const lx = o.sideLadder > 0 ? L + wa + 1 : L - uw(4);
+        const ly = uw(8);
+        R(c, lx - 1, ly - 1, uw(4) + 2, uw(14) + 2, W.ink);
+        Kit.ladder(c, lx, ly, uw(14), rng);
       }
       return { lights };
     };
@@ -2227,67 +2677,89 @@
 
   // ---- bake: a moored rowboat ---------------------------------------------
   function makeBoat(o) {
-    const len = o.len || 26, pad = 6;
-    const draw = (c, rng) => { Kit.rowboat(c, pad, 20, len, rng); return {}; };
-    const d = new Destructible({
+    const len = o.len || 26, pad = 7;
+    const draw = (c, rng) => { Kit.rowboat(c, uw(pad), uw(20), uw(len), rng); return {}; };
+    return new Destructible({
       kind: 'boat', x: o.x, y: o.y, seed: o.seed,
       cw: len + pad * 2, ch: 24, ox: -pad, oy: -20,
       bx: 0, by: -14, bw: len, bh: 14,
       hp: 60, waterY: o.y - 4, ruinKeep: 0, leaveRuin: false, bob: 1.6,
       draw,
     });
-    return d;
   }
 
-  // ---- bake: trees & beach scatter ---------------------------------------
+  // ---- bake: a slipway with a hull in a cradle ----------------------------
+  function makeSlip(o) {
+    const pad = 10, topPad = 30;
+    const len = o.len || 40;
+    const draw = (c, rng) => {
+      const L = uw(pad), D = uw(topPad), wa = uw(o.w);
+      Kit.slipway(c, L, D, wa, uw(len), rng);
+      // a hull hauled up the slip, propped in its cradle, half re-planked
+      Kit.cradleHull(c, L + uw(4), D + uw(16), wa - uw(9), rng);
+      Kit.winch(c, L + uw(2), D + uw(2), rng);
+      c.drawImage(P.barrel.c, L + wa - uw(8), D + uw(2) - P.barrel.h);
+      c.drawImage(P.ropeCoil.c, L + wa - uw(13), D + uw(3) - P.ropeCoil.h);
+      // the hauling wire running from the winch down to the cradle
+      for (let i = 0; i < uw(14); i++) R(c, L + uw(4) + i, D + uw(2) + Math.round(i * 0.75), 1, 1, i % 3 ? W.met1 : W.met2);
+      return {};
+    };
+    return new Destructible({
+      kind: 'deck', x: o.x, y: o.y, seed: o.seed,
+      cw: o.w + pad * 2, ch: topPad + len + 10, ox: -pad, oy: -topPad,
+      bx: 0, by: -20, bw: o.w, bh: 34,
+      hp: 140, waterY: o.y + len * 0.5, ruinKeep: 12,
+      draw,
+    });
+  }
+
+  // ---- bake: beach scatter & trees ---------------------------------------
   const BEACH = [];
   function buildBeach() {
     if (BEACH.length) return;
-    const mkb = (w, h, fn) => { const c = cv(w, h); const rng = new SeededRandom(1200 + BEACH.length * 131); fn(c, rng); BEACH.push(sprite(c, -Math.round(w / 2), -h)); };
-    // beached rowboat, hauled up on its side
-    mkb(40, 20, (c, rng) => { Kit.rowboat(c, 4, 18, 30, rng); R(c, 2, 18, 36, 2, 'rgba(90,70,40,0.35)'); });
-    // drying rack
-    mkb(40, 28, (c, rng) => { Kit.fishRack(c, 5, 26, 30, rng); });
-    // crate + barrel stack
+    const mkb = (wu, hu, fn) => {
+      const w = uw(wu), h = uw(hu);
+      const c = cv(w, h); const rng = new SeededRandom(1200 + BEACH.length * 131);
+      fn(c, rng, w, h);
+      BEACH.push({ c: c.canvas, w, h, ox: -wu / 2, oy: -hu, wu, hu });
+    };
+    mkb(40, 20, (c, rng) => { Kit.rowboat(c, uw(2), uw(18), uw(30), rng); R(c, uw(1), uw(18), uw(18), uw(1), 'rgba(90,70,40,0.35)'); });
+    mkb(40, 30, (c, rng) => { Kit.fishRack(c, uw(2.5), uw(28), uw(15), rng, { h: uw(13) }); });
     mkb(30, 24, (c, rng) => {
-      c.drawImage(P.crate.c, 2, 24 - P.crate.h);
-      c.drawImage(P.barrel.c, 14, 24 - P.barrel.h);
-      if (rng.next() < 0.7) c.drawImage(P.crateSm.c, 3, 24 - P.crate.h - P.crateSm.h);
+      c.drawImage(P.crate.c, uw(1), uw(24) - P.crate.h);
+      c.drawImage(P.barrel.c, uw(7), uw(24) - P.barrel.h);
+      if (rng.next() < 0.7) c.drawImage(P.crateSm.c, uw(1.5), uw(24) - P.crate.h - P.crateSm.h);
     });
-    // rock cluster (reuses the game's procedural rock)
     mkb(34, 20, (c, rng) => {
-      const a = makeRock(rng.int(1, 9999), 9), b = makeRock(rng.int(1, 9999), 6);
-      c.drawImage(a.c, 2, 20 - a.h); c.drawImage(b.c, 18, 20 - b.h);
+      const a = makeRock(rng.int(1, 9999), uw(4.5)), b = makeRock(rng.int(1, 9999), uw(3));
+      c.drawImage(a.c, uw(1), uw(20) - a.h); c.drawImage(b.c, uw(9), uw(20) - b.h);
     });
-    // driftwood + weed
     mkb(30, 12, (c, rng) => {
-      pline(c, 2, 10, 26, 7, 4, W.ink); pline(c, 2, 10, 26, 7, 2, W.deck1);
-      pline(c, 8, 11, 20, 5, 2, W.deck2);
-      for (let i = 0; i < 14; i++) R(c, rng.range(1, 28), rng.range(8, 12), rng.next() < 0.5 ? 2 : 1, 1, rng.next() < 0.5 ? W.alg : W.alg2);
+      pline(c, uw(1), uw(10), uw(13), uw(7), uw(2), W.ink); pline(c, uw(1), uw(10), uw(13), uw(7), uw(1), W.deck1);
+      pline(c, uw(4), uw(11), uw(10), uw(5), uw(1), W.deck2);
+      for (let i = 0; i < uw(14); i++) R(c, rng.range(1, uw(29)), rng.range(uw(8), uw(12)), rng.next() < 0.5 ? 2 : 1, 1, rng.next() < 0.5 ? W.alg : W.alg2);
     });
-    // net pile with floats
     mkb(28, 14, (c, rng) => {
-      Kit.net(c, 2, 2, 24, 7, rng, { sag: 1 });
-      c.drawImage(P.ropeCoil.c, 14, 14 - P.ropeCoil.h);
+      Kit.net(c, uw(1), uw(1), uw(12), uw(3.5), rng, { sag: uw(0.5) });
+      c.drawImage(P.ropeCoil.c, uw(7), uw(14) - P.ropeCoil.h);
     });
-    // barrels + rope
     mkb(30, 14, (c, rng) => {
-      c.drawImage(P.barrelOpen.c, 1, 14 - P.barrelOpen.h);
-      c.drawImage(P.barrel.c, 11, 14 - P.barrel.h);
-      c.drawImage(P.ropeCoil.c, 20, 14 - P.ropeCoil.h);
+      c.drawImage(P.barrelOpen.c, 1, uw(14) - P.barrelOpen.h);
+      c.drawImage(P.barrel.c, uw(5.5), uw(14) - P.barrel.h);
+      c.drawImage(P.ropeCoil.c, uw(10), uw(14) - P.ropeCoil.h);
       void rng;
     });
-    // anchor + bucket
-    mkb(24, 14, (c, rng) => { c.drawImage(P.anchor.c, 2, 14 - P.anchor.h); c.drawImage(P.bucket.c, 14, 14 - P.bucket.h); void rng; });
-    // a lone upturned hull
-    mkb(34, 12, (c, rng) => {
-      for (let i = 0; i < 30; i++) {
-        const k = i / 30, hgt = Math.round(Math.sin(k * Math.PI) * 9) + 1;
-        R(c, 2 + i, 11 - hgt, 1, hgt, i % 4 === 0 ? W.deck0 : W.deck1);
-        R(c, 2 + i, 11 - hgt, 1, 1, W.ink);
-        if (rng.next() < 0.2) R(c, 2 + i, 11 - hgt + 2, 1, 1, W.deck3);
+    mkb(24, 14, (c, rng) => { c.drawImage(P.anchor.c, uw(1), uw(14) - P.anchor.h); c.drawImage(P.bucket.c, uw(7), uw(14) - P.bucket.h); void rng; });
+    mkb(26, 16, (c, rng) => { Kit.crabPots(c, uw(2), uw(16), 3, rng); Kit.crabPots(c, uw(12), uw(16), 2, rng); });
+    mkb(34, 12, (c, rng) => {   // upturned hull
+      const la = uw(30);
+      for (let i = 0; i < la; i++) {
+        const k = i / la, hgt = Math.round(Math.sin(k * Math.PI) * uw(4.5)) + 1;
+        R(c, uw(1) + i, uw(11) - hgt, 1, hgt, i % uw(2) === 0 ? W.deck0 : W.deck1);
+        R(c, uw(1) + i, uw(11) - hgt, 1, 1, W.ink);
+        if (rng.next() < 0.2) R(c, uw(1) + i, uw(11) - hgt + 2, 1, 1, W.deck3);
       }
-      R(c, 2, 11, 30, 1, W.ink);
+      R(c, uw(1), uw(11), la, 1, W.ink);
     });
   }
   const TREES = [];
@@ -2295,9 +2767,10 @@
     if (TREES.length) return;
     for (let i = 0; i < 7; i++) {
       const rng = new SeededRandom(700 + i * 37);
-      const c = cv(46, 52);
-      Kit.tree(c, 23, 50, rng, i < 3 ? 'palm' : 'leafy');
-      TREES.push(sprite(c, -23, -50));
+      const wu = 46, hu = 52;
+      const c = cv(uw(wu), uw(hu));
+      Kit.tree(c, uw(23), uw(50), rng, i < 3 ? 'palm' : 'leafy');
+      TREES.push({ c: c.canvas, w: uw(wu), h: uw(hu), ox: -23, oy: -50, wu, hu });
     }
   }
 
@@ -2330,124 +2803,152 @@
       const rowM = { deckY: S - 30, waterY: S + 12, haze: 0 };
       const rowF = { deckY: S + 8, waterY: S + 48, haze: 0 };
       let seed = 1000;
+      // Zones: 0 = the working heart by the pier, 1 = the yards, 2 = the
+      // drying ground and outbuildings at the ends.
+      const zoneOf = dx => { const a = Math.abs(dx); return a < 320 ? 0 : a < 980 ? 1 : 2; };
 
-      // ---- back row: little huts on the sand, trees
-      for (let i = 0; i < 6; i++) {
-        const hx = X + rng.range(-1050, 1050);
-        if (Math.abs(hx - X) < 120) continue;
-        const w = rng.int(28, 40);
+      // ---- back row: outbuildings on the sand, trees
+      for (let i = 0; i < 7; i++) {
+        const hx = X + rng.range(-1250, 1250);
+        if (Math.abs(hx - X) < 150) continue;
+        const w = rng.int(26, 40);
         this.add(makeHouse({
-          x: hx, y: rowB.deckY + rng.range(-10, 4), w, wallH: rng.int(20, 26), col: pick(HOUSE_COLS),
+          x: hx, y: rowB.deckY + rng.range(-10, 4), w, wallH: rng.int(18, 24), col: pick(HOUSE_COLS),
+          kind: zoneOf(hx - X) === 2 ? 'shed' : pick(['shed', 'cottage']),
           seed: seed++, waterY: rowB.waterY, haze: rowB.haze, stilts: false,
-          doorAt: rng.range(0.25, 0.7), chimneyLeft: rng.next() < 0.5, awning: rng.next() < 0.5,
+          doorAt: rng.range(0.25, 0.7), chimneyLeft: rng.next() < 0.5, awning: rng.next() < 0.4,
         }), -2);
       }
       for (let i = 0; i < 26; i++) {
         const tx = X + rng.range(-1500, 1500);
         this.trees.push({ s: TREES[rng.int(0, TREES.length - 1)], x: tx, y: S - rng.range(62, 155), ph: rng.range(0, TAU) });
       }
-      // clutter strewn along the sand
-      for (let i = 0; i < 30; i++) {
-        const bx = X + rng.range(-1500, 1500);
-        if (Math.abs(bx - X) < 60) continue;
-        this.trees.push({ s: BEACH[rng.int(0, BEACH.length - 1)], x: bx, y: S - rng.range(42, 96), ph: 0, flat: true });
+      for (let i = 0; i < 34; i++) {
+        const bx = X + rng.range(-1600, 1600);
+        if (Math.abs(bx - X) < 70) continue;
+        this.trees.push({ s: BEACH[rng.int(0, BEACH.length - 1)], x: bx, y: S - rng.range(40, 96), ph: 0, flat: true });
       }
       this.trees.sort((a, b) => a.y - b.y);
 
-      // ---- main boardwalk: platforms from left to right
+      // ---- the working boardwalk -------------------------------------------
       const startX = X - 2400, endX = X + 2400;
       let x = startX;
       const platforms = [];
+      const JOBS = [['dry', 'store', 'general'], ['pots', 'repair', 'store', 'general'], ['dry', 'general', 'pots']];
       while (x < endX) {
-        let w = rng.int(110, 210);
+        const z = zoneOf(x + 80 - X);
+        let w = z === 0 ? rng.int(120, 170) : z === 1 ? rng.int(110, 200) : rng.int(90, 210);
         if (x + w > endX) w = endX - x;
         if (w < 60) break;
-        const o = { x, w, deckY: rowM.deckY + Math.round(rng.range(-3, 3)), waterY: rowM.waterY, seed: seed++ };
-        // opening where the jetty joins the shore
-        if (x < X + 40 && x + w > X - 40) { o.openX0 = Math.max(0, X - 34 - x); o.openX1 = Math.min(w, X + 34 - x); }
-        if (o.openX0 === undefined && w > 130 && rng.next() < 0.35) {
+        const o = {
+          x, w, deckY: rowM.deckY + Math.round(rng.range(-3, 3)), waterY: rowM.waterY, seed: seed++,
+          job: pick(JOBS[z]),
+        };
+        // opening where the pier joins the shore
+        if (x < X + 40 && x + w > X - 40) { o.openX0 = Math.max(0, X - 34 - x); o.openX1 = Math.min(w, X + 34 - x); o.job = 'market'; }
+        if (o.openX0 === undefined && w > 130 && rng.next() < (z === 0 ? 0.6 : 0.35)) {
           o.stair = Math.round(rng.range(16, w - 40)); o.stairDir = rng.next() < 0.5 ? 1 : -1;
           o.openX0 = o.stair; o.openX1 = o.stair + 18;
+        } else if (o.openX0 === undefined && rng.next() < 0.3) {
+          o.ladder = Math.round(rng.range(10, w - 14));
         }
+        if (z === 0 && rng.next() < 0.5) { o.davit = Math.round(rng.range(20, w - 20)); o.davitDir = rng.next() < 0.5 ? 1 : -1; }
         const p = makePlatform(o);
         this.add(p, 0);
-        platforms.push({ x, w, deckY: o.deckY, str: p });
+        platforms.push({ x, w, deckY: o.deckY, str: p, zone: z, job: o.job });
         this.decks.push({ x0: x, x1: x + w, y0: o.deckY - 8, y1: o.deckY + 10 });
         x += w + rng.int(0, 4);
       }
-      // ---- houses along the boardwalk
+      // ---- buildings along the boardwalk, by zone
+      let heartLoft = false, heartMarket = false;
       for (const pf of platforms) {
         if (pf.w < 100) continue;
-        if (rng.next() < 0.32) continue;
-        const hw = pf.w > 170 ? rng.int(46, 62) : rng.int(34, 48);
+        const skip = pf.zone === 0 ? 0.05 : pf.zone === 1 ? 0.3 : 0.55;
+        if (rng.next() < skip) continue;
+        const hw = pf.w > 170 ? rng.int(48, 64) : rng.int(34, 48);
         const hx = pf.x + rng.range(6, Math.max(8, pf.w - hw - 6));
-        if (Math.abs(hx + hw / 2 - X) < 70) continue;
+        if (Math.abs(hx + hw / 2 - X) < 78) continue;
+        let kind;
+        if (pf.zone === 0) {
+          if (!heartLoft) { kind = 'loft'; heartLoft = true; }
+          else if (!heartMarket) { kind = 'market'; heartMarket = true; }
+          else kind = pick(['boathouse', 'shed', 'loft']);
+        } else if (pf.zone === 1) kind = pick(['shed', 'cottage', 'loft', 'boathouse']);
+        else kind = pick(['shed', 'cottage', 'shed']);
         this.add(makeHouse({
-          x: hx, y: pf.deckY, w: hw, wallH: rng.int(26, 38), col: pick(HOUSE_COLS),
-          seed: seed++, waterY: rowM.waterY, stilts: false,
-          doorAt: rng.range(0.2, 0.68), doorOpen: rng.next() < 0.3, chimneyLeft: rng.next() < 0.5,
+          x: hx, y: pf.deckY, w: hw, wallH: kind === 'loft' ? rng.int(38, 48) : rng.int(26, 36), col: pick(HOUSE_COLS),
+          kind, seed: seed++, waterY: rowM.waterY, stilts: false,
+          doorAt: rng.range(0.2, 0.68), doorOpen: rng.next() < 0.35, chimneyLeft: rng.next() < 0.5,
         }), 1);
       }
 
-      // ---- front row: two houses standing right out in the water
+      // ---- the boatyard: a slipway with a hull in its cradle
+      for (const side of [-1, 1]) {
+        const sx2 = X + side * rng.range(420, 700);
+        this.add(makeSlip({ x: sx2, y: rowM.deckY + 10, w: 54, len: 46, seed: seed++ }), 2);
+      }
+
+      // ---- front row: structures standing out in the water
       for (const side of [-1, 1]) {
         const hx = X + side * rng.range(200, 430) - 30;
-        const hw = rng.int(40, 56);
+        const hw = rng.int(42, 58);
         this.add(makeHouse({
           x: hx, y: rowF.deckY, w: hw, wallH: rng.int(26, 34), col: pick(HOUSE_COLS),
+          kind: side < 0 ? 'boathouse' : 'loft',
           seed: seed++, waterY: rowF.waterY, stilts: true,
           doorAt: rng.range(0.25, 0.65), doorOpen: rng.next() < 0.5, chimneyLeft: side < 0,
         }), 3);
         this.decks.push({ x0: hx, x1: hx + hw, y0: rowF.deckY - 8, y1: rowF.deckY + 8 });
-        // a small deck beside it
         const dx = hx + (side < 0 ? hw + 2 : -64);
-        const pl = makePlatform({ x: dx, w: 62, deckY: rowF.deckY, waterY: rowF.waterY, seed: seed++, hp: 90,
-          stair: side < 0 ? 40 : 6, stairDir: side < 0 ? 1 : -1, openX0: side < 0 ? 40 : 6, openX1: side < 0 ? 58 : 24 });
+        const pl = makePlatform({
+          x: dx, w: 62, deckY: rowF.deckY, waterY: rowF.waterY, seed: seed++, hp: 90, job: side < 0 ? 'pots' : 'dry',
+          stair: side < 0 ? 40 : 6, stairDir: side < 0 ? 1 : -1, openX0: side < 0 ? 40 : 6, openX1: side < 0 ? 58 : 24,
+          davit: side < 0 ? undefined : 50, davitDir: 1,
+        });
         this.add(pl, 3);
         this.decks.push({ x0: dx, x1: dx + 62, y0: rowF.deckY - 8, y1: rowF.deckY + 10 });
         this.add(makeBoat({ x: dx + 10, y: rowF.waterY + 10, len: rng.int(22, 30), seed: seed++ }), 4);
       }
 
-      // ---- the jetty out into the water
+      // ---- the pier out into the water
       const jw = 44;
       let jy = S - 22;
       const jEnd = S + 140;
+      let first = true;
       while (jy < jEnd) {
         const len = Math.min(jEnd - jy, 58);
-        this.add(makeJetty({ x: X, y: jy, w: jw, len, seed: seed++, rails: true }), 5);
-        jy += len;
+        this.add(makeJetty({ x: X, y: jy, w: jw, len, seed: seed++, rails: true, sideLadder: first ? 0 : (rng.next() < 0.5 ? 1 : -1) }), 5);
+        jy += len; first = false;
       }
       this.decks.push({ x0: X - jw / 2, x1: X + jw / 2, y0: S - 22, y1: jEnd });
-      // moored boats at the jetty head
       this.add(makeBoat({ x: X - 46, y: S + 96, len: 28, seed: seed++ }), 5);
       this.add(makeBoat({ x: X + 26, y: S + 60, len: 24, seed: seed++ }), 5);
-      // buoys bobbing around
       for (let i = 0; i < 18; i++) this.props.push({ s: P.buoyProp, x: X + rng.range(-2200, 2200), y: S + rng.range(30, 150), ph: rng.range(0, TAU), amp: 1.8 });
       for (let i = 0; i < 14; i++) this.props.push({ s: P.buoyBall, x: X + rng.range(-2300, 2300), y: S + rng.range(20, 120), ph: rng.range(0, TAU), amp: 1.4 });
 
       // ---- the sign
-      const sc = cv(96, 26);
-      R(sc, 0, 4, 96, 16, W.ink);
-      R(sc, 1, 5, 94, 14, W.deck1);
-      R(sc, 1, 5, 94, 2, W.deck3);
-      R(sc, 1, 17, 94, 2, W.deck0);
-      for (let i = 0; i < 94; i += 3) if ((i * 7 % 11) < 3) R(sc, 1 + i, 7, 2, 10, W.deck2);
-      R(sc, 6, 19, 3, 7, W.post1); R(sc, 87, 19, 3, 7, W.post1);
-      R(sc, 5, 19, 1, 7, W.ink); R(sc, 90, 19, 1, 7, W.ink);
+      const sw = 96, sh = 26;
+      const sc = cv(uw(sw), uw(sh));
+      const A = v => uw(v);
+      R(sc, 0, A(4), A(sw), A(8), W.ink);
+      R(sc, 1, A(4) + 1, A(sw) - 2, A(8) - 2, W.deck1);
+      R(sc, 1, A(4) + 1, A(sw) - 2, A(1), W.deck3);
+      R(sc, 1, A(11), A(sw) - 2, A(1), W.deck0);
+      for (let i = 0; i < A(sw) - 2; i += A(1.5)) if ((i * 7 % 11) < A(1.5)) R(sc, 1 + i, A(5), A(1), A(6), W.deck2);
+      R(sc, A(6), A(12), A(1.5), A(7), W.post1); R(sc, A(87), A(12), A(1.5), A(7), W.post1);
+      R(sc, A(6) - 1, A(12), 1, A(7), W.ink); R(sc, A(88.5), A(12), 1, A(7), W.ink);
       try {
-        const tc = cv(96, 26);
-        pixelText(tc, 'FISHER VILLAGE', 48, 8, 8, '#ffffff', 'center', false);
-        // threshold the antialiased glyphs down to hard pixels
-        const im = tc.getImageData(0, 0, 96, 26), d2 = im.data;
+        const tc = cv(uw(sw), uw(sh));
+        pixelText(tc, 'FISHER VILLAGE', uw(48), uw(4.5), uw(4.5), '#ffffff', 'center', false);
+        const im = tc.getImageData(0, 0, uw(sw), uw(sh)), d2 = im.data;
         for (let i = 0; i < d2.length; i += 4) {
           const on = d2[i + 3] > 120;
           d2[i] = 0xf6; d2[i + 1] = 0xe0; d2[i + 2] = 0xb0; d2[i + 3] = on ? 255 : 0;
         }
         tc.putImageData(im, 0, 0);
         sc.drawImage(tc.canvas, 0, 0);
-        // a 1px dark shadow under the letters
       } catch (e) { }
-      this.signSprite = sprite(sc, -48, -26);
+      this.signSprite = { c: sc.canvas, w: uw(sw), h: uw(sh), ox: -sw / 2, oy: -sh, wu: sw, hu: sh };
       this.signX = X; this.signY = S - 52;
 
       // ---- gulls
@@ -2464,19 +2965,31 @@
 
     populate(platforms, rng, rowF, S, X, jw, jEnd) {
       const mk = (x, y, opts) => { const v = new Villager(x, y, opts); this.villagers.push(v); return v; };
-      // boardwalk crowd
-      const roles = ['walk', 'walk', 'fish', 'haul', 'hammer', 'chat', 'idle', 'fish', 'walk', 'chat'];
+      // the crowd is picked to suit what each stretch of deck is for
+      const byJob = {
+        dry: ['mend', 'haul', 'gut', 'walk'],
+        pots: ['mend', 'hammer', 'haul', 'walk'],
+        repair: ['hammer', 'hammer', 'haul', 'chat'],
+        store: ['haul', 'walk', 'chat', 'idle'],
+        market: ['gut', 'chat', 'walk', 'haul'],
+        general: ['walk', 'fish', 'chat', 'idle', 'haul'],
+      };
       let ri = 0;
       for (const pf of platforms) {
-        const n = pf.w > 150 ? 2 : 1;
+        const n = pf.zone === 0 ? 4 : pf.w > 150 ? 3 : 2;
         for (let i = 0; i < n; i++) {
-          if (this.villagers.length > 17) break;
-          const role = roles[(ri++) % roles.length];
+          if (this.villagers.length > 26) break;
+          const list = byJob[pf.job] || byJob.general;
+          const role = list[(ri++) % list.length];
           const lane = { x0: pf.x + 10, y0: pf.deckY, x1: pf.x + pf.w - 10, y1: pf.deckY };
           const vx = rng.range(lane.x0, lane.x1);
-          mk(vx, pf.deckY, { lane, role, waterY: this.waterY });
+          const kid = rng.next() < 0.12;
+          mk(vx, pf.deckY, { lane, role: kid ? 'walk' : role, waterY: this.waterY, build: kid ? 'child' : undefined });
         }
       }
+      // the harbour master keeps to the head of the pier
+      const hm = mk(X + 26, S - 16, { lane: { x0: X - 30, y0: S - 16, x1: X + 30, y1: S - 16 }, role: 'watch_deck', waterY: this.waterY, build: 'boss' });
+      hm.onJetty = true;
       // pair up chatters
       for (let i = 0; i < this.villagers.length; i++) {
         const a = this.villagers[i];
@@ -2493,22 +3006,24 @@
           }
         }
       }
-      // jetty crowd (the lane runs along the pier, into the water)
+      // pier crowd
       const jl = { x0: X - jw / 2 + 9, y0: S - 10, x1: X + jw / 2 - 9, y1: jEnd - 14 };
-      for (let i = 0; i < 3; i++) {
-        const u = rng.range(0.15, 0.95);
+      for (let i = 0; i < 7; i++) {
+        const u = rng.range(0.1, 0.95);
         const lane = { x0: X - jw / 2 + 9, y0: lerp(jl.y0, jl.y1, Math.max(0, u - 0.3)), x1: X + jw / 2 - 9, y1: lerp(jl.y0, jl.y1, Math.min(1, u + 0.3)) };
-        const v = mk(rng.range(lane.x0, lane.x1), lerp(lane.y0, lane.y1, 0.5), { lane, role: i === 0 ? 'fish' : pick(['walk', 'haul', 'fish']), onJetty: true });
+        const v = mk(rng.range(lane.x0, lane.x1), lerp(lane.y0, lane.y1, 0.5), { lane, role: i === 0 ? 'fish' : pick(['walk', 'haul', 'fish', 'gut', 'mend', 'chat', 'walk']), onJetty: true });
         v.waterY = v.y + 10;
       }
       // front-row decks
       for (const d of this.decks) {
         if (d.y0 < rowF.deckY - 10 || d.y0 > rowF.deckY + 4) continue;
-        if (this.villagers.length > 21) break;
+        if (this.villagers.length > 40) break;
         const lane = { x0: d.x0 + 8, y0: rowF.deckY, x1: d.x1 - 8, y1: rowF.deckY };
         if (lane.x1 - lane.x0 < 20) continue;
-        const v = mk(rng.range(lane.x0, lane.x1), rowF.deckY, { lane, role: pick(['fish', 'idle', 'walk']) });
-        v.waterY = rowF.waterY;
+        for (let q = 0; q < 2; q++) {
+          const v = mk(rng.range(lane.x0, lane.x1), rowF.deckY, { lane, role: pick(['fish', 'mend', 'gut', 'walk', 'haul']) });
+          v.waterY = rowF.waterY;
+        }
       }
     },
 
@@ -2661,12 +3176,13 @@
       for (const tr of this.trees) {
         const sx = tr.x + ox;
         if (sx < -30 || sx > 680) continue;
-        ctx.drawImage(tr.s.c, Math.round(sx) + tr.s.ox, Math.round(tr.y + oy) + tr.s.oy);
+        const s2 = tr.s;
+        ctx.drawImage(s2.c, Math.round(sx * K) / K + s2.ox, Math.round((tr.y + oy) * K) / K + s2.oy, s2.wu, s2.hu);
       }
       // --- sign
       if (this.signSprite) {
-        const sx = this.signX + ox;
-        if (sx > -60 && sx < 700) blit(ctx, this.signSprite, sx, this.signY + oy);
+        const sx = this.signX + ox, s2 = this.signSprite;
+        if (sx > -60 && sx < 700) ctx.drawImage(s2.c, Math.round(sx * K) / K + s2.ox, Math.round((this.signY + oy) * K) / K + s2.oy, s2.wu, s2.hu);
       }
       // --- structures (back to front)
       for (const s of this._order) s.renderBody(ctx, cam, t);
@@ -2677,9 +3193,9 @@
         const y = Math.round(s.foam.y + oy);
         if (y < -6 || y > 372) continue;
         const x0 = Math.max(-2, Math.round(s.foam.x0 + ox)), x1 = Math.min(642, Math.round(s.foam.x1 + ox));
-        for (let x = x0; x < x1; x += 2) {
+        for (let x = x0; x < x1; x += 1) {
           const k = Math.sin(x * 0.28 + t * 3.4) + Math.sin(x * 0.11 - t * 1.7);
-          if (k > 0.3) ctx.fillRect(x, y + (k > 1.2 ? -1 : 0), 2, 1);
+          if (k > 0.3) ctx.fillRect(x, y + (k > 1.2 ? -0.5 : 0), 1, 1 / K);
         }
       }
       // --- floating props (buoys)
@@ -2687,7 +3203,7 @@
         const sx = p.x + ox, sy = p.y + oy + Math.sin(t * 1.9 + p.ph) * p.amp;
         if (sx < -12 || sx > 652 || sy < -12 || sy > 372) continue;
         ctx.fillStyle = 'rgba(8,22,52,0.25)'; ctx.fillRect(Math.round(sx) - 3, Math.round(sy) + 1, 7, 2);
-        drawSprite(ctx, p.s, sx, sy);
+        drawSprite(ctx, p.s, sx, sy, 0, 1 / K, 1 / K);
       }
       // --- blood decals on the decking, under everybody
       Gore.renderDecals(ctx, cam);
@@ -2701,7 +3217,7 @@
       for (const gl of this.gulls) {
         const sx = gl.x + ox, sy = gl.y + oy;
         if (sx < -10 || sx > 650 || sy < -10 || sy > 370) continue;
-        drawSprite(ctx, Math.sin(gl.ph) > 0 ? P.gull : P.gull2, sx, sy);
+        drawSprite(ctx, Math.sin(gl.ph) > 0 ? P.gull : P.gull2, sx, sy, 0, 1 / K, 1 / K);
       }
       // --- smoke & dust last
       Puffs.render(ctx, cam);

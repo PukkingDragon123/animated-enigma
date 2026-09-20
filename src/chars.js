@@ -674,8 +674,9 @@ function buildOtterHead() {
     '..kkkkkkkkkkkkkk..',
   ], 6, 0, M);
   // crown crease and a felt nap on the brim
-  for (let x = 14; x < 34; x++) { px(ctx, CPAL.hatLL, x, 7); px(ctx, CPAL.hatD, x, 9); }
-  for (let x = 10; x < 38; x++) px(ctx, CPAL.hatL, x, 5);
+  for (let x = 14; x < 34; x++) { px(ctx, CPAL.hatLL, x, 7); px(ctx, CPAL.hatL, x, 9); }
+  for (let x = 10; x < 38; x++) { px(ctx, CPAL.hatL, x, 5); px(ctx, CPAL.hatL, x, 11); }
+  for (let x = 8; x < 40; x++) px(ctx, CPAL.hatL, x, 3);
   // hat band with a gold edge, and a skull badge
   for (let x = 10; x < 38; x++) { px(ctx, CPAL.goldD, x, 12, 1, 2); px(ctx, CPAL.goldL, x, 12); }
   stampUp(ctx, [
@@ -690,7 +691,7 @@ function buildOtterHead() {
   texture(ctx, W, H, [
     [CPAL.fur, CPAL.furD, 0.16, 1], [CPAL.fur, CPAL.furL, 0.09, 3],
     [CPAL.furD, CPAL.furDD, 0.14, 5], [CPAL.furL, CPAL.furLL, 0.12, 7],
-    [CPAL.hat, CPAL.hatD, 0.13, 9], [CPAL.hatL, CPAL.hat, 0.12, 11],
+    [CPAL.hat, CPAL.hatL, 0.12, 9], [CPAL.hat, CPAL.hatD, 0.07, 15], [CPAL.hatL, CPAL.hatLL, 0.10, 11],
   ]);
   edgeLight(ctx, W, H, CPAL.furLL, CPAL.furDD);
   return spriteFromHi(c, 24, 24);
