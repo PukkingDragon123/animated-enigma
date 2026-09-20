@@ -1,12 +1,11 @@
 // ===========================================================================
-//  upgrades.js — the SKILL TREE (upgrade screen) and the MAIN MENU
+//  upgrades.js — the SKILL TREE (the upgrade screen) and the MAIN MENU
 // ---------------------------------------------------------------------------
-//  A driftwood tree planted in a salvage tub, nailed to the wall of the
-//  otter's workshop. One trunk, four boughs - Weapons, Utility, Mobility,
-//  General - and 62 riveted brass sockets bolted along them. Buying a node
-//  slams it home and the limb below it lights up along its grain. All of it
-//  at 640x360 in hard-edged pixel art: integer coords, posterised colours, no
-//  gradients, no blur, no external images.
+//  The otter is sinking. He is out of air. Every upgrade is a bubble of air
+//  hanging in the water above him, and buying one is him lunging out, tearing
+//  it open and gasping. This file draws that, and the whole ornate UI around
+//  it, at 640x360, in hard-edged pixel art (integer coords, posterised
+//  colours, no gradients, no blur, no external images).
 //
 //  Public API (nothing else is touched):
 //    Upgrades.init() / open() / update(dt,t) / render(ctx,t) / wantsClose
@@ -38,12 +37,6 @@
   function blit(ctx, s, x, y) { ctx.drawImage(s.c, Math.round(x - s.ax), Math.round(y - s.ay)); }
   function fitSize(text, maxW, sizes) { for (let i = 0; i < sizes.length; i++) if (textWidth(text, sizes[i]) <= maxW) return sizes[i]; return sizes[sizes.length - 1]; }
   function hit(m, x, y, w, h) { return m.x >= x && m.x < x + w && m.y >= y && m.y < y + h; }
-  // cubic bezier sample, rounded to whole pixels
-  function bez(s, u) {
-    const v = 1 - u, a = v * v * v, b = 3 * v * v * u, c = 3 * v * u * u, d = u * u * u;
-    return { x: Math.round(a * s.x0 + b * s.x1 + c * s.x2 + d * s.x3),
-             y: Math.round(a * s.y0 + b * s.y1 + c * s.y2 + d * s.y3) };
-  }
 
   // 1px near-black outline around everything already drawn on a canvas
   function autoOutline(c, col) {
@@ -277,12 +270,14 @@
   }
 
   // ===========================================================================
-  //  THE DEEP — the underwater backdrop. Used by the main menu only.
+  //  THE WATER — the living underwater backdrop, shared by both screens
   // ===========================================================================
+  const KELP_Y = 160, KELP_H = 200;      // the band of water the kelp lives in
   const Deep = {
     built: false, t: 0,
     bg: null, rays: [], whale: null, whaleTail: null, wreck: null, bub: [], fgBub: [],
     motes: [], drift: [], kelp: [], rise: [], big: [],
+    kelpCan: [null, null], kelpCtx: [null, null], kelpAt: [-99, -99],
     whaleX: 700, whaleY: 96,
 
     build() {
@@ -536,13 +531,13 @@
       }
 
       // far kelp
-      this.drawKelp(ctx, T, true);
+      ctx.drawImage(this.kelpLayer(true, T), 0, KELP_Y);
       // the wreck on the seabed
       ctx.globalAlpha = 0.95;
       blit(ctx, this.wreck, (opt && opt.wreckX) || 232, 340);
       ctx.globalAlpha = 1;
       // near kelp
-      this.drawKelp(ctx, T, false);
+      ctx.drawImage(this.kelpLayer(false, T), 0, KELP_Y);
 
       // mid silt + drifting flakes
       for (const m of this.motes) {
@@ -557,6 +552,29 @@
 
       // ambient rising bubbles
       for (const b of this.rise) blit(ctx, this.bub[b.r], b.x + Math.sin(b.ph) * b.w, b.y);
+    },
+
+    // 550-odd kelp segments is too many little rects to lay down every frame,
+    // and the fronds sway slowly, so each layer is rasterised to a strip about
+    // 22 times a second and blitted in between. 'source-over' is associative,
+    // so stacking the translucent segments in the strip looks the same as
+    // stacking them straight onto the water.
+    kelpLayer(far, T) {
+      const i = far ? 0 : 1;
+      if (!this.kelpCan[i]) {
+        this.kelpCan[i] = can(640, KELP_H);
+        this.kelpCtx[i] = this.kelpCan[i].getContext('2d');
+        this.kelpAt[i] = -99;
+      }
+      if (T - this.kelpAt[i] >= 0.5) {
+        this.kelpAt[i] = T;
+        const q = this.kelpCtx[i];
+        q.clearRect(0, 0, 640, KELP_H);
+        q.save(); q.translate(0, -KELP_Y);
+        this.drawKelp(q, T, far);
+        q.restore();
+      }
+      return this.kelpCan[i];
     },
 
     drawKelp(ctx, T, far) {
@@ -585,261 +603,269 @@
   };
 
   // ===========================================================================
-  //  THE WORKSHOP — the plank wall the skill tree is nailed to.
-  //  Three layers: the wall (slow parallax), the bolted pegboard the tree
-  //  grows out of (scrolls with the tree), and the lantern light, dust and
-  //  forge embers that drift over everything.
+  //  THE OTTER — sinking, clawing, out of air
   // ===========================================================================
-  const Shop = {
-    built: false, t: 0, wall: null, pegs: null, glow: null,
-    motes: [], embers: [],
+  const Otter = {
+    x: 76, y: 150, vy: 8, breath: 0.62, relief: 0, gasp: 0, lunge: null,
+    buf: null, bufCtx: null, bubbles: [], t: 0, scale: 2.8,
 
     build() {
-      if (this.built) return; this.built = true;
-      const rng = new SeededRandom(31337);
-
-      // ---------------------------------------------------- the plank wall
-      const c = can(640, 400), x = c.getContext('2d');
-      const shades = ['#4a3423', '#443020', '#503a27', '#3e2b1d', '#4d3625'];
-      let y = -8;
-      while (y < 400) {
-        const h = rng.int(21, 31), base = shades[rng.int(0, shades.length - 1)];
-        R(x, base, 0, y, 640, h);
-        for (let i = 0; i < 110; i++) {
-          const gx = rng.int(0, 639), gy = y + rng.int(1, Math.max(2, h - 2));
-          R(x, rng.next() > 0.5 ? '#573d29' : '#372617', gx, gy, rng.int(5, 26), 1);
-        }
-        if (rng.next() > 0.4) {                               // knot
-          const kx = rng.int(24, 616), ky = y + (h >> 1);
-          for (let r = 5; r >= 1; r--) ring(x, kx, ky, r, r === 5 ? '#2b1d12' : (r & 1) ? '#5d4229' : '#392617');
-          R(x, '#221609', kx - 1, ky - 1, 3, 2);
-        }
-        R(x, '#5e4430', 0, y, 640, 1);                        // lit top edge
-        R(x, '#241810', 0, y + h - 1, 640, 1);                // seam
-        R(x, '#170f09', 0, y + h, 640, 1);
-        for (let i = 0; i < 8; i++) {                         // nail heads
-          const nx = 14 + i * 87 + rng.int(-7, 7), ny = y + 4;
-          R(x, '#1a140e', nx, ny, 4, 4); R(x, '#767e8a', nx, ny, 3, 3);
-          R(x, '#aeb6c1', nx, ny, 2, 1); R(x, '#d5dbe4', nx, ny, 1, 1);
-        }
-        y += h + 1;
-      }
-      // dithered vignette so the middle reads brightest
-      for (let yy = 0; yy < 400; yy++) for (let xx = 0; xx < 640; xx++) {
-        const dx = (xx - 320) / 330, dy = (yy - 200) / 230;
-        const v = Math.min(1, dx * dx + dy * dy);
-        const lv = Math.floor(v * 3.2 + bay(xx, yy) * 0.9);
-        if (lv <= 0) continue;
-        x.fillStyle = lv >= 3 ? 'rgba(6,4,2,0.55)' : lv === 2 ? 'rgba(8,5,3,0.34)' : 'rgba(10,6,4,0.16)';
-        x.fillRect(xx, yy, 1, 1);
-      }
-      this.wall = c;
-
-      // ------------------------------------- the pegboard, bolted to the wall
-      const PW = TREE.w, PH = TREE.h;
-      const b = can(PW, PH), q = b.getContext('2d');
-      R(q, '#20170f', 4, 4, PW - 8, PH - 8);
-      for (let i = 0; i < 700; i++) {                          // board grain
-        const gx = rng.int(6, PW - 8), gy = rng.int(6, PH - 8);
-        R(q, rng.next() > 0.5 ? '#231a10' : '#150e08', gx, gy, rng.int(3, 14), 1);
-      }
-      for (let gy = 12; gy < PH - 10; gy += 11) for (let gx = 12; gx < PW - 10; gx += 11) {
-        R(q, '#100b06', gx, gy, 2, 2); R(q, '#2b2013', gx, gy, 2, 1);   // peg holes
-      }
-      R(q, '#2e2114', 4, 4, PW - 8, 1); R(q, '#372716', 4, 4, 1, PH - 8);
-      R(q, '#15100a', 4, PH - 5, PW - 8, 1); R(q, '#15100a', PW - 5, 4, 1, PH - 8);
-      box(q, '#100b06', 3, 3, PW - 6, PH - 6);
-      // a pinned salvage schematic behind the tree
-      const sx0 = 92, sy0 = 84, sw = 250, sh = 150;
-      R(q, 'rgba(188,168,120,0.07)', sx0, sy0, sw, sh);
-      box(q, 'rgba(120,102,66,0.16)', sx0, sy0, sw, sh);
-      for (let i = 0; i < 18; i++) { const e = rng.int(0, 3); R(q, '#20170f', e < 2 ? sx0 + rng.int(0, sw) : (e === 2 ? sx0 : sx0 + sw - 1), e < 2 ? (e ? sy0 + sh - 1 : sy0) : sy0 + rng.int(0, sh), e < 2 ? rng.int(2, 9) : 1, e < 2 ? 1 : rng.int(2, 9)); }
-      R(q, 'rgba(232,214,168,0.10)', sx0, sy0, sw, 2);
-      for (let i = 0; i < 9; i++) R(q, 'rgba(150,180,190,0.08)', sx0 + 10, sy0 + 16 + i * 15, rng.int(60, sw - 24), 1);
-      for (let i = 0; i < 4; i++) ring(q, sx0 + 60 + i * 44, sy0 + 76, 16 + i * 5, 'rgba(150,180,190,0.08)');
-      for (const pin of [[sx0 + 4, sy0 + 4], [sx0 + sw - 6, sy0 + 4], [sx0 + 4, sy0 + sh - 6], [sx0 + sw - 6, sy0 + sh - 6]]) {
-        R(q, '#1a140e', pin[0] - 1, pin[1] - 1, 4, 4); R(q, '#c8302e', pin[0], pin[1], 3, 3); R(q, '#ff9a9a', pin[0], pin[1], 1, 1);
-      }
-      // corner bolts holding the board to the wall
-      for (const bo of [[12, 12], [PW - 14, 12], [12, PH - 14], [PW - 14, PH - 14]]) {
-        R(q, '#100b06', bo[0] - 1, bo[1] - 1, 8, 8);
-        R(q, '#6d747f', bo[0], bo[1], 6, 6); R(q, '#aeb6c1', bo[0], bo[1], 5, 2);
-        R(q, '#3c424b', bo[0] + 1, bo[1] + 4, 4, 1); R(q, '#22262c', bo[0] + 2, bo[1] + 2, 2, 2);
-      }
-      // tools hanging in the gaps between the limbs
-      this.tool(q, 100, 60, 'wrench'); this.tool(q, 328, 64, 'saw');
-      this.tool(q, 214, 52, 'coil');
-      this.pegs = b;
-
-      // ------------------------------------------- the lantern's light pool
-      const GR = 92, g = can(GR * 2, GR * 2), gx2 = g.getContext('2d');
-      for (let yy = -GR; yy < GR; yy++) for (let xx = -GR; xx < GR; xx++) {
-        const d = Math.sqrt(xx * xx + yy * yy) / GR;
-        if (d >= 1) continue;
-        const a = (1 - d) * (1 - d);
-        const lv = Math.floor(a * 3.4 + bay(xx + GR, yy + GR) * 0.95);
-        if (lv <= 0) continue;
-        gx2.fillStyle = lv >= 3 ? 'rgba(255,196,112,0.16)' : lv === 2 ? 'rgba(255,186,104,0.10)' : 'rgba(255,176,98,0.055)';
-        gx2.fillRect(xx + GR, yy + GR, 1, 1);
-      }
-      this.glow = spr(g, GR, GR);
-
-      for (let i = 0; i < 90; i++) this.motes.push({
-        x: rng.range(0, 640), y: rng.range(0, 360), vy: rng.range(-5, -1.2),
-        vx: rng.range(-3, 5), ph: rng.range(0, TAU), b: rng.range(0.18, 0.7),
-      });
-      for (let i = 0; i < 16; i++) this.embers.push({
-        x: rng.range(0, 640), y: rng.range(200, 380), vy: rng.range(-24, -9),
-        ph: rng.range(0, TAU), life: rng.range(0, 3), max: 3,
-      });
+      if (this.buf) return;
+      this.buf = can(140, 140);
+      this.bufCtx = this.buf.getContext('2d');
     },
-
-    // little hand-drawn tool silhouettes for the pegboard
-    tool(q, x, y, kind) {
-      const D = 'rgba(12,9,5,0.8)', M = 'rgba(76,64,50,0.8)', H = 'rgba(112,95,74,0.7)';
-      if (kind === 'wrench') {
-        R(q, D, x - 2, y, 5, 46); R(q, M, x - 1, y + 2, 3, 42);
-        R(q, D, x - 6, y - 8, 13, 10); R(q, M, x - 5, y - 7, 11, 8); R(q, D, x - 2, y - 8, 5, 5);
-        R(q, D, x - 5, y + 44, 11, 9); R(q, M, x - 4, y + 45, 9, 7); R(q, D, x - 1, y + 48, 3, 5);
-        R(q, H, x - 1, y + 4, 1, 38);
-      } else if (kind === 'saw') {
-        R(q, D, x - 3, y, 6, 12); R(q, M, x - 2, y + 1, 4, 10);
-        R(q, D, x - 2, y + 12, 5, 40); R(q, M, x - 1, y + 13, 3, 38);
-        for (let i = 0; i < 14; i++) R(q, D, x + 3, y + 14 + i * 3, 3, 2);
-      } else {
-        for (let r = 12; r >= 6; r -= 3) ring(q, x, y + 14, r, r === 12 ? D : M);
-        R(q, D, x - 2, y - 4, 4, 10); R(q, M, x - 1, y - 3, 2, 8);
-      }
+    reset(x, y) {
+      this.build();
+      this.x = x; this.y = y; this.vy = 6; this.relief = 0; this.gasp = 0; this.lunge = null;
+      this.bubbles.length = 0;
     },
-
-    update(dt) {
+    feed(tx, ty) {
+      this.lunge = { x: tx, y: ty, t: 0, dur: 0.95 };
+      this.breath = Math.min(1, this.breath + 0.3);
+      this.relief = 1.6; this.gasp = 0.5;
+    },
+    update(dt, bounds) {
       this.build();
       this.t += dt;
       const t = this.t;
-      for (const m of this.motes) {
-        m.y += m.vy * dt; m.x += (m.vx + Math.sin(t * 0.5 + m.ph) * 4) * dt; m.ph += dt * 0.7;
-        if (m.y < -4) { m.y = 364; m.x = rand(0, 640); }
-        if (m.x < -4) m.x = 644; if (m.x > 644) m.x = -4;
+      this.breath = Math.max(0, this.breath - dt * 0.028);
+      this.relief = Math.max(0, this.relief - dt);
+      this.gasp = Math.max(0, this.gasp - dt);
+      // he sinks, and kicks weakly back up now and then
+      const panic = 1 - this.breath;
+      this.vy += (5 + panic * 9) * dt;
+      if (Math.sin(t * (1.2 + panic)) > 0.97) this.vy -= 22;
+      this.y += this.vy * dt;
+      this.vy *= 0.985;
+      if (this.relief > 0) this.y -= dt * 26 * this.relief;
+      const b = bounds || { y0: 70, y1: 250 };
+      if (this.y > b.y1) { this.y = b.y1; this.vy = -16; }
+      if (this.y < b.y0) { this.y = b.y0; this.vy = 2; }
+      if (this.lunge) { this.lunge.t += dt; if (this.lunge.t > this.lunge.dur) this.lunge = null; }
+      // air escaping his lungs
+      if (Math.random() < 0.22 + panic * 0.3) this.bubbles.push({
+        x: this.x + rand(10, 18), y: this.y - 22, r: randi(0, 3),
+        vx: rand(16, 44), vy: rand(-58, -30), life: rand(1.2, 2.4), max: 2.4,
+      });
+      if (this.gasp > 0.3) for (let i = 0; i < 2; i++) this.bubbles.push({
+        x: this.x + rand(10, 20), y: this.y - 22, r: randi(2, 4), vx: rand(20, 60), vy: rand(-96, -46), life: rand(0.6, 1.4), max: 1.4,
+      });
+      for (let i = this.bubbles.length - 1; i >= 0; i--) {
+        const p = this.bubbles[i]; p.life -= dt;
+        if (p.life <= 0) { this.bubbles.splice(i, 1); continue; }
+        p.x += p.vx * dt + Math.sin(p.life * 6) * 10 * dt; p.y += p.vy * dt; p.vy *= 0.99;
       }
-      for (const e of this.embers) {
-        e.life -= dt;
-        if (e.life <= 0) { e.life = e.max = rand(1.6, 3.4); e.x = rand(0, 640); e.y = rand(300, 380); e.vy = rand(-26, -10); }
-        e.y += e.vy * dt; e.x += Math.sin(t * 2 + e.ph) * 9 * dt;
+      if (this.bubbles.length > 90) this.bubbles.splice(0, this.bubbles.length - 90);
+    },
+
+    // a bent two-bone limb: upper arm, forearm, then a clutching paw
+    limb(bx, sx, sy, a1, a2) {
+      bx.save(); bx.translate(sx, sy); bx.rotate(a1);
+      bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
+      bx.translate(8, 0); bx.rotate(a2);
+      bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
+      bx.translate(10, 0);
+      bx.fillStyle = '#1a1220'; bx.fillRect(-2, -3, 5, 6);
+      bx.fillStyle = '#c8703c'; bx.fillRect(-1, -2, 3, 4);
+      bx.fillStyle = '#f0b87e'; bx.fillRect(-1, -2, 2, 2);
+      bx.fillStyle = '#1a1220'; bx.fillRect(3, -3, 1, 2); bx.fillRect(3, 0, 1, 2);
+      bx.restore();
+    },
+
+    draw(ctx, sc) {
+      this.build();
+      if (typeof CH === 'undefined' || !CH.otterTorso) return;
+      const t = this.t, panic = clamp(1 - this.breath, 0, 1);
+      const S = sc || this.scale;
+      const bx = this.bufCtx, BW = this.buf.width, BH = this.buf.height;
+      bx.clearRect(0, 0, BW, BH);
+      bx.save();
+      bx.translate(BW / 2, BH / 2 + 4);
+      bx.scale(S, S);
+
+      // he hangs limp and tipped back; a lunge whips him toward the bubble
+      let lean = -0.32 + Math.sin(t * 0.62) * 0.26;
+      let reach = 0;
+      if (this.lunge) {
+        const k = this.lunge.t / this.lunge.dur;
+        reach = k < 0.4 ? k / 0.4 : Math.max(0, 1 - (k - 0.4) / 0.6);
+        lean = lerp(lean, 0.22, reach);
+      }
+      bx.rotate(lean);
+
+      // chest heaving: a slow, desperate pump
+      const heave = 1 + Math.sin(t * (2.4 + panic * 2.4)) * (0.06 + panic * 0.06);
+      const fast = t * (3.4 + panic * 3.4);
+
+      // tail hanging and thrashing below him
+      bx.save(); bx.translate(-6, 8);
+      bx.rotate(2.35 + Math.sin(fast * 0.75) * (0.3 + panic * 0.36));
+      bx.drawImage(CH.otterTail.c, -CH.otterTail.ax, -CH.otterTail.ay);
+      bx.restore();
+
+      // far arm, clawing at water that will not hold him
+      this.limb(bx, 8, -4, -0.42 + Math.sin(fast + 1.1) * (0.3 + panic * 0.24), -0.88 + Math.sin(fast * 1.3) * 0.36);
+
+      // torso
+      bx.save(); bx.scale(1, heave);
+      bx.drawImage(CH.otterTorso.c, -CH.otterTorso.ax, -CH.otterTorso.ay);
+      bx.restore();
+
+      // near arm — the one that grabs (hidden while the real reach is drawn)
+      if (reach < 0.15) this.limb(bx, -8, -4, -2.72 + Math.sin(fast * 0.9) * (0.3 + panic * 0.24), 0.9 + Math.sin(fast * 1.15) * 0.36);
+
+      // head, screwed up in pain — or gasping with relief
+      bx.save();
+      bx.translate(1, -11 + Math.sin(t * 2.2) * 0.7);
+      bx.rotate(Math.sin(t * 1.35) * 0.2 - 0.2 + reach * 0.3);
+      const exp = this.gasp > 0 ? 'surprised' : this.relief > 0.5 ? 'happy' : 'drown';
+      const head = otterHeadWithFace(exp, false, t, false);
+      bx.drawImage(head, -CH.otterHead.ax, -CH.otterHead.ay);
+      bx.restore();
+      bx.restore();
+
+      // the water leaches the colour out of him as he runs out of air
+      const cold = clamp(panic * 0.55 - this.relief * 0.3, 0, 0.6);
+      if (cold > 0.02) {
+        bx.globalCompositeOperation = 'source-atop';
+        bx.fillStyle = `rgba(40,96,150,${cold.toFixed(2)})`;
+        bx.fillRect(0, 0, BW, BH);
+        bx.globalCompositeOperation = 'source-over';
+      }
+      if (this.relief > 0.6) {
+        bx.globalCompositeOperation = 'source-atop';
+        bx.fillStyle = `rgba(255,232,170,${((this.relief - 0.6) * 0.4).toFixed(2)})`;
+        bx.fillRect(0, 0, BW, BH);
+        bx.globalCompositeOperation = 'source-over';
+      }
+
+      ctx.drawImage(this.buf, Math.round(this.x - BW / 2), Math.round(this.y - BH / 2));
+
+      // escaping air
+      for (const p of this.bubbles) {
+        const a = Math.min(1, p.life / p.max * 1.7);
+        ctx.globalAlpha = a;
+        blit(ctx, Deep.bub[Math.min(Deep.bub.length - 1, p.r)], p.x, p.y);
+        ctx.globalAlpha = 1;
       }
     },
 
-    // lantern position: it swings slowly above the board
-    lampX() { return 96 + Math.sin(this.t * 0.31) * 62; },
-    lampY() { return 96 + Math.sin(this.t * 0.47) * 16; },
-
-    renderWall(ctx, scroll) {
-      ctx.drawImage(this.wall, 0, Math.round(-20 - scroll * 0.22));
-    },
-    renderBoard(ctx, scroll) {
-      ctx.drawImage(this.pegs, TREE.x, Math.round(TREE.y - scroll));
-    },
-    renderLight(ctx) {
-      blit(ctx, this.glow, Math.round(this.lampX()), Math.round(this.lampY()));
-      blit(ctx, this.glow, Math.round(this.lampX() + 150), Math.round(this.lampY() + 120));
-    },
-    renderDust(ctx, scroll) {
-      const lx = this.lampX(), ly = this.lampY();
-      for (const m of this.motes) {
-        const d = dist(m.x, m.y, lx, ly);
-        const a = m.b * (0.45 + Math.sin(m.ph) * 0.35) * (d < 110 ? 1 : 0.35);
-        ctx.fillStyle = d < 110 ? `rgba(255,228,168,${a.toFixed(2)})` : `rgba(190,176,152,${(a * 0.7).toFixed(2)})`;
-        ctx.fillRect(m.x | 0, m.y | 0, 1, 1);
+    // the arm shooting out to seize a bubble, drawn over the board
+    drawGrab(ctx) {
+      if (!this.lunge) return;
+      const g = this.lunge, k = g.t / g.dur;
+      const out = k < 0.4 ? k / 0.4 : 1, back = k > 0.55 ? (k - 0.55) / 0.45 : 0;
+      const ox = this.x - 4, oy = this.y - 14;
+      const p = (1 - back) * out;
+      const hx = Math.round(lerp(ox, g.x, p)), hy = Math.round(lerp(oy, g.y, p));
+      const a = angleTo(ox, oy, g.x, g.y);
+      const nx = -Math.sin(a), ny = Math.cos(a);
+      const alpha = (1 - back * 0.7).toFixed(2);
+      ctx.globalAlpha = alpha;
+      const segs = Math.max(2, Math.round(dist(ox, oy, hx, hy) / 2));
+      for (let i = 0; i <= segs; i++) {
+        const f = i / segs;
+        const wob = Math.sin(f * 3 + this.t * 8) * 1.4 * (1 - f);
+        const px2 = Math.round(lerp(ox, hx, f) + nx * wob), py2 = Math.round(lerp(oy, hy, f) + ny * wob);
+        const w = 5 - Math.round(f * 2);
+        R(ctx, '#1a1220', px2 - Math.round(w / 2) - 1, py2 - Math.round(w / 2) - 1, w + 2, w + 2);
+        R(ctx, '#9c4d24', px2 - Math.round(w / 2), py2 - Math.round(w / 2), w, w);
+        R(ctx, '#e0975c', px2 - Math.round(w / 2), py2 - Math.round(w / 2), Math.max(1, w - 2), 1);
       }
-      for (const e of this.embers) {
-        const a = Math.min(1, e.life / e.max * 1.5) * 0.8;
-        ctx.fillStyle = `rgba(255,154,60,${a.toFixed(2)})`;
-        ctx.fillRect(e.x | 0, e.y | 0, 1, 1);
-        if (a > 0.6) { ctx.fillStyle = `rgba(255,228,143,${((a - 0.6) * 2).toFixed(2)})`; ctx.fillRect(e.x | 0, (e.y | 0) - 1, 1, 1); }
-      }
+      // the paw
+      ctx.save(); ctx.translate(hx, hy); ctx.rotate(a);
+      const grip = k > 0.4 ? 1 : 0;
+      R(ctx, '#1a1220', -5, -6, 11, 12);
+      R(ctx, '#c8703c', -4, -5, 9, 10);
+      R(ctx, '#f0b87e', -4, -5, 4, 10);
+      R(ctx, '#1a1220', 5, -5 + grip * 2, 3, 3);
+      R(ctx, '#e0975c', 5, -4 + grip * 2, 3, 2);
+      R(ctx, '#1a1220', 5, 2 - grip * 2, 3, 3);
+      R(ctx, '#e0975c', 5, 3 - grip * 2, 3, 2);
+      ctx.restore();
+      ctx.globalAlpha = 1;
     },
   };
 
   // ===========================================================================
-  //  SOCKET PLATES — the nodes. Octagonal brass sockets riveted to the limb.
+  //  NODE BUBBLES — prerendered, four states, four wobble frames each
   // ===========================================================================
-  const PLATE_W = 22;
-  const PLATE = { locked: null, avail: null, afford: null, owned: null, hover: null, chain: null, mini: {} };
-  const PSKIN = {
-    locked: { out: '#0a0d12', hi: '#5b6570', mid: '#39414d', lo: '#20262e', rec: '#10151c', gem: '#2b3744', dead: true },
-    avail:  { out: '#150e05', hi: '#a4813d', mid: '#7a5a28', lo: '#452d10', rec: '#241a0c', gem: '#8a7038' },
-    afford: { out: '#150e05', hi: '#efcb66', mid: '#bd9531', lo: '#6b5016', rec: '#31260f', gem: '#ffe48f' },
-    owned:  { out: '#150e05', hi: '#fff0bc', mid: '#e3b752', lo: '#8a6314', rec: '#4e3811', gem: '#fffbe6' },
-  };
+  const NODE_R = 17;
+  const BUB = { locked: [], avail: [], afford: [], owned: [], hover: null, chain: null };
 
-  function plateSprite(S, sk) {
-    const c = can(S, S), x = c.getContext('2d');
-    const h = (S - 1) / 2, oct = h * 1.42;
-    for (let yy = 0; yy < S; yy++) for (let xx = 0; xx < S; xx++) {
-      const dx = xx - h, dy = yy - h;
-      const d1 = Math.max(Math.abs(dx), Math.abs(dy)), d2 = Math.abs(dx) + Math.abs(dy);
-      if (d1 > h + 0.5 || d2 > oct + 1.2) continue;
-      let col;
-      if (d1 > h - 0.6 || d2 > oct - 0.2) col = sk.out;
-      else if (d1 > h - 2.4 || d2 > oct - 2.6) col = (dx + dy < 0) ? sk.hi : sk.lo;
-      else if (d1 > h - 3.4 || d2 > oct - 4.2) col = sk.mid;
-      else col = sk.rec;
-      x.fillStyle = col; x.fillRect(xx, yy, 1, 1);
-    }
-    // recess lip: dark at the top-left, catching light at the bottom-right
-    const r0 = Math.round(h - 3.4);
-    x.fillStyle = 'rgba(0,0,0,0.45)';
-    x.fillRect(Math.round(h - r0), Math.round(h - r0), r0 * 2, 1);
-    x.fillRect(Math.round(h - r0), Math.round(h - r0), 1, r0 * 2);
-    x.fillStyle = sk.dead ? 'rgba(120,136,152,0.22)' : 'rgba(255,220,150,0.20)';
-    x.fillRect(Math.round(h - r0), Math.round(h + r0 - 1), r0 * 2, 1);
-    x.fillRect(Math.round(h + r0 - 1), Math.round(h - r0), 1, r0 * 2);
-    if (S >= 18) {
-      // four rivets on the flats
-      const rv = Math.round(h - 2.5);
-      for (const p of [[0, -rv], [0, rv], [-rv, 0], [rv, 0]]) {
-        const rx = Math.round(h + p[0]) - 1, ry = Math.round(h + p[1]) - 1;
-        x.fillStyle = sk.out; x.fillRect(rx, ry, 3, 3);
-        x.fillStyle = sk.hi; x.fillRect(rx, ry, 2, 2);
-        x.fillStyle = sk.lo; x.fillRect(rx + 1, ry + 1, 2, 2);
+  function buildNodeBubbles() {
+    const wob = [[0, 0], [1, -1], [0, 0], [-1, 1]];
+    const skin = {
+      locked: { rim: '#2b4257', body: 'rgba(24,42,60,0.95)', core: 'rgba(11,23,36,0.9)', hi: 'rgba(90,125,155,0.5)', crest: 'rgba(40,64,86,0.9)', ref: 'rgba(96,136,168,0.45)' },
+      avail: { rim: '#9fe0f5', body: 'rgba(52,122,160,0.72)', core: 'rgba(17,50,76,0.62)', hi: 'rgba(235,252,255,0.95)', crest: 'rgba(130,200,230,0.7)', ref: 'rgba(200,245,255,0.55)' },
+      afford: { rim: '#c9fff0', body: 'rgba(70,168,175,0.78)', core: 'rgba(19,70,80,0.6)', hi: 'rgba(255,255,255,1)', crest: 'rgba(170,240,230,0.8)', ref: 'rgba(225,255,248,0.65)' },
+      owned: { rim: '#ffe48f', body: 'rgba(186,134,38,0.9)', core: 'rgba(58,38,6,0.86)', hi: 'rgba(255,255,255,1)', crest: 'rgba(255,214,120,0.9)', ref: 'rgba(255,240,190,0.7)' },
+    };
+    BUB.mini = {};
+    for (const key in skin) {
+      for (let f = 0; f < 4; f++) {
+        const rx = NODE_R + wob[f][0], ry = NODE_R + wob[f][1];
+        BUB[key].push(bubbleSprite(rx, ry, skin[key], key === 'locked'));
       }
-      if (sk.dead) {                                  // locked: a bolted-over cover
-        x.fillStyle = 'rgba(16,20,26,0.55)';
-        for (let i = -S; i < S; i += 4) for (let k = 0; k < S; k++) {
-          const px2 = i + k, py2 = k;
-          if (px2 < 4 || px2 >= S - 4 || py2 < 4 || py2 >= S - 4) continue;
-          x.fillRect(px2, py2, 1, 1);
-        }
-        x.fillStyle = '#4b5762'; x.fillRect(4, Math.round(h) - 1, S - 8, 3);
-        x.fillStyle = '#6d7883'; x.fillRect(4, Math.round(h) - 1, S - 8, 1);
-        x.fillStyle = '#2b333c'; x.fillRect(Math.round(h) - 2, Math.round(h) - 1, 4, 3);
-      }
+      BUB.mini[key] = bubbleSprite(5, 5, skin[key], false);
     }
-    return spr(c, h, h);
+    // hover halo
+    const hr = NODE_R + 4, hc = can(hr * 2 + 3, hr * 2 + 3), hx = hc.getContext('2d');
+    for (let a = 0; a < 200; a++) {
+      const an = a / 200 * TAU;
+      hx.fillStyle = a % 10 < 6 ? 'rgba(255,255,255,0.95)' : 'rgba(255,238,180,0.8)';
+      hx.fillRect(Math.round(hr + 1 + Math.cos(an) * hr), Math.round(hr + 1 + Math.sin(an) * hr), 1, 1);
+    }
+    BUB.hover = spr(hc, hr + 1, hr + 1);
+    // prerequisite-chain halo
+    const cr = NODE_R + 2, cc = can(cr * 2 + 3, cr * 2 + 3), cx2 = cc.getContext('2d');
+    for (let a = 0; a < 180; a++) {
+      const an = a / 180 * TAU;
+      if (a % 8 > 4) continue;
+      cx2.fillStyle = 'rgba(255,214,120,0.9)';
+      cx2.fillRect(Math.round(cr + 1 + Math.cos(an) * cr), Math.round(cr + 1 + Math.sin(an) * cr), 1, 1);
+    }
+    BUB.chain = spr(cc, cr + 1, cr + 1);
   }
 
-  function octRing(S, col, dash) {
-    const c = can(S, S), x = c.getContext('2d');
-    const h = (S - 1) / 2, oct = h * 1.42;
-    let n = 0;
-    for (let yy = 0; yy < S; yy++) for (let xx = 0; xx < S; xx++) {
-      const dx = xx - h, dy = yy - h;
-      const d1 = Math.max(Math.abs(dx), Math.abs(dy)), d2 = Math.abs(dx) + Math.abs(dy);
-      if (d1 > h + 0.5 || d2 > oct + 1.2) continue;
-      if (d1 < h - 1.1 && d2 < oct - 1.4) continue;
-      if (dash && (((xx + yy) >> 1) & 1)) continue;
-      x.fillStyle = col; x.fillRect(xx, yy, 1, 1);
-      n++;
+  function bubbleSprite(rx, ry, sk, chained) {
+    const D = Math.max(rx, ry) * 2 + 3, c = can(D, D), x = c.getContext('2d');
+    const cx = (D >> 1), cy = (D >> 1);
+    for (let yy = -ry - 1; yy <= ry + 1; yy++) for (let xx = -rx - 1; xx <= rx + 1; xx++) {
+      const d = Math.sqrt((xx / rx) * (xx / rx) + (yy / ry) * (yy / ry));
+      if (d > 1.02) continue;
+      if (d > 0.94) x.fillStyle = sk.rim;
+      else if (d > 0.80) x.fillStyle = (xx + yy > rx * 0.3) ? sk.crest : sk.body;
+      else x.fillStyle = sk.core;
+      x.fillRect(cx + xx, cy + yy, 1, 1);
     }
-    return spr(c, h, h);
-  }
-
-  function buildPlates() {
-    for (const k in PSKIN) {
-      PLATE[k] = plateSprite(PLATE_W, PSKIN[k]);
-      PLATE.mini[k] = plateSprite(12, PSKIN[k]);
+    // refractive highlights: big upper-left specular, small companion, lower crescent
+    x.fillStyle = sk.hi;
+    x.fillRect(cx - Math.round(rx * 0.58), cy - Math.round(ry * 0.56), 4, 3);
+    x.fillRect(cx - Math.round(rx * 0.62), cy - Math.round(ry * 0.34), 2, 3);
+    x.fillRect(cx - Math.round(rx * 0.26), cy - Math.round(ry * 0.72), 3, 2);
+    x.fillStyle = sk.crest;
+    for (let a = 30; a < 78; a++) {
+      const an = a / 100 * TAU;
+      x.fillRect(Math.round(cx + Math.cos(an) * rx * 0.86), Math.round(cy + Math.sin(an) * ry * 0.86), 1, 1);
     }
-    PLATE.hover = octRing(PLATE_W + 6, '#fff6d2', false);
-    PLATE.chain = octRing(PLATE_W + 4, '#ffd97a', true);
+    // light refracting through the far wall: a bright arc low and right
+    x.fillStyle = sk.ref;
+    for (let a = 8; a < 34; a++) {
+      const an = a / 100 * TAU;
+      x.fillRect(Math.round(cx + Math.cos(an) * rx * 0.70), Math.round(cy + Math.sin(an) * ry * 0.70), 1, 1);
+    }
+    if (chained) {                                    // a locked bubble is chained shut
+      x.fillStyle = '#4b5762';
+      for (let i = -rx; i <= rx; i += 5) {
+        const yy = Math.round(i * 0.72);
+        if (Math.abs(i) > rx * 0.92) continue;
+        x.fillRect(cx + i - 2, cy + yy - 1, 5, 3);
+        x.fillStyle = '#2b333c'; x.fillRect(cx + i - 1, cy + yy, 3, 1); x.fillStyle = '#4b5762';
+      }
+      x.fillStyle = '#6b7883'; x.fillRect(cx - 4, cy - 2, 8, 2);
+    }
+    return spr(c, cx, cy);
   }
 
   // ===========================================================================
@@ -901,42 +927,31 @@
   }
 
   // ===========================================================================
-  //  SKILL TREE — the screen
+  //  UPGRADES — the SKILL TREE
   // ===========================================================================
   const LAY = {
     headH: 32,
-    board: { x: 2, y: 34, w: 432, h: 264 },
+    stage: { x: 4, y: 34, w: 146, h: 264 },
+    tabs: { x: 152, y: 34, w: 286, h: 20 },
+    board: { x: 152, y: 54, w: 286, h: 244 },
     card: { x: 442, y: 34, w: 196, h: 264 },
     bottom: { y: 300, h: 60 },
   };
-  // The tree lives on a virtual board taller than the window: the trunk runs
-  // off the bottom into the workbench, and panning follows it down.
-  const TREE = { x: LAY.board.x, y: LAY.board.y, w: 432, h: 312 };
-  const SCROLL_HOME = 14, SCROLL_MAX = TREE.h - LAY.board.h;   // 48
-  const LIMB_CX = [46, 158, 270, 382];      // centre of each limb, board-relative
-  const LIMB_DY = [0, -6, -6, 0];           // the inner pair forks a little higher
-  const COL_PITCH = 28, ROW_PITCH = 26, ROW0_Y = 208;
-  const COL_ARC = [3, -2, 3];               // rows bow slightly, like real branches
-  const BANNER_W = 84, BANNER_H = 16;
-  const TRUNK_X = 214, FORK_Y = 262, TRUNK_FOOT = 318;
-  const BR_TOP = [6, 6, 5, 5];              // deepest row in each branch
-  const nodeTY = (n, bi) => ROW0_Y - n.pos[1] * ROW_PITCH + LIMB_DY[bi] + COL_ARC[n.pos[0]];
-  const bannerTY = bi => ROW0_Y - BR_TOP[bi] * ROW_PITCH + LIMB_DY[bi] - 13 - BANNER_H - 2;
-  const limbThick = r => Math.max(3, 9 - r);
+  const COL_X = [200, 295, 390];
+  const ROW_Y0 = 32, ROW_PITCH = 48;
 
   const Upgrades = {
-    ready: false, wantsClose: false, focus: -1, sel: null, scroll: SCROLL_HOME, scrollTo: SCROLL_HOME,
-    hover: null, hoverW: null,
-    T: 0, drag: null, affordOnly: false, chrome: null, labels: [], sparks: [], grow: {},
-    flash: {}, summary: null, effectCache: { id: null, rows: null }, lastCount: -1, glow: 0,
+    ready: false, wantsClose: false, tab: 0, scroll: 0, scrollTo: 0, hover: null, hoverW: null, sel: null,
+    T: 0, drag: null, affordOnly: false, chrome: null, labels: [], bursts: [], slotMode: 'primary',
+    flash: {}, summary: null, effectCache: { id: null, rows: null }, lastCount: -1, glow: 0, titleSize: 0,
 
     init() {
       if (this.ready) return; this.ready = true;
       buildIcons();
-      Deep.build();          // still used by the main menu
-      buildPlates();
-      Shop.build();
+      Deep.build();
+      buildNodeBubbles();
       this.buildChrome();
+      Otter.build();
     },
 
     buildChrome() {
@@ -944,20 +959,22 @@
       UIKit.panel(x, -10, -12, 660, 44, 'dark');          // header bar
       UIKit.panel(x, LAY.card.x, LAY.card.y, LAY.card.w, LAY.card.h, 'gold');
       UIKit.panel(x, -10, LAY.bottom.y, 660, 72, 'dark'); // bottom bar
+      UIKit.divider(x, 318, 330, 4);                       // (decorative, centre)
       this.chrome = c;
     },
 
     open() {
       this.init();
       this.wantsClose = false;
-      this.scroll = this.scrollTo = SCROLL_HOME;
-      this.hover = null; this.hoverW = null; this.drag = null; this.sel = null; this.focus = -1;
-      this.labels.length = 0; this.sparks.length = 0;
-      this.grow = {};
+      this.scroll = this.scrollTo = 0;
+      this.hover = null; this.hoverW = null; this.drag = null; this.sel = null;
+      this.labels.length = 0; this.bursts.length = 0;
       this.flash = {};
       this.lastCount = -1;
       this.slotMode = 'primary';
-      this._cardKey = null; this._botKey = null; this._limbKey = null;
+      this._cardKey = null; this._botKey = null;
+      Otter.reset(LAY.stage.x + LAY.stage.w / 2 + 2, LAY.stage.y + 116);
+      Otter.breath = clamp(Otter.breath, 0.28, 1);
     },
 
     tree() { return (typeof G !== 'undefined' && G && G.tree) ? G.tree : null; },
@@ -966,17 +983,19 @@
       const id = BRANCHES[i].id;
       return SKILL_NODES.filter(n => n.branch === id);
     },
-    branchIndex(n) { return BRANCHES.findIndex(b => b.id === n.branch); },
-
-    // where a node's socket sits on screen
-    nodePos(n, t) {
-      const bi = Math.max(0, this.branchIndex(n));
-      const x = TREE.x + LIMB_CX[bi] + (n.pos[0] - 1) * COL_PITCH;
-      const y = TREE.y + nodeTY(n, bi) - this.scroll;
-      return { x: Math.round(x), y: Math.round(y), ph: n.pos[0] * 1.9 + n.pos[1] * 1.1 + (bi + 1) * 0.8 };
+    rowsIn(i) {
+      let m = 0; for (const n of this.branchNodes(i)) m = Math.max(m, n.pos[1]);
+      return m + 1;
     },
-    // the node the card is describing: the mouse wins, else the keyboard cursor
-    hoverNode() { return this.hover || (this.sel ? SKILL_BY_ID[this.sel] : null); },
+    contentH(i) { return ROW_Y0 + this.rowsIn(i) * ROW_PITCH + 6; },
+    maxScroll(i) { return Math.max(0, this.contentH(i) - LAY.board.h); },
+
+    nodePos(n, t) {
+      const ph = n.pos[0] * 1.9 + n.pos[1] * 1.1 + n.branch.length * 0.7;
+      const bx = COL_X[n.pos[0]] + Math.round(Math.sin(t * 0.8 + ph) * 2);
+      const by = LAY.board.y + ROW_Y0 + n.pos[1] * ROW_PITCH - this.scroll + Math.round(Math.cos(t * 1.05 + ph) * 2);
+      return { x: bx, y: by, ph: ph };
+    },
 
     // every prerequisite, transitively
     chainOf(node, out) {
@@ -1005,7 +1024,8 @@
       this.init();
       this.T += dt;
       const T = this.T;
-      Shop.update(dt);
+      Deep.update(dt, T);
+      Otter.update(dt, { y0: LAY.stage.y + 80, y1: LAY.stage.y + LAY.stage.h - 104 });
       this.glow = (this.glow + dt) % 100;
 
       const tree = this.tree();
@@ -1021,52 +1041,53 @@
       }
       for (const k in this.flash) { this.flash[k] -= dt * 1.1; if (this.flash[k] <= 0) delete this.flash[k]; }
 
-      // sockets bedding in, sparks and rising labels
-      for (const id in this.grow) { this.grow[id] += dt * 1.9; if (this.grow[id] >= 1) delete this.grow[id]; }
+      // rising labels and bursts
       for (let i = this.labels.length - 1; i >= 0; i--) { const l = this.labels[i]; l.t += dt; if (l.t > 1.7) this.labels.splice(i, 1); }
-      for (let i = this.sparks.length - 1; i >= 0; i--) {
-        const s2 = this.sparks[i]; s2.life -= dt;
-        if (s2.life <= 0) { this.sparks.splice(i, 1); continue; }
-        s2.x += s2.vx * dt; s2.y += s2.vy * dt; s2.vy += 330 * dt; s2.vx *= 0.985;
+      for (let i = this.bursts.length - 1; i >= 0; i--) {
+        const b = this.bursts[i]; b.t += dt; if (b.t > b.dur) { this.bursts.splice(i, 1); continue; }
+        for (const p of b.p) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy -= 26 * dt; p.vx *= 0.94; p.vy *= 0.94; }
       }
 
       const m = Input.mouse;
-      const B = LAY.board;
+      const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
 
       // ---- keyboard ----
       if (Input.hit && Input.hit('Escape')) this.wantsClose = true;
-      if (Input.hit && Input.hit('KeyE')) this.setFocus(this.focus + 1);
-      if (Input.hit && Input.hit('KeyQ')) this.setFocus(this.focus - 1);
+      if (Input.hit && Input.hit('KeyE')) this.setTab(this.tab + 1);
+      if (Input.hit && Input.hit('KeyQ')) this.setTab(this.tab - 1);
       if (Input.hit) {
+        // the arrows walk a cursor from bubble to bubble; off the side changes branch
         if (Input.hit('ArrowUp')) this.step(0, -1);
         else if (Input.hit('ArrowDown')) this.step(0, 1);
         else if (Input.hit('ArrowLeft')) this.step(-1, 0);
         else if (Input.hit('ArrowRight')) this.step(1, 0);
         if ((Input.hit('Enter') || Input.hit('NumpadEnter') || Input.hit('Space')) && this.sel) {
-          const n = SKILL_BY_ID[this.sel]; if (n) this.click(n, tree);
+          const kn = SKILL_BY_ID[this.sel]; if (kn) this.click(kn, tree);
         }
       }
-      if (Input.wheel) this.scrollTo += Input.wheel * 16;
+      if (Input.down && Input.down('PageDown')) this.scrollTo += 260 * dt;
+      if (Input.down && Input.down('PageUp')) this.scrollTo -= 260 * dt;
+      if (Input.wheel) this.scrollTo += Input.wheel * 34;
 
       // ---- header buttons ----
       const backX = 566, backW = 68;   // always on screen, so touch has a way out
       if (m.clicked && hit(m, backX, 3, backW, 22)) { this.wantsClose = true; Audio_.tone(420, 0.08, 'square', 0.12, -120); }
       if (m.clicked && hit(m, 480, 4, 74, 20)) { this.affordOnly = !this.affordOnly; Audio_.tone(this.affordOnly ? 700 : 400, 0.07, 'square', 0.12); }
 
-      // ---- branch banners: click one to focus that limb ----
+      // ---- tabs ----
       for (let i = 0; i < 4; i++) {
-        const bx = B.x + LIMB_CX[i] - BANNER_W / 2, by = B.y + bannerTY(i) - this.scroll;
-        if (m.clicked && hit(m, bx, by, BANNER_W, BANNER_H)) this.setFocus(this.focus === i ? -1 : i);
+        const tx = LAY.tabs.x + i * 71;
+        if (m.clicked && hit(m, tx, LAY.tabs.y, 70, LAY.tabs.h)) this.setTab(i);
       }
 
-      // ---- the tree: hover + click ----
-      const inBoard = hit(m, B.x, B.y, B.w, B.h);
+      // ---- board: hover + click ----
+      const inBoard = hit(m, LAY.board.x, LAY.board.y, LAY.board.w, LAY.board.h);
       this.hover = null;
+      const nodes = this.branchNodes(this.tab);
       if (inBoard && !this.drag) {
-        for (const n of SKILL_NODES) {
-          if (this.focus >= 0 && this.branchIndex(n) !== this.focus) continue;
+        for (const n of nodes) {
           const p = this.nodePos(n, T);
-          if (Math.abs(m.x - p.x) <= 13 && Math.abs(m.y - p.y) <= 13) { this.hover = n; break; }
+          if (Math.abs(m.x - p.x) <= NODE_R + 1 && Math.abs(m.y - p.y) <= NODE_R + 1) { this.hover = n; break; }
         }
         if (this.hover) this.sel = null;
       }
@@ -1077,11 +1098,11 @@
       }
       if (!shown) this.effectCache.id = null;
 
-      // drag-to-pan only when the press did not land on a socket
+      // drag-to-pan only when the press did not land on a bubble
       if (m.down && inBoard && !this.drag && !this.hover) this.drag = { y: m.y, s: this.scrollTo };
       if (this.drag) {
         if (!m.down) this.drag = null;
-        else this.scrollTo = this.drag.s + (this.drag.y - m.y);
+        else { this.scrollTo = this.drag.s + (this.drag.y - m.y); }
       }
 
       if (this.hover && m.clicked) this.click(this.hover, tree);
@@ -1110,24 +1131,31 @@
         }
       }
 
-      this.scrollTo = clamp(this.scrollTo, 0, SCROLL_MAX);
+      // scrolling easing
+      this.scrollTo = clamp(this.scrollTo, 0, this.maxScroll(this.tab));
       this.scroll = Math.round(lerp(this.scroll, this.scrollTo, 1 - Math.pow(0.0015, dt)));
     },
 
-    setFocus(i) {
-      const n = i < -1 ? 3 : i > 3 ? -1 : i;
-      if (n === this.focus) return;
-      this.focus = n; this.hover = null;
-      Audio_.tone(n < 0 ? 380 : 520 + n * 40, 0.06, 'square', 0.1);
+    setTab(i) {
+      const n = (i + 4) % 4;
+      if (n === this.tab) return;
+      this.tab = n; this.scroll = this.scrollTo = 0; this.hover = null; this.sel = null;
+      Audio_.tone(520 + n * 40, 0.06, 'square', 0.1);
     },
 
-    // keyboard cursor: jump to the nearest socket in a direction
+    // what the card and the header are talking about: the mouse if it is on a
+    // bubble, otherwise wherever the keyboard cursor is parked
+    hoverNode() {
+      return this.hover || (this.sel ? (SKILL_BY_ID[this.sel] || null) : null);
+    },
+
+    // keyboard cursor: jump to the nearest bubble in a direction
     step(dx, dy) {
-      const pool = SKILL_NODES.filter(n => this.focus < 0 || this.branchIndex(n) === this.focus);
+      const pool = this.branchNodes(this.tab);
       if (!pool.length) return;
       const cur = this.sel ? SKILL_BY_ID[this.sel] : null;
       let best = null, bd = 1e9;
-      if (!cur) { best = pool[0]; }
+      if (!cur || pool.indexOf(cur) < 0) best = pool[0];
       else {
         const a = this.nodePos(cur, this.T);
         for (const n of pool) {
@@ -1139,12 +1167,31 @@
           const d = along + side * 2.6;
           if (d < bd) { bd = d; best = n; }
         }
+        // nothing that way and we were going sideways: step into the next branch
+        if (!best && dx) {
+          const nt = this.tab + dx;
+          if (nt < 0 || nt > 3) return;
+          const row = cur.pos[1];
+          this.setTab(nt);
+          let pick = null;
+          for (const n of this.branchNodes(nt)) {
+            if (!pick || Math.abs(n.pos[1] - row) < Math.abs(pick.pos[1] - row)) pick = n;
+          }
+          if (pick) this.land(pick);
+          return;
+        }
       }
-      if (!best) return;
-      this.sel = best.id; this.hover = null;
-      const p = this.nodePos(best, this.T);
-      if (p.y < LAY.board.y + 24) this.scrollTo -= 40;
-      if (p.y > LAY.board.y + LAY.board.h - 24) this.scrollTo += 40;
+      if (best) this.land(best);
+    },
+
+    // park the keyboard cursor on a bubble, panning only if it is off-screen
+    land(n) {
+      this.sel = n.id; this.hover = null;
+      const cy = ROW_Y0 + n.pos[1] * ROW_PITCH;          // board-relative centre
+      const top = this.scrollTo + NODE_R + 4, bot = this.scrollTo + LAY.board.h - NODE_R - 12;
+      if (cy < top || cy > bot) {
+        this.scrollTo = clamp(Math.round(cy - LAY.board.h / 2), 0, this.maxScroll(this.tab));
+      }
       Audio_.tone(600, 0.03, 'square', 0.06);
     },
 
@@ -1156,18 +1203,13 @@
       }
       if (!tree.available(n) || !tree.canAfford(n)) { Audio_.deny(); return; }
       if (!tree.buy(n)) { Audio_.deny(); return; }
-      // a bolt driven home
       Audio_.buy();
-      Audio_.tone(170, 0.09, 'square', 0.18, -80);
-      Audio_.noise(0.09, 0.22, 3400, 700);
       if (typeof G !== 'undefined' && G && G.player && G.player.refreshStats) G.player.refreshStats();
       if (n.weapon) tree.primary = n.weapon;
       const p = this.nodePos(n, this.T);
-      const col = BRANCHES[this.branchIndex(n)].color;
-      this.grow[n.id] = 0;
-      this.socketSparks(p.x, p.y);
-      this.labels.push({ text: '+ ' + n.name, x: p.x, y: p.y - 34, t: 0, color: col });
-      this._limbKey = null;
+      Otter.feed(p.x, p.y);
+      this.burst(p.x, p.y, BRANCHES[this.tab].color);
+      this.labels.push({ text: '+ ' + n.name, x: p.x, y: p.y - 18, t: 0, color: BRANCHES[this.tab].color });
       if (typeof G !== 'undefined' && G && G.particles && G.player && G.particles.text) {
         try { G.particles.text(G.player.x, G.player.y - 24, n.name + '!', '#6fd88e', 8); } catch (e) { /* cosmetic only */ }
       }
@@ -1196,351 +1238,180 @@
       if (tree.sidearm === w) tree.sidearm = null;
       Audio_.buy();
     },
-    // hot metal thrown off as the socket seats
-    socketSparks(x, y) {
-      for (let i = 0; i < 34; i++) {
-        const a = rand(-Math.PI, 0) + rand(-0.5, 0.5), sp = rand(40, 230);
-        this.sparks.push({
-          x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.8,
-          life: rand(0.22, 0.62), max: 0.62, hot: Math.random() < 0.45,
-        });
+    burst(x, y, col) {
+      const p = [];
+      for (let i = 0; i < 30; i++) {
+        const a = rand(0, TAU), s = rand(35, 165);
+        p.push({ x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: randi(0, 3) });
       }
+      this.bursts.push({ t: 0, dur: 0.85, p: p, x: x, y: y, col: col });
     },
 
     // ------------------------------------------------------------- render
     render(ctx, t) {
       this.init();
       const T = this.T, tree = this.tree();
-      const B = LAY.board;
+      Deep.render(ctx, { wreckX: 250 });
+
+      // --- the otter, sinking in the open water on the left ---
+      Otter.draw(ctx, 2.8);
+
+      // --- board: strands, then bubbles ---
+      const nodes = tree ? this.branchNodes(this.tab) : [];
+      const pos = {};
+      for (const n of nodes) pos[n.id] = this.nodePos(n, T);
+      const shown = this.hoverNode();
+      const chain = shown ? this.chainOf(shown) : null;
 
       ctx.save();
-      ctx.beginPath(); ctx.rect(B.x, B.y, B.w, B.h); ctx.clip();
-      Shop.renderWall(ctx, this.scroll);
-      Shop.renderBoard(ctx, this.scroll);
-      Shop.renderLight(ctx);
+      ctx.beginPath(); ctx.rect(LAY.board.x, LAY.board.y, LAY.board.w, LAY.board.h); ctx.clip();
 
-      if (tree) {
-        const shown = this.hoverNode();
-        const chain = shown ? this.chainOf(shown) : null;
-        this.drawLimbs(ctx, tree, T, chain, shown);
-        for (const n of SKILL_NODES) {
-          const p = this.nodePos(n, T);
-          if (p.y < B.y - 20 || p.y > B.y + B.h + 20) continue;
-          this.drawNode(ctx, n, p, tree, T, chain, shown);
+      for (const n of nodes) {
+        const a = pos[n.id];
+        for (const rid of n.req) {
+          const b = pos[rid]; if (!b) continue;
+          const owned = tree.has(rid), both = owned && tree.has(n.id);
+          const lit = chain && (chain.has(rid) || shown === n);
+          const col = lit ? 'rgba(255,224,150,0.95)' : both ? 'rgba(255,214,120,0.62)' : owned ? 'rgba(150,215,240,0.45)' : 'rgba(70,108,138,0.35)';
+          this.strand(ctx, b.x, b.y + NODE_R, a.x, a.y - NODE_R, T, col, both || lit);
         }
-        this.drawBanners(ctx, tree, T);
-        if (shown) this.drawNameTag(ctx, shown, this.nodePos(shown, T));
       }
 
-      // --- purchase feedback ---
-      for (const s2 of this.sparks) {
-        const a = Math.min(1, s2.life / s2.max * 1.8);
-        ctx.fillStyle = s2.hot ? `rgba(255,248,214,${a.toFixed(2)})` : `rgba(255,154,60,${a.toFixed(2)})`;
-        ctx.fillRect(s2.x | 0, s2.y | 0, 1, 1);
-        if (a > 0.7) ctx.fillRect(s2.x | 0, (s2.y | 0) - 1, 1, 1);
+      for (const n of nodes) {
+        const p = pos[n.id];
+        if (p.y < LAY.board.y - 34 || p.y > LAY.board.y + LAY.board.h + 34) continue;
+        this.drawNode(ctx, n, p, tree, T, chain);
+      }
+      ctx.restore();
+
+      // --- foreground fx over the open water ---
+      Otter.drawGrab(ctx);
+      for (const b of this.bursts) {
+        const k = b.t / b.dur, a = 1 - k;
+        for (const p of b.p) { ctx.globalAlpha = a; blit(ctx, Deep.bub[Math.min(Deep.bub.length - 1, p.r)], p.x, p.y); }
+        ctx.globalAlpha = 1;
+        if (k < 0.55) {
+          const rr = 6 + k * 62;
+          ctx.globalAlpha = (1 - k / 0.55) * 0.9;
+          ring(ctx, b.x, b.y, rr, '#ffffff');
+          ring(ctx, b.x, b.y, rr * 0.62, b.col);
+          ctx.globalAlpha = 1;
+        }
       }
       for (const l of this.labels) {
         const k = l.t / 1.7;
         ctx.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
-        pixelTextOutlined(ctx, l.text, l.x, Math.round(l.y - k * 24), 8, '#ffffff', '#2a1d08', 'center');
+        pixelTextOutlined(ctx, l.text, l.x, Math.round(l.y - k * 26), 8, '#ffffff', '#14141c', 'center');
         ctx.globalAlpha = 1;
       }
-      Shop.renderDust(ctx, this.scroll);
-      ctx.restore();
 
       // --- ornate chrome ---
       ctx.drawImage(this.chrome, 0, 0);
       this.drawHeader(ctx, tree, T);
-      this.drawPanBar(ctx);
+      this.drawTabs(ctx, tree, T);
+      this.drawScrollbar(ctx);
+      this.drawStage(ctx, T);
       this.drawCard(ctx, tree, T);
       this.drawBottom(ctx, tree, T);
+
+      Deep.renderForeground(ctx);
       ctx.globalAlpha = 1;
     },
 
-    // ---------------------------------------------------- the wooden limbs
-    // Everything that does not move frame to frame is baked into one canvas;
-    // only the travelling sap-light beads are drawn live on top.
-    drawLimbs(ctx, tree, T, chain, shown) {
-      const key = tree.unlocked.size + '|' + this.focus + '|' + (shown ? shown.id : '-') + '|' + this.scroll
-        + '|' + Object.keys(this.grow).map(k => k + ((this.grow[k] * 8) | 0)).join(',');
-      if (!this._limbCan) { this._limbCan = can(LAY.board.w, LAY.board.h); this._limbCtx = this._limbCan.getContext('2d'); }
-      if (key !== this._limbKey) {
-        this._limbKey = key;
-        const q = this._limbCtx;
-        q.clearRect(0, 0, LAY.board.w, LAY.board.h);
-        q.save(); q.translate(-LAY.board.x, -LAY.board.y);
-        this.paintLimbs(q, tree, T, chain);
-        q.restore();
+    strand(ctx, x0, y0, x1, y1, t, col, bead) {
+      const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const segs = Math.max(6, Math.round(len / 4));
+      ctx.fillStyle = col;
+      for (let i = 0; i <= segs; i++) {
+        const k = i / segs;
+        const off = Math.sin(t * 1.5 + k * 3.6 + x0 * 0.05) * Math.sin(k * Math.PI) * 5;
+        ctx.fillRect(Math.round(x0 + dx * k + nx * off), Math.round(y0 + dy * k + ny * off), 1, 1);
       }
-      ctx.drawImage(this._limbCan, LAY.board.x, LAY.board.y);
-      // live sap beads running up the limbs you own
-      for (const n of SKILL_NODES) {
-        if (!tree.has(n.id)) continue;
-        if (this.focus >= 0 && this.branchIndex(n) !== this.focus) continue;
-        for (const rid of n.req) {
-          if (!tree.has(rid)) continue;
-          const par = SKILL_BY_ID[rid]; if (!par) continue;
-          const seg = this.twig(this.nodePos(par, T), this.nodePos(n, T));
-          const u = ((T * 0.45 + n.pos[0] * 0.21 + n.pos[1] * 0.13) % 1);
-          const q = bez(seg, u);
-          R(ctx, '#fff4c4', q.x - 1, q.y - 1, 3, 3);
-          R(ctx, '#ffffff', q.x, q.y, 1, 1);
-        }
+      if (bead) {
+        const k = ((t * 0.34 + (x0 * 0.013)) % 1);
+        const off = Math.sin(t * 1.5 + k * 3.6 + x0 * 0.05) * Math.sin(k * Math.PI) * 5;
+        const bx = Math.round(x0 + dx * k + nx * off), by = Math.round(y0 + dy * k + ny * off);
+        R(ctx, 'rgba(255,245,200,0.95)', bx - 1, by - 1, 3, 3);
+        R(ctx, '#ffffff', bx, by, 1, 1);
       }
     },
 
-    twig(a, b) {
-      const dy = Math.max(10, a.y - b.y);
-      return { x0: a.x, y0: a.y - 9, x1: a.x, y1: a.y - 9 - dy * 0.48,
-               x2: b.x, y2: b.y + 9 + dy * 0.48, x3: b.x, y3: b.y + 9 };
-    },
-
-    paintLimbs(ctx, tree, T, chain) {
-      const live = { out: '#0e0904', body: '#6b4522', hi: '#b07c46', lo: '#3a2210' };
-      const dead = { out: '#0b0805', body: '#4c4236', hi: '#6a5b48', lo: '#2b241b' };
-      const tx = TREE.x + TRUNK_X, fy = TREE.y + FORK_Y - this.scroll;
-
-      // ---- the trunk, running down off the board into the workbench ----
-      const foot = TREE.y + TRUNK_FOOT - this.scroll;
-      this.woodSeg(ctx, { x0: tx, y0: foot, x1: tx + 3, y1: foot - 16, x2: tx - 2, y2: fy + 10, x3: tx, y3: fy }, 20, 15, live, 1, T);
-      // a riveted salvage band around the trunk
-      R(ctx, '#0b0805', tx - 11, fy + 26, 22, 9);
-      R(ctx, '#5b626d', tx - 10, fy + 27, 20, 7);
-      R(ctx, '#8d95a2', tx - 10, fy + 27, 20, 2);
-      R(ctx, '#333942', tx - 10, fy + 32, 20, 2);
-      for (let i = -8; i < 9; i += 5) { R(ctx, '#aeb6c1', tx + i, fy + 29, 2, 2); R(ctx, '#2a2f36', tx + i + 1, fy + 30, 1, 1); }
-
-      // ---- four boughs forking out of the trunk into the limbs ----
-      for (let i = 0; i < 4; i++) {
-        const dim = this.focus >= 0 && this.focus !== i;
-        const root = this.branchNodes(i).find(n => !n.req.length);
-        if (!root) continue;
-        const rp = this.nodePos(root, T);
-        const owned = tree.has(root.id);
-        const end = rp.y + 10, span = Math.max(24, fy - end);
-        const seg = {
-          x0: tx, y0: fy + 4,
-          x1: tx + (rp.x - tx) * 0.10, y1: fy - span * 0.48,
-          x2: rp.x + (tx - rp.x) * 0.10, y2: end + span * 0.52,
-          x3: rp.x, y3: end,
-        };
-        ctx.globalAlpha = dim ? 0.28 : 1;
-        this.woodSeg(ctx, seg, 13, 9, owned ? live : dead, owned ? 1 : 0, T);
-        ctx.globalAlpha = 1;
-      }
-
-      // ---- every prerequisite is a twig ----
-      for (const n of SKILL_NODES) {
-        const bi = this.branchIndex(n);
-        const dim = this.focus >= 0 && this.focus !== bi;
-        const a = this.nodePos(n, T);
-        for (const rid of n.req) {
-          const par = SKILL_BY_ID[rid]; if (!par) continue;
-          const b = this.nodePos(par, T);
-          const grown = tree.has(rid);
-          const full = grown && tree.has(n.id);
-          let litK = full ? 1 : 0;
-          if (full && this.grow[n.id] !== undefined) litK = this.grow[n.id];
-          const highlight = chain && (chain.has(rid) && (chain.has(n.id) || n === this.hoverNode()));
-          ctx.globalAlpha = dim ? 0.3 : 1;
-          this.woodSeg(ctx, this.twig(b, a), limbThick(par.pos[1]), limbThick(n.pos[1]),
-            grown ? live : dead, litK, T, highlight);
-          ctx.globalAlpha = 1;
-        }
-      }
-    },
-
-    // One tapered length of branch. Bars are stamped across the tangent, so a
-    // limb reads as solid timber instead of a string of beads.
-    woodSeg(ctx, seg, w0, w1, pal, litK, T, highlight) {
-      const span = Math.abs(seg.x3 - seg.x0) + Math.abs(seg.y3 - seg.y0);
-      const n = Math.max(12, Math.round(span / 1.4));
-      const pts = [], vert = [];
-      for (let i = 0; i <= n; i++) pts.push(bez(seg, i / n));
-      for (let i = 0; i <= n; i++) {
-        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n, i + 1)];
-        vert.push(Math.abs(b.x - a.x) <= Math.abs(b.y - a.y));
-      }
-      const bar = (i, col, grow, thick) => {
-        const w = Math.round(lerp(w0, w1, i / n)) + grow;
-        if (w < 1) return;
-        const p = pts[i], h = w >> 1;
-        if (vert[i]) R(ctx, col, p.x - h, p.y - (thick >> 1), w, thick);
-        else R(ctx, col, p.x - (thick >> 1), p.y - h, thick, w);
-      };
-      for (let i = 0; i <= n; i++) bar(i, pal.out, 2, 3);     // bark outline
-      for (let i = 0; i <= n; i++) bar(i, pal.body, 0, 3);    // heartwood
-      // light catches one side, shadow pools on the other
-      for (let i = 0; i <= n; i++) {
-        const w = Math.round(lerp(w0, w1, i / n)), h = w >> 1, p = pts[i];
-        if (w < 4) continue;
-        if (vert[i]) { R(ctx, pal.hi, p.x - h, p.y - 1, 1, 3); R(ctx, pal.lo, p.x + h - 1, p.y - 1, 1, 3); }
-        else { R(ctx, pal.hi, p.x - 1, p.y - h, 3, 1); R(ctx, pal.lo, p.x - 1, p.y + h - 1, 3, 1); }
-      }
-      // knots and grain flecks on the heavier limbs
-      for (let i = 4; i <= n - 4; i += 9) {
-        const w = Math.round(lerp(w0, w1, i / n));
-        if (w < 6) continue;
-        R(ctx, pal.lo, pts[i].x - 1, pts[i].y - 1, 2, 2);
-      }
-      // the grain lights up once the socket above is bolted in
-      if (litK > 0) {
-        const lim = Math.round(n * clamp(litK, 0, 1));
-        for (let i = 0; i <= lim; i++) {
-          const w = Math.round(lerp(w0, w1, i / n));
-          if (w < 3) continue;
-          const pulse = Math.sin(T * 3 - i * 0.22) > 0.1;
-          R(ctx, pulse ? '#ffd97a' : '#d29a3a', pts[i].x, pts[i].y, 1, 1);
-          if ((i & 7) === 0) R(ctx, '#fff4c4', pts[i].x, pts[i].y, 1, 1);
-        }
-        if (litK < 1) {                                       // the light racing up
-          const p = pts[lim];
-          R(ctx, '#fff8dc', p.x - 2, p.y - 2, 5, 5);
-          R(ctx, '#ffffff', p.x - 1, p.y - 1, 3, 3);
-        }
-      }
-      if (highlight) {
-        for (let i = 0; i <= n; i++) {
-          const w = Math.round(lerp(w0, w1, i / n)) + 3, h = w >> 1, p = pts[i];
-          if (vert[i]) { R(ctx, 'rgba(255,246,210,0.35)', p.x - h, p.y, 1, 2); R(ctx, 'rgba(255,246,210,0.35)', p.x + h - 1, p.y, 1, 2); }
-          else { R(ctx, 'rgba(255,246,210,0.35)', p.x, p.y - h, 2, 1); R(ctx, 'rgba(255,246,210,0.35)', p.x, p.y + h - 1, 2, 1); }
-        }
-      }
-    },
-
-    // -------------------------------------------------------- one socket
-    drawNode(ctx, n, p, tree, T, chain, shown) {
+    drawNode(ctx, n, p, tree, T, chain) {
       const owned = tree.has(n.id), avail = tree.available(n), afford = tree.canAfford(n);
       const state = owned ? 'owned' : !avail ? 'locked' : afford ? 'afford' : 'avail';
-      const bi = this.branchIndex(n);
-      const isShown = shown === n;
-      const dimFocus = this.focus >= 0 && this.focus !== bi;
-      const dimAfford = this.affordOnly && !owned && !(avail && afford);
-      const alpha = dimFocus ? 0.3 : dimAfford ? 0.35 : 1;
-      ctx.globalAlpha = alpha;
+      const hov = this.hover === n || this.sel === n.id;
+      const frame = (Math.floor(T * 3.4 + p.ph * 2) & 3);
+      const dim = this.affordOnly && !owned && !(avail && afford);
+      if (dim) ctx.globalAlpha = 0.34;
 
       if (chain && chain.has(n.id)) {
-        ctx.globalAlpha = alpha * (0.55 + Math.sin(T * 5 + p.ph) * 0.45);
-        blit(ctx, PLATE.chain, p.x, p.y);
-        ctx.globalAlpha = alpha;
+        ctx.globalAlpha = (dim ? 0.34 : 1) * (0.6 + Math.sin(T * 5 + p.ph) * 0.4);
+        blit(ctx, BUB.chain, p.x, p.y);
+        ctx.globalAlpha = dim ? 0.34 : 1;
       }
-      if (isShown) blit(ctx, PLATE.hover, p.x, p.y);
+      if (hov) blit(ctx, BUB.hover, p.x, p.y);
+      blit(ctx, BUB[state][frame], p.x, p.y);
 
-      // a socket you can pay for glints
+      // a bubble you can afford shimmers
       if (!owned && avail && afford) {
-        ctx.globalAlpha = alpha * (0.3 + Math.sin(T * 4.4 + p.ph) * 0.26);
-        blit(ctx, PLATE.hover, p.x, p.y);
-        ctx.globalAlpha = alpha;
+        const rr = NODE_R + 3 + Math.sin(T * 4 + p.ph) * 1.6;
+        ctx.globalAlpha = (dim ? 0.34 : 1) * (0.32 + Math.sin(T * 4.4 + p.ph) * 0.26);
+        ring(ctx, p.x, p.y, rr, '#d9fff2');
+        ctx.globalAlpha = dim ? 0.34 : 1;
       }
 
-      const g = this.grow[n.id];
-      if (g !== undefined) {                       // slamming home
-        const sc = 1 + (1 - g) * (1 - g) * 0.7;
-        ctx.save(); ctx.translate(p.x, p.y); ctx.scale(sc, sc);
-        ctx.drawImage(PLATE[state].c, -PLATE[state].ax, -PLATE[state].ay);
-        ctx.restore();
-      } else {
-        blit(ctx, PLATE[state], p.x, p.y);
-      }
-
-      // the icon in the recess
+      // the icon floats inside
       const art = nodeArt(n);
-      ctx.globalAlpha = alpha * (avail || owned ? 1 : 0.5);
-      ctx.drawImage(art.c, Math.round(p.x - art.w / 2), Math.round(p.y - art.h / 2));
-      ctx.globalAlpha = alpha;
-      if (g !== undefined) {                       // the flash of a fresh weld
-        ctx.globalAlpha = alpha * (1 - g);
-        R(ctx, '#fff8dc', p.x - 11, p.y - 11, 22, 22);
-        ctx.globalAlpha = alpha;
-      }
+      const fy = Math.round(Math.sin(T * 1.4 + p.ph * 1.7) * 1.2);
+      ctx.globalAlpha = (dim ? 0.34 : 1) * (avail || owned ? 1 : 0.55);
+      ctx.drawImage(art.c, Math.round(p.x - art.w / 2), Math.round(p.y - art.h / 2 + fy));
+      ctx.globalAlpha = dim ? 0.34 : 1;
 
-      // corner stamps
+      // owned tick / weapon role badges
       if (owned) {
-        R(ctx, '#140e05', p.x + 2, p.y + 2, 9, 9);
-        R(ctx, '#ffe48f', p.x + 3, p.y + 3, 7, 7);
-        R(ctx, '#c8952f', p.x + 3, p.y + 7, 7, 3);
-        R(ctx, '#3c2803', p.x + 4, p.y + 6, 2, 2); R(ctx, '#3c2803', p.x + 5, p.y + 7, 2, 1);
-        R(ctx, '#3c2803', p.x + 6, p.y + 5, 2, 2); R(ctx, '#3c2803', p.x + 7, p.y + 4, 2, 1);
-      } else if (!avail) {
-        R(ctx, '#0a0d12', p.x + 2, p.y + 2, 9, 9);
-        R(ctx, '#6d7883', p.x + 3, p.y + 6, 7, 4);
-        R(ctx, '#aeb6c1', p.x + 4, p.y + 3, 5, 3);
-        R(ctx, '#0a0d12', p.x + 5, p.y + 4, 3, 2);
+        const bx = p.x + 7, by = p.y + 6;
+        R(ctx, '#14141c', bx, by, 11, 11);
+        R(ctx, '#ffe48f', bx + 1, by + 1, 9, 9);
+        R(ctx, '#c8952f', bx + 1, by + 7, 9, 3);
+        R(ctx, '#fff6d2', bx + 1, by + 1, 9, 1);
+        R(ctx, '#3c2803', bx + 2, by + 5, 2, 3); R(ctx, '#3c2803', bx + 3, by + 6, 2, 2);
+        R(ctx, '#3c2803', bx + 5, by + 4, 2, 2); R(ctx, '#3c2803', bx + 6, by + 2, 2, 3);
       }
       if (n.weapon && owned) {
         const prim = tree.primary === n.weapon, side = tree.sidearm === n.weapon;
         if (prim || side) {
-          R(ctx, '#14141c', p.x - 11, p.y - 11, 9, 9);
-          R(ctx, prim ? '#2f9e5b' : '#3f7fd6', p.x - 10, p.y - 10, 7, 7);
-          pixelText(ctx, prim ? 'P' : 'S', p.x - 7, p.y - 9, 5, '#ffffff', 'center', false);
+          const lab = prim ? 'P' : 'S', col = prim ? '#ffffff' : '#ffe48f';
+          R(ctx, '#14141c', p.x - 17, p.y - 16, 9, 9);
+          R(ctx, prim ? '#2f9e5b' : '#3f7fd6', p.x - 16, p.y - 15, 7, 7);
+          pixelText(ctx, lab, p.x - 13, p.y - 14, 5, col, 'center', false);
         }
       }
-      ctx.globalAlpha = 1;
-    },
-
-    // a little nailed-on name tag for whatever socket you are pointing at
-    drawNameTag(ctx, n, p) {
-      const bi = Math.max(0, this.branchIndex(n));
-      const w = textWidth(n.name, 7) + 14, h = 15;
-      const lx = Math.round(clamp(p.x - w / 2, LAY.board.x + 3, LAY.board.x + LAY.board.w - w - 3));
-      const ly = Math.round(p.y - 30 < LAY.board.y + 4 ? p.y + 16 : p.y - 30);
-      R(ctx, '#05070b', lx + 1, ly + h, w - 2, 1);
-      R(ctx, '#0a0a10', lx, ly, w, h);
-      R(ctx, '#2d2414', lx + 1, ly + 1, w - 2, h - 2);
-      R(ctx, '#4a3a20', lx + 1, ly + 1, w - 2, 1);
-      R(ctx, '#171008', lx + 1, ly + h - 2, w - 2, 1);
-      R(ctx, BRANCHES[bi].color, lx + 1, ly + 1, 2, h - 2);
-      for (const sx of [lx + w - 5, lx + 4]) { R(ctx, '#14100a', sx, ly + 5, 3, 3); R(ctx, '#aeb6c1', sx, ly + 5, 2, 2); }
-      pixelText(ctx, n.name, lx + w / 2 + 1, ly + 4, 7, '#fff6d2', 'center', false);
-      // a thread of light back to the socket it belongs to
-      const ay = ly > p.y ? ly : ly + h;
-      for (let i = 0; i < Math.abs(ay - p.y); i += 3) R(ctx, 'rgba(255,228,143,0.45)', p.x, ay + (ly > p.y ? -i : i), 1, 1);
-    },
-
-    // ------------------------------------------------------ limb nameplates
-    drawBanners(ctx, tree, T) {
-      const m = Input.mouse, B = LAY.board;
-      for (let i = 0; i < 4; i++) {
-        const b = BRANCHES[i];
-        const x = B.x + LIMB_CX[i] - BANNER_W / 2, y = B.y + bannerTY(i) - this.scroll;
-        const on = this.focus === i, hv = hit(m, x, y, BANNER_W, BANNER_H);
-        const nodes = this.branchNodes(i), have = nodes.filter(n => tree.has(n.id)).length;
-        const ready = nodes.some(n => !tree.has(n.id) && tree.available(n) && tree.canAfford(n));
-        ctx.globalAlpha = this.focus >= 0 && !on ? 0.45 : 1;
-        // a brass nameplate screwed to the top of the limb
-        R(ctx, '#0a0a10', x, y, BANNER_W, BANNER_H);
-        R(ctx, on || hv ? '#7a5a28' : '#4a3a20', x + 1, y + 1, BANNER_W - 2, BANNER_H - 2);
-        R(ctx, on || hv ? '#a4813d' : '#66512c', x + 1, y + 1, BANNER_W - 2, 1);
-        R(ctx, '#2a2011', x + 1, y + BANNER_H - 2, BANNER_W - 2, 1);
-        R(ctx, b.color, x + 1, y + 1, 2, BANNER_H - 2);
-        for (const sx of [x + 2]) { R(ctx, '#1a140a', sx, y + 2, 3, 3); R(ctx, '#c3c9d3', sx, y + 2, 2, 2); }
-        R(ctx, '#1a140a', x + BANNER_W - 5, y + BANNER_H - 5, 3, 3); R(ctx, '#c3c9d3', x + BANNER_W - 5, y + BANNER_H - 5, 2, 2);
-        drawSprite(ctx, SP[b.icon], x + 6, y + 2);
-        pixelText(ctx, b.name, x + 15, y + 1, 6, on || hv ? '#fff6d2' : b.color, 'left', false);
-        const pw = BANNER_W - 44;
-        R(ctx, '#140f08', x + 15, y + 9, pw, 5);
-        R(ctx, '#241a0e', x + 16, y + 10, pw - 2, 3);
-        R(ctx, b.color, x + 16, y + 10, Math.round((pw - 2) * have / nodes.length), 3);
-        pixelText(ctx, have + '/' + nodes.length, x + BANNER_W - 7, y + 8, 5, '#e8d6ac', 'right', false);
-        if (ready) {
-          const f = Math.floor(T * 3) % 2;
-          R(ctx, '#14141c', x + BANNER_W - 9, y + 1, 7, 7);
-          R(ctx, f ? '#b6f5cd' : '#6fd88e', x + BANNER_W - 8, y + 2, 5, 5);
-        }
-        ctx.globalAlpha = 1;
+      if (!avail && !owned) {                        // little padlock
+        R(ctx, '#14141c', p.x + 8, p.y + 7, 9, 9);
+        R(ctx, '#7d858f', p.x + 9, p.y + 11, 7, 4);
+        R(ctx, '#aeb6c1', p.x + 10, p.y + 8, 5, 3);
+        R(ctx, '#14141c', p.x + 11, p.y + 9, 3, 2);
       }
+
+      // label
+      const col = owned ? '#ffe9b0' : avail ? (afford ? '#dcfff4' : '#bcd6e6') : '#7f97a8';
+      pixelTextOutlined(ctx, fitLabel(n.name, 92, 5), p.x, p.y + NODE_R + 2, 5, col, '#06121d', 'center');
+      if (dim) ctx.globalAlpha = 1;
     },
 
     // ------------------------------------------------------------- header
     drawHeader(ctx, tree, T) {
-      pixelTextOutlined(ctx, 'SKILL TREE', 8, 2, 18, '#ffe48f', '#2a1d08');
-      pixelText(ctx, 'THE OTTER\'S WORKSHOP', 9, 18, 5, '#c39a5e');
+      if (!this.titleSize) this.titleSize = fitSize('SKILL TREE', 104, [18, 16, 14, 12, 10]);
+      pixelTextOutlined(ctx, 'SKILL TREE', 8, 2, this.titleSize, '#ffe48f', '#2a1d08');
+      pixelText(ctx, 'OUT OF AIR', 9, 3 + textHeight(this.titleSize) + 2, 5, '#7fb8cf');
 
+      // scrap tray
       if (tree) {
-        const shown = this.hoverNode();
-        const need = shown && !tree.has(shown.id) ? shown.cost : null;
+        const hn = this.hoverNode();
+        const need = hn && !tree.has(hn.id) ? hn.cost : null;
         SCRAP_TYPES.forEach((k, i) => {
-          const x = 152 + i * 46, y = 2, w = 43, h = 22;
+          const x = 118 + i * 46, y = 2, w = 43, h = 22;
           const want = need && need[k] ? need[k] : 0;
           const ok = !want || tree.scrap[k] >= want;
           R(ctx, '#080c16', x, y, w, h);
@@ -1551,12 +1422,17 @@
           if (want) pixelText(ctx, 'OF ' + want, x + 19, y + 14, 5, ok ? '#9ff0d8' : '#ff6161');
           else pixelText(ctx, SHORT_SCRAP[k], x + 19, y + 14, 5, '#5d7488');
         });
-        const px0 = 386, pw = 86;
-        pixelText(ctx, 'TAKEN', px0, 3, 6, '#c39a5e');
-        pixelText(ctx, tree.unlocked.size + '/' + SKILL_NODES.length, px0 + pw, 2, 8, '#ffffff', 'right');
-        UIKit.bar(ctx, px0, 14, pw, 8, tree.unlocked.size / SKILL_NODES.length, '#9a6c1e', '#ffe48f');
       }
 
+      // overall progress
+      if (tree) {
+        const px0 = 352, pw = 120;
+        pixelText(ctx, 'TAKEN', px0, 3, 6, '#7fb8cf');
+        pixelText(ctx, tree.unlocked.size + '/' + SKILL_NODES.length, px0 + pw, 2, 8, '#ffffff', 'right');
+        UIKit.bar(ctx, px0, 14, pw, 8, tree.unlocked.size / SKILL_NODES.length, '#3f7fd6', '#9ff0d8');
+      }
+
+      // affordable-only toggle
       const m = Input.mouse;
       const aHov = hit(m, 480, 4, 74, 20);
       UIKit.button(ctx, 480, 4, 74, 20, null, this.affordOnly || aHov ? 'hover' : 'normal');
@@ -1565,21 +1441,66 @@
       if (this.affordOnly) { R(ctx, '#0d3a20', 488, 14, 1, 2); R(ctx, '#0d3a20', 489, 15, 1, 1); R(ctx, '#0d3a20', 490, 13, 1, 1); R(ctx, '#0d3a20', 491, 12, 1, 1); }
       pixelText(ctx, 'AFFORD', 497, 9, 6, this.affordOnly ? '#ffffff' : '#d8c9a0');
 
+      // back
       const bHov = hit(m, 566, 3, 68, 22);
       UIKit.button(ctx, 566, 3, 68, 22, 'BACK', bHov ? 'hover' : 'normal');
     },
 
-    // a slim pan indicator down the right edge of the board
-    drawPanBar(ctx) {
-      const B = LAY.board, x = B.x + B.w + 1, h = B.h - 8, y = B.y + 4;
-      R(ctx, '#0a0a10', x, y, 4, h);
-      R(ctx, '#1d1810', x, y, 4, 1); R(ctx, '#1d1810', x, y + h - 1, 4, 1);
-      const th = Math.max(24, Math.round(h * B.h / TREE.h));
-      const ty = Math.round(y + (h - th) * (this.scroll / SCROLL_MAX));
-      R(ctx, '#7a5a28', x, ty, 4, th);
-      R(ctx, '#a4813d', x, ty, 4, 1);
-      R(ctx, '#452d10', x, ty + th - 1, 4, 1);
-      R(ctx, '#e0b34e', x + 1, ty + (th >> 1) - 2, 2, 5);
+    // --------------------------------------------------------------- tabs
+    drawTabs(ctx, tree, T) {
+      const m = Input.mouse;
+      for (let i = 0; i < 4; i++) {
+        const b = BRANCHES[i], x = LAY.tabs.x + i * 71, y = LAY.tabs.y, w = 70, h = LAY.tabs.h;
+        const on = this.tab === i, hv = hit(m, x, y, w, h);
+        R(ctx, on ? '#16243a' : hv ? '#111c2e' : '#0a1220', x, y, w, h);
+        R(ctx, on ? b.color : 'rgba(60,84,110,0.9)', x, y, w, 2);
+        box(ctx, on ? b.color : '#22314a', x, y, w, h);
+        if (on) { R(ctx, '#16243a', x + 1, y + h - 1, w - 2, 1); }
+        const nodes = this.branchNodes(i), have = nodes.filter(n => tree && tree.has(n.id)).length;
+        const ready = tree ? nodes.some(n => !tree.has(n.id) && tree.available(n) && tree.canAfford(n)) : false;
+        drawSprite(ctx, SP[b.icon], x + 4, y + 3);
+        pixelText(ctx, b.name, x + 13, y + 3, 6, on ? b.color : '#8ea6bc');
+        // progress bar with the tally beside it
+        const pw = w - 30;
+        R(ctx, '#050a12', x + 4, y + 11, pw, 6);
+        R(ctx, '#0b1522', x + 5, y + 12, pw - 2, 4);
+        R(ctx, on ? b.color : '#3c556f', x + 5, y + 12, Math.round((pw - 2) * have / nodes.length), 4);
+        if (have) R(ctx, '#ffffff', x + 5, y + 12, Math.round((pw - 2) * have / nodes.length), 1);
+        pixelText(ctx, have + '/' + nodes.length, x + w - 4, y + 11, 5, on ? '#ffffff' : '#a7bed0', 'right');
+        if (ready) {
+          const f = Math.floor(T * 3) % 2;
+          R(ctx, '#14141c', x + w - 8, y + 2, 6, 6);
+          R(ctx, f ? '#b6f5cd' : '#6fd88e', x + w - 7, y + 3, 4, 4);
+        }
+      }
+    },
+
+    drawScrollbar(ctx) {
+      const max = this.maxScroll(this.tab);
+      if (max <= 0) return;
+      const x = LAY.board.x + LAY.board.w - 4, y = LAY.board.y + 2, h = LAY.board.h - 4;
+      R(ctx, 'rgba(6,14,24,0.7)', x, y, 3, h);
+      const th = Math.max(16, Math.round(h * LAY.board.h / this.contentH(this.tab)));
+      const ty = Math.round(y + (h - th) * (this.scroll / max));
+      R(ctx, '#3f7fd6', x, ty, 3, th);
+      R(ctx, '#8ac6ff', x, ty, 3, 1); R(ctx, '#8ac6ff', x, ty + th - 1, 3, 1);
+    },
+
+    // ----------------------------------------------------- the otter stage
+    drawStage(ctx, T) {
+      const s = LAY.stage;
+      // air meter
+      const y = s.y + s.h - 26, x = s.x + 6, w = s.w - 12;
+      const k = clamp(Otter.breath, 0, 1);
+      pixelTextOutlined(ctx, 'AIR', x, y - 11, 7, '#9fd8ee', '#06121d');
+      pixelTextOutlined(ctx, Math.round(k * 100) + '%', x + w, y - 11, 7,
+        k > 0.5 ? '#9ff0d8' : k > 0.25 ? '#ffe48f' : '#ff6161', '#06121d', 'right');
+      UIKit.bar(ctx, x, y, w, 10, k, k > 0.5 ? '#3f7fd6' : k > 0.25 ? '#e6802a' : '#c8302e', k > 0.5 ? '#8ac6ff' : k > 0.25 ? '#ffe48f' : '#ff6161');
+      const msg = Otter.gasp > 0 ? 'AIR! HE GOT AIR!' : k < 0.25 ? 'HE IS GOING UNDER' : k < 0.55 ? 'HIS LUNGS ARE BURNING' : 'HE IS SINKING';
+      const flash = k < 0.25 && Math.floor(T * 3) % 2 === 0;
+      pixelTextOutlined(ctx, msg, s.x + s.w / 2, y + 13, 6,
+        Otter.gasp > 0 ? '#9ff0d8' : flash ? '#ff6161' : '#c9dbe8', '#06121d', 'center');
+      pixelTextOutlined(ctx, 'FEED HIM A BUBBLE', s.x + s.w / 2, y + 22, 5, '#7fb8cf', '#06121d', 'center');
     },
 
     // --------------------------------------------------------------- card
@@ -1592,7 +1513,7 @@
       let key = 'x';
       if (tree) {
         const n = this.hoverNode();
-        key = (n ? n.id : '-') + '|' + tree.unlocked.size + '|' + tree.primary + '|' + tree.sidearm + '|' + this.focus
+        key = (n ? n.id : '-') + '|' + tree.unlocked.size + '|' + tree.primary + '|' + tree.sidearm + '|' + this.tab
           + '|' + SCRAP_TYPES.map(k => tree.scrap[k] | 0).join(',')
           + '|' + (Math.floor(T * 3) % 2)
           + (typeof G !== 'undefined' && G && G.stats ? '|' + G.stats.kills + ',' + G.stats.absorbs + ',' + G.stats.scrapCollected : '');
@@ -1648,7 +1569,7 @@
       }
       const bn = (BRANCHES.find(b => b.id === n.branch) || BRANCHES[0]).name;
       pixelText(ctx, n.weapon ? bn + ' - WEAPON' : bn, px0, y + 2, 6, bcol);
-      const stat = owned ? 'BOLTED IN' : !avail ? 'SEALED' : afford ? 'READY TO FIT' : 'NOT ENOUGH SALVAGE';
+      const stat = owned ? 'TAKEN' : !avail ? 'OUT OF REACH' : afford ? 'READY TO GRAB' : 'NOT ENOUGH SCRAP';
       const scol = owned ? '#ffe48f' : !avail ? '#ff6161' : afford ? '#9ff0d8' : '#ff9a3c';
       R(ctx, '#0a0e18', px0, y + 11, X + Wd - px0, 11);
       box(ctx, scol, px0, y + 11, X + Wd - px0, 11);
@@ -1693,7 +1614,7 @@
       // what it needed
       if (y < bottomLimit - 18) {
         pixelText(ctx, 'REQUIRES', X, y, 6, '#8ac6ff'); y += 10;
-        if (!n.req.length) { pixelText(ctx, 'nothing - it is the root of a limb', X, y, 5, '#8fa6b8'); y += 8; }
+        if (!n.req.length) { pixelText(ctx, 'nothing - the root of the branch', X, y, 5, '#8fa6b8'); y += 8; }
         else for (let i = 0; i < n.req.length && y < bottomLimit - 8; i++) {
           const r = SKILL_BY_ID[n.req[i]]; if (!r) continue;
           const got = tree.has(r.id);
@@ -1733,7 +1654,7 @@
       }
       const act = owned ? (n.weapon ? 'CLICK EQUIP - RMB SIDEARM' : 'ALREADY YOURS') :
         !avail ? 'NEEDS ' + n.req.map(r => (SKILL_BY_ID[r] || { name: '?' }).name).join(n.reqAny ? ' OR ' : ' + ') :
-          afford ? 'CLICK TO BOLT IT IN' : 'NOT ENOUGH SALVAGE';
+          afford ? 'CLICK TO GRAB IT' : 'NOT ENOUGH SALVAGE';
       const acol = owned ? '#ffe48f' : !avail ? '#ff6161' : afford ? '#9ff0d8' : '#ff9a3c';
       const pulse = !owned && avail && afford && Math.floor(T * 3) % 2 === 0;
       R(ctx, pulse ? '#123a30' : '#0a0e18', X, fy, Wd, 12);
@@ -1767,17 +1688,17 @@
 
     drawCardIdle(ctx, tree, X, y, Wd, T) {
       pixelTextOutlined(ctx, 'SKILL TREE', X, y, 12, '#ffe48f', '#2a1d08'); y += 14;
-      for (const l of wrapText(ctx, 'Driftwood, salvage and stubbornness. Pick a socket on a limb, hover it to weigh it up, and bolt it in. Each one you take grows the branch above it.', Wd, 6)) {
+      for (const l of wrapText(ctx, 'He is sinking and he is out of air. Every upgrade is a bubble - hover one to weigh it up, click to let him tear it open. [Q]/[E] change limb, arrows walk the bubbles, [ENTER] grabs one.', Wd, 6)) {
         pixelText(ctx, l, X, y, 6, '#cfe6f2'); y += 9;
       }
       y += 3;
       UIKit.divider(ctx, X, y, Wd); y += 7;
 
-      const leg = [['owned', 'BOLTED IN', '#ffe9b0'], ['afford', 'READY - you can pay', '#9ff0d8'], ['avail', 'NEEDS MORE SALVAGE', '#d8c9a0'], ['locked', 'SEALED - grow the limb', '#8b96a2']];
+      const leg = [['owned', 'TAKEN', '#ffe9b0'], ['afford', 'READY - you can pay', '#9ff0d8'], ['avail', 'NEEDS MORE SALVAGE', '#bcd6e6'], ['locked', 'CHAINED - unlock the chain', '#7f97a8']];
       for (const l of leg) {
-        blit(ctx, PLATE.mini[l[0]], X + 7, y + 5);
+        blit(ctx, BUB.mini[l[0]], X + 7, y + 4);
         pixelText(ctx, l[1], X + 16, y + 1, 6, l[2]);
-        y += 13;
+        y += 12;
       }
       y += 1;
       UIKit.divider(ctx, X, y, Wd); y += 7;
@@ -1915,7 +1836,7 @@
       if (this.ready) return; this.ready = true;
       buildIcons();
       Deep.build();
-      buildPlates();
+      buildNodeBubbles();
       const rng = new SeededRandom(7788);
       for (let i = 0; i < 14; i++) this.fish.push({
         x: rng.range(0, 640), y: rng.range(120, 300), s: rng.range(10, 26) * (rng.next() > 0.5 ? 1 : -1),
@@ -2094,5 +2015,4 @@
   global.Upgrades = Upgrades;
   global.MainMenu = MainMenu;
   global.DeepScene2 = Deep;   // exposed for debugging / harnesses only
-  global.WorkshopScene = Shop;
 })(typeof window !== 'undefined' ? window : this);

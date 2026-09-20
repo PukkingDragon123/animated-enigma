@@ -298,16 +298,138 @@ const Wildlife = (function () {
       return { c: c, ax: bx0 + L * 0.46, ay: cy };
     }
 
-    function makeFishSet(o) {
+    function makeFishSet(o, nflex) {
       const flexes = [0, 0.95, -0.95];
+      const n = nflex === undefined ? 3 : nflex;
       const out = [];
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < n; i++) {
         const fr = fishFrame(o, flexes[i]);
         out.push(rotSet(spr(fr.c, fr.ax, fr.ay), 16));
       }
       return out;
     }
     const FLEX_CYCLE = [0, 1, 0, 2];
+
+    // ====================================================================
+    //  THE WATER COLUMN
+    //
+    //  A fish is not a sprite lying on the water, it is a thing seen THROUGH
+    //  a few metres of it.  Every fish carries a z -- how low it swims in the
+    //  local column -- and the bathymetry under it says how deep that column
+    //  is.  Multiply the two and you get its OPTICAL DEPTH, which drives
+    //  every cue at once: how much colour survives the water, how many
+    //  posterized shades are left in the sprite, how small the silhouette
+    //  gets, how far its shadow has slid across the seabed, and how hard the
+    //  swell refracts it.  The art is baked once per depth layer, so a fish
+    //  at any depth still costs exactly one blit.
+    // ====================================================================
+    const DTIER = 6;                 // posterized depth layers, surface -> gloom
+    const REEF_TIERS = 4;            // reef pickers never leave the shallows
+    // how much of the fish still survives the water at each layer: a hard
+    // ladder, not a curve, so the fog steps in bands like everything else
+    const VIS_STEP = [1.00, 0.84, 0.66, 0.50, 0.36, 0.24];
+    function odOf(dp, z) { const d = dp * (0.30 + 0.70 * z); return d < 0 ? 0 : d > 1 ? 1 : d; }
+
+    // water.js owns the real tables (waterRamp / absR|G|B / visLUT / shoalLUT).
+    // This is only the fallback for the moment before an Ocean exists; the
+    // numbers are the same ones water.js builds in its constructor.
+    const WRAMP = ['#3ad3b4', '#2cc6b2', '#20b8ae', '#1aaaa8', '#169ba1', '#148f99', '#138591', '#127a88',
+      '#11707f', '#106676', '#0f5d6d', '#0e5465', '#0d4c5d', '#0d4556', '#0c3f4f', '#0c3a49'].map(hexToRgb);
+    let WFB = null;
+    function waterTab() {
+      const o = OC();
+      if (o && o.waterRamp && o.absR) return o;
+      if (!WFB) {
+        WFB = { waterRamp: WRAMP, absR: new Float32Array(16), absG: new Float32Array(16), absB: new Float32Array(16) };
+        for (let b = 0; b < 16; b++) {
+          const d = b / 15;
+          WFB.absR[b] = 0.82 - d * 0.38; WFB.absG[b] = 0.98 - d * 0.28; WFB.absB[b] = 1.06 - d * 0.12;
+        }
+      }
+      return WFB;
+    }
+    // Push one colour through the water column exactly the way the seabed
+    // goes through it: the band's absorption eats the red first and leaves the
+    // blue, then what is left is mixed into the water's own colour by how much
+    // of the fish still reaches the surface.  The result is snapped to the same
+    // 5-unit ladder water.js posterizes its own water to.
+    function fogCol(c, dp, tier, mul) {
+      const wt = waterTab();
+      let b = (dp * 15.999) | 0; b = b < 0 ? 0 : b > 15 ? 15 : b;
+      const w = wt.waterRamp[b], v = VIS_STEP[tier < 0 ? 0 : tier > 5 ? 5 : tier];
+      const m = mul === undefined ? 1 : mul;
+      const r = clamp(w[0] + (c[0] * m * wt.absR[b] - w[0]) * v, 0, 255);
+      const g = clamp(w[1] + (c[1] * m * wt.absG[b] - w[1]) * v, 0, 255);
+      const bl = clamp(w[2] + (c[2] * m * wt.absB[b] - w[2]) * v, 0, 255);
+      return 'rgb(' + ((r / 5 | 0) * 5) + ',' + ((g / 5 | 0) * 5) + ',' + ((bl / 5 | 0) * 5) + ')';
+    }
+
+    // One species at one depth layer: fogged, and progressively stripped of
+    // shades and size until it is a two-tone silhouette a pixel shorter.
+    function depthVariant(o, k) {
+      const od = (k + 0.5) / DTIER;
+      const dp = clamp(od * 1.12, 0, 1);        // the column that deep a fish sits under
+      const P = o.pal;
+      const f = (hex, mul) => fogCol(hexToRgb(hex), dp, k, mul);
+      const out = { L: o.L, B: o.B, pal: null };
+      if (k <= 1) {
+        out.pal = { out: f(P.out), dark: f(P.dark), mid: f(P.mid), light: f(P.light), dorsal: f(P.dorsal), fin: f(P.fin), eye: f(P.eye) };
+        if (o.lat) out.lat = f(o.lat);
+        if (o.bars) { out.bars = o.bars.map(b => [b[0], f(b[1])]); out.barOut = f(o.barOut); }
+      } else if (k === 2) {
+        // the first shade to go is the specular top: no more shimmer line
+        out.pal = { out: f(P.out), dark: f(P.dark), mid: f(P.mid), light: f(P.mid, 1.14), dorsal: f(P.dorsal), fin: f(P.dark), eye: f(P.out) };
+        if (o.bars) { out.bars = o.bars.map(b => [b[0], f(b[1])]); out.barOut = f(P.out); }
+      } else {
+        // down here it is a shape, not a fish: two tones and a size smaller
+        const body = f(P.dark, k >= 4 ? 1.08 : 0.98), edge = f(P.out, 0.86);
+        out.L = Math.max(4, o.L - (k >= 5 ? 2 : 1));
+        out.B = Math.max(2, o.B - (k >= 4 ? 1 : 0));
+        out.pal = { out: edge, dark: body, mid: body, light: body, dorsal: edge, fin: body, eye: body };
+      }
+      return out;
+    }
+
+    // the whole bank: bank[species][depthLayer][flex][heading]
+    let bank = null;
+    function buildBank() {
+      bank = {};
+      for (const name in FISH) {
+        const nT = SCHOOL_SPECIES.indexOf(name) >= 0 ? DTIER : REEF_TIERS;
+        const tiers = [];
+        // a silhouette does not read its own tail beat, so the deep layers
+        // only keep one frame -- that is most of the bank paid back
+        for (let k = 0; k < nT; k++) tiers.push(makeFishSet(depthVariant(FISH[name], k), k <= 2 ? 3 : 1));
+        bank[name] = tiers;
+      }
+    }
+    function ensureBank() { if (!bank) buildBank(); }
+
+    // ---- the water between the fish and you -------------------------------
+    // the same swell (and the same jelly field) that refracts the seabed in
+    // water.js, so a fish wobbles with the water it is seen through
+    const _REF = { x: 0, y: 0 };
+    function refractAt(x, y, t, dp) {
+      const o = OC();
+      if (!o || !o.waveHeight) { _REF.x = 0; _REF.y = 0; return _REF; }
+      const b = clamp((dp * 15.999) | 0, 0, 15);
+      const wv = o.waveHeight(x, y, t) * (o.shoalLUT ? o.shoalLUT[b] : 1);
+      let gx = 0, gy = 0;
+      if (o.jelOn && o.jgx) { gx = o.sample(o.jgx, x, y); gy = o.sample(o.jgy, x, y); }
+      _REF.x = clamp(wv * 2.4 + gx * 12, -6, 6);
+      _REF.y = clamp(wv * 1.6 + gy * 12, -6, 6);
+      return _REF;
+    }
+    // how much of the seabed shows through here: no visible bottom, no shadow
+    function visAt(dp) { const o = OC(); return (o && o.visLUT) ? o.visLUT[clamp((dp * 15.999) | 0, 0, 15)] : 0.3; }
+    function foamAt(x, y) { const o = OC(); return (o && o.foamOn && o.foam) ? o.sample(o.foam, x, y) : 0; }
+    function crestAt(x, y, t) { const o = OC(); return (o && o.waveHeight) ? o.waveHeight(x, y, t) : 0; }
+
+    // scratch for the two-pass fish draw (shadows first, then the fish)
+    const _PX = new Float32Array(192), _PY = new Float32Array(192), _PS = new Array(192);
+    // above this optical depth a shoal draws in the under pass, so the wakes,
+    // the drifting foam and the surface glitter all travel over the top of it
+    const DEEP_CUT = 0.40;
 
     // ====================================================================
     //  BIG CREATURES — procedural rounded forms (chars.js rasterizer)
@@ -920,8 +1042,9 @@ const Wildlife = (function () {
     // ------------------------------------------------------------- BUILD ---
     function buildSprites() {
       sp = {};
-      sp.fish = {};
-      for (const k in FISH) sp.fish[k] = makeFishSet(FISH[k]);
+      // the fish bank is built lazily, once an Ocean exists, so every layer is
+      // fogged with the water tables the sea is actually drawn with
+      bank = null;
       sp.ray = buildRay();
       sp.turtle = buildTurtle();
       sp.jelly = buildJelly();
@@ -1146,6 +1269,9 @@ const Wildlife = (function () {
         sp: rng.range(20, 32), base: rng.range(20, 32), r: 0, fear: 0, split: 0, spread: 1,
         swirl: rng.range(0.5, 1.15), swSp: rng.range(0.7, 1.5), species: species, m: [],
         seed: rng.int(1, 9999), tone: rng.range(0.8, 1.2),
+        // where in the water column this shoal is hanging, and the column itself
+        z: rng.range(0.15, 0.9), zTo: rng.range(0.15, 0.9), zT: rng.range(0, 9),
+        dp: 0.4,
       };
       const rad = Math.sqrt(n) * rng.range(7.5, 10.5);
       sc.r = rad;
@@ -1156,7 +1282,7 @@ const Wildlife = (function () {
         sc.m.push({
           ox: ox, oy: oy, tx: -oy / l, ty: ox / l,
           ph: rng.range(0, TAU), bf: rng.range(7, 13), side: (i & 1) ? 1 : -1,
-          turn: rng.range(0.6, 1.5),
+          turn: rng.range(0.6, 1.5), dz: rng.range(-0.13, 0.13),
         });
       }
       return sc;
@@ -1190,26 +1316,76 @@ const Wildlife = (function () {
       sc.split = approach(sc.split, wantSplit, dt * (wantSplit ? 3.4 : 1.1));
       sc.spread = lerp(sc.spread, 1 - clamp(sc.fear, 0, 1) * 0.22, Math.min(1, dt * 4));
       sc.swirl = lerp(sc.swirl, 0.6 + sc.fear * 1.5, Math.min(1, dt * 2));
+      // rise and sink: a shoal wanders between depth layers instead of living
+      // in one plane, and bolts for the light when something frightens it
+      sc.zT -= dt;
+      if (sc.zT <= 0) { sc.zT = rand(6, 15); sc.zTo = rand(0.10, 0.95); }
+      const wantZ = sc.fear > 0.5 ? Math.min(sc.zTo, 0.26) : sc.zTo;
+      sc.z = approach(sc.z, wantZ, dt * 0.20 * (1 + sc.fear * 4));
+      sc.dp = depthAt(sc.x, sc.y);
     }
+    function schoolDeep(sc) { return odOf(sc.dp, sc.z) > DEEP_CUT; }
     function drawSchool(ctx, cam, t, sc) {
-      const set = sp.fish[sc.species]; if (!set) return;
+      const tiers = bank && bank[sc.species]; if (!tiers) return;
+      const dp = sc.dp, maxT = tiers.length - 1;
+      // foam rides on the surface: it hazes what is underneath and, when it is
+      // thick enough, the shoal is simply behind it
+      const fv = foamAt(sc.x, sc.y);
+      if (fv > 0.80) return;
+      const bias = fv > 0.30 ? 1 : 0;
+      const ref = refractAt(sc.x, sc.y, t, dp);
+      const baseOd = odOf(dp, sc.z);
       const ca = Math.cos(sc.a), sa = Math.sin(sc.a);
       const bx = sc.x - cam.x, by = sc.y - cam.y;
-      const swirl = sc.swirl, spread = sc.spread, split = sc.split * sc.r * 0.55;
+      // a shoal that has dropped away from you also draws up smaller
+      const persp = 1 - baseOd * 0.26;
+      const swirl = sc.swirl, spread = sc.spread * persp, split = sc.split * sc.r * 0.55 * persp;
       const beat = 1 + sc.fear * 1.4;
-      const m = sc.m;
-      for (let i = 0; i < m.length; i++) {
+      const m = sc.m, n = m.length < 192 ? m.length : 192;
+      let live = 0;
+      for (let i = 0; i < n; i++) {
         const q = m[i];
         const s1 = Math.sin(t * sc.swSp * (1 + sc.fear) + q.ph);
         const lx = (q.ox + q.tx * s1 * swirl * 3.4) * spread;
         const ly = (q.oy + q.ty * s1 * swirl * 3.4) * spread + q.side * split;
-        const px0 = bx + ca * lx - sa * ly;
-        const py0 = by + sa * lx + ca * ly + Math.sin(t * 2.7 + q.ph * 1.7) * 0.7;
-        if (px0 < -10 || py0 < -10 || px0 > VIEW_W + 10 || py0 > VIEW_H + 10) continue;
+        const z = clamp(sc.z + q.dz, 0, 1);
+        const od = odOf(dp, z);
+        // the deeper it is, the more of the seabed's own refraction it takes
+        const rk = 0.22 + 0.78 * od;
+        const px0 = bx + ca * lx - sa * ly + ref.x * rk;
+        const py0 = by + sa * lx + ca * ly + Math.sin(t * 2.7 + q.ph * 1.7) * 0.7 + ref.y * rk;
+        if (px0 < -12 || py0 < -12 || px0 > VIEW_W + 12 || py0 > VIEW_H + 12) continue;
+        let k = ((od * DTIER) | 0) + bias; if (k > maxT) k = maxT; else if (k < 0) k = 0;
         const ang = sc.a + Math.cos(t * sc.swSp + q.ph) * swirl * 0.22 * q.turn;
-        const fi = FLEX_CYCLE[((t * q.bf * beat + q.ph) | 0) & 3];
-        const s2 = set[fi][angIdx(ang)];
-        ctx.drawImage(s2.c, Math.round(px0 - s2.ax), Math.round(py0 - s2.ay));
+        const set = tiers[k];
+        const fi = set.length > 1 ? FLEX_CYCLE[((t * q.bf * beat + q.ph) | 0) & 3] : 0;
+        _PX[live] = px0; _PY[live] = py0; _PS[live] = set[fi][angIdx(ang)];
+        live++;
+      }
+      if (!live) return;
+      // --- the shadow they drag over the bottom --------------------------
+      // it lags further behind the fish the deeper the water gets, and it is
+      // gone entirely once the seabed stops showing through at all
+      const sv = visAt(dp);
+      if (sv > 0.09) {
+        const sepx = Math.round(2 + dp * 8), sepy = Math.round(3 + dp * 9);
+        const sl = Math.max(3, FISH[sc.species].L - 2);
+        ctx.fillStyle = 'rgba(6,18,44,' + (sv * (1 - baseOd * 0.45) * 0.62).toFixed(3) + ')';
+        for (let i = 0; i < live; i++) ctx.fillRect(Math.round(_PX[i]) - (sl >> 1) + sepx, Math.round(_PY[i]) + sepy, sl, 1);
+      }
+      for (let i = 0; i < live; i++) {
+        const s2 = _PS[i];
+        ctx.drawImage(s2.c, Math.round(_PX[i] - s2.ax), Math.round(_PY[i] - s2.ay));
+      }
+      // --- the surface passing over them ---------------------------------
+      // when a crest rolls through, the glare off it lands on top of the fish
+      if (baseOd < 0.52) {
+        const wv = crestAt(sc.x, sc.y, t);
+        if (wv > 0.74) {
+          ctx.fillStyle = wv > 0.92 ? '#e6fbff' : '#b9e6f4';
+          const gt = (t * 7) | 0;
+          for (let i = 0; i < live; i++) if (((i + gt) & 3) === 0) ctx.fillRect(Math.round(_PX[i]) - 1, Math.round(_PY[i]) - 2, 2, 1);
+        }
       }
     }
 
@@ -1219,14 +1395,14 @@ const Wildlife = (function () {
     const REEF_SPECIES = ['clown', 'angel', 'tang', 'butterfly', 'parrot'];
     function makeReefGroup(x, y) {
       const species = REEF_SPECIES[rng.int(0, REEF_SPECIES.length - 1)];
-      const g = { x: x, y: y, r: rng.range(18, 34), species: species, m: [], fear: 0 };
-      const n = rng.int(4, 8);
+      const g = { x: x, y: y, r: rng.range(18, 34), species: species, m: [], fear: 0, z: rng.range(0.66, 0.94), dp: depthAt(x, y) };
+      const n = rng.int(3, 6);
       for (let i = 0; i < n; i++) {
         const a = rng.range(0, TAU), d = rng.range(0, g.r);
         g.m.push({
           x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, a: rng.range(0, TAU),
           tx: x, ty: y, tT: rng.range(0, 2), sp: rng.range(14, 26), ph: rng.range(0, TAU),
-          bf: rng.range(6, 11), peck: 0,
+          bf: rng.range(6, 11), peck: 0, dz: rng.range(-0.10, 0.10),
         });
       }
       return g;
@@ -1237,6 +1413,9 @@ const Wildlife = (function () {
       if (tot > 0) g.fear = Math.max(g.fear, Math.min(1.6, tot * 1.5));
       g.fear = clamp(g.fear, 0, 1.6);
       const flee = g.fear > 0.2;
+      g.dp = depthAt(g.x, g.y);
+      // spooked pickers lift off the coral; otherwise they hug it
+      g.z = approach(g.z, flee ? 0.42 : 0.86, dt * 0.9);
       const fa = Math.atan2(outv.y, outv.x);
       for (let i = 0; i < g.m.length; i++) {
         const f = g.m[i];
@@ -1263,16 +1442,40 @@ const Wildlife = (function () {
       }
     }
     function drawReefGroup(ctx, cam, t, g) {
-      const set = sp.fish[g.species]; if (!set) return;
-      for (let i = 0; i < g.m.length; i++) {
-        const f = g.m[i];
-        const px0 = f.x - cam.x, py0 = f.y - cam.y + Math.sin(t * 2.2 + f.ph) * 0.8;
+      const tiers = bank && bank[g.species]; if (!tiers) return;
+      const dp = g.dp, maxT = tiers.length - 1;
+      const fv = foamAt(g.x, g.y);
+      if (fv > 0.80) return;
+      const bias = fv > 0.30 ? 1 : 0;
+      const ref = refractAt(g.x, g.y, t, dp);
+      const baseOd = odOf(dp, g.z);
+      const m = g.m, n = m.length < 192 ? m.length : 192;
+      let live = 0;
+      for (let i = 0; i < n; i++) {
+        const f = m[i];
+        const z = clamp(g.z + f.dz, 0, 1);
+        const od = odOf(dp, z);
+        const rk = 0.22 + 0.78 * od;
+        const px0 = f.x - cam.x + ref.x * rk;
+        const py0 = f.y - cam.y + Math.sin(t * 2.2 + f.ph) * 0.8 + ref.y * rk;
         if (px0 < -12 || py0 < -12 || px0 > VIEW_W + 12 || py0 > VIEW_H + 12) continue;
-        const fi = f.peck > 0 ? 0 : FLEX_CYCLE[((t * f.bf * (1 + g.fear) + f.ph) | 0) & 3];
-        const s2 = set[fi][angIdx(f.a)];
-        ctx.fillStyle = 'rgba(6,18,48,0.20)';
-        ctx.fillRect(Math.round(px0 - 2), Math.round(py0 + 4), 5, 1);
-        ctx.drawImage(s2.c, Math.round(px0 - s2.ax), Math.round(py0 - s2.ay));
+        let k = ((od * DTIER) | 0) + bias; if (k > maxT) k = maxT; else if (k < 0) k = 0;
+        const set = tiers[k];
+        const fi = (f.peck > 0 || set.length < 2) ? 0 : FLEX_CYCLE[((t * f.bf * (1 + g.fear) + f.ph) | 0) & 3];
+        _PX[live] = px0; _PY[live] = py0; _PS[live] = set[fi][angIdx(f.a)];
+        live++;
+      }
+      if (!live) return;
+      // pickers sit right on the coral, so their shadow is tight underneath
+      const sv = visAt(dp);
+      if (sv > 0.09) {
+        const sepy = Math.round(2 + dp * 5);
+        ctx.fillStyle = 'rgba(6,18,44,' + (sv * (1 - baseOd * 0.4) * 0.70).toFixed(3) + ')';
+        for (let i = 0; i < live; i++) ctx.fillRect(Math.round(_PX[i]) - 2 + (dp * 4 | 0), Math.round(_PY[i]) + sepy, 5, 1);
+      }
+      for (let i = 0; i < live; i++) {
+        const s2 = _PS[i];
+        ctx.drawImage(s2.c, Math.round(_PX[i] - s2.ax), Math.round(_PY[i] - s2.ay));
       }
     }
 
@@ -2462,16 +2665,18 @@ const Wildlife = (function () {
       W = worldW || 3200; H = worldH || 2400; SH = shoreY === undefined ? 300 : shoreY;
       rng = new SeededRandom(9137 + ((Math.random() * 100000) | 0));
 
-      for (let i = 0; i < 15; i++) {
-        const s = spotIn(0.05, 0.62, SH + 180, H - 140);
-        S.schools.push(makeSchool(s.x, s.y, SCHOOL_SPECIES[rng.int(0, 2)], rng.int(14, 28)));
+      // Thinned right down: the sea reads as alive, not as clutter competing
+      // with the boats.  Roughly a third of what used to be out here.
+      for (let i = 0; i < 8; i++) {
+        const s = spotIn(0.05, 0.75, SH + 180, H - 140);
+        S.schools.push(makeSchool(s.x, s.y, SCHOOL_SPECIES[rng.int(0, 2)], rng.int(10, 17)));
       }
-      for (let i = 0; i < 16; i++) { const s = reefSpot(); S.reefs.push(makeReefGroup(s.x, s.y)); }
-      for (let i = 0; i < 9; i++) { const s = spotIn(0.15, 0.8, SH + 220, H - 120); S.rays.push(makeRay(s.x, s.y)); }
-      for (let i = 0; i < 7; i++) { const s = spotIn(0.05, 0.7, SH + 160, H - 120); S.turtles.push(makeTurtle(s.x, s.y)); }
-      for (let i = 0; i < 34; i++) { const s = spotIn(0.1, 1, SH + 140, H - 80); S.jellies.push(makeJelly(s.x, s.y)); }
-      for (let i = 0; i < 8; i++) { const s = spotIn(0.2, 1, SH + 260, H - 120); S.squids.push(makeSquid(s.x, s.y)); }
-      for (let i = 0; i < 38; i++) { const s = reefSpot(); S.crabs.push(makeCrab(s.x, s.y)); }
+      for (let i = 0; i < 10; i++) { const s = reefSpot(); S.reefs.push(makeReefGroup(s.x, s.y)); }
+      for (let i = 0; i < 5; i++) { const s = spotIn(0.15, 0.8, SH + 220, H - 120); S.rays.push(makeRay(s.x, s.y)); }
+      for (let i = 0; i < 4; i++) { const s = spotIn(0.05, 0.7, SH + 160, H - 120); S.turtles.push(makeTurtle(s.x, s.y)); }
+      for (let i = 0; i < 15; i++) { const s = spotIn(0.1, 1, SH + 140, H - 80); S.jellies.push(makeJelly(s.x, s.y)); }
+      for (let i = 0; i < 5; i++) { const s = spotIn(0.2, 1, SH + 260, H - 120); S.squids.push(makeSquid(s.x, s.y)); }
+      for (let i = 0; i < 16; i++) { const s = reefSpot(); S.crabs.push(makeCrab(s.x, s.y)); }
       for (let i = 0; i < 3; i++) { const s = spotIn(0.25, 1, SH + 400, H - 200); S.sharks.push(makeShark(s.x, s.y)); }
 
       const wsp = spotIn(0.55, 1, SH + 600, H - 300);
@@ -2484,6 +2689,7 @@ const Wildlife = (function () {
         const s = tier >= 2 ? spotIn(0.3, 1, SH + 420, H - 160) : reefSpot();
         S.treasures.push(makeTreasure(s.x, s.y, tier));
       }
+      ensureBank();
       podTimer = 26;
     }
 
@@ -2562,9 +2768,19 @@ const Wildlife = (function () {
       syncG();
       if (!inited || !cam) return;
       ctx.imageSmoothingEnabled = false;
+      ensureBank();
       for (let i = 0; i < S.treasures.length; i++) { const tr = S.treasures[i]; if (onScreen(tr.x, tr.y, cam, 60)) drawTreasureUnder(ctx, cam, t, tr); }
       for (let i = 0; i < S.crabs.length; i++) { const c = S.crabs[i]; if (onScreen(c.x, c.y, cam, 24)) drawCrab(ctx, cam, t, c); }
       for (let i = 0; i < S.rays.length; i++) { const r = S.rays[i]; if (onScreen(r.x, r.y, cam, 70)) drawRay(ctx, cam, t, r); }
+      // Fish that are down in the water column go in UNDER the surface layers:
+      // the wakes, the drifting foam and the sun glitter all pass over them.
+      // Reef pickers live on the coral, so they always belong down here.
+      for (let i = 0; i < S.reefs.length; i++) { const gr = S.reefs[i]; if (onScreen(gr.x, gr.y, cam, gr.r + 40)) drawReefGroup(ctx, cam, t, gr); }
+      for (let i = 0; i < S.schools.length; i++) {
+        const sc = S.schools[i];
+        if (!schoolDeep(sc) || !onScreen(sc.x, sc.y, cam, sc.r * 2 + CULL)) continue;
+        drawSchool(ctx, cam, t, sc);
+      }
       drawInk(ctx, cam, t);
       // big movers cast their shadow on the seabed
       for (let i = 0; i < S.whales.length; i++) {
@@ -2581,14 +2797,14 @@ const Wildlife = (function () {
       syncG();
       if (!inited || !cam) return;
       ctx.imageSmoothingEnabled = false;
+      ensureBank();
       drawMarks(ctx, cam, t);
       renderTrails(ctx, cam);
       for (let i = 0; i < S.schools.length; i++) {
         const sc = S.schools[i];
-        if (!onScreen(sc.x, sc.y, cam, sc.r * 2 + CULL)) continue;
+        if (schoolDeep(sc) || !onScreen(sc.x, sc.y, cam, sc.r * 2 + CULL)) continue;
         drawSchool(ctx, cam, t, sc);
       }
-      for (let i = 0; i < S.reefs.length; i++) { const gr = S.reefs[i]; if (onScreen(gr.x, gr.y, cam, gr.r + 40)) drawReefGroup(ctx, cam, t, gr); }
       for (let i = 0; i < S.turtles.length; i++) { const tu = S.turtles[i]; if (onScreen(tu.x, tu.y, cam, 46)) drawTurtle(ctx, cam, t, tu); }
       for (let i = 0; i < S.squids.length; i++) { const q = S.squids[i]; if (onScreen(q.x, q.y, cam, 50)) drawSquid(ctx, cam, t, q); }
       for (let i = 0; i < S.jellies.length; i++) { const j = S.jellies[i]; if (onScreen(j.x, j.y, cam, 40)) drawJelly(ctx, cam, t, j); }

@@ -267,7 +267,9 @@ class Game {
         if (BossCut.done) {
           const back = this.cutReturn || 'play'; this.cutReturn = null;
           this.state = back === 'cut' ? 'play' : back;
-          if (this.pendingVictory) { this.pendingVictory = false; this.endT = 0; this.state = 'victory_wait'; }
+          // the defeat cinematic IS the pause after the kill, so the victory
+          // screen comes up the moment it ends rather than after another wait
+          if (this.pendingVictory) { this.pendingVictory = false; this.endT = 0; this.state = 'victory'; }
         }
         break;
       case 'death':
