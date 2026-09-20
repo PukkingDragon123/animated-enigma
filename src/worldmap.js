@@ -104,7 +104,7 @@
   // land is a warm five-step ramp lit from the north-west.
   const P = {
     // water, shoal -> abyss
-    sea0: '#eee2bb', sea1: '#ded0a6', sea2: '#cbbd91', sea3: '#b9a97e', sea4: '#a89870',
+    sea0: '#f1e7c3', sea1: '#e0d3a9', sea2: '#cbbd91', sea3: '#b6a57a', sea4: '#a39268',
     seaL: '#f4ead0', seaX: '#9a8a63',
     stain: '#dacea4', stain2: '#ccbd92', foxing: '#a98d5c',
     // land ramp, lit / mid / shaded
@@ -148,7 +148,7 @@
       spits: [[3.32, 22, 4], [0.35, 16, 3]],
       lobes: [{ dx: -34, dy: 14, rx: 26, ry: 16 }, { dx: 30, dy: 16, rx: 26, ry: 14 }, { dx: 6, dy: -22, rx: 28, ry: 14 }],
     },
-    { name: 'THE SISTERS', x: 298, y: 182, rx: 16, ry: 11, seed: 3301, rough: 1.3, hills: 1, woods: 1, label: [300, 166], ls: 4, lobes: [{ dx: 10, dy: 6, rx: 8, ry: 6 }] },
+    { name: 'THE SISTERS', x: 298, y: 182, rx: 16, ry: 11, seed: 3301, rough: 1.3, hills: 1, woods: 1, label: [312, 166], ls: 4, lobes: [{ dx: 10, dy: 6, rx: 8, ry: 6 }] },
     { name: '', x: 332, y: 208, rx: 12, ry: 9, seed: 3307, rough: 1.3, hills: 1, woods: 0, lobes: [] },
     {
       name: 'MARROW ISLE', x: 408, y: 176, rx: 52, ry: 36, seed: 4409, rough: 1.25,
@@ -1777,12 +1777,13 @@
     txt(ctx, d.name, r.x + 15, r.y + 4, 6, { color: tint });
     if (!on) {
       // a blob of red wax, pressed with a broken-net sigil
-      const wx = r.x + r.w - 7, wy = r.y + 6;
-      disc(ctx, P.wax, wx, wy, 4);
+      const wx = r.x + r.w - 8, wy = r.y + 6;
+      disc(ctx, P.redD, wx, wy, 4);
+      disc(ctx, P.wax, wx, wy, 3);
+      D1(ctx, P.wax, wx - 4, wy); D1(ctx, P.wax, wx + 4, wy);
+      D1(ctx, P.wax, wx, wy - 4); D1(ctx, P.wax, wx, wy + 4);
       D1(ctx, P.waxL, wx - 1, wy - 2); D1(ctx, P.waxL, wx, wy - 2);
-      D1(ctx, P.redD, wx + 1, wy + 2); D1(ctx, P.redD, wx - 2, wy + 1);
-      D1(ctx, P.redD, wx - 1, wy - 1); D1(ctx, P.redD, wx + 1, wy + 1);
-      D1(ctx, P.redD, wx + 1, wy - 1); D1(ctx, P.redD, wx - 1, wy + 1);
+      for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 2]]) D1(ctx, P.redD, wx + dx, wy + dy);
     }
   }
 
@@ -1799,7 +1800,10 @@
     R(ctx, ink, x - 7, y, 3, 1); R(ctx, ink, x + 5, y, 3, 1);
     R(ctx, ink, x, y - 7, 1, 3); R(ctx, ink, x, y + 5, 1, 3);
     if (on) { disc(ctx, P.red, x, y, 2); D1(ctx, P.redL, x, y - 1); }
-    else { disc(ctx, P.grey, x, y, 2); D1(ctx, P.greyL, x, y - 1); }
+    else {
+      for (let k = -6; k <= 6; k++) { D1(ctx, P.greyD, x + k, y - k); D1(ctx, P.sand, x + k, y - k + 1); }
+      disc(ctx, P.grey, x, y, 2); D1(ctx, P.greyD, x, y);
+    }
     // pulse / selection ring
     if (on) {
       const k = (Math.sin(T * 3.1) * 0.5 + 0.5);
@@ -1839,7 +1843,7 @@
       for (let i = 0; i < DEST.length; i++) {
         const d = DEST[i];
         if (d.unlocked === undefined) d.unlocked = i === 0;
-        d.plaqW = 28 + mText(d.name, 6);
+        d.plaqW = 30 + mText(d.name, 6);
         d.lines = wrapText(null, d.blurb, 286, 6).slice(0, 3);
       }
       this.chart = buildChart(this);          // this also snaps the ports to the coast
@@ -2055,11 +2059,10 @@
       // 1) a scrubbed light underlay so the track reads over stipple and rhumbs
       this.walk(pts, shown, 1, (x, y) => { D1(ctx, P.sand, x, y); D1(ctx, P.sand, x, y - 1); D1(ctx, P.beach, x, y + 1); });
       // 2) the dashed track itself, crawling forward
-      const ph = Math.floor(T * 14), per = live ? 8 : 6, on = live ? 5 : 2;
+      const ph = Math.floor(T * 14), per = live ? 8 : 7, on = live ? 5 : 3;
       this.walk(pts, shown, 1, (x, y, s) => {
         const k = ((Math.floor(s) - ph) % per + per) % per;
-        if (k < on) D1(ctx, live ? P.red : P.greyD, x, y);
-        else if (k === on && live) D1(ctx, P.redD, x, y);
+        if (k < on) { D1(ctx, live ? P.red : P.greyD, x, y); D1(ctx, live ? P.redD : P.grey, x, y + 1); }
       });
       // 3) distance ticks along the course, every fifth one long
       this.walk(pts, shown, 1, (x, y, s, dx, dy) => {
