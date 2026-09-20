@@ -1,4 +1,4 @@
-// ---- HUD & Skill tree ("The Workshop") -----------------------------------
+// ---- HUD & Skill tree -----------------------------------------------------
 const GLYPHS = {
   dmg: ['........', '..kkkk..', '.kYyyyk.', 'kYwwyyyk', 'kyyyyyyk', '.kyyyyk.', '..kkkk..', '........'],
   rate: ['...kk...', '..kYk...', '.kYyk...', 'kYyyykk.', '.kkkYyk.', '...kYk..', '...kk...', '........'],
@@ -121,8 +121,13 @@ const UI = {
       pixelTextOutlined(ctx, G.tree.scrap[k] + '', x + 12, 11, 7, SCRAP_COLORS[k], '#14141c');
     });
     const canBuy = SKILL_NODES.some(n => !G.tree.has(n.id) && G.tree.available(n) && G.tree.canAfford(n));
-    if (!touch) pixelTextOutlined(ctx, canBuy ? '[TAB] SKILL TREE - points ready' : '[TAB] SKILL TREE', 636, 33, 5,
-      canBuy && Math.floor(t * 2) % 2 ? '#6fd88e' : '#9ab0c0', '#14141c', 'right');
+    if (!touch) {
+      // the prompt is short enough to clear the panel; the nudge goes under it
+      pixelTextOutlined(ctx, '[TAB] SKILL TREE', 630, 33, 5,
+        canBuy && Math.floor(t * 2) % 2 ? '#6fd88e' : '#9ab0c0', '#14141c', 'right');
+      if (canBuy) pixelTextOutlined(ctx, 'points ready', 630, 42, 5,
+        Math.floor(t * 2) % 2 ? '#6fd88e' : '#4f8a63', '#14141c', 'right');
+    }
 
     // ---------- bottom-left: weapon ----------
     if (!touch) {
@@ -132,7 +137,7 @@ const UI = {
       drawSprite(ctx, SP.guns[G.tree.primary], 16, 338);
       pixelText(ctx, wp.name, 42, 332, 6, '#ffffff');
       const wl = G.tree.weaponsUnlocked();
-      pixelText(ctx, wl.length > 1 ? `[1-${wl.length}] switch  (${wl.indexOf(G.tree.primary) + 1}/${wl.length})` : 'unlock more in the Workshop', 42, 341, 5, '#8fa6b8');
+      pixelText(ctx, wl.length > 1 ? `[1-${wl.length}] switch  (${wl.indexOf(G.tree.primary) + 1}/${wl.length})` : 'unlock more in the skill tree', 42, 341, 5, '#8fa6b8');
       if (side) { drawSprite(ctx, SP.guns[G.tree.sidearm], 16, 350); pixelText(ctx, '+ ' + WEAPONS[G.tree.sidearm].name, 42, 349, 5, '#ffe48f'); }
     }
 

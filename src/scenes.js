@@ -30,7 +30,7 @@ const Dialogue = {
     pixelTextOutlined(ctx, touch ? 'TAP FIRE. LET THE OTTER ANSWER.' : 'LEFT CLICK. LET THE OTTER ANSWER.',
       320, 304, 10, Math.floor(this.t * 2) % 2 ? '#ffe48f' : '#ffffff', '#14141c', 'center');
     pixelText(ctx, touch ? 'Helm to swim   SHIELD to parry   ROLL to dash'
-                         : 'WASD swim   SPACE roll   E / right-click shield   TAB workshop',
+                         : 'WASD swim   SPACE roll   E / right-click shield   TAB skill tree',
       320, 320, 6, '#9ab0c0', 'center');
   },
 };
