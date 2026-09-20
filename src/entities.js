@@ -100,7 +100,7 @@ class Pickup {
 // ============================ PROJECTILE ==============================
 class Projectile {
   constructor(o) {
-    Object.assign(this, { x: 0, y: 0, vx: 0, vy: 0, life: 1, dmg: 10, owner: 'player', sprite: SP.bullet, pierce: 0, ricochet: 0, explode: 0, knock: 40, absorbable: true, size: 3, z: 0, vz: 0, arc: false, slow: 0, crit: false, burn: 0, hits: null, trail: false, dead: false, homing: 0, weapon: null, drag: 0, harmless: false }, o);
+    Object.assign(this, { x: 0, y: 0, vx: 0, vy: 0, life: 1, dmg: 10, owner: 'player', sprite: SP.bullet, pierce: 0, ricochet: 0, explode: 0, knock: 40, absorbable: true, size: 3, z: 0, vz: 0, arc: false, slow: 0, crit: false, burn: 0, hits: null, trail: false, dead: false, homing: 0, weapon: null, drag: 0, harmless: false, grapple: null }, o);
     this.hits = new Set(); this.age = 0;
   }
   update(dt) {
@@ -134,6 +134,8 @@ class Projectile {
       if (p.absorb.active && this.absorbable && d < 54) { p.absorbHit(this); this.dead = true; return; }
       if (d < 12 + this.size && !p.diving) {
         if (p.rolling) { this.dead = true; G.particles.sparks(this.x, this.y, 3); return; }
+        // a winch hook does almost no damage: what it does is take the wheel
+        if (this.grapple && !this.grapple.dead) { p.hooked(this.grapple, this); this.dead = true; return; }
         if (this.explode) { this.detonate(); this.dead = true; return; }
         if (this.harmless || this.dmg <= 0) { this.dead = true; G.particles.sparks(this.x, this.y, 4); return; }
         p.damage(this.dmg, this.x, this.y);
@@ -209,6 +211,79 @@ class Projectile {
   }
 }
 
+// ============================ MINE ====================================
+// What a Mine Runner leaves behind it. It sits in the water winking slowly
+// and does nothing at all until you swim into its circle: then the light
+// goes hard red for three quarters of a second before it goes up. That
+// beat is the whole point — every mine is escapable if you read it, and a
+// roll clears the blast easily. A parry eats one outright.
+class Mine extends Projectile {
+  constructor(x, y, diff) {
+    super({
+      x, y, vx: rand(-8, 8), vy: rand(-8, 8), life: 16,
+      dmg: 15 * (1 + ((diff || 1) - 1) * 0.8), owner: 'enemy', sprite: SP.buckshot,
+      size: 5, explode: 36, knock: 0, absorbable: true,
+    });
+    this.arm = 0; this.ph = rand(0, TAU);
+  }
+  update(dt) {
+    this.age += dt; this.life -= dt;
+    if (this.life <= 0) { this.detonate(); this.dead = true; return; }
+    const k = Math.pow(0.12, dt);
+    this.vx *= k; this.vy *= k;
+    const f = G.ocean.flow(this.x, this.y);
+    this.x += (this.vx + f.x * 0.25) * dt; this.y += (this.vy + f.y * 0.25) * dt;
+    if (Math.random() < dt * 1.5) G.ocean.addFoam(this.x, this.y, 0.05);
+    const p = G.player;
+    if (p.dead) return;
+    if (p.absorb.active && dist(this.x, this.y, p.x, p.y) < 58) {
+      p.absorbHit(this); G.particles.explode(this.x, this.y, 24, { water: true }); this.dead = true; return;
+    }
+    if (this.arm > 0) {
+      this.arm -= dt;
+      if (Math.random() < 0.5) G.particles.sparks(this.x, this.y - 4, 1);
+      if (this.arm <= 0) { this.detonate(); this.dead = true; }
+      return;
+    }
+    if (!p.diving && dist(this.x, this.y, p.x, p.y) < 44) {
+      this.arm = 0.75;
+      Audio_.tone(940, 0.09, 'square', 0.1);
+      Toon.shock(this.x, this.y, 48, 0.55, '#ff9a3c');
+      G.particles.bubbles(this.x, this.y, 3);
+    }
+  }
+  render(ctx, cam) {
+    const sx = Math.round(this.x - cam.x), sy = Math.round(this.y - cam.y);
+    if (sx < -24 || sy < -24 || sx > 664 || sy > 384) return;
+    const bob = Math.round(Math.sin(this.age * 2.6 + this.ph));
+    ctx.fillStyle = 'rgba(6,18,48,0.34)'; ctx.fillRect(sx - 5, sy + 4, 11, 3);
+    // spikes first, so the drum caps them
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * TAU + 0.5;
+      ctx.fillStyle = '#14141c';
+      ctx.fillRect(sx + Math.round(Math.cos(a) * 7), sy + bob + Math.round(Math.sin(a) * 6), 2, 2);
+    }
+    ctx.fillStyle = '#14141c'; ctx.fillRect(sx - 5, sy + bob - 3, 10, 8); ctx.fillRect(sx - 4, sy + bob - 4, 8, 10);
+    ctx.fillStyle = '#343b49'; ctx.fillRect(sx - 4, sy + bob - 3, 8, 6);
+    ctx.fillStyle = '#5b6578'; ctx.fillRect(sx - 3, sy + bob - 3, 6, 2);
+    ctx.fillStyle = '#20242e'; ctx.fillRect(sx - 4, sy + bob + 2, 8, 1);
+    const fast = this.arm > 0;
+    const on = fast ? (((this.age * 16) | 0) & 1) : (((this.age * 2) | 0) & 1);
+    ctx.fillStyle = on ? (fast ? '#ff6161' : '#ff9a3c') : '#5c1518';
+    ctx.fillRect(sx - 1, sy + bob - 6, 2, 2);
+    if (fast) {
+      // the arming ring: hard dots, no blur, so it reads at a glance
+      const r = Math.round(12 + (1 - this.arm / 0.75) * 18);
+      for (let i = 0; i < 14; i++) {
+        const a = i / 14 * TAU;
+        const bx = sx + Math.round(Math.cos(a) * r), by = sy + Math.round(Math.sin(a) * r * 0.8);
+        ctx.fillStyle = '#0c1018'; ctx.fillRect(bx - 1, by, 2, 2);
+        ctx.fillStyle = on ? '#ff6161' : '#ff9a3c'; ctx.fillRect(bx - 1, by - 1, 2, 2);
+      }
+    }
+  }
+}
+
 // ============================ WRECK (sinking boat) ======================
 class Wreck {
   constructor(sprite, x, y, angle, radius) { this.sprite = sprite; this.x = x; this.y = y; this.angle = angle; this.t = 0; this.dur = 2.2 + radius / 20; this.radius = radius; this.dead = false; this.smokeT = 0; }
@@ -255,6 +330,9 @@ class Player {
     this.rampage = { meter: 0, active: false, t: 0, aim: 0, fireT: 0 };
     this.dive = { active: false, t: 0, cd: 0 };
     this.decoyCd = 0; this.tidalCd = 0;
+    // the manatee's own weapon: a two-tonne tail sweep, bought in the tree
+    this.melee = { phase: 'idle', t: 0, cd: 0, dir: 0, side: 1, hits: null, arcT: 0 };
+    this.tether = null;
     this.weaponCd = { primary: 0, sidearm: 0 };
     this.recoil = { primary: 0, sidearm: 0 }; this.flash = { primary: 0, sidearm: 0 };
     this.aim = 0; this.target = null; this.invuln = 0; this.hurt = 0; this.boost = 0; this.slowed = 0; this.slipT = 0;
@@ -274,13 +352,16 @@ class Player {
     if (this.dead) return;
     const st = this.stats, inp = Input.axis();
     // ---- timers
-    this.invuln -= dt; this.hurt -= dt; this.joyT -= dt; this.boost -= dt; this.slowed -= dt; this.platingT -= dt; this.absorb.cd -= dt; this.absorb.flash -= dt; this.dive.cd -= dt; this.decoyCd -= dt; this.tidalCd -= dt;
+    this.invuln -= dt; this.hurt -= dt; this.joyT -= dt; this.boost -= dt; this.slowed -= dt; this.platingT -= dt; this.absorb.cd -= dt; this.absorb.flash -= dt; this.dive.cd -= dt; this.decoyCd -= dt; this.tidalCd -= dt; this.melee.cd -= dt;
     for (const k of ['primary', 'sidearm']) { this.weaponCd[k] -= dt; this.recoil[k] = Math.max(0, this.recoil[k] - dt); this.flash[k] -= dt; }
     if (this.roll.charges < st.rollCharges) { this.roll.rechargeT -= dt; if (this.roll.rechargeT <= 0) { this.roll.charges++; this.roll.rechargeT = this.cd(2.4 * st.rollCd); } }
     if (st.regen > 0) { this.hp = Math.min(st.maxHp, this.hp + st.regen * dt); }
     // ---- abilities
     if (Input.actHit('roll') && !this.roll.active && this.roll.charges > 0 && !this.dive.active) this.startRoll(inp);
     if (Input.actHit('shield') && !this.absorb.active && this.absorb.cd <= 0 && !this.roll.active) { this.absorb.active = true; this.absorb.t = 0; G.ocean.ripple(this.x, this.y, 40, 120, 0.6); }
+    // MELEE: does nothing whatsoever until the tree unlocks it
+    if (st.melee && Input.actHit('melee') && this.melee.phase === 'idle' && this.melee.cd <= 0 && !this.roll.active && !this.dive.active) this.startMelee();
+    if (this.melee.phase !== 'idle') this.updateMelee(dt);
     if (Input.actHit('rampage') && this.rampage.meter >= 100 && !this.rampage.active) this.startRampage();
     if (st.dive && Input.actHit('dive') && !this.dive.active && this.dive.cd <= 0 && !this.roll.active) { this.dive.active = true; this.dive.t = 0; G.particles.splash(this.x, this.y, 1.6); G.particles.bubbles(this.x, this.y, 8); Audio_.splash(1.2); }
     if (st.decoy && Input.actHit('decoy') && this.decoyCd <= 0) { this.decoyCd = this.cd(14); G.buoy = new Buoy(this.x - this.facing * 30, this.y); G.particles.splash(G.buoy.x, G.buoy.y, 0.8); G.particles.text(this.x, this.y - 20, 'DECOY!', '#8ac6ff'); }
@@ -291,7 +372,9 @@ class Player {
     if (this.absorb.active) { this.absorb.t += dt; if (this.absorb.t > st.absorbWindow) { this.absorb.active = false; this.absorb.cd = this.cd(st.absorbCd); } }
     if (this.dive.active) { this.dive.t += dt; if (Math.random() < 0.3) G.particles.bubbles(this.x + rand(-8, 8), this.y + rand(-6, 6), 1); if (this.dive.t > 1.5) { this.dive.active = false; this.dive.cd = this.cd(7); G.particles.splash(this.x, this.y, 1.8); Audio_.splash(1.3); } }
     // ---- movement
-    let speedMul = st.speed * (this.boost > 0 ? 1.6 : 1) * (this.slowed > 0 ? 0.45 : 1) * (this.dive.active ? 0.7 : 1) * (this.rampage.active ? 1.15 : 1);
+    const mPh = this.melee.phase;
+    const meleeDrag = mPh === 'wind' ? 0.35 : mPh === 'strike' ? 0.6 : mPh === 'recover' ? 0.7 : 1;
+    let speedMul = st.speed * (this.boost > 0 ? 1.6 : 1) * (this.slowed > 0 ? 0.45 : 1) * (this.dive.active ? 0.7 : 1) * (this.rampage.active ? 1.15 : 1) * meleeDrag;
     const maxSp = 150 * speedMul, acc = 520 * st.accel;
     if (this.roll.active) {
       this.roll.t += dt;
@@ -306,6 +389,21 @@ class Player {
       let tx = inp.x * maxSp, ty = inp.y * maxSp;
       this.vx = approach(this.vx, tx, acc * dt); this.vy = approach(this.vy, ty, acc * dt);
       if (inp.x === 0 && inp.y === 0) { this.vx *= Math.pow(0.02, dt); this.vy *= Math.pow(0.02, dt); }
+    }
+    // a winch boat has a hook in her: it hauls her in until she rolls out of
+    // it, the cable runs out, or the boat on the other end sinks
+    if (this.tether) {
+      const te = this.tether.e;
+      if (!te || te.dead) this.freeTether('THE LINE GOES SLACK');
+      else if (this.roll.active) this.freeTether('BROKE THE LINE!');
+      else {
+        this.tether.t -= dt;
+        const a = angleTo(this.x, this.y, te.x, te.y);
+        this.vx += Math.cos(a) * 330 * dt; this.vy += Math.sin(a) * 330 * dt;
+        if (Math.random() < 0.5) G.particles.spray(this.x, this.y, a + Math.PI, 1, 50);
+        G.ocean.addFoam(this.x, this.y, 0.08);
+        if (this.tether.t <= 0) this.freeTether(null);
+      }
     }
     // currents
     const f = G.ocean.flow(this.x, this.y);
@@ -330,6 +428,140 @@ class Player {
     if (sp > 40 && !this.dive.active) { const last = this.wake.pts[this.wake.pts.length - 1]; if (!last || dist(last.x, last.y, this.x, this.y) > 6) this.wake.pts.push({ x: this.x - this.vx / sp * 10, y: this.y - this.vy / sp * 10, t }); if (Math.random() < sp / 500) G.ocean.addFoam(this.x - this.vx / sp * 12, this.y - this.vy / sp * 12, 0.06); }
     // ---- otter: aiming & shooting
     this.updateWeapons(dt, t);
+  }
+  // ---- MELEE: the manatee's tail sweep -----------------------------------
+  // Three beats, because a two-tonne animal does not flick. She hauls the
+  // water in behind her (wind), the tail comes round through a real arc and
+  // hits things in the order the arc reaches them (strike), then she is
+  // committed to the follow-through and cannot steer out of it (recover).
+  //
+  // Every number it reads comes off the stats object, so the tree owns the
+  // tuning entirely:
+  //   stats.melee        bool   unlocked at all
+  //   stats.meleeDmg     number damage per boat caught in the sweep
+  //   stats.meleeCd      number seconds between swings (x stats.cdMult)
+  //   stats.meleeArc     number radians of the sweep
+  //   stats.meleeRange   number world units from her centre
+  //   stats.meleeKnock   number knockback multiplier (1 = the base shove)
+  //   stats.meleeBleed   number damage per second bled for 3s after a hit
+  //   stats.meleeLifesteal number HP healed per boat hit
+  //   stats.meleeStun    number seconds a hit boat is left wallowing
+  //   stats.meleeWave    bool   the sweep throws a wall of water: longer
+  //                             reach, and it swats enemy shots out of the air
+  startMelee() {
+    const st = this.stats, m = this.melee;
+    m.phase = 'wind'; m.t = 0; m.hits = new Set(); m.arcT = 0;
+    m.side = -m.side;                                   // alternate shoulders
+    m.dir = (Input.mouse.moved || Input.mouse.down || this.target) ? this.aim : (this.facing === 1 ? 0 : Math.PI);
+    m.cd = this.cd(st.meleeCd || 1.4);
+    if (this.absorb.active) { this.absorb.active = false; this.absorb.cd = this.cd(st.absorbCd * 0.5); }
+    // the wind-up: she rolls back and the water piles up behind the tail
+    const bx = this.x - Math.cos(m.dir) * 16, by = this.y - Math.sin(m.dir) * 16;
+    if (G.ocean.disturb) G.ocean.disturb(bx, by, -3.2, 0, 0);
+    G.particles.bubbles(bx, by, 4);
+    Toon.puff(bx, by, 2, '#cfe4f2');
+    Audio_.tone(90, 0.22, 'sine', 0.16, 40);
+  }
+  get MELEE_WIND() { return 0.17; }
+  get MELEE_SWING() { return 0.15; }
+  updateMelee(dt) {
+    const m = this.melee;
+    m.t += dt;
+    if (m.phase === 'wind') {
+      const k = m.t / this.MELEE_WIND;
+      const bx = this.x - Math.cos(m.dir) * 16, by = this.y - Math.sin(m.dir) * 16;
+      if (Math.random() < 0.7) G.particles.spray(bx, by, m.dir + Math.PI, 1, 30 + k * 40);
+      if (m.t >= this.MELEE_WIND) { m.phase = 'strike'; m.t = 0; this.meleeStrike(); }
+    } else if (m.phase === 'strike') {
+      this.meleeSweep(dt);
+      if (m.t >= this.MELEE_SWING) { m.phase = 'recover'; m.t = 0; }
+    } else if (m.t >= 0.20) { m.phase = 'idle'; m.t = 0; }
+  }
+  // the instant the tail starts moving: she lunges into it and the water goes
+  meleeStrike() {
+    const st = this.stats, m = this.melee;
+    const range = this.meleeRange();
+    this.vx += Math.cos(m.dir) * 190; this.vy += Math.sin(m.dir) * 190;
+    if (Math.abs(Math.cos(m.dir)) > 0.25) this.facing = sign(Math.cos(m.dir));
+    G.shake(st.meleeWave ? 5 : 3.5);
+    Audio_.noise(0.26, 0.34, 1400, 180); Audio_.tone(130, 0.2, 'sine', 0.2, -60);
+    G.ocean.ripple(this.x, this.y, range + 26, 200, 0.75);
+    if (G.ocean.disturb) G.ocean.disturb(this.x + Math.cos(m.dir) * 14, this.y + Math.sin(m.dir) * 14, 6, Math.cos(m.dir) * 240, Math.sin(m.dir) * 240);
+    G.particles.splash(this.x + Math.cos(m.dir) * 14, this.y + Math.sin(m.dir) * 14, 1.5);
+    for (let i = 0; i < 4; i++) Toon.speed(this.x + Math.cos(m.dir) * 10, this.y + Math.sin(m.dir) * 10, m.dir, 2);
+    if (st.meleeWave) { Toon.shock(this.x, this.y, range * 2.1, 0.32, '#cfe9ff'); G.ocean.ripple(this.x, this.y, range + 54, 260, 0.5); }
+  }
+  meleeRange() { const st = this.stats; return (st.meleeRange || 46) * (st.meleeWave ? 1.35 : 1); }
+  // the arc really sweeps: a boat is hit when the leading edge reaches its
+  // bearing, so a line of boats comes apart one after another
+  meleeSweep(dt) {
+    const st = this.stats, m = this.melee;
+    const arc = st.meleeArc || 2.0, range = this.meleeRange();
+    const k = clamp(m.t / this.MELEE_SWING, 0, 1);
+    const ease = k * k * (3 - 2 * k);                   // heavy, then whipping
+    m.arcT = ease;
+    const edge = m.dir + m.side * (-arc / 2 + arc * ease);
+    // the water the blade is passing through
+    const ex = this.x + Math.cos(edge) * range * 0.8, ey = this.y + Math.sin(edge) * range * 0.8;
+    G.ocean.addFoam(ex, ey, 0.5);
+    if (G.ocean.disturb) G.ocean.disturb(ex, ey, 3.4, Math.cos(edge) * 200, Math.sin(edge) * 200);
+    if (Math.random() < 0.9) G.particles.spray(ex, ey, edge + m.side * 1.4, 2, 130);
+    const reached = tgt => {
+      const b = angleTo(this.x, this.y, tgt.x, tgt.y);
+      const rel = angleDiff(m.dir, b) * m.side;
+      if (Math.abs(rel) > arc / 2) return false;
+      return ease >= (rel + arc / 2) / arc;
+    };
+    for (const e of G.enemies) {
+      if (e.dead || m.hits.has(e)) continue;
+      if (dist(this.x, this.y, e.x, e.y) > range + e.radius) continue;
+      if (!reached(e)) continue;
+      m.hits.add(e); this.meleeHit(e);
+    }
+    const b = G.boss;
+    if (b && !b.dead && !m.hits.has(b) && dist(this.x, this.y, b.x, b.y) <= range + b.radius && reached(b)) { m.hits.add(b); this.meleeHit(b); }
+    // a wall of water swats shells out of the air as it goes
+    if (st.meleeWave) for (const pr of G.projectiles) {
+      if (pr.dead || pr.owner !== 'enemy') continue;
+      if (dist(this.x, this.y, pr.x, pr.y) > range + 8) continue;
+      if (!reached(pr)) continue;
+      pr.dead = true; G.particles.sparks(pr.x, pr.y, 5); Toon.impact(pr.x, pr.y, 0.7, '#cfe9ff');
+    }
+  }
+  meleeHit(e) {
+    const st = this.stats, m = this.melee;
+    const a = angleTo(this.x, this.y, e.x, e.y);
+    const dmg = st.meleeDmg || 40;
+    const knock = 330 * (st.meleeKnock || 1);
+    e.hit(dmg, Math.cos(a) * knock, Math.sin(a) * knock, null);
+    if (st.meleeBleed && !e.dead) { e.bleedT = 3; e.bleedDps = st.meleeBleed; }
+    if (st.meleeStun && !e.dead) e.slowT = Math.max(e.slowT || 0, st.meleeStun);
+    if (st.meleeLifesteal) this.hp = Math.min(st.maxHp, this.hp + st.meleeLifesteal);
+    // the hit itself: a hard impact ring, a burst, and the sea moving
+    Toon.impact(e.x, e.y, 1.6, '#eaf8ff');
+    Toon.burst(e.x, e.y, 1.1, '#cfe9ff');
+    G.particles.splash((this.x + e.x) / 2, (this.y + e.y) / 2, 1.5);
+    G.particles.debris(e.x, e.y, 4);
+    G.ocean.ripple(e.x, e.y, 46, 190, 0.7);
+    if (G.ocean.disturb) G.ocean.disturb(e.x, e.y, 5, Math.cos(a) * 260, Math.sin(a) * 260);
+    G.shake(5);
+    Audio_.noise(0.16, 0.3, 900, 90); Audio_.tone(110, 0.14, 'square', 0.18, -50);
+    if (m.hits.size === 1) G.particles.text(this.x + Math.cos(m.dir) * 20, this.y - 18, 'WHUMP!', '#cfe9ff', 9);
+  }
+  // ---- being winched in ---------------------------------------------------
+  hooked(boat, proj) {
+    if (this.dead || this.rolling || this.dive.active) return;
+    this.tether = { e: boat, t: 2.2 };
+    this.damage(proj.dmg, proj.x, proj.y);
+    G.particles.text(this.x, this.y - 26, 'HOOKED!', '#ff9a3c', 9);
+    Toon.emote(this.x + 12, this.y - 30, '!');
+    Audio_.tone(200, 0.35, 'sawtooth', 0.18, -90);
+  }
+  freeTether(msg) {
+    if (!this.tether) return;
+    this.tether = null;
+    G.particles.splash(this.x, this.y, 1.1);
+    if (msg) G.particles.text(this.x, this.y - 24, msg, '#8ac6ff', 8);
   }
   startRoll(inp) {
     let dx = inp.x, dy = inp.y;
@@ -377,7 +609,7 @@ class Player {
     Audio_.absorb(); G.shake(2);
     Toon.impact(proj.x, proj.y, 1.4, '#8ac6ff'); Toon.shock(this.x, this.y, 70, 0.35, '#8ac6ff');
     Toon.emote(this.x + 14, this.y - 26, '!');
-    G.particles.sparks(proj.x, proj.y, 10); G.particles.text(this.x, this.y - 20, 'ABSORB', '#8ac6ff', 8);
+    G.particles.sparks(proj.x, proj.y, 10); G.particles.text(this.x, this.y - 20, 'PARRY', '#8ac6ff', 8);
     for (let i = 0; i < 12; i++) G.particles.add({ type: 'spark', x: this.x, y: this.y, vx: Math.cos(i / 12 * TAU) * 160, vy: Math.sin(i / 12 * TAU) * 160, life: 0.3, maxLife: 0.3, color: '#8ac6ff' });
     if (st.absorbHeal) this.hp = Math.min(st.maxHp, this.hp + st.absorbHeal);
     if (st.absorbBoost) this.boost = 2;
@@ -510,6 +742,45 @@ class Player {
     if (this.target || Input.mouse.down) return 'angry';
     return 'idle';
   }
+  // The sweep, drawn as hard posterized blocks on a squashed arc: a bright
+  // leading edge, two bands of thrown water behind it and a dark trailing
+  // trough. No curves, no alpha ramps -- it is water shoved into a shape.
+  renderMelee(ctx, sx, sy) {
+    const st = this.stats, m = this.melee;
+    const arc = st.meleeArc || 2.0, range = this.meleeRange();
+    const cx = Math.round(sx), cy = Math.round(sy);
+    const BANDS = ['#f4fbff', '#8fd4ff', '#4f8fc4', '#24466e'];
+    const blk = (ang, r, col, sz) => {
+      ctx.fillStyle = col;
+      ctx.fillRect(cx + Math.round(Math.cos(ang) * r) - (sz >> 1), cy + Math.round(Math.sin(ang) * r * 0.82) - (sz >> 1), sz, sz);
+    };
+    if (m.phase === 'wind') {
+      const k = clamp(m.t / this.MELEE_WIND, 0, 1);
+      const a0 = m.dir - m.side * arc / 2;
+      for (let i = 0; i < 5; i++) {
+        const ang = a0 - m.side * i * 0.11;
+        const r = range * (0.40 + 0.34 * k);
+        blk(ang, r, i < 2 ? '#24466e' : '#1a3352', 3);
+        blk(ang, r - 6, '#3f7cb0', 2);
+      }
+      blk(a0, range * (0.48 + 0.42 * k), '#cfe9ff', 3);
+      return;
+    }
+    const k = m.phase === 'strike' ? m.arcT : 1;
+    const fade = m.phase === 'recover' ? clamp(1 - m.t / 0.20, 0, 1) : 1;
+    const steps = 20;
+    for (let i = 0; i <= steps; i++) {
+      const u = i / steps;
+      if (u > k) break;
+      const ang = m.dir + m.side * (-arc / 2 + arc * u);
+      const age = (k - u) / Math.max(0.001, k);
+      if (age > fade) continue;
+      const band = age < 0.12 ? 0 : age < 0.34 ? 1 : age < 0.62 ? 2 : 3;
+      const rOut = range * (0.98 - age * 0.16), rIn = range * (0.50 + age * 0.24);
+      for (let r = rIn; r <= rOut; r += 4) blk(ang, r, BANDS[band], band === 0 ? 3 : 2);
+    }
+  }
+
   render(ctx, cam, t) {
     if (this.dead) return;
     const sx = this.x - cam.x, sy = this.y - cam.y;
@@ -571,6 +842,7 @@ class Player {
     ctx.restore();
     ctx.globalAlpha = 1;
 
+    if (this.melee.phase !== 'idle') this.renderMelee(ctx, sx, sy);
     if (this.slowed > 0) { ctx.globalAlpha = 0.8; drawSprite(ctx, SP.net, sx, sy - 4, 0, 2, 2); ctx.globalAlpha = 1; }
     if (this.rampage.meter >= 100 && !this.rampage.active && Math.floor(t * 3) % 2 === 0)
       pixelText(ctx, 'Q: RAMPAGE', Math.round(sx), Math.round(sy - 38), 7, '#ff6161', 'center');
@@ -599,10 +871,240 @@ const ENEMY_TYPES = {
   crabber: { hp: 86, speed: 74, turn: 1.8, radius: 15, behavior: 'orbit', orbit: 170, attackCd: 3.2, attack: 'pot', ram: 8, drops: { wood: 2, metal: 2, tech: 1 }, name: 'Crabber', wake: 8 },
   // Unarmed. Fires a flare that rallies everything near it. Kill it first.
   spotter: { hp: 40, speed: 170, turn: 3.6, radius: 11, behavior: 'kite', orbit: 300, attackCd: 5.0, attack: 'flare', ram: 6, drops: { fuel: 2, tech: 3 }, name: 'Spotter', wake: 6 },
+  // ---- the wider fleet --------------------------------------------------
+  // Everything below arrives in the middle and late waves. None of them is a
+  // stat variation: each one asks the player to do something she was not
+  // doing a moment ago, and every dangerous thing any of them does is on
+  // screen for the best part of a second before it lands.
+
+  // Runs on the surface, then goes under where nothing the otter fires can
+  // touch it. A boil of bubbles marks where it is about to come up. Get off
+  // that spot -- or hit it with the manatee, which reaches under the water.
+  sub: { hp: 78, speed: 96, turn: 2.2, radius: 13, behavior: 'kite', orbit: 170, ram: 8,
+    drops: { metal: 3, tech: 2 }, name: 'Submersible', wake: 7 },
+  // No guns at all. Everything inside its ring takes 60% less damage, so it
+  // is the thing you shoot first and the reason a pack suddenly reads as a
+  // wall instead of a queue.
+  bulwark: { hp: 170, speed: 68, turn: 1.3, radius: 20, behavior: 'chase', ram: 12,
+    drops: { metal: 5, wood: 3 }, name: 'Bulwark Barge', wake: 11, big: true },
+  // Runs a lane across your front and pays mines out over the stern. The
+  // water it has already crossed is the danger, not the boat.
+  minelayer: { hp: 82, speed: 122, turn: 2.4, radius: 14, behavior: 'runner', orbit: 210, ram: 8,
+    drops: { powder: 3, metal: 2 }, name: 'Mine Runner', wake: 8 },
+  // It will not fire at a moving target. Hold still to line up a shot of your
+  // own and it lines one up on you, with a sight line you can watch grow.
+  stalker: { hp: 70, speed: 92, turn: 2.2, radius: 13, behavior: 'orbit', orbit: 210, ram: 6,
+    drops: { tech: 3, metal: 1 }, name: 'Stillwater Gunner', wake: 7 },
+  // They fish in pairs on one warp. Sink one and its partner hauls a fresh
+  // boat up in four seconds unless you put the partner down as well.
+  twin: { hp: 64, speed: 92, turn: 2.0, radius: 13, behavior: 'chase', ram: 10,
+    drops: { wood: 2, metal: 2 }, name: 'Trawl Pair', wake: 7 },
+  // Keeps the width of the bay between you and it and whistles up more boats.
+  // The only answer is to go and get it.
+  courier: { hp: 46, speed: 178, turn: 3.4, radius: 11, behavior: 'flee', orbit: 300, ram: 4,
+    drops: { fuel: 3, tech: 2 }, name: 'Signal Runner', wake: 6 },
+  // Spins its winch up for a second, throws a hook, and reels you in. Roll
+  // and the line parts.
+  grappler: { hp: 96, speed: 84, turn: 1.9, radius: 15, behavior: 'kite', orbit: 190, ram: 8,
+    drops: { metal: 3, tech: 2 }, name: 'Winch Boat', wake: 8 },
+  // Plated across the bow and nowhere else. Shoot the front and it sparks
+  // off; get behind it and it comes apart. Bait the charge into a rock.
+  ironclad: { hp: 200, speed: 84, turn: 1.25, radius: 19, behavior: 'chase', ram: 20,
+    drops: { metal: 6, powder: 2 }, name: 'Ironclad Ram', wake: 11, big: true },
+  // Patches up whatever is most chewed up. Leave it alone and nothing you
+  // shoot stays shot.
+  tender: { hp: 88, speed: 86, turn: 2.0, radius: 14, behavior: 'kite', orbit: 240, ram: 6,
+    drops: { tech: 3, wood: 2 }, name: 'Repair Tender', wake: 8 },
+  // Opens its intake and drags the whole bay -- you included -- into the
+  // grinder. Survive the pull and it jams, and a jammed dredge takes 60%
+  // more damage for three seconds.
+  dredger: { hp: 250, speed: 56, turn: 1.0, radius: 24, behavior: 'chase', ram: 16,
+    drops: { metal: 5, wood: 3, tech: 2 }, name: 'Dredge Barge', wake: 13, big: true },
 };
+
+// ---- hulls for the wider fleet -----------------------------------------
+// src/chars.js owns buildBoat and the twelve original hull definitions, and
+// nothing here touches that file. These boats are keyed by their own names,
+// so they get their own hulls: rasterized through the SAME builder (which
+// means the same hi-res bridge, the same planking, the same palette rules)
+// from definitions that live here, then registered into SP.boats the first
+// time a boat is built. If buildBoat ever goes away the type falls back to
+// an existing hull rather than throwing.
+const EXTRA_BOAT_DEFS = {
+  sub:       { fallback: 'gunboat', def: { len: 32, beam: 8, motor: 1, cabin: 0.44, thwarts: [],
+               hull: '#2c4a46', hullL: '#6f9c93', hullD: '#1d3330', hullDD: '#0f1f1d', deck: '#31504a', deckD: '#1e332f' } },
+  bulwark:   { fallback: 'trawler', def: { len: 38, beam: 13, motor: 1, cabin: 0.20, gear: 'crates', thwarts: [0.7],
+               hull: '#57606e', hullL: '#a3b0c0', hullD: '#3b434e', hullDD: '#232830', deck: '#4b5462', deckD: '#333a45' } },
+  minelayer: { fallback: 'dynaboat', def: { len: 34, beam: 8, motor: 1, cabin: 0.22, gear: 'crates', thwarts: [0.6],
+               hull: '#4d5232', hullL: '#98a069', hullD: '#343822', hullDD: '#1e2114', deck: '#464b30', deckD: '#2e321f' } },
+  stalker:   { fallback: 'harpooner', def: { len: 30, beam: 6, motor: 1, gear: 'harpoon', cabin: 0.18, thwarts: [0.7],
+               hull: '#3b3550', hullL: '#8478ab', hullD: '#282438', hullDD: '#171422', deck: '#3d3a4e', deckD: '#282636' } },
+  twin:      { fallback: 'netter', def: { len: 28, beam: 7, motor: 1, gear: 'net', thwarts: [0.62],
+               hull: '#2f5a6a', hullL: '#71a7b8', hullD: '#1f3c47', hullDD: '#12242b', deck: '#3a5c66', deckD: '#243b43' } },
+  courier:   { fallback: 'spotter', def: { len: 26, beam: 5, motor: 1, cabin: 0.30, thwarts: [0.6],
+               hull: '#d6d9e2', hullL: '#ffffff', hullD: '#9aa1b0', hullDD: '#636b7a', deck: '#2f5f9e', deckD: '#1e3f6c' } },
+  grappler:  { fallback: 'gunboat', def: { len: 34, beam: 9, motor: 1, cabin: 0.16, gear: 'turret', thwarts: [0.74],
+               hull: '#8a4a1f', hullL: '#d68d47', hullD: '#5f3113', hullDD: '#3a1c09', deck: '#4d463a', deckD: '#332e26' } },
+  ironclad:  { fallback: 'gunboat', def: { len: 40, beam: 11, motor: 1, cabin: 0.16, gear: 'turret', thwarts: [],
+               hull: '#39404b', hullL: '#7d8998', hullD: '#262c34', hullDD: '#14181e', deck: '#333a44', deckD: '#22272e' } },
+  tender:    { fallback: 'crabber', def: { len: 30, beam: 8, motor: 1, cabin: 0.30, gear: 'crates', thwarts: [0.64],
+               hull: '#d8cfae', hullL: '#fdf6dc', hullD: '#a2986f', hullDD: '#6b6345', deck: '#3f6b4a', deckD: '#28452f' } },
+  dredger:   { fallback: 'trawler', def: { len: 48, beam: 13, motor: 1, cabin: 0.14, gear: 'crates', thwarts: [0.78],
+               hull: '#7a4433', hullL: '#c08054', hullD: '#542c20', hullDD: '#321810', deck: '#4a4038', deckD: '#302924' } },
+};
+// px() is chars.js's one-pixel plotter; keep a local twin so a rename there
+// can never break the fleet.
+const HPX = (typeof px === 'function') ? px : (ctx, col, x, y, w = 1, h = 1) => { ctx.fillStyle = col; ctx.fillRect(x | 0, y | 0, w, h); };
+// Marks painted straight onto the finished hi-res hull, in ART pixels, so
+// each new boat carries its role in its silhouette. A = art px per world
+// unit, X0/L/B match buildBoat's own frame.
+const EXTRA_BOAT_PAINT = {
+  sub(ctx, A, X0, L, B, cy) {
+    for (let x = X0 + 2; x < X0 + L - 2; x++) { HPX(ctx, '#0f1f1d', x, cy - 1, 1, 3); }   // pressure seam
+    const px0 = Math.round(X0 + L * 0.52);
+    HPX(ctx, '#14141c', px0, cy - B - 4, 2, B + 5);                                       // periscope
+    HPX(ctx, '#9ad7c6', px0, cy - B - 4, 2, 2);
+    for (let i = 0; i < 3; i++) HPX(ctx, '#0f1f1d', X0 + 6 + i * 9, cy - 3, 3, 7);        // ballast vents
+  },
+  bulwark(ctx, A, X0, L, B, cy) {
+    for (const sgn of [-1, 1]) for (let i = 0; i < 4; i++) {
+      const x = Math.round(X0 + L * (0.18 + i * 0.17)), y = Math.round(cy + sgn * (B - 2));
+      HPX(ctx, '#14141c', x, y - 3, 9, 7);
+      HPX(ctx, '#b9c6d6', x + 1, y - 2, 7, 3);
+      HPX(ctx, '#6f7b8b', x + 1, y + 1, 7, 2);
+      HPX(ctx, '#e6eef8', x + 2, y - 2, 2, 1);
+    }
+  },
+  minelayer(ctx, A, X0, L, B, cy) {
+    for (let i = 0; i < 4; i++) {                       // a rack of drums aft
+      const x = Math.round(X0 + L * 0.16) + i * 7;
+      HPX(ctx, '#14141c', x, cy - 3, 6, 7);
+      HPX(ctx, '#2b3140', x + 1, cy - 2, 4, 5);
+      HPX(ctx, '#4d586b', x + 1, cy - 2, 4, 1);
+      HPX(ctx, '#ff6161', x + 2, cy - 4, 2, 1);
+    }
+    HPX(ctx, '#14141c', Math.round(X0 + L * 0.12), cy - 5, 2, 11);   // launch rail
+  },
+  stalker(ctx, A, X0, L, B, cy) {
+    const x0 = Math.round(X0 + L * 0.34), len = Math.round(L * 0.5);
+    HPX(ctx, '#14141c', x0, cy - 4, len, 2);                          // sight rail
+    HPX(ctx, '#b09ede', x0 + len - 4, cy - 4, 4, 2);
+    HPX(ctx, '#ff6161', x0 + len - 1, cy - 4, 1, 2);
+  },
+  twin(ctx, A, X0, L, B, cy) {
+    HPX(ctx, '#14141c', X0 + 2, cy - 4, 4, 9);                        // towing bollard
+    HPX(ctx, '#9ecbd8', X0 + 3, cy - 3, 2, 3);
+    for (let i = 0; i < 4; i++) HPX(ctx, '#c9b98e', X0 - 1 - i * 2, cy - 1 + (i & 1), 2, 1);
+  },
+  courier(ctx, A, X0, L, B, cy) {
+    const x = Math.round(X0 + L * 0.58);                              // klaxon horn
+    HPX(ctx, '#14141c', x, cy - 5, 3, 11);
+    HPX(ctx, '#ffd27a', x + 3, cy - 3, 4, 7);
+    HPX(ctx, '#fff3cf', x + 3, cy - 2, 3, 2);
+    HPX(ctx, '#2f5f9e', Math.round(X0 + L * 0.2), cy - B + 1, Math.round(L * 0.3), 2);
+  },
+  grappler(ctx, A, X0, L, B, cy) {
+    const x = Math.round(X0 + L * 0.34);                              // cable drum
+    HPX(ctx, '#14141c', x, cy - 7, 11, 15);
+    HPX(ctx, '#7d858f', x + 1, cy - 6, 9, 13);
+    for (let i = 0; i < 5; i++) HPX(ctx, '#3a3f47', x + 1, cy - 6 + i * 3, 9, 1);
+    HPX(ctx, '#d6a05e', x + 11, cy - 1, Math.round(L * 0.22), 2);     // the cable itself
+  },
+  ironclad(ctx, A, X0, L, B, cy) {
+    // the armoured bow: three bright bands of plate and a ram spike. The rest
+    // of the hull is left dark, so which end is which is never in doubt.
+    const x0 = Math.round(X0 + L * 0.60);
+    for (let x = x0; x < X0 + L - 1; x++) {
+      const u = (x - x0) / Math.max(1, (X0 + L - 1 - x0));
+      const hw = Math.round(B * Math.max(0.2, 1 - Math.pow(u, 1.5)) - 1);
+      for (let y = cy - hw; y <= cy + hw; y++) {
+        const near = Math.min(y - (cy - hw), (cy + hw) - y);
+        HPX(ctx, near <= 0 ? '#14141c' : near <= 1 ? '#cdd8e6' : ((x - x0) % 5 === 0 ? '#5d6875' : '#8e9aab'), x, y);
+      }
+    }
+    for (let i = 0; i < 4; i++) HPX(ctx, '#e8f0fa', x0 + 2 + i * 5, cy - 1, 1, 2);   // rivets
+    HPX(ctx, '#14141c', X0 + L - 1, cy - 2, 5, 4);                                   // ram
+    HPX(ctx, '#cdd8e6', X0 + L - 1, cy - 1, 4, 1);
+  },
+  tender(ctx, A, X0, L, B, cy) {
+    const x = Math.round(X0 + L * 0.46);
+    HPX(ctx, '#14141c', x, cy - 2, Math.round(L * 0.3), 4);           // rivet boom
+    HPX(ctx, '#6fd88e', x + 2, cy - 1, Math.round(L * 0.3) - 4, 2);
+    HPX(ctx, '#f4fbff', Math.round(X0 + L * 0.22), cy - 3, 2, 7);
+    HPX(ctx, '#f4fbff', Math.round(X0 + L * 0.22) - 2, cy - 1, 6, 2);
+  },
+  dredger(ctx, A, X0, L, B, cy) {
+    // the intake: a black mouth in the bow with a row of teeth
+    const x0 = Math.round(X0 + L * 0.80);
+    for (let x = x0; x < X0 + L; x++) {
+      const hw = Math.round(B * 0.62 * (1 - (x - x0) / Math.max(1, (X0 + L - x0)) * 0.4));
+      HPX(ctx, '#0a0d12', x, cy - hw, 1, hw * 2 + 1);
+    }
+    for (let i = -3; i <= 3; i++) HPX(ctx, '#cdd8e6', X0 + L - 2, cy + i * 3, 2, 1);
+    HPX(ctx, '#14141c', x0 - 1, cy - Math.round(B * 0.7), 2, Math.round(B * 1.4));
+    for (let i = 0; i < 3; i++) HPX(ctx, '#c08054', Math.round(X0 + L * 0.3) + i * 6, cy - 5, 4, 11); // spoil chutes
+  },
+};
+let _extraBoatsBuilt = false;
+function ensureExtraBoats() {
+  if (_extraBoatsBuilt) return;
+  if (typeof SP === 'undefined' || !SP.boats || !SP.boats.dinghy) return;  // chars.js has not run yet
+  _extraBoatsBuilt = true;
+  const A = (typeof DETAIL === 'number') ? DETAIL : 1;
+  for (const k in EXTRA_BOAT_DEFS) {
+    if (SP.boats[k]) continue;
+    const rec = EXTRA_BOAT_DEFS[k];
+    let spr = null;
+    try { if (typeof buildBoat === 'function') spr = buildBoat(rec.def); } catch (e) { spr = null; }
+    if (!spr || !spr.c) {   // the builder is gone: fly another boat's colours
+      SP.boats[k] = SP.boats[rec.fallback] || SP.boats.dinghy;
+      SP.boatsHurt[k] = SP.boatsHurt[rec.fallback] || SP.boatsHurt.dinghy;
+      continue;
+    }
+    const paint = EXTRA_BOAT_PAINT[k];
+    if (paint) {
+      try {
+        const ctx = spr.c.getContext('2d');
+        paint(ctx, A, 2 * A, rec.def.len * A, rec.def.beam * A, Math.round(spr.c.height / 2));
+      } catch (e) { /* a mark failing is never worth losing the hull over */ }
+    }
+    SP.boats[k] = spr;
+    SP.boatsHurt[k] = (typeof tintHi === 'function' && spr.hi) ? tintHi(spr, '#ffffff', 0.8) : tintSprite(spr, '#ffffff', 0.8);
+  }
+}
+
+// The wider fleet has to actually turn up, and the wave table lives in
+// src/waves.js, which is not this file's to edit. So the new boats are merged
+// into the mid and late pools once, at the first spawn of a run, and only
+// where a pool does not already name them: if waves.js starts listing them
+// itself this becomes a no-op and can be deleted along with the call below.
+const LATE_FLEET_POOLS = {
+  5:  { stalker: 0.7 },
+  6:  { tender: 0.7 },
+  7:  { minelayer: 0.8 },
+  8:  { twin: 0.9, sub: 0.7 },
+  9:  { grappler: 0.8, courier: 0.5 },
+  10: { ironclad: 0.5, sub: 0.6 },
+  11: { bulwark: 0.6, minelayer: 0.7 },
+  12: { ironclad: 0.7, grappler: 0.7, bulwark: 0.5 },
+  13: { sub: 0.8, twin: 0.8, dredger: 0.5, tender: 0.6, stalker: 0.6 },
+  14: { dredger: 0.7, ironclad: 0.9, bulwark: 0.7, courier: 0.5, grappler: 0.6 },
+};
+let _lateFleetSeeded = false;
+function seedLateFleet() {
+  if (_lateFleetSeeded) return;
+  if (typeof WAVES === 'undefined' || !Array.isArray(WAVES)) return;
+  _lateFleetSeeded = true;
+  for (const i in LATE_FLEET_POOLS) {
+    const w = WAVES[i]; if (!w || !w.pool || w.boss) continue;
+    const add = LATE_FLEET_POOLS[i];
+    for (const k in add) if (!(k in w.pool) && ENEMY_TYPES[k]) w.pool[k] = add[k];
+  }
+}
 
 class Enemy {
   constructor(type, x, y) {
+    ensureExtraBoats(); seedLateFleet();
     const c = this.cfg = ENEMY_TYPES[type]; this.type = type;
     const diff = (G.director && G.director.difficulty) || 1;
     this.diff = diff;
@@ -615,12 +1117,40 @@ class Enemy {
     this.zig = rand(0, TAU); this.burstLeft = 0; this.burstT = 0; this.strafeDir = 1;
     this.slowT = 0; this.age = 0; this.dmgT = 0; this.list = 0; this.scars = [];
     this.slot = rand(0, TAU); this.retreatT = 0;
+    // state for the wider fleet: a per-type bag, plus the flags the shared
+    // code above reads (a warded hull, a submerged one, a jammed one)
+    this.sp = { t: 0, phase: 'idle', pt: 0, n: 0 };
+    this.ov = null; this.submerged = false; this.warded = 0; this.vulnT = 0;
+    this.charging = false; this.stunned = false; this.bleedT = 0; this.bleedDps = 0;
+    this.mate = null; this.noMate = false; this.haulT = 0; this.haulsLeft = 1;
+    this.ward = null; this.whirl = null; this.grindCd = 0; this.spMul = 1;
+    this.initSpecial();
+  }
+  initSpecial() {
+    const s = this.sp;
+    switch (this.type) {
+      case 'sub': s.phase = 'up'; s.pt = rand(2.4, 3.8); break;
+      case 'minelayer': s.pt = 1.4; break;
+      case 'courier': s.pt = rand(4.5, 6.5); break;
+      case 'grappler': s.pt = rand(3, 4.5); break;
+      case 'ironclad': s.pt = rand(3, 4.5); break;
+      case 'dredger': s.pt = rand(3.5, 5); break;
+      case 'tender': s.pt = 0.9; break;
+    }
   }
   targetPos() { if (G.buoy && !G.buoy.dead) return G.buoy; return G.player; }
   update(dt, t) {
     const c = this.cfg, p = this.targetPos(); this.age += dt;
     this.flash -= dt; this.ramCd -= dt; this.stateT += dt;
     if (this.burn > 0) { this.burn -= dt; this.burnT -= dt; if (this.burnT <= 0) { this.burnT = 0.5; this.hit(G.player.stats.burn * 0.5, 0, 0, null, true); G.particles.fire(this.x, this.y, 2); G.particles.smoke(this.x, this.y, 1); } }
+    if (this.warded > 0) this.warded -= dt;
+    if (this.vulnT > 0) this.vulnT -= dt;
+    if (this.bleedT > 0) {
+      this.bleedT -= dt;
+      this.hit(this.bleedDps * dt, 0, 0, null, true);
+      if (Math.random() < dt * 9) G.particles.blood(this.x + rand(-6, 6), this.y + rand(-6, 6), 0.2);
+      if (this.dead) return;
+    }
     const d = dist(this.x, this.y, p.x, p.y);
     // approach the slot this boat has claimed around the target, not the target
     // itself, so a wave arrives as a ring instead of a conga line
@@ -637,6 +1167,8 @@ class Enemy {
       this.vx = lerp(this.vx, Math.cos(this.angle) * this.speed, Math.min(1, dt * 2.5));
       this.vy = lerp(this.vy, Math.sin(this.angle) * this.speed, Math.min(1, dt * 2.5));
     }
+    this.ov = null;
+    this.updateSpecial(dt, d, toPDirect, p);
     switch (c.behavior) {
       case 'chase': desired = toP; throttle = d < 20 ? 0.6 : 1; break;
       case 'orbit': {
@@ -659,9 +1191,33 @@ class Enemy {
         break;
       }
       case 'zigzag': { this.zig += dt * 7; desired = toP + Math.sin(this.zig) * 0.9 * Math.min(1, d / 120); break; }
+      // keeps the width of the bay between it and you and never closes
+      case 'flee': {
+        const r = c.orbit || 300;
+        if (d < r) { desired = toPDirect + Math.PI + 0.35 * this.orbitDir; throttle = 1; }
+        else { desired = toP + Math.PI / 2 * this.orbitDir; throttle = 0.55; }
+        break;
+      }
+      // runs a lane across your front rather than at you, and keeps running
+      case 'runner': {
+        const r = c.orbit || 210;
+        if (d < r - 40) desired = toPDirect + Math.PI + 0.9 * this.orbitDir;
+        else if (d > r + 90) desired = toP;
+        else desired = toP + Math.PI / 2 * this.orbitDir;
+        if (this.stateT > 3.5 && Math.random() < 0.02) { this.orbitDir *= -1; this.stateT = 0; }
+        throttle = 1;
+        break;
+      }
     }
-    // rock avoidance
-    for (const r of G.rocks) {
+    // a special takes the wheel: it still goes through the same steering and
+    // the same rock avoidance underneath, so nothing can drive into a cliff
+    if (this.ov) {
+      if (this.ov.desired !== undefined) desired = this.ov.desired;
+      if (this.ov.throttle !== undefined) throttle = this.ov.throttle;
+    }
+    // rock avoidance -- except for a hull that is deliberately charging, which
+    // is the whole point of baiting one into a rock
+    if (!this.charging) for (const r of G.rocks) {
       const dr = dist(this.x, this.y, r.x, r.y);
       if (dr < r.r + this.radius + 40) {
         const ar = angleTo(this.x, this.y, r.x, r.y), diff = angleDiff(this.angle, ar);
@@ -674,7 +1230,7 @@ class Enemy {
     // steering
     const turn = c.turn * (this.slowT > 0 ? 0.5 : 1);
     this.angle = angleLerp(this.angle, desired, Math.min(1, turn * dt));
-    const sp = this.speed * throttle * (this.slowT > 0 ? 0.5 : 1) * (this.rallied > 0 ? 1.28 : 1);
+    const sp = this.speed * throttle * this.spMul * (this.slowT > 0 ? 0.5 : 1) * (this.rallied > 0 ? 1.28 : 1);
     this.vx = lerp(this.vx, Math.cos(this.angle) * sp, Math.min(1, dt * 2.5)); this.vy = lerp(this.vy, Math.sin(this.angle) * sp, Math.min(1, dt * 2.5));
     const f = G.ocean.flow(this.x, this.y);
     this.x += (this.vx + this.kx + f.x * 0.4) * dt; this.y += (this.vy + this.ky + f.y * 0.4) * dt;
@@ -707,7 +1263,7 @@ class Enemy {
     // ramming / kamikaze against the real player only
     const pl = G.player;
     const dp = dist(this.x, this.y, pl.x, pl.y);
-    if (!pl.dead && !pl.diving && dp < this.radius + 11) {
+    if (!pl.dead && !pl.diving && !this.submerged && dp < this.radius + 11) {
       if (c.kamikaze) {
         this.die(true); G.particles.explode(this.x, this.y, 44);
         if (!pl.absorb.active) pl.damage(c.kamikaze * (1 + (this.diff - 1) * 0.8), this.x, this.y);
@@ -718,7 +1274,7 @@ class Enemy {
       else if (pl.rolling && !pl.stats.rollDmg) { const a = angleTo(pl.x, pl.y, this.x, this.y); this.kx += Math.cos(a) * 120; this.ky += Math.sin(a) * 120; }
     }
     // crew bail out and swim at you when their boat closes in
-    if (typeof Hazards !== 'undefined' && Hazards.boardFrom && !this.boarded && !c.kamikaze && !pl.dead
+    if (typeof Hazards !== 'undefined' && Hazards.boardFrom && !this.boarded && !c.kamikaze && !pl.dead && !this.submerged
         && dp < 150 && this.age > 2 && Math.random() < 0.5 * dt * (this.cfg.big ? 1.6 : 1)) {
       this.boarded = true; Hazards.boardFrom(this);
     }
@@ -727,6 +1283,321 @@ class Enemy {
     this.slowT -= dt;
     if (this.rallied > 0) this.rallied -= dt;
   }
+  // ---- the wider fleet: what each of the new boats actually does ---------
+  // Every branch here drives its own timer and, where it needs to steer,
+  // writes this.ov rather than moving the hull itself, so all of them still
+  // go through the shared steering, separation and rock avoidance above.
+  // Every branch that can hurt the player has a visible wind-up phase first.
+  updateSpecial(dt, d, toP, p) {
+    const s = this.sp;
+    switch (this.type) {
+
+      // ---- Submersible: on the surface it fights, under it cannot be shot
+      case 'sub': {
+        s.t += dt;
+        if (s.phase === 'up') {
+          this.submerged = false;
+          if (s.t > s.pt) {
+            s.phase = 'dive'; s.t = 0;
+            G.particles.bubbles(this.x, this.y, 10); G.particles.splash(this.x, this.y, 1.2); Audio_.splash(1.1);
+          }
+        } else if (s.phase === 'dive') {
+          this.submerged = true;
+          this.ov = { throttle: 0.6 };
+          if (s.t > 0.5) { s.phase = 'under'; s.t = 0; s.pt = rand(2.0, 2.8); }
+        } else if (s.phase === 'under') {
+          this.submerged = true;
+          this.ov = { desired: toP, throttle: 1.2 };
+          if (Math.random() < 0.6) G.particles.bubbles(this.x + rand(-7, 7), this.y + rand(-7, 7), 1);
+          if (s.t > s.pt) { s.phase = 'rise'; s.t = 0; }
+        } else if (s.phase === 'rise') {
+          // the tell: the water boils where it is about to come up
+          this.submerged = true;
+          this.ov = { throttle: 0.12 };
+          if (Math.random() < 0.8) G.particles.bubbles(this.x + rand(-14, 14), this.y + rand(-14, 14), 2);
+          if (s.t > 0.85) {
+            s.phase = 'up'; s.t = 0; s.pt = rand(3.2, 4.4); this.submerged = false;
+            G.particles.splash(this.x, this.y, 2.4); G.ocean.ripple(this.x, this.y, 74, 210, 0.85);
+            if (G.ocean.disturb) G.ocean.disturb(this.x, this.y, 5, 0, 0);
+            Toon.shock(this.x, this.y, 64, 0.4); Audio_.splash(1.6);
+            const a = angleTo(this.x, this.y, p.x, p.y);
+            for (let i = -1; i <= 1; i++) this.shoot('buckshot', a + i * 0.19, 260, 6, 1.1);
+            Audio_.shot('shotgun');
+          }
+        }
+        break;
+      }
+
+      // ---- Bulwark Barge: everything inside the ring shrugs off damage
+      case 'bulwark': {
+        let n = 0, c = 0, wx = 0, wy = 0;
+        for (const e of G.enemies) {
+          if (e === this || e.dead || !e.cfg) continue;
+          const dd = dist(this.x, this.y, e.x, e.y);
+          if (dd < 112) { e.warded = 0.2; n++; }
+          if (dd < 340) { wx += e.x; wy += e.y; c++; }
+        }
+        s.n = n;
+        if (c > 0) {
+          wx /= c; wy /= c;
+          // it parks itself on the line between the pack and the player
+          this.ov = { desired: angleTo(this.x, this.y, lerp(wx, p.x, 0.34), lerp(wy, p.y, 0.34)) };
+        }
+        break;
+      }
+
+      // ---- Mine Runner: the danger is the water it has already crossed
+      case 'minelayer': {
+        s.t += dt;
+        if (s.t > s.pt && G.projectiles.length < 240 && this.age > 1.2) {
+          s.t = 0; s.pt = 1.5;
+          const bx = this.x - Math.cos(this.angle) * (this.radius + 7), by = this.y - Math.sin(this.angle) * (this.radius + 7);
+          G.projectiles.push(new Mine(bx, by, this.diff));
+          G.particles.splash(bx, by, 0.7); Audio_.tone(170, 0.14, 'square', 0.07, -60);
+        }
+        break;
+      }
+
+      // ---- Stillwater Gunner: it only shoots a target that has stopped
+      case 'stalker': {
+        const pv = Math.hypot(p.vx || 0, p.vy || 0);
+        const still = pv < 42;
+        if (s.phase === 'idle' || s.phase === '') {
+          if (still && d < 270) {
+            s.t += dt;
+            if (s.t > 0.45) { s.phase = 'aim'; s.t = 0; Toon.emote(this.x + 8, this.y - this.radius - 10, '!'); Audio_.tone(880, 0.12, 'square', 0.07); }
+          } else s.t = Math.max(0, s.t - dt * 2);
+        } else if (s.phase === 'aim') {
+          s.t += dt;
+          this.ov = { throttle: 0.25 };
+          if (!still || d > 330) {
+            s.phase = 'idle'; s.t = 0;
+            G.particles.text(this.x, this.y - this.radius - 8, 'LOST IT', '#8ac6ff', 7);
+          } else if (s.t > 1.0) {
+            s.phase = 'cool'; s.t = 0;
+            const a = angleTo(this.x, this.y, p.x, p.y);
+            this.shoot('harpoon', a, 430, 16, 1.5); Audio_.shot('rifle'); G.shake(2);
+          }
+        } else { s.t += dt; if (s.t > 1.6) { s.phase = 'idle'; s.t = 0; } }
+        break;
+      }
+
+      // ---- Trawl Pair: one warp, two boats, and a four second window
+      case 'twin': {
+        if (!this.mate && !this.noMate) {
+          this.noMate = true;
+          const a = this.angle + Math.PI / 2;
+          const m = G.spawnEnemy('twin',
+            clamp(this.x + Math.cos(a) * 44, 20, G.ocean.W - 20),
+            clamp(this.y + Math.sin(a) * 44, WATER_TOP + 8, G.ocean.H - 20));
+          if (m) { m.noMate = true; m.mate = this; this.mate = m; m.haulsLeft = 1; this.haulsLeft = 1; }
+        }
+        if (this.haulT > 0) {
+          this.haulT -= dt;
+          this.ov = { throttle: 0.5 };
+          const bx = this.x - Math.cos(this.angle) * this.radius, by = this.y - Math.sin(this.angle) * this.radius;
+          if (Math.random() < 0.5) G.particles.spray(bx, by, this.angle + Math.PI, 1, 40);
+          if (this.haulT <= 0) {
+            const m = G.spawnEnemy('twin', this.x - Math.cos(this.angle) * 36, this.y - Math.sin(this.angle) * 36);
+            if (m) { m.noMate = true; m.mate = this; this.mate = m; m.haulsLeft = 0; m.hp = Math.round(m.maxHp * 0.55); }
+            this.haulsLeft = 0;
+            G.particles.text(this.x, this.y - this.radius - 12, 'HAULED UP!', '#ffd27a', 9);
+            G.particles.splash(this.x, this.y, 1.6); Audio_.tone(250, 0.3, 'sawtooth', 0.14, 140);
+          }
+        }
+        break;
+      }
+
+      // ---- Signal Runner: runs, and whistles the rest of the fleet in
+      case 'courier': {
+        s.t += dt;
+        if (s.phase === 'idle' || s.phase === '') {
+          if (s.t > s.pt && s.n < 3 && G.enemies.length < 15) {
+            s.phase = 'call'; s.t = 0;
+            Toon.emote(this.x + 8, this.y - this.radius - 10, '!');
+            Audio_.tone(430, 0.5, 'sawtooth', 0.12, -130);
+          }
+        } else {
+          this.ov = { throttle: 0.35 };
+          if (s.t > 1.2) {
+            s.phase = 'idle'; s.t = 0; s.pt = rand(7, 9); s.n++;
+            G.particles.text(this.x, this.y - this.radius - 12, 'REINFORCE!', '#ff9a3c', 9);
+            Toon.shock(this.x, this.y, 130, 0.6, '#ffd27a');
+            G.ocean.ripple(this.x, this.y, 110, 240, 0.7); Audio_.rampage();
+            const kinds = ['dinghy', 'jetski', 'netter'];
+            for (let i = 0; i < 2; i++) {
+              const a = rand(0, TAU), r = rand(210, 270);
+              G.spawnEnemy(kinds[(Math.random() * kinds.length) | 0],
+                clamp(this.x + Math.cos(a) * r, 20, G.ocean.W - 20),
+                clamp(this.y + Math.sin(a) * r, WATER_TOP + 10, G.ocean.H - 20));
+            }
+          }
+        }
+        break;
+      }
+
+      // ---- Winch Boat: a second of spin-up, then it has hold of you
+      case 'grappler': {
+        s.t += dt;
+        if (s.phase === 'idle' || s.phase === '') {
+          if (s.t > s.pt && d < 230 && !G.player.tether && !G.player.dead) {
+            s.phase = 'spin'; s.t = 0;
+            Audio_.tone(280, 0.7, 'square', 0.08, 520);
+            Toon.emote(this.x + 8, this.y - this.radius - 10, '!');
+          }
+        } else {
+          this.ov = { throttle: 0.3 };
+          if (Math.random() < 0.5) G.particles.sparks(this.x + Math.cos(this.angle) * this.radius, this.y + Math.sin(this.angle) * this.radius, 1, this.angle, 0.9);
+          if (s.t > 1.0) {
+            s.phase = 'idle'; s.t = 0; s.pt = rand(5.5, 7);
+            const a = angleTo(this.x, this.y, p.x, p.y);
+            G.projectiles.push(new Projectile({
+              x: this.x + Math.cos(a) * this.radius, y: this.y + Math.sin(a) * this.radius,
+              vx: Math.cos(a) * 230, vy: Math.sin(a) * 230, life: 1.6,
+              dmg: 5 * (1 + (this.diff - 1) * 0.8), owner: 'enemy', sprite: SP.hookShot,
+              size: 5, knock: 0, trail: true, grapple: this,
+            }));
+            Audio_.shot('harpoon'); this.recoilFx(a, 'flash');
+          }
+        }
+        break;
+      }
+
+      // ---- Ironclad Ram: plated bow, and a charge you are meant to bait
+      case 'ironclad': {
+        s.t += dt;
+        if (s.phase === 'idle' || s.phase === '') {
+          this.charging = false;
+          if (s.t > s.pt && d < 300 && Math.abs(angleDiff(this.angle, toP)) < 0.7) {
+            s.phase = 'rev'; s.t = 0;
+            Audio_.tone(110, 0.5, 'sawtooth', 0.16, 70); G.shake(1.5);
+            Toon.puff(this.x - Math.cos(this.angle) * this.radius, this.y - Math.sin(this.angle) * this.radius, 4, '#e8eef5');
+          }
+        } else if (s.phase === 'rev') {
+          this.ov = { throttle: 0.1 };
+          if (Math.random() < 0.6) Toon.puff(this.x - Math.cos(this.angle) * this.radius, this.y - Math.sin(this.angle) * this.radius, 1, '#e8eef5');
+          if (s.t > 0.9) {
+            s.phase = 'charge'; s.t = 0; s.ca = this.angle; this.charging = true;
+            G.shake(3); Audio_.roll();
+            for (let i = 0; i < 4; i++) Toon.speed(this.x, this.y, this.angle, 2);
+          }
+        } else if (s.phase === 'charge') {
+          this.ov = { desired: s.ca, throttle: 2.5 };
+          this.charging = true;
+          G.ocean.addFoam(this.x, this.y, 0.3);
+          if (Math.random() < 0.5) G.particles.spray(this.x + Math.cos(this.angle) * this.radius, this.y + Math.sin(this.angle) * this.radius, this.angle, 2, 90);
+          for (const r of G.rocks) if (dist(this.x, this.y, r.x, r.y) < r.r + this.radius + 2) {
+            s.phase = 'stun'; s.t = 0; this.charging = false; this.stunned = true;
+            const a = angleTo(r.x, r.y, this.x, this.y);
+            this.x = r.x + Math.cos(a) * (r.r + this.radius); this.y = r.y + Math.sin(a) * (r.r + this.radius);
+            this.kx += Math.cos(a) * 160; this.ky += Math.sin(a) * 160;
+            this.hit(34, 0, 0, null); G.particles.explode(this.x, this.y, 30, { water: true });
+            G.shake(9); Audio_.stun(); Toon.emote(this.x + 8, this.y - this.radius - 10, 'star');
+            G.particles.text(this.x, this.y - this.radius - 12, 'WRECKED!', '#ffe48f', 9);
+            break;
+          }
+          if (this.dead) return;
+          if (s.t > 1.3) { s.phase = 'cool'; s.t = 0; this.charging = false; }
+        } else if (s.phase === 'stun') {
+          this.ov = { throttle: 0 }; this.charging = false; this.stunned = true;
+          if (Math.random() < 0.4) G.particles.smoke(this.x + rand(-8, 8), this.y + rand(-6, 6), 1, 'rgba(40,40,48,', 4);
+          if (s.t > 2.2) { s.phase = 'cool'; s.t = 0; this.stunned = false; }
+        } else {
+          this.charging = false; this.stunned = false;
+          if (s.t > 1.8) { s.phase = 'idle'; s.t = 0; s.pt = rand(3.5, 5); }
+        }
+        break;
+      }
+
+      // ---- Repair Tender: nothing you shoot stays shot
+      case 'tender': {
+        s.t += dt;
+        let best = null, bk = 0.96;
+        for (const e of G.enemies) {
+          if (e === this || e.dead || !e.cfg) continue;
+          const k = e.hp / e.maxHp;
+          if (k < bk && dist(this.x, this.y, e.x, e.y) < 240) { bk = k; best = e; }
+        }
+        this.ward = best;
+        if (best) {
+          const dd = dist(this.x, this.y, best.x, best.y);
+          this.ov = { desired: angleTo(this.x, this.y, best.x, best.y), throttle: dd < 70 ? 0.35 : 1 };
+          if (s.t > 0.9 && dd < 130) {
+            s.t = 0;
+            const heal = 12 * (1 + (this.diff - 1) * 0.5);
+            best.hp = Math.min(best.maxHp, best.hp + heal);
+            G.particles.sparks((this.x + best.x) / 2, (this.y + best.y) / 2, 4);
+            G.particles.text(best.x, best.y - best.radius - 6, '+' + Math.round(heal), '#6fd88e', 7);
+            Audio_.tone(640, 0.1, 'triangle', 0.06, 200);
+          }
+        }
+        break;
+      }
+
+      // ---- Dredge Barge: it pulls the whole bay in, then jams wide open
+      case 'dredger': {
+        s.t += dt; this.grindCd -= dt;
+        const mouth = { x: this.x + Math.cos(this.angle) * this.radius, y: this.y + Math.sin(this.angle) * this.radius };
+        if (s.phase === 'idle' || s.phase === '') {
+          if (s.t > s.pt && d < 230) {
+            s.phase = 'open'; s.t = 0;
+            Audio_.tone(85, 0.7, 'sawtooth', 0.16, 40);
+            G.particles.bubbles(mouth.x, mouth.y, 10);
+          }
+        } else if (s.phase === 'open') {
+          this.ov = { throttle: 0.25 };
+          if (Math.random() < 0.7) G.particles.bubbles(mouth.x + rand(-8, 8), mouth.y + rand(-8, 8), 1);
+          if (s.t > 0.85) {
+            s.phase = 'suck'; s.t = 0;
+            this.whirl = { x: this.x, y: this.y, r: 150, s: 40, type: 'whirl', life: 2.6 };
+            G.ocean.currents.push(this.whirl);
+            Audio_.noise(2.2, 0.16, 700, 80);
+          }
+        } else if (s.phase === 'suck') {
+          this.ov = { throttle: 0.35 };
+          if (this.whirl) { this.whirl.x = this.x; this.whirl.y = this.y; this.whirl.life = Math.max(0.05, 2.6 - s.t); }
+          const pl = G.player;
+          if (!pl.dead && !pl.rolling && !pl.diving) {
+            const dd = dist(this.x, this.y, pl.x, pl.y);
+            if (dd < 175 && dd > 1) {
+              const a = angleTo(pl.x, pl.y, this.x, this.y), f = (1 - dd / 175) * 240;
+              pl.vx += Math.cos(a) * f * dt; pl.vy += Math.sin(a) * f * dt;
+              if (Math.random() < 0.3) G.particles.spray(pl.x, pl.y, a, 1, 60);
+            }
+            if (dd < this.radius + 15 && this.grindCd <= 0) {
+              this.grindCd = 0.9;
+              pl.damage(11 * (1 + (this.diff - 1) * 0.8), this.x, this.y);
+              const a2 = angleTo(this.x, this.y, pl.x, pl.y);
+              pl.vx += Math.cos(a2) * 280; pl.vy += Math.sin(a2) * 280;
+              G.particles.blood(pl.x, pl.y, 1.1); G.shake(6);
+            }
+          }
+          for (const pk of G.pickups) {
+            const dd = dist(this.x, this.y, pk.x, pk.y);
+            if (dd < 150 && dd > 1 && !pk.magnetized) { const a = angleTo(pk.x, pk.y, this.x, this.y); pk.vx += Math.cos(a) * 110 * dt; pk.vy += Math.sin(a) * 110 * dt; }
+          }
+          if (s.t > 2.6) {
+            s.phase = 'jam'; s.t = 0; this.vulnT = 3.2; this.clearWhirl();
+            G.particles.smoke(this.x, this.y, 8, 'rgba(40,36,30,', 6);
+            G.particles.text(this.x, this.y - this.radius - 12, 'JAMMED!', '#ffe48f', 10);
+            Audio_.tone(70, 0.6, 'square', 0.16, -40); Toon.emote(this.x + 10, this.y - this.radius - 12, 'star');
+          }
+        } else {
+          this.ov = { throttle: 0.2 };
+          if (Math.random() < 0.3) G.particles.smoke(this.x + rand(-10, 10), this.y + rand(-8, 8), 1, 'rgba(46,42,36,', 5);
+          if (s.t > 3.2) { s.phase = 'idle'; s.t = 0; s.pt = rand(3.5, 5); }
+        }
+        break;
+      }
+    }
+  }
+  clearWhirl() {
+    if (!this.whirl) return;
+    const i = G.ocean.currents.indexOf(this.whirl);
+    if (i >= 0) G.ocean.currents.splice(i, 1);
+    this.whirl = null;
+  }
+
   updateAttack(dt, d, toP, p) {
     const c = this.cfg;
     this.attackT -= dt;
@@ -795,6 +1666,30 @@ class Enemy {
   recoilFx(a, kind) { if (kind === 'flash') G.particles.sparks(this.x + Math.cos(a) * this.radius, this.y + Math.sin(a) * this.radius, 3, a, 0.6); this.kx -= Math.cos(a) * 30; this.ky -= Math.sin(a) * 30; }
   hit(dmg, kx, ky, proj, silent = false) {
     if (this.dead) return;
+    // ---- the wider fleet's defences. Each one is legible on the water: a
+    // hull under the surface, a ring of cover, a plated bow, a jammed dredge.
+    if (this.submerged && proj) {
+      // it is under the shooting. The manatee still reaches it -- melee, roll
+      // and the tidal slam all come through with no projectile attached.
+      if (!silent) { G.particles.bubbles(this.x, this.y, 2); Toon.impact(this.x, this.y, 0.5, '#8ac6ff'); }
+      return;
+    }
+    if (this.warded > 0) {
+      dmg *= 0.4;
+      if (!silent) { G.particles.sparks(this.x, this.y, 3, 0, TAU); Toon.impact(this.x, this.y, 0.6, '#a3b0c0'); }
+    }
+    if (this.type === 'ironclad' && (kx || ky)) {
+      // the bow is plated and the rest of her is not
+      const rel = Math.abs(angleDiff(this.angle, Math.atan2(ky, kx)));
+      if (rel > 2.0) {
+        dmg *= 0.15;
+        if (!silent) {
+          G.particles.sparks(this.x + Math.cos(this.angle) * this.radius, this.y + Math.sin(this.angle) * this.radius, 5, this.angle, 1.2);
+          if (Math.random() < 0.25) G.particles.text(this.x, this.y - this.radius - 6, 'CLANG', '#cdd8e6', 7);
+        }
+      } else if (rel < 1.1) dmg *= 1.4;
+    }
+    if (this.vulnT > 0 || this.stunned) dmg *= 1.6;
     this.hp -= dmg; this.flash = 0.08; this.kx += kx / (this.cfg.big ? 3 : 1); this.ky += ky / (this.cfg.big ? 3 : 1);
     if (!silent) {
       G.particles.sparks(this.x, this.y, 3); G.particles.debris(this.x, this.y, 2);
@@ -812,6 +1707,14 @@ class Enemy {
   }
   die(silentBoom = false) {
     if (this.dead) return; this.dead = true; this.wake.dead = true;
+    // loose ends the wider fleet leaves behind it
+    if (this.whirl) this.clearWhirl();
+    if (G.player && G.player.tether && G.player.tether.e === this) G.player.freeTether('THE LINE GOES SLACK');
+    if (this.type === 'twin' && this.mate && !this.mate.dead && this.mate.haulsLeft > 0 && this.mate.haulT <= 0) {
+      this.mate.haulT = 4.0;
+      G.particles.text(this.mate.x, this.mate.y - this.mate.radius - 12, 'HAULING!', '#ff9a3c', 9);
+      Audio_.tone(180, 0.3, 'sawtooth', 0.12, 90);
+    }
     const c = this.cfg, r = this.radius;
     if (!silentBoom) {
       Toon.burst(this.x, this.y, 1 + r / 22); Toon.shock(this.x, this.y, r * 3.4, 0.5);
@@ -844,12 +1747,203 @@ class Enemy {
     }
     G.stats.kills++; G.onEnemyKilled(this);
   }
+  // ---- the tells ---------------------------------------------------------
+  // Nothing in the wider fleet hurts the player without first putting a hard
+  // pixel shape on the water saying so. All of it is dots, blocks and
+  // chevrons on integer coordinates -- no strokes, no alpha ramps.
+  renderTell(ctx, cam, t, sx, sy) {
+    const s = this.sp;
+    // a tell is only a tell if it survives the foam, so every mark is a
+    // bright block over a dark one -- the same trick the sprites use
+    const mark = (x, y, col, sz) => {
+      const z = sz || 1;
+      ctx.fillStyle = '#0c1018'; ctx.fillRect(x - (z >> 1), y - (z >> 1) + 1, z, z);
+      ctx.fillStyle = col; ctx.fillRect(x - (z >> 1), y - (z >> 1), z, z);
+    };
+    const dots = (x0, y0, x1, y1, col, step, ph, sz) => {
+      const L = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.round(L / (step || 5)));
+      for (let i = 0; i <= n; i++) {
+        const u = (i + (ph || 0)) / n; if (u < 0 || u > 1) continue;
+        mark(Math.round(x0 + (x1 - x0) * u), Math.round(y0 + (y1 - y0) * u), col, sz || 2);
+      }
+    };
+    const ring = (r, col, n, ph, sz) => {
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TAU + (ph || 0);
+        mark(sx + Math.round(Math.cos(a) * r), sy + Math.round(Math.sin(a) * r * 0.8), col, sz || 1);
+      }
+    };
+    switch (this.type) {
+      case 'sub':
+        if (s.phase === 'rise') {
+          // a ring closing on the spot it is about to come up through
+          const k = clamp(s.t / 0.85, 0, 1);
+          const r = Math.round(34 - k * 22);
+          ring(r, ((t * 12) | 0) % 2 ? '#ffffff' : '#8fd4ff', 18, t * 2, 3);
+          ring(r + 7, '#cfe9ff', 12, -t * 2, 2);
+          // and the white water right over the hatch
+          for (let i = 0; i < 5; i++) mark(sx + ((i * 7 + ((t * 30) | 0)) % 13) - 6, sy + ((i * 5 + ((t * 21) | 0)) % 11) - 5, '#f4fbff', 2);
+        } else if (s.phase === 'under' || s.phase === 'dive') {
+          ring(9 + ((t * 3) % 2), 'rgba(160,210,240,0.55)', 6, t, 1);
+        }
+        break;
+      case 'bulwark': {
+        // the ring of cover, and a tick over everything standing in it
+        const R = 112, on = ((t * 4) | 0) % 2;
+        ring(R, on ? '#a3b0c0' : '#6f7b8b', 44, t * 0.5, 1);
+        ring(R - 3, '#39414c', 44, t * 0.5 + 0.06, 1);
+        for (const e of G.enemies) {
+          if (e === this || e.dead || !(e.warded > 0)) continue;
+          const ex = Math.round(e.x - cam.x), ey = Math.round(e.y - cam.y - e.radius - 12);
+          ctx.fillStyle = '#14141c'; ctx.fillRect(ex - 3, ey - 1, 7, 6);
+          ctx.fillStyle = '#b9c6d6'; ctx.fillRect(ex - 2, ey, 5, 3);
+          ctx.fillStyle = '#e6eef8'; ctx.fillRect(ex - 2, ey, 5, 1);
+          ctx.fillStyle = '#6f7b8b'; ctx.fillRect(ex - 1, ey + 3, 3, 1);
+        }
+        break;
+      }
+      case 'stalker':
+        if (s.phase === 'aim') {
+          const p = G.player, k = clamp(s.t / 1.0, 0, 1);
+          const px0 = Math.round(p.x - cam.x), py0 = Math.round(p.y - cam.y);
+          dots(sx, sy, px0, py0, k > 0.7 ? '#ff6161' : '#ffd27a', 5, (t * 3) % 1);
+          // brackets closing on her while she stays still
+          const g = Math.round(16 - k * 9);
+          ctx.fillStyle = k > 0.7 && ((t * 14) | 0) % 2 ? '#ffffff' : '#ff6161';
+          for (const [ox, oy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+            ctx.fillRect(px0 + ox * g - (ox < 0 ? 0 : 4), py0 + oy * g - (oy < 0 ? 0 : 1), 5, 1);
+            ctx.fillRect(px0 + ox * g - (ox < 0 ? 0 : 1), py0 + oy * g - (oy < 0 ? 0 : 4), 1, 5);
+          }
+        }
+        break;
+      case 'twin': {
+        const m = this.mate;
+        if (m && !m.dead) {
+          const mx = Math.round(m.x - cam.x), my = Math.round(m.y - cam.y);
+          if (Math.hypot(mx - sx, my - sy) < 320) dots(sx, sy, mx, my, '#c9b98e', 6, (t * 0.7) % 1);
+        }
+        if (this.haulT > 0) {
+          // the warp coming in, with the seconds left on it
+          const n = Math.ceil(this.haulT);
+          ctx.fillStyle = ((t * 8) | 0) % 2 ? '#ff9a3c' : '#ffd27a';
+          for (let i = 0; i < n; i++) ctx.fillRect(sx - 6 + i * 4, sy - this.radius - 16, 3, 3);
+          ring(Math.round(12 + (4 - this.haulT) * 5), '#ff9a3c', 12, -t * 3, 1);
+        }
+        break;
+      }
+      case 'courier':
+        if (s.phase === 'call') {
+          const k = clamp(s.t / 1.2, 0, 1);
+          for (let w = 0; w < 3; w++) {
+            const r = Math.round(((k + w * 0.33) % 1) * 70) + 10;
+            ring(r, w === 0 ? '#ffe48f' : '#ffd27a', 20, 0, 3);
+          }
+          ctx.fillStyle = ((t * 12) | 0) % 2 ? '#ffe48f' : '#ff9a3c';
+          ctx.fillRect(sx - 1, sy - this.radius - 16, 3, 7);
+        }
+        break;
+      case 'grappler': {
+        if (s.phase === 'spin') {
+          const k = clamp(s.t / 1.0, 0, 1);
+          // the drum coming up to speed, the line it is about to throw, and a
+          // hoop closing on her so there is no doubt who it is aiming at
+          ring(Math.round(13 + k * 5), '#ffd27a', 4, t * 16, 3);
+          const p = G.player;
+          const px0 = Math.round(p.x - cam.x), py0 = Math.round(p.y - cam.y);
+          dots(sx, sy, px0, py0, k > 0.6 ? '#ff6161' : '#ffd27a', 6, (t * 4) % 1, 2);
+          const hr = Math.round(26 - k * 12);
+          for (let i = 0; i < 10; i++) {
+            const a = i / 10 * TAU + t * 3;
+            mark(px0 + Math.round(Math.cos(a) * hr), py0 + Math.round(Math.sin(a) * hr * 0.8), k > 0.6 && ((t * 14) | 0) % 2 ? '#ffffff' : '#ff9a3c', 2);
+          }
+        }
+        const te = G.player.tether;
+        if (te && te.e === this) {
+          // the cable itself: hard links, dragging her in
+          const p = G.player, px0 = Math.round(p.x - cam.x), py0 = Math.round(p.y - cam.y);
+          const L = Math.hypot(px0 - sx, py0 - sy), n = Math.max(2, Math.round(L / 5));
+          for (let i = 0; i <= n; i++) {
+            const u = i / n;
+            const wob = Math.sin(u * 9 + t * 22) * 2 * (1 - Math.abs(u - 0.5) * 2);
+            const nx = -(py0 - sy) / (L || 1), ny = (px0 - sx) / (L || 1);
+            ctx.fillStyle = (i & 1) ? '#d6a05e' : '#8a5c2c';
+            ctx.fillRect(Math.round(sx + (px0 - sx) * u + nx * wob), Math.round(sy + (py0 - sy) * u + ny * wob), 2, 2);
+          }
+        }
+        break;
+      }
+      case 'ironclad':
+        if (s.phase === 'rev') {
+          const k = clamp(s.t / 0.9, 0, 1);
+          // the lane it is about to come down
+          const ex = sx + Math.cos(this.angle) * 200, ey = sy + Math.sin(this.angle) * 200 * 0.85;
+          dots(sx, sy, ex, ey, k > 0.6 ? '#ff6161' : '#ffd27a', 8, (t * 5) % 1);
+          // and the plate lighting up
+          ctx.fillStyle = ((t * 16) | 0) % 2 ? '#ffffff' : '#cdd8e6';
+          for (let i = -2; i <= 2; i++) {
+            ctx.fillRect(sx + Math.round(Math.cos(this.angle) * (this.radius + 2) - Math.sin(this.angle) * i * 3),
+              sy + Math.round(Math.sin(this.angle) * (this.radius + 2) + Math.cos(this.angle) * i * 3), 2, 2);
+          }
+        } else if (s.phase === 'charge') {
+          for (let i = 1; i <= 3; i++) {
+            ctx.fillStyle = i === 1 ? '#ffffff' : '#8fd4ff';
+            const r = this.radius + 4 + i * 4;
+            ctx.fillRect(sx + Math.round(Math.cos(this.angle) * r), sy + Math.round(Math.sin(this.angle) * r * 0.85), 2, 2);
+          }
+        } else if (s.phase === 'stun') {
+          ctx.fillStyle = ((t * 8) | 0) % 2 ? '#ffe48f' : '#ffd27a';
+          for (let i = 0; i < 3; i++) {
+            const a = t * 5 + i / 3 * TAU;
+            ctx.fillRect(sx + Math.round(Math.cos(a) * 11), sy - this.radius - 8 + Math.round(Math.sin(a) * 4), 2, 2);
+          }
+        }
+        break;
+      case 'tender': {
+        const w = this.ward;
+        if (w && !w.dead && dist(this.x, this.y, w.x, w.y) < 130) {
+          dots(sx, sy, Math.round(w.x - cam.x), Math.round(w.y - cam.y), ((t * 10) | 0) % 2 ? '#6fd88e' : '#2f7a4a', 4, (t * 6) % 1);
+        }
+        break;
+      }
+      case 'dredger': {
+        const ax = Math.cos(this.angle), ay = Math.sin(this.angle);
+        if (s.phase === 'open') {
+          const k = clamp(s.t / 0.85, 0, 1);
+          // the mouth opening: two jaws swinging apart
+          for (let i = 0; i < 7; i++) {
+            const o = (i - 3) * 3 * (0.4 + k);
+            ctx.fillStyle = ((t * 12) | 0) % 2 ? '#ffe48f' : '#c08054';
+            ctx.fillRect(sx + Math.round(ax * (this.radius + 3) - ay * o), sy + Math.round(ay * (this.radius + 3) + ax * o), 2, 2);
+          }
+        } else if (s.phase === 'suck') {
+          // arrowheads running inward all round it, and a hard red line at the
+          // radius where the grinder starts taking pieces out of her
+          for (let i = 0; i < 12; i++) {
+            const a = i / 12 * TAU;
+            const r = 160 - ((t * 150 + i * 13) % 160);
+            const col = r < 70 ? '#f4fbff' : '#8fd4ff';
+            const bx = sx + Math.round(Math.cos(a) * r), by = sy + Math.round(Math.sin(a) * r * 0.8);
+            mark(bx, by, col, 3);
+            mark(bx + Math.round(Math.cos(a + 2.4) * 4), by + Math.round(Math.sin(a + 2.4) * 4 * 0.8), col, 2);
+            mark(bx + Math.round(Math.cos(a - 2.4) * 4), by + Math.round(Math.sin(a - 2.4) * 4 * 0.8), col, 2);
+          }
+          ring(this.radius + 16, ((t * 14) | 0) % 2 ? '#ff6161' : '#ffe48f', 20, t, 2);
+        } else if (s.phase === 'jam') {
+          ctx.fillStyle = ((t * 6) | 0) % 2 ? '#ffe48f' : '#ff9a3c';
+          ctx.fillRect(sx - 8, sy - this.radius - 14, 16, 2);
+        }
+        break;
+      }
+    }
+  }
+
   render(ctx, cam, t) {
     const sx = this.x - cam.x, sy = this.y - cam.y; if (sx < -60 || sy < -60 || sx > 700 || sy > 420) return;
     const bob = Math.sin(t * 3 + this.bob) * 1;
     const spr = this.flash > 0 ? this.hurtSprite : this.sprite;
     // heel into turns, and list further as the hull fills with water
     ctx.save();
+    if (this.submerged) ctx.globalAlpha = 0.34;      // down under the surface
     ctx.translate(Math.round(sx), Math.round(sy + bob));
     ctx.rotate(this.angle);
     const hk2 = this.hp / this.maxHp;
@@ -861,6 +1955,7 @@ class Enemy {
       if (sc.s > 1) { ctx.fillStyle = '#3a3038'; ctx.fillRect(Math.round(sc.x), Math.round(sc.y) - 1, sc.s, 1); }
     }
     ctx.restore();
+    this.renderTell(ctx, cam, t, Math.round(sx), Math.round(sy + bob));
     if (this.burn > 0) { ctx.fillStyle = Math.floor(t * 10) % 2 ? '#ff9a3c' : '#ffe48f'; ctx.fillRect(Math.round(sx) - 2 + rand(-3, 3), Math.round(sy) - 6 + rand(-3, 3), 3, 3); }
     if (this.cfg.big || this.hp < this.maxHp) {
       const w = this.radius * 2, k = clamp(this.hp / this.maxHp, 0, 1);

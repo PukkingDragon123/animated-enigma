@@ -98,27 +98,36 @@
   // track.  The sea is tinted by depth so the isles read at a glance; the
   // land is a warm five-step ramp lit from the north-west.
   const P = {
-    // water, shoal -> abyss
-    sea0: '#f1e7c3', sea1: '#e0d3a9', sea2: '#cbbd91', sea3: '#b6a57a', sea4: '#a39268',
-    seaL: '#f4ead0', seaX: '#9a8a63',
-    stain: '#dacea4', stain2: '#ccbd92', foxing: '#a98d5c',
-    // land ramp, lit / mid / shaded
-    lit: ['#fbf0d3', '#f2e2b4', '#e6cf94', '#d6ba76', '#c4a35c'],
-    mid: ['#f3e7c4', '#e8d5a2', '#d9c086', '#c7a868', '#b4904f'],
-    shd: ['#e8dab6', '#dbc796', '#c9ae79', '#b4955e', '#a1804c'],
-    sand: '#f7ecd0', beach: '#efdcac',
-    ink: '#3d2a11', ink2: '#664a22', inkL: '#8d6d3c', faint: '#b59b6a', hair: '#c9b184',
-    forest: '#4c6a31', forestD: '#33501f', forestL: '#6b8642',
-    red: '#9b3620', redL: '#c1552d', redD: '#651f10', wax: '#8e2a18', waxL: '#bb4326',
-    gold: '#a87d2a', goldL: '#d9ab48', goldD: '#6d4d15',
-    grey: '#7b6a52', greyL: '#a08c6c', greyD: '#54462f',
+    // water: a hand-laid watercolour wash over cream paper, shoal -> abyss
+    sea0: '#d8e6c8', sea1: '#b3d4c6', sea2: '#8cbcbe', sea3: '#6a9fb2', sea4: '#53839e',
+    seaL: '#ecf4dd', seaX: '#3f6482',
+    stain: '#c6dcbb', stain2: '#b0ccba', foxing: '#b07a48',
+    // paper itself (margins, torn edges, label stock)
+    sand: '#f8eecb', beach: '#eedfa8', tear: '#c9b184', shade: '#bda87c',
+    // land ramp: coastal green climbing to ochre upland, lit / mid / shaded
+    lit: ['#e9eeb2', '#dce599', '#d8d07e', '#cdb766', '#c09c52'],
+    mid: ['#cbdf9d', '#bfd385', '#b9bd6f', '#afa55c', '#a18a48'],
+    shd: ['#9fc182', '#90b06d', '#88985b', '#82824c', '#756c3e'],
+    ink: '#33260f', ink2: '#5d4720', inkL: '#8d6d3c', faint: '#a9a077', hair: '#c3bb93',
+    forest: '#3f6b2c', forestD: '#27491b', forestL: '#63913d',
+    red: '#ab3421', redL: '#d05730', redD: '#6d1d0f', wax: '#a3271a', waxL: '#cf4a2a',
+    gold: '#b1822a', goldL: '#e5b74e', goldD: '#6d4d15',
+    grey: '#7c8290', greyL: '#a3a9b4', greyD: '#4b5260',
+    // second and third inks the survey was drawn in
+    blue: '#2f5f8c', blueL: '#5b8fb6', blueD: '#1d3f63',
+    green: '#2f6b46', greenL: '#5a9a68', violet: '#5d4a7c', violetL: '#8a76a8',
     table: '#241811', tableL: '#3a2819', tableD: '#150d08', tableG: '#0d0705',
     brass: '#c79a3c', brassL: '#f2d383', brassD: '#6c4c12',
+    coffee: '#b98a52', coffeeD: '#9a6a36',
   };
-
   const MAP_W = 640, MAP_H = 272;                    // the chart; card sits below
+  const SC = 2;                                      // bake pixels to the chart unit
+  const SH_H = 277;                                  // sheet plate height (chart + its shadow)
   const PAPER = { x0: 3, y0: 2, x1: 636, y1: 268 };  // the sheet itself
   const IN = { x0: 20, y0: 19, x1: 620, y1: 250 };   // interior (inside the neat line)
+  // the chart window on the 640x360 screen; the detail card sits under it
+  const VIEW = { x: 0, y: 0, w: 640, h: 270 };
+  const ZOOMS = [1, 2, 4];                           // screen px to the chart unit
 
   // ------------------------------------------------------------- the land --
   // Each isle is a union of lobes; the coastline comes from a three-octave
@@ -335,30 +344,65 @@
   // Foxed, stained, laid paper tinted by depth: a pale shoal band hugging
   // every coast, then shelf, open water and the abyss, all posterised into
   // four hard steps and dithered by noise so no edge is ever a clean curve.
+  // Painted straight into the bake plate at SC pixels to the chart unit, so
+  // the wash, the laid-paper grain and the surf stipple all come out twice as
+  // fine as the survey inked over them.  Depth is sampled from the 1x field;
+  // only the paint is at bake resolution.
   function paintSea(ctx, m, dOut) {
-    const W = MAP_W, H = MAP_H;
+    const W = MAP_W * SC, H = MAP_H * SC;
     const band = [P.sea0, P.sea1, P.sea2, P.sea3, P.sea4].map(hexToRgb);
     const stain = hexToRgb(P.stain), stain2 = hexToRgb(P.stain2), spot = hexToRgb(P.foxing);
-    const surf = hexToRgb(P.seaL);
+    const surf = hexToRgb(P.seaL), deep = hexToRgb(P.seaX), cof = hexToRgb(P.coffee);
     const img = ctx.createImageData(W, H), d = img.data;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const i = y * W + x, p = i * 4;
-      const dep = m[i] ? 0 : dOut[i];
-      // fine grain that wobbles the band edges by a step
-      const n = vnoise(x * 0.055 + 30, y * 0.055 + 11) * 0.62 + hash2(x, y) * 0.38;
-      const j = (n - 0.5) * 4.0;
-      const dd = dep + j;
-      let b = dd < 5 ? 0 : dd < 13 ? 1 : dd < 24 ? 2 : dd < 38 ? 3 : 4;
-      let c = band[b];
-      // broad tea stains and a wash across the whole sheet, hard edged
-      const s = vnoise(x * 0.011 + 77, y * 0.011 + 21);
-      if (s > 0.755) c = s > 0.825 ? stain2 : stain;
-      // surf: the first fathom off every beach is scrubbed bright
-      if (dep >= 1 && dep <= 2 && ((x * 2 + y) % 5) < 3) c = surf;
-      // laid lines of the paper + foxing specks
-      if (y % 9 === 0 && hash2(x * 3, y) > 0.58) c = stain2;
-      if (hash2(x * 13 + 5, y * 7 + 3) > 0.9968) c = spot;
-      d[p] = c[0]; d[p + 1] = c[1]; d[p + 2] = c[2]; d[p + 3] = 255;
+    // rings the otter's mug left on the sheet, in chart units
+    const RINGS = [[98, 62, 22], [505, 200, 18.5], [278, 237, 14.5]];
+    const EDGE = [0, 0, 13, 24, 38];
+    // The wash is decided once per chart unit — it is a brush, not a pen —
+    // and only the grain, the dither and the foxing are per bake pixel.
+    for (let sy = 0; sy < MAP_H; sy++) {
+      for (let sx = 0; sx < MAP_W; sx++) {
+        const i = sy * MAP_W + sx;
+        const dep = m[i] ? 0 : dOut[i];
+        const nlo = vnoise(sx * 0.055 + 30, sy * 0.055 + 11) * 0.62;
+        const st = vnoise(sx * 0.011 + 77, sy * 0.011 + 21);
+        const stc = st > 0.755 ? (st > 0.825 ? stain2 : stain) : null;
+        const surfy = dep >= 1 && dep <= 2;
+        // is this unit anywhere near a coffee ring?
+        let ring = -1;
+        for (let k = 0; k < RINGS.length; k++) {
+          const rr = RINGS[k], dx = sx - rr[0], dy = sy - rr[1];
+          const dl = Math.sqrt(dx * dx + dy * dy * 1.32) - rr[2];
+          if (dl > -6 && dl < 3) { ring = k; break; }
+        }
+        for (let oy = 0; oy < SC; oy++) {
+          const y = sy * SC + oy;
+          for (let ox = 0; ox < SC; ox++) {
+            const x = sx * SC + ox, p = (y * W + x) * 4;
+            const dd = dep + (nlo + hash2(x, y) * 0.38 - 0.5) * 4.6;
+            const b = dd < 5 ? 0 : dd < 13 ? 1 : dd < 24 ? 2 : dd < 38 ? 3 : 4;
+            let c = band[b];
+            if (stc) c = stc;                                   // tea stains
+            // where the brush stopped, the wash pooled: a darker rim
+            if (b >= 2 && dd - EDGE[b] < 1.3 && hash2(x * 5, y * 3) > 0.44) c = band[b + 1] || deep;
+            if (surfy && ((x + y) % 7) < 4) c = surf;            // the first fathom
+            if (y % 18 < 2 && hash2(x * 3, y) > 0.66) c = stain2; // laid lines
+            if (hash2(x * 13 + 5, y * 7 + 3) > 0.99935) c = spot; // foxing
+            if (ring >= 0) {
+              const rr = RINGS[ring], dx = x - rr[0] * SC, dy = (y - rr[1] * SC) * 1.15;
+              const dl = Math.sqrt(dx * dx + dy * dy) - rr[2] * SC - vnoise(x * 0.03 + ring * 9, y * 0.03) * 5;
+              if (dl > -9 && dl < 2) {
+                const edge = dl > -2.4;
+                if (edge ? hash2(x * 7 + ring, y * 5) > 0.20 : hash2(x * 9 + ring, y * 11) > 0.82) {
+                  c = edge
+                    ? [(c[0] + cof[0]) >> 1, (c[1] + cof[1]) >> 1, (c[2] + cof[2]) >> 1]
+                    : [(c[0] * 3 + cof[0]) >> 2, (c[1] * 3 + cof[1]) >> 2, (c[2] * 3 + cof[2]) >> 2];
+                }
+              }
+            }
+            d[p] = c[0]; d[p + 1] = c[1]; d[p + 2] = c[2]; d[p + 3] = 255;
+          }
+        }
+      }
     }
     ctx.putImageData(img, 0, 0);
   }
@@ -376,7 +420,8 @@
         for (let k = 0; k < LV.length; k++) {
           if (v !== LV[k]) continue;
           const on = k === 0 ? 3 : 2, per = k === 0 ? 5 : 7;
-          if (((x * 2 + y * 3 + k * 4) % per) < on) D1(ctx, k === 0 ? P.inkL : P.faint, x, y);
+          // isobaths are inked in blue, the shoal line heavier than the rest
+          if (((x * 2 + y * 3 + k * 4) % per) < on) D1(ctx, k === 0 ? P.blue : k === 3 ? P.blueD : P.blueL, x, y);
         }
       }
     }
@@ -384,40 +429,54 @@
 
   // ------------------------------------------------------------ the land --
   function paintLand(m, dIn, dOut, hg) {
-    const W = MAP_W, H = MAP_H, c = can(W, H), ctx = c.getContext('2d');
+    const W = MAP_W * SC, H = MAP_H * SC, c = can(W, H), ctx = c.getContext('2d');
     const ink = hexToRgb(P.ink), ink2 = hexToRgb(P.ink2), inkL = hexToRgb(P.inkL);
-    const beach = hexToRgb(P.beach);
+    const beach = hexToRgb(P.beach), sand = hexToRgb(P.sand), marsh = hexToRgb(P.green);
     const LIT = P.lit.map(hexToRgb), MID = P.mid.map(hexToRgb), SHD = P.shd.map(hexToRgb);
     const img = ctx.createImageData(W, H), d = img.data;
-    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
-      const i = y * W + x, p = i * 4;
-      if (m[i]) {
-        const din = dIn[i];
-        let col;
-        if (din <= 1) col = ink;                                     // inked coastline
-        else if (din === 2) col = beach;                             // a thread of beach
-        else {
-          const hv = hg[i];
-          // slope from the height field; the light comes from the north-west
-          const gx = hg[i + 1] - hg[i - 1], gy = hg[i + W] - hg[i - W];
-          const lum = -(gx + gy);
-          const jit = (hash2(x * 5, y * 3) - 0.5) * 0.045;
-          let b = hv < 0.085 ? 0 : hv < 0.215 ? 1 : hv < 0.395 ? 2 : hv < 0.60 ? 3 : 4;
-          const ramp = (lum + jit) > 0.012 ? LIT : (lum + jit) < -0.012 ? SHD : MID;
-          col = ramp[b];
-          // hachures down the shaded flanks: the steeper, the denser
-          const steep = Math.max(0, -(lum + jit)) * 26;
-          if (steep > 0.55 && hash2(x * 7 + 1, y * 11 + 9) < Math.min(0.40, steep * 0.20)) col = b > 2 ? ink2 : inkL;
-          // shore shading, tucked against the coastline
-          else if (din <= 5 && hash2(x * 3 + 7, y * 9 + 5) < (6 - din) * 0.075) col = ink2;
-          else if (din > 8 && hash2(x * 3 + 7, y * 5 + 1) > 0.990) col = inkL;
-        }
-        d[p] = col[0]; d[p + 1] = col[1]; d[p + 2] = col[2]; d[p + 3] = 255;
-      } else {
-        // offshore stipple: a fading dot-screen hugging every shore
+    // only the land and the shore band it stipples are visited; the open sea
+    // is already painted and is left alone
+    for (let sy = 1; sy < MAP_H - 1; sy++) {
+      for (let sx = 1; sx < MAP_W - 1; sx++) {
+        const i = sy * MAP_W + sx;
+        const isLand = m[i];
         const dout = dOut[i];
-        if (dout >= 2 && dout <= 8 && hash2(x * 5 + 3, y * 9 + 13) < (9 - dout) * 0.035) {
-          d[p] = inkL[0]; d[p + 1] = inkL[1]; d[p + 2] = inkL[2]; d[p + 3] = 255;
+        if (!isLand && (dout < 2 || dout > 8)) continue;
+        let din = 0, hv = 0, lum = 0, b = 0, steep0 = 0;
+        if (isLand) {
+          din = dIn[i];
+          if (din > 2) {
+            hv = hg[i];
+            lum = -((hg[i + 1] - hg[i - 1]) + (hg[i + MAP_W] - hg[i - MAP_W]));
+            b = hv < 0.085 ? 0 : hv < 0.215 ? 1 : hv < 0.395 ? 2 : hv < 0.60 ? 3 : 4;
+            steep0 = Math.max(0, -lum) * 26;
+          }
+        }
+        for (let oy = 0; oy < SC; oy++) {
+          const y = sy * SC + oy;
+          for (let ox = 0; ox < SC; ox++) {
+            const x = sx * SC + ox, p = (y * W + x) * 4;
+            let col = null;
+            if (isLand) {
+              if (din <= 1) col = ink;                                  // inked coastline
+              else if (din === 2) col = ((x + y) & 1) ? beach : sand;   // a thread of beach
+              else {
+                const jit = (hash2(x * 5, y * 3) - 0.5) * 0.045;
+                col = ((lum + jit) > 0.012 ? LIT : (lum + jit) < -0.012 ? SHD : MID)[b];
+                // salt marsh in the low flat ground behind the beaches
+                if (b === 0 && din > 3 && din < 11 && (y % 4) < 1 && hash2(x * 3 + 2, y * 7) > 0.62) col = marsh;
+                // hachures down the shaded flanks: the steeper, the denser
+                const steep = steep0 - jit * 26;
+                if (steep > 0.55 && hash2(x * 7 + 1, y * 11 + 9) < Math.min(0.40, steep * 0.20)) col = b > 2 ? ink2 : inkL;
+                else if (din <= 5 && hash2(x * 3 + 7, y * 9 + 5) < (6 - din) * 0.075) col = ink2;
+                else if (din > 8 && hash2(x * 3 + 7, y * 5 + 1) > 0.9975) col = inkL;
+              }
+            } else if (hash2(x * 5 + 3, y * 9 + 13) < (9 - dout) * 0.0135) {
+              col = inkL;                                 // offshore dot-screen
+            }
+            if (!col) continue;
+            d[p] = col[0]; d[p + 1] = col[1]; d[p + 2] = col[2]; d[p + 3] = 255;
+          }
         }
       }
     }
@@ -1044,7 +1103,7 @@
       const on = can(GW, GH), off = can(GW, GH);
       PLACE_FN[key](on.getContext('2d'), INK_ON);
       PLACE_FN[key](off.getContext('2d'), INK_OFF);
-      out[key] = { on: haloed(on, P.beach, 1, true), off: haloed(off, '#d9cfb2', 1, true), ax: GAX, ay: GAY };
+      out[key] = { on: haloed(on, P.sand, 1, false), off: haloed(off, '#ded6bc', 1, false), ax: GAX, ay: GAY };
     }
     return out;
   }
@@ -1063,11 +1122,13 @@
       for (let i = 0; i < 16; i++) {
         const a = i / 16 * TAU + 0.0001, ca = Math.cos(a), sa = Math.sin(a);
         const L = rayLen(node[0], node[1], ca, sa);
-        const col = (i % 4 === 0) ? P.faint : P.hair;
-        line(ctx, col, node[0], node[1], node[0] + ca * L, node[1] + sa * L, 2, 3, 0);
+        // portolan convention: the eight principal winds in black, the half
+        // winds in green, the quarter winds in red
+        const col = (i % 4 === 0) ? P.inkL : (i % 2 === 0) ? '#7a9a7e' : '#c08a74';
+        line(ctx, col, node[0], node[1], node[0] + ca * L, node[1] + sa * L, 1, 5, 0);
       }
-      ring(ctx, P.faint, node[0], node[1], 4, 0);
-      D1(ctx, P.ink2, node[0], node[1]);
+      ring(ctx, P.green, node[0], node[1], 4, 0);
+      D1(ctx, P.red, node[0], node[1]);
     }
   }
   function degRing(ctx, col, x, y) { box(ctx, col, x, y, 3, 3); D1(ctx, P.sea0, x + 1, y + 1); }
@@ -1075,10 +1136,10 @@
     const MER = [84, 186, 288, 390, 492, 594], PAR = [46, 112, 178, 244];
     ctx.save();
     ctx.beginPath(); ctx.rect(IN.x0, IN.y0, IN.x1 - IN.x0, IN.y1 - IN.y0); ctx.clip();
-    for (const x of MER) line(ctx, P.hair, x, IN.y0, x, IN.y1, 1, 5, 0);
-    for (const y of PAR) line(ctx, P.hair, IN.x0, y, IN.x1, y, 1, 5, 0);
+    for (const x of MER) line(ctx, P.blueL, x, IN.y0, x, IN.y1, 1, 5, 0);
+    for (const y of PAR) line(ctx, P.blueL, IN.x0, y, IN.x1, y, 1, 5, 0);
     for (const x of MER) for (const y of PAR) {
-      R(ctx, P.faint, x - 2, y, 5, 1); R(ctx, P.faint, x, y - 2, 1, 5);
+      R(ctx, P.blue, x - 2, y, 5, 1); R(ctx, P.blue, x, y - 2, 1, 5);
     }
     ctx.restore();
     for (let i = 0; i < MER.length; i++) {
@@ -1132,12 +1193,12 @@
       const d2 = x * x + y * y, lim = (r + 7) * (r + 7);
       if (d2 > lim) continue;
       if (d2 > lim * 0.86 && hash2((cx + x) * 3 + 1, (cy + y) * 7 + 5) < 0.4) continue;
-      D1(ctx, d2 > (r + 5) * (r + 5) ? P.stain2 : P.stain, cx + x, cy + y);
+      D1(ctx, d2 > (r + 5) * (r + 5) ? '#ddd5ae' : '#eae2bd', cx + x, cy + y);
     }
-    ring(ctx, P.ink, cx, cy, r + 6, 0);
-    ring(ctx, P.ink, cx, cy, r + 5, 0);
+    ring(ctx, P.blueD, cx, cy, r + 6, 0);
+    ring(ctx, P.blue, cx, cy, r + 5, 0);
     ring(ctx, P.ink, cx, cy, r, 0);
-    ring(ctx, P.ink2, cx, cy, r - 4, 0);
+    ring(ctx, P.gold, cx, cy, r - 4, 0);
     // 32 ticks around the limb, every 4th long, every 8th heavy
     for (let i = 0; i < 32; i++) {
       const a = i / 32 * TAU - Math.PI / 2;
@@ -1163,30 +1224,33 @@
         line(ctx, P.ink, cx + Math.cos(c2) * wide, cy + Math.sin(c2) * wide, cx, cy);
       }
     };
-    star(16, r - 11, 2.0, -Math.PI / 2 + Math.PI / 16, P.sand, P.ink2);   // by-points
-    star(8, r - 6, 3.6, -Math.PI / 2 + Math.PI / 8, P.sand, P.ink);       // intercardinal
-    star(4, r - 1, 5.4, -Math.PI / 2, P.sand, P.ink);                     // cardinal N/S
-    star(4, r - 1, 4.8, 0, P.sand, P.ink);                                // cardinal E/W
-    disc(ctx, P.sand, cx, cy, 5); ring(ctx, P.ink, cx, cy, 5, 0); ring(ctx, P.ink, cx, cy, 4, 0);
-    R(ctx, P.red, cx - 1, cy - 1, 3, 3); D1(ctx, P.sand, cx, cy);
+    // the four inks a rose is illuminated in: gold by-points, blue half
+    // winds, and the cardinals struck in carmine
+    star(16, r - 11, 2.0, -Math.PI / 2 + Math.PI / 16, '#f6e8c0', P.goldD);
+    star(8, r - 6, 3.6, -Math.PI / 2 + Math.PI / 8, P.sand, P.blueD);
+    star(4, r - 1, 5.4, -Math.PI / 2, '#fff3d2', P.redD);
+    star(4, r - 1, 4.8, 0, P.sand, P.blueD);
+    disc(ctx, P.goldL, cx, cy, 5); ring(ctx, P.ink, cx, cy, 5, 0); ring(ctx, P.goldD, cx, cy, 4, 0);
+    R(ctx, P.red, cx - 1, cy - 1, 3, 3); D1(ctx, '#ffe9b4', cx, cy);
     // fleur-de-lys over north
-    const ny = cy - r - 4;
-    R(ctx, P.ink, cx, ny - 10, 1, 10);
-    D1(ctx, P.ink, cx - 1, ny - 8); D1(ctx, P.ink, cx + 1, ny - 8);
-    D1(ctx, P.ink, cx - 2, ny - 6); D1(ctx, P.ink, cx + 2, ny - 6);
-    D1(ctx, P.ink, cx - 3, ny - 5); D1(ctx, P.ink, cx + 3, ny - 5);
-    R(ctx, P.ink, cx - 4, ny - 4, 9, 1);
-    D1(ctx, P.ink, cx - 3, ny - 3); D1(ctx, P.ink, cx + 3, ny - 3);
-    D1(ctx, P.ink, cx - 2, ny - 2); D1(ctx, P.ink, cx + 2, ny - 2);
+    const ny = cy - r - 4, fl = P.goldD;
+    R(ctx, fl, cx, ny - 10, 1, 10);
+    D1(ctx, fl, cx - 1, ny - 8); D1(ctx, fl, cx + 1, ny - 8);
+    D1(ctx, fl, cx - 2, ny - 6); D1(ctx, fl, cx + 2, ny - 6);
+    D1(ctx, fl, cx - 3, ny - 5); D1(ctx, fl, cx + 3, ny - 5);
+    R(ctx, P.gold, cx - 4, ny - 4, 9, 1);
+    D1(ctx, fl, cx - 3, ny - 3); D1(ctx, fl, cx + 3, ny - 3);
+    D1(ctx, fl, cx - 2, ny - 2); D1(ctx, fl, cx + 2, ny - 2);
+    D1(ctx, P.goldL, cx - 1, ny - 4); D1(ctx, P.goldL, cx + 1, ny - 4);
     R(ctx, P.red, cx, ny - 7, 1, 2);
     // an eastern cross, the way the old roses mark the Levant
     const ex = cx + r + 7;
-    R(ctx, P.ink, ex, cy - 5, 1, 9); R(ctx, P.ink, ex - 2, cy - 2, 5, 1);
+    R(ctx, P.red, ex, cy - 5, 1, 9); R(ctx, P.red, ex - 2, cy - 2, 5, 1);
     // cardinal letters
-    txt(ctx, 'S', cx, cy + r + 8, 6, { color: P.ink, align: 'center', outline: P.sea0 });
-    txt(ctx, 'W', cx - r - 11, cy - 3, 6, { color: P.ink, align: 'center', outline: P.sea0 });
-    txt(ctx, 'NE', cx + r - 2, cy - r + 2, 5, { color: P.ink2, align: 'center', outline: P.stain });
-    txt(ctx, 'SW', cx - r + 2, cy + r - 6, 5, { color: P.ink2, align: 'center', outline: P.stain });
+    txt(ctx, 'S', cx, cy + r + 8, 6, { color: P.redD, align: 'center', outline: P.sand });
+    txt(ctx, 'W', cx - r - 11, cy - 3, 6, { color: P.blueD, align: 'center', outline: P.sand });
+    txt(ctx, 'NE', cx + r - 2, cy - r + 2, 5, { color: P.goldD, align: 'center', outline: '#eae2bd' });
+    txt(ctx, 'SW', cx - r + 2, cy + r - 6, 5, { color: P.goldD, align: 'center', outline: '#eae2bd' });
   }
 
   // scale bar --------------------------------------------------------------
@@ -1199,7 +1263,9 @@
     }
     const by = y + 14;
     box(ctx, P.ink, x, by, w, 6);
-    for (let i = 0; i < n; i++) R(ctx, (i & 1) ? P.sand : P.ink, x + i * seg + 1, by + 1, seg - (i === n - 1 ? 2 : 0), 4);
+    // the bar is chequered red and black, the way a league scale is engraved
+    for (let i = 0; i < n; i++) R(ctx, (i & 1) ? P.sand : (i === 0 ? P.red : P.ink), x + i * seg + 1, by + 1, seg - (i === n - 1 ? 2 : 0), 4);
+    for (let i = 1; i < n; i += 2) R(ctx, P.redD, x + i * seg + 1, by + 4, seg - 1, 1);
     R(ctx, P.ink, x, by, w, 1); R(ctx, P.ink, x, by + 5, w, 1);
     for (let q = 1; q < 4; q++) R(ctx, P.ink, x + Math.round(seg * q / 4), by + 1, 1, 4);
     for (let i = 0; i <= n; i++) R(ctx, P.ink, x + i * seg - (i === n ? 1 : 0), by - 3, 1, 3);
@@ -1226,33 +1292,49 @@
     R(ctx, P.beach, x + 5, y + h - 4, w - 10, 1);
     // corner volutes
     for (const [sx, sy, fx, fy] of [[x + 8, y + 6, 1, 1], [x + w - 9, y + 6, -1, 1], [x + 8, y + h - 7, 1, -1], [x + w - 9, y + h - 7, -1, -1]]) {
-      D1(ctx, P.ink, sx, sy); D1(ctx, P.ink, sx + fx, sy + fy); D1(ctx, P.ink, sx + fx * 2, sy);
-      D1(ctx, P.ink, sx, sy + fy * 2); D1(ctx, P.ink2, sx + fx, sy);
-      D1(ctx, P.ink, sx + fx * 4, sy + fy); D1(ctx, P.ink2, sx + fx * 5, sy + fy * 2);
+      D1(ctx, P.goldD, sx, sy); D1(ctx, P.goldD, sx + fx, sy + fy); D1(ctx, P.goldD, sx + fx * 2, sy);
+      D1(ctx, P.goldD, sx, sy + fy * 2); D1(ctx, P.gold, sx + fx, sy);
+      D1(ctx, P.goldD, sx + fx * 4, sy + fy); D1(ctx, P.gold, sx + fx * 5, sy + fy * 2);
     }
+    // the title, illuminated: the letters laid twice, gold under iron gall
     let ty = y + 8;
-    txt(ctx, 'THE BAY OF', x + w / 2, ty, 13, { color: P.ink, align: 'center', tracking: 2 }); ty += 16;
-    txt(ctx, 'BROKEN NETS', x + w / 2, ty, 13, { color: P.ink, align: 'center', tracking: 2 }); ty += 16;
+    for (const [str, dy] of [['THE BAY OF', 0], ['BROKEN NETS', 16]]) {
+      txt(ctx, str, x + w / 2 + 1, ty + dy + 1, 13, { color: P.goldL, align: 'center', tracking: 2 });
+      txt(ctx, str, x + w / 2, ty + dy, 13, { color: P.ink, align: 'center', tracking: 2 });
+    }
+    ty += 32;
     // a hairline rule with a lozenge
-    R(ctx, P.ink2, x + 16, ty, w - 32, 1);
+    R(ctx, P.blue, x + 16, ty, w - 32, 1);
     R(ctx, P.sand, x + w / 2 - 5, ty - 2, 11, 5);
     for (let i = 0; i < 3; i++) {
       const hw = i === 1 ? 2 : i === 0 ? 1 : 1;
-      R(ctx, P.ink, x + w / 2 - hw, ty - 1 + i, hw * 2 + 1, 1);
+      R(ctx, P.red, x + w / 2 - hw, ty - 1 + i, hw * 2 + 1, 1);
     }
-    D1(ctx, P.sand, x + w / 2, ty);
-    R(ctx, P.ink2, x + w / 2 - 8, ty, 2, 1); R(ctx, P.ink2, x + w / 2 + 7, ty, 2, 1);
+    D1(ctx, P.goldL, x + w / 2, ty);
+    R(ctx, P.blueD, x + w / 2 - 8, ty, 2, 1); R(ctx, P.blueD, x + w / 2 + 7, ty, 2, 1);
     ty += 5;
-    txt(ctx, 'SOUNDINGS IN FATHOMS', x + w / 2, ty, 5, { color: P.ink2, align: 'center', tracking: 1 }); ty += 8;
+    txt(ctx, 'SOUNDINGS IN FATHOMS', x + w / 2, ty, 5, { color: P.blueD, align: 'center', tracking: 1 }); ty += 8;
     txt(ctx, 'DRAWN BY THE OTTER, WHO', x + w / 2, ty, 5, { color: P.ink2, align: 'center' }); ty += 7;
     txt(ctx, 'HAS NEVER BEEN WRONG YET', x + w / 2, ty, 5, { color: P.ink2, align: 'center' }); ty += 10;
     // a second rule, then the scale engraved into the foot of the plaque
-    R(ctx, P.ink2, x + 22, ty, w - 44, 1);
-    for (const dx of [-1, 0, 1]) D1(ctx, P.ink, x + w / 2 + dx, ty);
-    D1(ctx, P.ink, x + w / 2, ty - 1); D1(ctx, P.ink, x + w / 2, ty + 1);
+    R(ctx, P.blue, x + 22, ty, w - 44, 1);
+    for (const dx of [-1, 0, 1]) D1(ctx, P.red, x + w / 2 + dx, ty);
+    D1(ctx, P.red, x + w / 2, ty - 1); D1(ctx, P.red, x + w / 2, ty + 1);
     ty += 5;
     const sw = drawScale(ctx, Math.round(x + w / 2 - 43), ty);
     void sw;
+    // the surveyor's seal, pressed into the foot of the plaque
+    const wx = x + w - 16, wy = y + h - 15;
+    disc(ctx, P.redD, wx + 1, wy + 1, 7);
+    disc(ctx, P.wax, wx, wy, 7);
+    disc(ctx, P.waxL, wx - 1, wy - 2, 3);
+    ring(ctx, P.redD, wx, wy, 7, 0);
+    ring(ctx, P.redD, wx, wy, 4, 0);
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * TAU;
+      D1(ctx, P.redD, Math.round(wx + Math.cos(a) * 8), Math.round(wy + Math.sin(a) * 8));
+    }
+    for (let i = -3; i <= 3; i++) { D1(ctx, P.redD, wx + i, wy + i); D1(ctx, P.redD, wx + i, wy - i); }
   }
 
   // ships on the lanes -----------------------------------------------------
@@ -1566,22 +1648,300 @@
     ring(ctx, P.tableG, x, y, 4, 0);
   }
 
-  function buildChart(self) {
-    const out = can(640, 360), octx = out.getContext('2d');
-    paintTable(octx);
-    // the shadow the sheet casts on the table: only the strip the sheet
-    // itself will not cover once it is laid down
-    for (let y = PAPER.y0 + 3; y <= PAPER.y1 + 4; y++) {
-      const inner = y <= PAPER.y1 - 1;
-      for (let x = PAPER.x0 + 3; x <= PAPER.x1 + 4; x++) {
-        if (inner && x <= PAPER.x1 - 7) { x = PAPER.x1 - 7; continue; }
-        if (hash2(x * 5, y * 3) < 0.12) continue;
-        D1(octx, hash2(x, y) > 0.7 ? P.tableD : P.tableG, x, y);
+  // =========================================================================
+  //  CLOSE-UP DETAIL
+  //  Everything in here is inked at bake resolution — one bake pixel is half
+  //  a chart unit — so it stays fine print when the sheet is enlarged and
+  //  simply drops out of legibility when it is not.  None of it is on the
+  //  1x survey: it is the second pass the otter made once she had time.
+  // =========================================================================
+  // coves, rocks and grounds, given roughly and then snapped to real water
+  const COVES = [
+    ['OTTER COVE', 62, 164], ['NET ROCK', 162, 148], ['THE TEETH', 198, 234],
+    ['GULL SPIT', 36, 216], ['LOW SOUND', 212, 120], ['TAR COVE', 294, 96],
+    ['PILOT ROCK', 316, 158], ['BONE BAR', 352, 198], ['SLACK WATER', 452, 210],
+    ['WINCH POINT', 510, 96], ['BLIND REEF', 534, 148], ['DRIFT GROUND', 568, 222],
+    ['COLD MOUTH', 430, 120], ['THE KETTLE', 250, 158], ['WIDOW ROCK', 92, 130],
+    ['SHINGLE END', 172, 250], ['DEAD MAN BAR', 388, 132], ['THE SPOUT', 486, 240],
+  ];
+  // set of the tide: chains of arrows in green ink, with their rate
+  const CURRENTS = [
+    { pts: [[92, 124], [140, 132], [192, 130], [238, 140]], lab: '2 KN', k: 1 },
+    { pts: [[352, 118], [402, 112], [452, 118], [498, 132]], lab: '1 1/2 KN', k: 1 },
+    { pts: [[496, 208], [548, 216], [596, 210]], lab: '3 KN', k: -1 },
+    { pts: [[232, 232], [288, 236], [336, 228]], lab: '1 KN', k: 1 },
+  ];
+  // prevailing winds, drawn as feathered barbs
+  const WINDS = [[124, 40, -0.55], [316, 246, -0.30], [598, 58, 2.40], [64, 258, 0.15]];
+  // what the otter wrote in the margins, once she had been there herself
+  const NOTES = [
+    { l: ['SHALLOW - I SCRAPED', 'MY BELLY RIGHT HERE'], x: 146, y: 166, c: 'red' },
+    { l: ['GOOD KELP.', 'HIDE IN IT.'], x: 306, y: 206, c: 'green' },
+    { l: ['THEY WATCH FROM', 'THIS HEADLAND'], x: 420, y: 100, c: 'violet' },
+    { l: ['NO BOTTOM FOUND', 'AT 90 FATHOM'], x: 566, y: 166, c: 'blue' },
+    { l: ['TIDE TURNS AT DUSK'], x: 108, y: 254, c: 'green' },
+    { l: ['COUNTED 9 HULLS'], x: 258, y: 108, c: 'red' },
+    { l: ['DO NOT GO BY NIGHT'], x: 502, y: 128, c: 'red' },
+  ];
+  const NOTE_INK = { red: P.red, green: P.green, violet: P.violet, blue: P.blue };
+
+  // handwriting: the same bitmap face, but with the baseline walking a pixel
+  // either way so a line of it reads as a hand rather than as type
+  function hand(ctx, s, x, y, size, col) {
+    let cx = x;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      const dy = (i % 5 === 1 || i % 5 === 4) ? 1 : (i % 5 === 2 ? -1 : 0);
+      if (ch !== ' ') txt(ctx, ch, cx, y + dy, size, { color: col, outline: P.sand });
+      cx += mText(ch, size) + 1;
+    }
+    return cx - x;
+  }
+  // the wavy rule she scores under anything she means
+  function squiggle(ctx, col, x, y, w) {
+    for (let i = 0; i < w; i++) D1(ctx, col, x + i, y + (((i >> 1) % 3 === 1) ? 1 : 0));
+  }
+  // a tiny gabled shed, three or four pixels of it
+  function shed(ctx, x, y, w, h, wall, roof) {
+    R(ctx, wall, x, y - h, w, h);
+    R(ctx, roof, x - 1, y - h - 1, w + 2, 1);
+    R(ctx, roof, x, y - h - 2, w, 1);
+    D1(ctx, P.ink, x, y - 1); D1(ctx, P.ink, x + w - 1, y - 1);
+  }
+  // a moored boat seen from above: hull, thwart and a mast shadow
+  function skiff(ctx, x, y, f, col) {
+    R(ctx, col, x, y, 5, 1);
+    R(ctx, col, x + 1, y - 1, 3, 1);
+    R(ctx, col, x + 1, y + 1, 3, 1);
+    D1(ctx, P.ink, x + 2 + f, y);
+    D1(ctx, P.sand, x + 2, y);
+  }
+  // hatched foul ground: diagonal ruling with a dotted limit, the way a
+  // surveyor marks a bottom he does not trust
+  function hatchShoal(ctx, mask, rf) {
+    const x0 = Math.round((rf.x - rf.rx) * SC), x1 = Math.round((rf.x + rf.rx) * SC);
+    const y0 = Math.round((rf.y - rf.ry) * SC), y1 = Math.round((rf.y + rf.ry) * SC);
+    const cx0 = rf.x * SC, cy0 = rf.y * SC, rx = rf.rx * SC, ry = rf.ry * SC;
+    for (let y = Math.max(2, y0); y <= Math.min(SH_H * SC - 3, y1); y++) {
+      for (let x = Math.max(2, x0); x <= Math.min(MAP_W * SC - 3, x1); x++) {
+        const u = (x - cx0) / rx, v = (y - cy0) / ry;
+        const rr = u * u + v * v;
+        if (rr > 1.15) continue;
+        if (rr > 0.94 && rr > 0.94 + vnoise(x * 0.04 + rf.seed, y * 0.04) * 0.2) continue;
+        if (mask[((y / SC) | 0) * MAP_W + ((x / SC) | 0)]) continue;
+        if ((x + y) % 7 === 0) D1(ctx, rr > 0.6 ? P.blueL : P.blue, x, y);
+        else if ((x - y + 210) % 7 === 0 && rr < 0.55) D1(ctx, P.blueL, x, y);
+      }
+    }
+  }
+  // an arrow chain: barbs along a polyline, feathered head at the far end
+  function currentChain(ctx, c, col) {
+    const pts = c.pts.map(p => [p[0] * SC, p[1] * SC]);
+    for (let i = 0; i < pts.length - 1; i++) {
+      line(ctx, col, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 3, 4, i * 2);
+    }
+    const a = pts[pts.length - 1], b = pts[pts.length - 2];
+    const dx = a[0] - b[0], dy = a[1] - b[1], L = Math.hypot(dx, dy) || 1;
+    const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    for (let k = 1; k <= 5; k++) {
+      D1(ctx, col, Math.round(a[0] - ux * k + nx * k * 0.75), Math.round(a[1] - uy * k + ny * k * 0.75));
+      D1(ctx, col, Math.round(a[0] - ux * k - nx * k * 0.75), Math.round(a[1] - uy * k - ny * k * 0.75));
+    }
+    const mid = pts[(pts.length / 2) | 0];
+    txt(ctx, c.lab, mid[0], mid[1] + (c.k > 0 ? -9 : 5), 5, { color: col, align: 'center' });
+  }
+  // a wind barb: a shaft with feathers down one side
+  function windBarb(ctx, x, y, a) {
+    const ca = Math.cos(a), sa = Math.sin(a), L = 26;
+    const col = P.violet;
+    line(ctx, col, x, y, x + ca * L, y + sa * L, 1, 0, 0);
+    const nx = -sa, ny = ca;
+    for (let k = 0; k < 4; k++) {
+      const px = x + ca * (L - 4 - k * 5), py = y + sa * (L - 4 - k * 5);
+      for (let j = 1; j <= 4; j++) D1(ctx, P.violetL, Math.round(px - ca * j * 0.5 + nx * j), Math.round(py - sa * j * 0.5 + ny * j));
+    }
+    for (let k = 1; k <= 4; k++) {
+      D1(ctx, col, Math.round(x + ca * k + nx * k * 0.6), Math.round(y + sa * k + ny * k * 0.6));
+      D1(ctx, col, Math.round(x + ca * k - nx * k * 0.6), Math.round(y + sa * k - ny * k * 0.6));
+    }
+  }
+  // a slip of paper pinned to the sheet, with its own shadow and a pin
+  function pinnedNote(ctx, x, y, w, h, lines, tilt) {
+    for (let i = 0; i < h; i++) {
+      const o = Math.round(i * tilt);
+      R(ctx, P.shade, x + o + 2, y + i + 2, w, 1);
+    }
+    for (let i = 0; i < h; i++) {
+      const o = Math.round(i * tilt);
+      R(ctx, i < 2 || i > h - 3 ? P.beach : P.sand, x + o, y + i, w, 1);
+      D1(ctx, P.tear, x + o, y + i); D1(ctx, P.tear, x + o + w - 1, y + i);
+    }
+    R(ctx, P.tear, x, y, w, 1); R(ctx, P.tear, x + Math.round((h - 1) * tilt), y + h - 1, w, 1);
+    for (let i = 0; i < lines.length; i++) {
+      hand(ctx, lines[i], x + 4 + Math.round((5 + i * 8) * tilt), y + 5 + i * 8, 5, P.ink);
+    }
+    const px = x + Math.round(w / 2), py = y + 2;
+    disc(ctx, P.redD, px + 1, py + 1, 2);
+    disc(ctx, P.red, px, py, 2);
+    D1(ctx, P.redL, px - 1, py - 1);
+  }
+
+  function nearDetail(ctx, mask, dOut, dIn, keepOut) {
+    const rng = new SeededRandom(24601);
+    const W = MAP_W * SC;
+    const water = (x, y) => {
+      const xi = Math.round(x), yi = Math.round(y);
+      if (xi < IN.x0 + 1 || yi < IN.y0 + 1 || xi > IN.x1 - 1 || yi > IN.y1 - 1) return -1;
+      return mask[yi * MAP_W + xi] ? -1 : dOut[yi * MAP_W + xi];
+    };
+
+    // ---- hatched foul ground over every reef
+    for (const rf of REEFS) hatchShoal(ctx, mask, rf);
+
+    // ---- the set of the tide and the prevailing wind
+    for (const c of CURRENTS) currentChain(ctx, c, P.green);
+    for (const w of WINDS) windBarb(ctx, w[0] * SC, w[1] * SC, w[2]);
+
+    // ---- harbours: sheds, jetties, moorings and boats at every place, and
+    //      the lagoon the pair set out from
+    const spots = DEST.map(d => ({ x: d.x, y: d.y, n: d.foes.length + 3, seed: d.x * 7 + d.y }))
+      .concat([{ x: HOME.x, y: HOME.y, n: 3, seed: 991 }]);
+    for (const s of spots) {
+      const r2 = new SeededRandom(s.seed | 0);
+      // which way the land lies, so the sheds go ashore and the boats afloat
+      let lx = 0, ly = 0;
+      for (let a = 0; a < 16; a++) {
+        const th = a / 16 * TAU;
+        for (let r = 3; r < 16; r++) {
+          const xi = Math.round(s.x + Math.cos(th) * r), yi = Math.round(s.y + Math.sin(th) * r);
+          if (xi < 1 || yi < 1 || xi >= MAP_W - 1 || yi >= MAP_H - 1) break;
+          if (mask[yi * MAP_W + xi]) { lx += Math.cos(th); ly += Math.sin(th); break; }
+        }
+      }
+      const ll = Math.hypot(lx, ly) || 1; lx /= ll; ly /= ll;
+      const bx = s.x * SC, by = s.y * SC;
+      // a jetty or two, reaching out over the water
+      for (let j = 0; j < 2; j++) {
+        const th = Math.atan2(-ly, -lx) + r2.range(-0.7, 0.7);
+        const L = r2.int(9, 16);
+        const ex = Math.round(bx + Math.cos(th) * L), ey = Math.round(by + Math.sin(th) * L);
+        line(ctx, P.ink2, bx, by, ex, ey, 1, 0, 0);
+        line(ctx, P.inkL, bx, by + 1, ex, ey + 1, 2, 2, 0);
+        for (let k = 3; k < L; k += 3) {
+          D1(ctx, P.ink, Math.round(bx + Math.cos(th) * k), Math.round(by + Math.sin(th) * k + 2));
+        }
+      }
+      // sheds along the shore, roofs in ochre and rust
+      for (let k = 0; k < s.n + 2; k++) {
+        const ox = Math.round(bx + lx * r2.range(2, 13) + r2.range(-9, 9));
+        const oy = Math.round(by + ly * r2.range(2, 13) + r2.range(-8, 8));
+        if (!mask[Math.round(oy / SC) * MAP_W + Math.round(ox / SC)]) continue;
+        const wq = r2.int(3, 6), hq = r2.int(2, 4);
+        shed(ctx, ox, oy, wq, hq, r2.next() < 0.5 ? P.sand : P.beach, r2.next() < 0.45 ? P.red : P.ink2);
+      }
+      // boats at their moorings, and the buoys they are tied to
+      for (let k = 0; k < s.n; k++) {
+        const th = Math.atan2(-ly, -lx) + r2.range(-1.5, 1.5);
+        const r = r2.range(6, 20);
+        const ox = Math.round(bx + Math.cos(th) * r), oy = Math.round(by + Math.sin(th) * r);
+        if (water(ox / SC, oy / SC) < 1) continue;
+        skiff(ctx, ox, oy, r2.next() < 0.5 ? -1 : 1, r2.next() < 0.4 ? P.redD : P.ink2);
+        if (r2.next() < 0.5) { D1(ctx, P.red, ox + 7, oy + 1); D1(ctx, P.ink, ox + 7, oy + 2); }
       }
     }
 
-    // ---- paper, land and everything inked on it
-    const chart = can(MAP_W, MAP_H), cx = chart.getContext('2d');
+    // ---- coves, rocks and grounds, named in a small hand
+    for (const [nm, cx0, cy0] of COVES) {
+      let px = -1, py = -1;
+      for (let r = 0; r < 12 && px < 0; r++) {
+        for (let a = 0; a < 12; a++) {
+          const x = Math.round(cx0 + Math.cos(a / 12 * TAU) * r), y = Math.round(cy0 + Math.sin(a / 12 * TAU) * r);
+          const d = water(x, y);
+          if (d >= 2 && d <= 11) { px = x; py = y; break; }
+        }
+      }
+      if (px < 0) continue;
+      const w = mText(nm, 5);
+      const right = px < MAP_W - 90;
+      const lx = right ? px + 5 : px - 5 - w;
+      D1(ctx, P.ink, px * SC, py * SC);
+      box(ctx, P.ink2, px * SC - 1, py * SC - 1, 3, 3);
+      R(ctx, P.blueD, (right ? px * SC + 2 : px * SC - 3), py * SC, 2, 1);
+      txt(ctx, nm, lx * SC + (right ? 0 : w - w), py * SC - 2, 5, { color: P.blueD, outline: P.sand });
+    }
+
+    // ---- a second, finer set of soundings in blue between the survey's own
+    for (let gy = IN.y0 + 24; gy < IN.y1 - 10; gy += 24) {
+      for (let gx = IN.x0 + 28; gx < IN.x1 - 14; gx += 30) {
+        const x = Math.round(gx + rng.range(-9, 9)), y = Math.round(gy + rng.range(-8, 8));
+        if (rng.next() < 0.22) continue;
+        const cl = clearance(dOut, mask, x, y);
+        if (cl < 3) continue;
+        let clash = false;
+        for (const k of keepOut) if (Math.abs(x - k.x) < k.rx && Math.abs(y - k.y) < k.ry) { clash = true; break; }
+        if (clash) continue;
+        const v = Math.max(2, Math.round(cl * 1.15 + vnoise(x * 0.04, y * 0.04) * 11));
+        const frac = rng.int(1, 9);
+        txt(ctx, v + '_' + frac, x * SC, y * SC, 4, { color: P.blueL, align: 'center' });
+      }
+    }
+
+    // ---- the otter's own notes, shifted clear of the land she was writing
+    //      about, and underscored where she meant it
+    for (const n of NOTES) {
+      let nx = n.x, ny = n.y, ok = false;
+      const wide = Math.ceil(Math.max.apply(null, n.l.map(t => mText(t, 5) + t.length)) / SC);
+      for (let k = 0; k < 26 && !ok; k++) {
+        const ty = ny + (k >> 1) * (k & 1 ? -5 : 5) * 0.5;
+        ok = true;
+        for (let c = 0; c <= wide; c += 6) {
+          for (let r = 0; r < n.l.length; r++) {
+            const xi = Math.round(nx + c), yi = Math.round(ty + r * 4);
+            if (xi < IN.x0 || xi > IN.x1 || yi < IN.y0 || yi > IN.y1 || mask[yi * MAP_W + xi]) { ok = false; break; }
+          }
+          if (!ok) break;
+        }
+        if (ok) ny = ty;
+      }
+      if (!ok) continue;
+      const col = NOTE_INK[n.c] || P.ink;
+      for (let r = 0; r < n.l.length; r++) {
+        const w = hand(ctx, n.l[r], nx * SC, (ny + r * 7) * SC, 5, col);
+        if (n.c === 'red' && r === n.l.length - 1) squiggle(ctx, col, nx * SC, (ny + r * 7) * SC + 7, w - 2);
+      }
+    }
+
+    // ---- two slips pinned to the sheet
+    pinnedNote(ctx, 92 * SC, 234 * SC, 92, 30, ['SHE IS ALIVE.', 'THEY TOOK HER EAST.'], 0.06);
+    pinnedNote(ctx, 494 * SC, 36 * SC, 86, 30, ['SIX PORTS.', 'THEN THE CHIEF.'], -0.05);
+
+    // ---- ink blots and a thumbprint, because she was in a hurry
+    for (const [bx, by, br] of [[300, 70, 5], [176, 196, 4], [560, 96, 3]]) {
+      for (let y = -br * 2; y <= br * 2; y++) for (let x = -br * 2; x <= br * 2; x++) {
+        const rr = Math.hypot(x, y) / SC - br * (0.6 + vnoise(x * 0.2 + bx, y * 0.2) * 0.5);
+        if (rr > 0) continue;
+        if (rr > -0.8 && hash2(x * 7 + bx, y * 5) > 0.5) continue;
+        D1(ctx, hash2(x, y) > 0.8 ? P.ink2 : P.ink, bx * SC + x, by * SC + y);
+      }
+    }
+    void dIn; void W;
+  }
+
+  let _t0=0; const _TMS=[]; function TM(n){ const t=performance.now(); if(_t0) _TMS.push(n+':'+(t-_t0).toFixed(1)); _t0=t; if(n==='downscale') { global.__WMT=_TMS.join(' '); } }
+  function buildChart(self) {
+    _t0=performance.now(); _TMS.length=0;
+    // the table is its own plate: it does not move when the sheet is dragged
+    const out = can(640, 360), octx = out.getContext('2d');
+    paintTable(octx);
+
+    // ---- paper, land and everything inked on it, baked at SC px to the unit
+    const chart = can(MAP_W * SC, SH_H * SC), cx = chart.getContext('2d');
+    cx.imageSmoothingEnabled = false;
+    // survey coordinates: everything the old chart drew is drawn at SC times
+    // its size, which for integer fillRects is an exact, hard-edged blow-up
+    const up = () => { cx.setTransform(SC, 0, 0, SC, 0, 0); };
+    const nat = () => { cx.setTransform(1, 0, 0, 1, 0, 0); };
+    TM('start');
     const mask = buildMask();
     let oc = oceanFill(mask);
     let dOut0 = distField(mask, 1);
@@ -1600,15 +1960,23 @@
     oc = oceanFill(mask);
     const hgt = heightField(mask, dIn);
 
-    paintSea(cx, mask, dOut);
+    TM('fields');
+    paintSea(cx, mask, dOut);                 // native bake resolution
+    TM('sea');
+    up();
     drawRhumbs(cx);
     drawGraticule(cx);
     drawContours(cx, mask, dOut, oc);
 
+    TM('rhumb+grat+cont');
     const land = paintLand(mask, dIn, dOut, hgt);
+    land.ctx.setTransform(SC, 0, 0, SC, 0, 0);
     dressLand(land.ctx, mask, dIn, hgt);
-    cx.drawImage(land.c, 0, 0);
+    land.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    TM('land');
+    nat(); cx.drawImage(land.c, 0, 0); up();
 
+    TM('landblit');
     // ---- reefs and soundings
     for (const rf of REEFS) drawReef(cx, rf, mask);
 
@@ -1631,6 +1999,7 @@
 
     // soundings, set out on a jittered lattice so they read as a survey
     // rather than as litter, and deepened as the bottom falls away
+    TM('reefs');
     const rng = new SeededRandom(9137);
     for (let gy = IN.y0 + 12; gy < IN.y1 - 8; gy += 24) {
       for (let gx = IN.x0 + 14; gx < IN.x1 - 12; gx += 30) {
@@ -1645,6 +2014,7 @@
         txt(cx, String(v), x, y, 5, { color: cl > 22 ? P.ink2 : P.inkL, align: 'center' });
       }
     }
+    TM('soundings');
     for (const w of WRECKS) drawWreck(cx, w[0], w[1]);
     for (const d of DOODLES) {
       const f = d.f || 1;
@@ -1655,6 +2025,7 @@
       else if (d.k === 'fish') vignette(cx, drawFish, d.x + f * 4, d.y, 40, 30, f);
       else if (d.k === 'lugger') vignette(cx, drawLugger, d.x, d.y - 8, 80, 58, f);
     }
+    TM('doodles');
     // ---- shipping lanes (dotted), drawn under the ships that ride them
     for (const ln of LANES) {
       for (let i = 0; i < ln.length - 1; i++) line(cx, P.faint, ln[i][0], ln[i][1], ln[i + 1][0], ln[i + 1][1], 1, 5, i * 3);
@@ -1678,17 +2049,26 @@
       }
     }
 
+    TM('names+folds');
     // ---- furniture on top
     drawRose(cx, ROSE.x, ROSE.y, ROSE.r);
     drawCartouche(cx, 14, 12, 190, 108);
     drawBorder(cx);
 
+    // ---- everything that only exists close up, inked at bake resolution so
+    // it stays fine print however far the chart is enlarged
+    TM('furniture');
+    nat();
+    nearDetail(cx, mask, dOut, dIn, keepOut);
+    up();
+
+    TM('nearDetail');
     // ---- tear the sheet out of its rectangle
     for (let x = 0; x < MAP_W; x++) {
       const t = PAPER.y0 + tearTop(x), b = PAPER.y1 - tearBot(x);
       cx.clearRect(x, 0, 1, t);
-      cx.clearRect(x, b + 1, 1, MAP_H - b);
-      D1(cx, P.stain2, x, t); D1(cx, P.stain2, x, b);
+      cx.clearRect(x, b + 1, 1, SH_H - b);
+      D1(cx, P.tear, x, t); D1(cx, P.tear, x, b);
       if (hash2(x * 7, 11) > 0.6) D1(cx, P.beach, x, t + 1);
       if (hash2(x * 7, 23) > 0.6) D1(cx, P.beach, x, b - 1);
     }
@@ -1697,59 +2077,91 @@
       if (y > PAPER.y0 + 4 && y < PAPER.y1 - 4) {
         cx.clearRect(0, y, l, 1);
         cx.clearRect(r + 1, y, MAP_W - r, 1);
-        D1(cx, P.stain2, l, y); D1(cx, P.stain2, r, y);
+        D1(cx, P.tear, l, y); D1(cx, P.tear, r, y);
         if (hash2(y * 5, 31) > 0.6) D1(cx, P.beach, l + 1, y);
       }
     }
 
-    octx.drawImage(chart, 0, 0);
-    // brass tacks, one to each corner
-    drawTack(octx, PAPER.x0 + 9, PAPER.y0 + 8);
-    drawTack(octx, PAPER.x1 - 9, PAPER.y0 + 8);
-    drawTack(octx, PAPER.x0 + 9, PAPER.y1 - 8);
-    drawTack(octx, PAPER.x1 - 9, PAPER.y1 - 8);
+    // ---- the shadow the sheet throws on the table, carried with the sheet
+    for (let x = PAPER.x0 + 3; x < MAP_W; x++) {
+      const b = PAPER.y1 - tearBot(x);
+      for (let k = 1; k <= 4; k++) {
+        if (hash2(x * 5, (b + k) * 3) < 0.12) continue;
+        D1(cx, hash2(x, b + k) > 0.7 ? P.tableD : P.tableG, x, b + k);
+      }
+    }
+    for (let y = PAPER.y0 + 3; y <= PAPER.y1; y++) {
+      const r = PAPER.x1 - tearRgt(y);
+      for (let k = 1; k <= 4; k++) {
+        if (r + k >= MAP_W || hash2((r + k) * 5, y * 3) < 0.12) continue;
+        D1(cx, hash2(r + k, y) > 0.7 ? P.tableD : P.tableG, r + k, y);
+      }
+    }
 
+    // brass tacks, one to each corner, pinning the sheet down
+    drawTack(cx, PAPER.x0 + 9, PAPER.y0 + 8);
+    drawTack(cx, PAPER.x1 - 9, PAPER.y0 + 8);
+    drawTack(cx, PAPER.x0 + 9, PAPER.y1 - 8);
+    drawTack(cx, PAPER.x1 - 9, PAPER.y1 - 8);
+    nat();
+
+    TM('tear+tacks');
+    // ---- the fit-the-whole-sheet plate and the thumbnail, both exact
+    // integer reductions of the bake, resampled point-for-point
+    const far = can(MAP_W, SH_H), fx2 = far.getContext('2d');
+    fx2.imageSmoothingEnabled = false;
+    fx2.drawImage(chart, 0, 0, MAP_W * SC, SH_H * SC, 0, 0, MAP_W, SH_H);
+    const mini = can(MAP_W >> 2, SH_H >> 2), mx2 = mini.getContext('2d');
+    mx2.imageSmoothingEnabled = false;
+    mx2.drawImage(chart, 0, 0, MAP_W * SC, SH_H * SC, 0, 0, MAP_W >> 2, SH_H >> 2);
+
+    TM('downscale');
     self.mask = mask; self.dOut = dOut; self.ocean = oc;
     self.nav = navGrid(mask, dOut);
+    self.table = out; self.sheet = chart; self.sheetFar = far; self.mini = mini;
     return out;
   }
 
   // =========================================================================
   //  PORT MARKERS
   // =========================================================================
-  function plaqueRect(d) {
+  // the label is chrome, not chart: it is laid out in screen pixels around
+  // wherever the mark has landed, so it stays the same size at every zoom
+  function plaqueRect(d, x, y) {
     const w = d.plaqW, h = 13;
-    if (d.lab === 'right') return { x: d.x + 12, y: d.y - 6, w: w, h: h };
-    if (d.lab === 'left') return { x: d.x - 12 - w, y: d.y - 6, w: w, h: h };
-    if (d.lab === 'above') return { x: Math.round(d.x - w / 2), y: d.y - 12 - h, w: w, h: h };
-    return { x: Math.round(d.x - w / 2), y: d.y + 11, w: w, h: h };
+    if (d.lab === 'right') return { x: x + 12, y: y - 6, w: w, h: h };
+    if (d.lab === 'left') return { x: x - 12 - w, y: y - 6, w: w, h: h };
+    if (d.lab === 'above') return { x: Math.round(x - w / 2), y: y - 12 - h, w: w, h: h };
+    return { x: Math.round(x - w / 2), y: y + 11, w: w, h: h };
   }
 
   // a parchment tab with a folded corner and a chapter roundel — a chart
   // label, not a menu item
   function drawPlaque(ctx, d, sel, hov) {
-    const r = d.plaque, on = d.unlocked;
-    const body = sel ? P.sand : on ? P.beach : P.stain2;
-    const edge = sel ? P.red : P.ink;
+    const r = d.prect, on = d.unlocked;
+    if (!r) return;
+    const body = sel ? P.sand : on ? P.beach : '#cfc6ac';
+    const edge = sel ? P.red : on ? P.ink : P.greyD;
     const tint = on ? P.ink : P.greyD;
-    R(ctx, P.stain2, r.x + 1, r.y + r.h, r.w - 1, 1);
-    R(ctx, P.stain2, r.x + r.w, r.y + 1, 1, r.h - 1);
+    R(ctx, P.shade, r.x + 1, r.y + r.h, r.w - 1, 1);
+    R(ctx, P.shade, r.x + r.w, r.y + 1, 1, r.h - 1);
     R(ctx, body, r.x, r.y, r.w, r.h);
     box(ctx, edge, r.x, r.y, r.w, r.h);
     if (sel) box(ctx, P.redD, r.x + 1, r.y + 1, r.w - 2, r.h - 2);
     else if (hov) box(ctx, P.goldL, r.x + 1, r.y + 1, r.w - 2, r.h - 2);
     // the dog-eared corner
     for (let i = 0; i < 4; i++) {
-      R(ctx, P.stain, r.x + r.w - 1 - i, r.y + r.h - 4 + i, i + 1, 1);
+      R(ctx, P.beach, r.x + r.w - 1 - i, r.y + r.h - 4 + i, i + 1, 1);
       D1(ctx, edge, r.x + r.w - 1 - i, r.y + r.h - 5 + i);
     }
-    // chapter roundel
+    // chapter roundel, illuminated the way a capital would be
     disc(ctx, on ? P.red : P.grey, r.x + 7, r.y + 6, 5);
+    ring(ctx, on ? P.goldL : P.greyL, r.x + 7, r.y + 6, 4, 0);
     ring(ctx, P.ink, r.x + 7, r.y + 6, 5, 0);
-    txt(ctx, d.chapter, r.x + 7, r.y + 3, 5, { color: on ? P.sand : '#ded3ab', align: 'center' });
+    txt(ctx, d.chapter, r.x + 7, r.y + 3, 5, { color: on ? '#ffe9b4' : '#e3e6ec', align: 'center' });
     txt(ctx, d.name, r.x + 15, r.y + 4, 6, { color: tint });
     if (!on) {
-      // a blob of red wax, pressed with a broken-net sigil
+      // a blob of wax, pressed with a broken-net sigil
       const wx = r.x + r.w - 9, wy = r.y + 6;
       disc(ctx, P.redD, wx, wy, 4);
       disc(ctx, P.wax, wx, wy, 3);
@@ -1761,11 +2173,8 @@
   }
 
   function drawPort(ctx, d, T, sel, hov) {
-    const x = Math.round(d.x), y = Math.round(d.y), on = d.unlocked;
+    const x = d.sx, y = d.sy, on = d.unlocked;
     const ink = on ? P.ink : P.greyD;
-    // the place itself, drawn on the chart above the point
-    const gl = S.place[d.kind];
-    if (gl) ctx.drawImage(on ? gl.on : gl.off, x - gl.ax, y - gl.ay);
     // the surveyed position: a circled dot with its cross of ticks
     disc(ctx, P.sand, x, y, 4);
     ring(ctx, ink, x, y, 4, 0);
@@ -1803,11 +2212,22 @@
   const CARD = { x: 4, y: 270, w: 632, h: 86 };
   const BTN_BACK = { x: 566, y: 10, w: 62, h: 20 };
   const BTN_SAIL = { x: 486, y: 296, w: 136, h: 38 };
+  // the brass instruments pinned over the chart: zoom in, zoom out, fit
+  const BTN_ZOOM = [
+    { x: 610, y: 38, w: 18, h: 18, k: 'in' },
+    { x: 610, y: 60, w: 18, h: 18, k: 'out' },
+    { x: 610, y: 82, w: 18, h: 18, k: 'fit' },
+  ];
+  const MINI = { x: 7, y: 194, w: MAP_W >> 2, h: SH_H >> 2 };
 
   const WorldMap = {
     ready: false, action: null, selected: 0, destinations: DEST,
     T: 0, routeT: 0, travel: 0, hover: -1, denyT: 0, chart: null,
     mask: null, dOut: null, shimmer: [], ships: [], unlockedCount: 1,
+    // ---- the camera over the sheet
+    zi: 1, cam: { x: 320, y: 138 }, camT: { x: 320, y: 138 }, ox: 0, oy: 0,
+    dragging: false, overZoom: -1, overMini: false, lastUpdate: 0,
+    ptrOn: false, taps: [], hintT: 0, labs: [], table: null, sheet: null, sheetFar: null, mini: null,
 
     // ---------------------------------------------------------------- init
     init() {
@@ -1821,20 +2241,13 @@
       }
       this.chart = buildChart(this);          // this also snaps the ports to the coast
       for (const d of DEST) {
-        let r = plaqueRect(d);
-        // if the sheet has no room left below the mark, hang the label off
-        // the side instead of letting the clamp drop it onto the mark
-        if (d.lab === 'below' && d.y + 11 > IN.y1 - r.h - 3) {
-          d.lab = (d.x + 12 + r.w < IN.x1 - 3) ? 'right' : 'left';
-          r = plaqueRect(d);
-        }
-        r.x = clamp(r.x, IN.x0 + 3, IN.x1 - r.w - 3);
-        r.y = clamp(r.y, IN.y0 + 3, IN.y1 - r.h - 3);
-        d.plaque = r;
-        const x0 = Math.min(d.x - 12, r.x), y0 = Math.min(d.y - 14, r.y);
-        const x1 = Math.max(d.x + 12, r.x + r.w), y1 = Math.max(d.y + 12, r.y + r.h);
-        d.hit = { x: x0, y: y0, w: Math.max(18, x1 - x0), h: Math.max(18, y1 - y0) };
+        // the label is laid out afresh each frame, in screen pixels; this is
+        // only the standing chart-space hit box the old API promised
+        d.prect = null; d.sx = Math.round(d.x); d.sy = Math.round(d.y);
+        d.hit = { x: d.x - 16, y: d.y - 16, w: 32, h: 32 };
+        d.shit = { x: 0, y: 0, w: 0, h: 0 };
       }
+      this.attachPointer();
       // sea roads from the lagoon to every port
       for (const d of DEST) {
         const rt = buildRoute(this.mask, this.dOut, this.nav, HOME, d);
@@ -1870,14 +2283,185 @@
       this.selected = clamp(n - 1, 0, DEST.length - 1);
       this.action = null; this.routeT = 0; this.travel = 0; this.hover = -1; this.denyT = 0;
       this.overSail = false; this.overBack = false;
+      // the sheet opens close in, over wherever the hunt has got to
+      this.zi = 1; this.hintT = 5;
+      this.lookAt(DEST[this.selected], true);
+      this.taps.length = 0; this.dragging = false;
     },
     consume() { this.action = null; },
 
+    // ----------------------------------------------------------- the camera
+    zoom() { return ZOOMS[clamp(this.zi, 0, ZOOMS.length - 1)]; },
+    // keep the visible rectangle on the sheet, or centre it if it will not fill
+    clampCam(c) {
+      const Z = this.zoom(), hw = VIEW.w / (2 * Z), hh = VIEW.h / (2 * Z);
+      const x0 = PAPER.x0 - 3, x1 = PAPER.x1 + 4, y0 = PAPER.y0 - 3, y1 = PAPER.y1 + 5;
+      c.x = (x1 - x0 <= hw * 2) ? (x0 + x1) / 2 : clamp(c.x, x0 + hw, x1 - hw);
+      c.y = (y1 - y0 <= hh * 2) ? (y0 + y1) / 2 : clamp(c.y, y0 + hh, y1 - hh);
+      return c;
+    },
+    lookAt(d, now) {
+      // the label hangs below the mark, so sit the mark a little high
+      this.camT.x = d.x; this.camT.y = d.y + 3;
+      this.clampCam(this.camT);
+      if (now) { this.cam.x = this.camT.x; this.cam.y = this.camT.y; }
+    },
+    setZoom(zi, ax, ay) {
+      const z0 = this.zoom();
+      const nz = clamp(zi, 0, ZOOMS.length - 1);
+      if (nz === this.zi) return;
+      // hold whatever is under the given screen point still while zooming
+      let cx = this.cam.x, cy = this.cam.y;
+      if (ax !== undefined) {
+        const wx = (ax - this.ox) / z0, wy = (ay - this.oy) / z0;
+        const z1 = ZOOMS[nz];
+        cx = wx - (ax - VIEW.x - VIEW.w / 2) / z1;
+        cy = wy - (ay - VIEW.y - VIEW.h / 2) / z1;
+      }
+      this.zi = nz;
+      this.cam.x = cx; this.cam.y = cy;
+      this.clampCam(this.cam);
+      this.camT.x = this.cam.x; this.camT.y = this.cam.y;
+      if (typeof Audio_ !== 'undefined' && Audio_.tone) Audio_.tone(nz > this.ziLast ? 700 : 480, 0.04, 'square', 0.05);
+      this.ziLast = nz;
+    },
+    toScreen(x, y) { return { x: Math.round(x * this.zoom() + this.ox), y: Math.round(y * this.zoom() + this.oy) }; },
+    toChart(x, y) { const Z = this.zoom(); return { x: (x - this.ox) / Z, y: (y - this.oy) / Z }; },
+
+    // ------------------------------------------------------- pointer / touch
+    // Drag to pan, pinch to zoom, tap to choose.  Input's own click fires on
+    // press, which cannot tell a tap from the start of a drag, so the chart
+    // keeps its own tap detector and ignores that one when this is running.
+    attachPointer() {
+      if (this.ptrOn) return;
+      const c = (typeof Input !== 'undefined' && Input.canvas) || (typeof document !== 'undefined' && document.getElementById('screen'));
+      if (!c || !c.addEventListener) return;
+      this.ptrOn = true;
+      const self = this;
+      const live = () => self.ready && (typeof performance !== 'undefined') && (performance.now() - self.lastUpdate) < 300;
+      const loc = (cx, cy) => {
+        const r = c.getBoundingClientRect();
+        return { x: (cx - r.left) / r.width * 640, y: (cy - r.top) / r.height * 360 };
+      };
+      const pts = new Map();
+      let pinch = 0;
+      const down = (id, cx, cy) => {
+        if (!live()) return;
+        const p = loc(cx, cy);
+        pts.set(id, { x: p.x, y: p.y, x0: p.x, y0: p.y, t: performance.now(), moved: 0 });
+        if (pts.size === 2) { const a = [...pts.values()]; pinch = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); }
+      };
+      const move = (id, cx, cy) => {
+        const t = pts.get(id); if (!t || !live()) return;
+        const p = loc(cx, cy);
+        const dx = p.x - t.x, dy = p.y - t.y;
+        t.moved += Math.abs(dx) + Math.abs(dy);
+        t.x = p.x; t.y = p.y;
+        if (pts.size >= 2) {
+          const a = [...pts.values()];
+          const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+          if (pinch > 4 && d / pinch > 1.55) { self.setZoom(self.zi + 1, (a[0].x + a[1].x) / 2, (a[0].y + a[1].y) / 2); pinch = d; }
+          else if (pinch > 4 && d / pinch < 0.66) { self.setZoom(self.zi - 1, (a[0].x + a[1].x) / 2, (a[0].y + a[1].y) / 2); pinch = d; }
+          return;
+        }
+        if (t.moved < 4) return;
+        if (self.overMini && t.y0 >= MINI.y - 4) { self.miniDrag(p.x, p.y); return; }
+        if (t.y0 > VIEW.y + VIEW.h) return;         // the card does not pan
+        self.dragging = true;
+        const Z = self.zoom();
+        self.cam.x -= dx / Z; self.cam.y -= dy / Z;
+        self.clampCam(self.cam);
+        self.camT.x = self.cam.x; self.camT.y = self.cam.y;
+      };
+      const up = (id) => {
+        const t = pts.get(id); if (!t) return;
+        pts.delete(id);
+        if (pts.size < 2) pinch = 0;
+        if (pts.size === 0) self.dragging = false;
+        if (!live()) return;
+        if (t.moved < 5 && performance.now() - t.t < 700) self.taps.push({ x: t.x, y: t.y });
+      };
+      if (typeof window !== 'undefined' && window.PointerEvent) {
+        c.addEventListener('pointerdown', e => down(e.pointerId, e.clientX, e.clientY));
+        c.addEventListener('pointermove', e => move(e.pointerId, e.clientX, e.clientY));
+        const u = e => up(e.pointerId);
+        c.addEventListener('pointerup', u);
+        c.addEventListener('pointercancel', u);
+        window.addEventListener('pointerup', u);
+      } else {
+        c.addEventListener('mousedown', e => down('m', e.clientX, e.clientY));
+        c.addEventListener('mousemove', e => move('m', e.clientX, e.clientY));
+        window.addEventListener('mouseup', () => up('m'));
+        const each = (e, fn) => { for (let i = 0; i < e.changedTouches.length; i++) { const t = e.changedTouches[i]; fn(t.identifier, t.clientX, t.clientY); } };
+        c.addEventListener('touchstart', e => { each(e, down); e.preventDefault(); }, { passive: false });
+        c.addEventListener('touchmove', e => { each(e, move); e.preventDefault(); }, { passive: false });
+        c.addEventListener('touchend', e => each(e, (id) => up(id)));
+        c.addEventListener('touchcancel', e => each(e, (id) => up(id)));
+      }
+    },
+    // dragging inside the thumbnail flies the camera straight there
+    miniDrag(sx, sy) {
+      this.camT.x = clamp((sx - MINI.x) * 4, 0, MAP_W);
+      this.camT.y = clamp((sy - MINI.y) * 4, 0, SH_H);
+      this.clampCam(this.camT);
+      this.cam.x = this.camT.x; this.cam.y = this.camT.y;
+    },
+
     // -------------------------------------------------------------- update
     select(i) {
-      if (i === this.selected || i < 0 || i >= DEST.length) return;
+      if (i < 0 || i >= DEST.length) return;
+      if (i === this.selected) { this.lookAt(DEST[i]); return; }
       this.selected = i; this.routeT = 0; this.travel = 0;
+      this.lookAt(DEST[i]);                       // the view follows the choice
       if (typeof Audio_ !== 'undefined' && Audio_.tone) Audio_.tone(520, 0.05, 'square', 0.07);
+    },
+    // where a press landed, in 640x360 screen pixels
+    press(mx, my) {
+      if (hitR({ x: mx, y: my }, BTN_BACK.x, BTN_BACK.y, BTN_BACK.w, BTN_BACK.h)) { this.back(); return; }
+      if (hitR({ x: mx, y: my }, BTN_SAIL.x, BTN_SAIL.y, BTN_SAIL.w, BTN_SAIL.h)) { this.launch(); return; }
+      for (let i = 0; i < BTN_ZOOM.length; i++) {
+        const b = BTN_ZOOM[i];
+        if (!hitR({ x: mx, y: my }, b.x, b.y, b.w, b.h)) continue;
+        if (b.k === 'in') this.setZoom(this.zi + 1, VIEW.w / 2, VIEW.h / 2);
+        else if (b.k === 'out') this.setZoom(this.zi - 1, VIEW.w / 2, VIEW.h / 2);
+        else { this.setZoom(1); this.lookAt(DEST[this.selected]); }
+        return;
+      }
+      if (hitR({ x: mx, y: my }, MINI.x, MINI.y, MINI.w, MINI.h)) { this.miniDrag(mx, my); return; }
+      for (let i = 0; i < DEST.length; i++) {
+        const h = DEST[i].shit;
+        if (!h.w || !hitR({ x: mx, y: my }, h.x, h.y, h.w, h.h)) continue;
+        if (i === this.selected && DEST[i].unlocked && this.routeT >= 1) this.launch();
+        else this.select(i);
+        return;
+      }
+    },
+    // project every mark and lay its label out, in screen pixels
+    layout() {
+      const Z = this.zoom();
+      this.ox = Math.round(VIEW.x + VIEW.w / 2 - this.cam.x * Z);
+      this.oy = Math.round(VIEW.y + VIEW.h / 2 - this.cam.y * Z);
+      for (const d of DEST) {
+        d.sx = Math.round(d.x * Z) + this.ox;
+        d.sy = Math.round(d.y * Z) + this.oy;
+        const vis = d.sx > VIEW.x - 30 && d.sx < VIEW.x + VIEW.w + 30 && d.sy > VIEW.y - 24 && d.sy < VIEW.y + VIEW.h + 24;
+        if (!vis) { d.prect = null; d.shit = { x: 0, y: 0, w: 0, h: 0 }; continue; }
+        const r = plaqueRect(d, d.sx, d.sy);
+        r.x = clamp(r.x, VIEW.x + 3, VIEW.x + VIEW.w - r.w - 3);
+        r.y = clamp(r.y, VIEW.y + 3, VIEW.y + VIEW.h - r.h - 3);
+        // nothing slides in under the brass keys or the thumbnail
+        if (r.y + r.h > BTN_ZOOM[0].y - 4 && r.y < BTN_ZOOM[2].y + BTN_ZOOM[2].h + 4 && r.x + r.w > BTN_ZOOM[0].x - 4) {
+          r.x = BTN_ZOOM[0].x - 4 - r.w;
+        }
+        if (this.zi > 0 && r.y + r.h > MINI.y - 14 && r.x < MINI.x + MINI.w + 4) {
+          r.x = Math.max(r.x, MINI.x + MINI.w + 6);
+          if (r.x + r.w > VIEW.x + VIEW.w - 3) { r.x = clamp(d.sx - (r.w >> 1), VIEW.x + 3, VIEW.x + VIEW.w - r.w - 3); r.y = MINI.y - 16 - r.h; }
+        }
+        d.prect = r;
+        const x0 = Math.min(d.sx - 12, r.x), y0 = Math.min(d.sy - 14, r.y);
+        const x1 = Math.max(d.sx + 12, r.x + r.w), y1 = Math.max(d.sy + 12, r.y + r.h);
+        d.shit = { x: x0, y: y0, w: Math.max(18, x1 - x0), h: Math.max(18, y1 - y0) };
+      }
     },
     step(dx, dy) {
       const cur = DEST[this.selected];
@@ -1911,39 +2495,57 @@
 
     update(dt, t) {
       this.init();
+      this.lastUpdate = (typeof performance !== 'undefined') ? performance.now() : 0;
       this.selected = clamp(this.selected | 0, 0, DEST.length - 1);
       this.T += dt;
       this.denyT = Math.max(0, this.denyT - dt);
+      this.hintT = Math.max(0, this.hintT - dt);
       const m = Input.mouse;
+
+      // ---- camera eases on to whatever was chosen, then snaps to a pixel
+      const k = Math.min(1, dt * 9);
+      this.cam.x += (this.camT.x - this.cam.x) * k;
+      this.cam.y += (this.camT.y - this.cam.y) * k;
+      if (Math.abs(this.camT.x - this.cam.x) < 0.02) this.cam.x = this.camT.x;
+      if (Math.abs(this.camT.y - this.cam.y) < 0.02) this.cam.y = this.camT.y;
+      this.clampCam(this.cam);
+      this.layout();
 
       // ---- markers
       this.hover = -1;
       for (let i = 0; i < DEST.length; i++) {
-        const h = DEST[i].hit;
-        if (hitR(m, h.x, h.y, h.w, h.h)) this.hover = i;
+        const h = DEST[i].shit;
+        if (h.w && hitR(m, h.x, h.y, h.w, h.h)) this.hover = i;
       }
       const overSail = hitR(m, BTN_SAIL.x, BTN_SAIL.y, BTN_SAIL.w, BTN_SAIL.h);
       const overBack = hitR(m, BTN_BACK.x, BTN_BACK.y, BTN_BACK.w, BTN_BACK.h);
       this.overSail = overSail; this.overBack = overBack;
-      if (m.clicked) {
-        if (overBack) this.back();
-        else if (overSail) this.launch();
-        else if (this.hover >= 0) {
-          if (this.hover === this.selected && DEST[this.hover].unlocked && this.routeT >= 1) this.launch();
-          else this.select(this.hover);
-        }
+      this.overZoom = -1;
+      for (let i = 0; i < BTN_ZOOM.length; i++) {
+        const b = BTN_ZOOM[i];
+        if (hitR(m, b.x, b.y, b.w, b.h)) this.overZoom = i;
       }
-      // ---- wheel steps through the chapters
-      if (Input.wheel) {
-        const n = DEST.length;
-        this.select((this.selected + (Input.wheel > 0 ? 1 : n - 1)) % n);
-      }
+      this.overMini = this.zi > 0 && hitR(m, MINI.x, MINI.y, MINI.w, MINI.h);
+
+      // ---- presses.  The chart's own tap detector owns the click when it is
+      //      running, because Input fires on press and cannot see a drag.
+      const taps = this.taps.length ? this.taps.splice(0, this.taps.length)
+        : (!this.ptrOn && m.clicked ? [{ x: m.x, y: m.y }] : []);
+      for (const tp of taps) this.press(tp.x, tp.y);
+
+      // ---- wheel zooms about the cursor
+      if (Input.wheel) this.setZoom(this.zi - Input.wheel, m.x, m.y);
+
       // ---- keys
       if (Input.hit) {
         if (Input.hit('ArrowRight') || Input.hit('KeyD')) this.step(1, 0);
         if (Input.hit('ArrowLeft') || Input.hit('KeyA')) this.step(-1, 0);
         if (Input.hit('ArrowDown') || Input.hit('KeyS')) this.step(0, 1);
         if (Input.hit('ArrowUp') || Input.hit('KeyW')) this.step(0, -1);
+        if (Input.hit('Equal') || Input.hit('NumpadAdd')) this.setZoom(this.zi + 1);
+        if (Input.hit('Minus') || Input.hit('NumpadSubtract')) this.setZoom(this.zi - 1);
+        if (Input.hit('KeyZ')) { this.setZoom(this.zi === 0 ? 1 : 0); if (this.zi) this.lookAt(DEST[this.selected]); }
+        if (Input.hit('Home') || Input.hit('KeyC')) this.lookAt(DEST[this.selected]);
         if (Input.hit('Enter') || Input.hit('NumpadEnter') || Input.hit('Space')) this.launch();
         if (Input.hit('Escape') || Input.hit('Backspace')) this.back();
       }
@@ -1963,23 +2565,60 @@
     render(ctx, t) {
       this.init();
       this.selected = clamp(this.selected | 0, 0, DEST.length - 1);
-      const T = this.T;
-      ctx.drawImage(this.chart, 0, 0);
-      this.drawShimmer(ctx, T);
+      this.layout();
+      const T = this.T, Z = this.zoom();
+      // ---- the table the sheet is lying on, which never moves
+      ctx.drawImage(this.table, 0, 0);
+
+      ctx.save();
+      ctx.beginPath(); ctx.rect(VIEW.x, VIEW.y, VIEW.w, VIEW.h); ctx.clip();
+      // ---- the sheet, blitted at a whole-number scale out of the bake so no
+      //      edge is ever resampled: the fit view is the exact half plate, the
+      //      close view the plate itself, the magnified view a doubled plate
+      const img = (Z === 1) ? this.sheetFar : this.sheet;
+      const ippu = (Z === 1) ? 1 : SC;            // image pixels to the unit
+      const k = Z / ippu;                         // 1 or 2, never a fraction
+      let sx0 = Math.max(0, Math.floor((VIEW.x - this.ox) / k));
+      let sy0 = Math.max(0, Math.floor((VIEW.y - this.oy) / k));
+      const sx1 = Math.min(img.width, Math.ceil((VIEW.x + VIEW.w - this.ox) / k));
+      const sy1 = Math.min(img.height, Math.ceil((VIEW.y + VIEW.h - this.oy) / k));
+      if (sx1 > sx0 && sy1 > sy0) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, sx0, sy0, sx1 - sx0, sy1 - sy0,
+          this.ox + sx0 * k, this.oy + sy0 * k, (sx1 - sx0) * k, (sy1 - sy0) * k);
+      }
+
+      // ---- everything that lives on the chart, in chart units
+      ctx.save();
+      ctx.translate(this.ox, this.oy); ctx.scale(Z, Z);
       this.drawShips(ctx, T);
+      // the places themselves, inked above their marks
+      for (const d of DEST) {
+        const gl = S.place[d.kind];
+        if (gl) ctx.drawImage(d.unlocked ? gl.on : gl.off, d.x - gl.ax, d.y - gl.ay);
+      }
       this.drawHome(ctx, T);
       this.drawRoute(ctx, T);
+      this.drawToken(ctx, T);
+      ctx.restore();
+
+      // ---- the marks and their labels, in screen pixels at every zoom
+      this.drawShimmer(ctx, T);
+      this.drawTags(ctx);
       for (let i = 0; i < DEST.length; i++) {
-        if (i === this.selected) continue;
+        if (i === this.selected || !DEST[i].prect) continue;
         drawPort(ctx, DEST[i], T, false, this.hover === i);
       }
-      drawPort(ctx, DEST[this.selected], T, true, false);
+      if (DEST[this.selected].prect) drawPort(ctx, DEST[this.selected], T, true, false);
       for (let i = 0; i < DEST.length; i++) {
         if (i === this.selected) continue;
         drawPlaque(ctx, DEST[i], false, this.hover === i);
       }
       drawPlaque(ctx, DEST[this.selected], true, false);
-      this.drawToken(ctx, T);
+      ctx.restore();
+
+      this.drawMini(ctx);
+      this.drawZoomKeys(ctx);
       this.drawCard(ctx, T);
       // BACK, pinned over the chart's top-right corner
       UIKit.button(ctx, BTN_BACK.x, BTN_BACK.y, BTN_BACK.w, BTN_BACK.h, 'BACK',
@@ -1987,13 +2626,63 @@
       void t;
     },
 
+    // a brass thumb-wheel for the zoom, and the thumbnail of the whole sheet
+    drawZoomKeys(ctx) {
+      for (let i = 0; i < BTN_ZOOM.length; i++) {
+        const b = BTN_ZOOM[i], over = this.overZoom === i;
+        const dead = (b.k === 'in' && this.zi >= ZOOMS.length - 1) || (b.k === 'out' && this.zi <= 0);
+        R(ctx, P.tableG, b.x + 1, b.y + 1, b.w, b.h);
+        R(ctx, dead ? P.brassD : over ? P.brassL : P.brass, b.x, b.y, b.w, b.h);
+        box(ctx, P.tableD, b.x, b.y, b.w, b.h);
+        box(ctx, dead ? P.brassD : P.brassL, b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+        const cx = b.x + 9, cy = b.y + 9, ink = dead ? '#8a6a20' : P.tableD;
+        if (b.k === 'fit') {
+          box(ctx, ink, cx - 5, cy - 4, 11, 9);
+          R(ctx, ink, cx - 2, cy - 1, 5, 3);
+        } else {
+          ring(ctx, ink, cx - 1, cy - 1, 4, 0);
+          R(ctx, ink, cx + 2, cy + 2, 4, 2);
+          R(ctx, ink, cx - 3, cy - 1, 5, 1);
+          if (b.k === 'in') R(ctx, ink, cx - 1, cy - 3, 1, 5);
+        }
+      }
+    },
+    drawMini(ctx) {
+      if (this.zi === 0 || !this.mini) return;
+      const M = MINI;
+      R(ctx, P.tableG, M.x - 2, M.y - 2, M.w + 5, M.h + 5);
+      R(ctx, P.tableL, M.x - 2, M.y - 2, M.w + 4, M.h + 4);
+      box(ctx, P.brassD, M.x - 2, M.y - 2, M.w + 4, M.h + 4);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(this.mini, M.x, M.y);
+      // the window the chart is showing, and the ports inside it
+      const Z = this.zoom();
+      const vw = Math.max(6, Math.round(VIEW.w / Z / 4)), vh = Math.max(5, Math.round(VIEW.h / Z / 4));
+      const vx = clamp(Math.round(this.cam.x / 4 - vw / 2) + M.x, M.x, M.x + M.w - vw);
+      const vy = clamp(Math.round(this.cam.y / 4 - vh / 2) + M.y, M.y, M.y + M.h - vh);
+      box(ctx, P.red, vx, vy, vw, vh);
+      box(ctx, '#ffe9b4', vx - 1, vy - 1, vw + 2, vh + 2);
+      for (let i = 0; i < DEST.length; i++) {
+        const d = DEST[i];
+        const px = M.x + Math.round(d.x / 4), py = M.y + Math.round(d.y / 4);
+        D1(ctx, d.unlocked ? P.red : P.greyD, px, py);
+        if (i === this.selected) { box(ctx, '#ffe9b4', px - 1, py - 1, 3, 3); }
+      }
+      if (this.hintT > 0) {
+        R(ctx, P.tableG, M.x - 2, M.y - 12, 150, 9);
+        pixelText(ctx, 'DRAG TO PAN  -  WHEEL TO ZOOM', M.x + 1, M.y - 11, 5, '#e6cd97', 'left', false);
+      }
+    },
+
     drawShimmer(ctx, T) {
+      const Z = this.zoom(), ox = this.ox, oy = this.oy;
       for (const s of this.shimmer) {
         const k = Math.sin(T * s.sp + s.ph);
-        if (k < 0.45) continue;
-        const col = s.lit ? P.seaL : P.stain;
-        R(ctx, col, s.x, s.y, s.len, 1);
-        if (k > 0.88) R(ctx, col, s.x + 1, s.y - 1, Math.max(1, s.len - 1), 1);
+        if (k < 0.62) continue;
+        const x = Math.round(s.x * Z) + ox, y = Math.round(s.y * Z) + oy;
+        if (x < VIEW.x - 6 || x > VIEW.x + VIEW.w || y < VIEW.y || y > VIEW.y + VIEW.h) continue;
+        R(ctx, s.lit ? P.seaL : P.stain, x, y, s.len, 1);
+        if (k > 0.93) R(ctx, P.seaL, x + 1, y - 1, Math.max(1, s.len - 2), 1);
       }
     },
 
@@ -2019,16 +2708,40 @@
       drawSprite(ctx, S.anchor, x, y - 1);
       const k = (Math.sin(T * 2.4) * 0.5 + 0.5);
       ring(ctx, P.ink2, x, y, 7 + Math.round(k * 2), 3);
+    },
+
+    // the tags that ride over the chart but are not drawn on it: the bearing
+    // roundels along the course and the lagoon's own label
+    drawTags(ctx) {
+      const live = DEST[this.selected].unlocked;
+      const h = this.toScreen(HOME.x, HOME.y);
       const w = 8 + mText('THE LAGOON', 6);
-      R(ctx, P.stain2, x + 9, y - 6, w, 12);
-      R(ctx, P.sand, x + 8, y - 7, w, 12);
-      box(ctx, P.ink, x + 8, y - 7, w, 12);
-      txt(ctx, 'THE LAGOON', x + 12, y - 3, 6, { color: P.ink });
-      txt(ctx, 'YOU ARE HERE', x + 9, y + 7, 5, { color: P.red, tracking: 1, outline: P.sand });
+      if (h.x > -w && h.x < VIEW.w && h.y > -20 && h.y < VIEW.h + 20) {
+        R(ctx, P.shade, h.x + 9, h.y - 6, w, 12);
+        R(ctx, P.sand, h.x + 8, h.y - 7, w, 12);
+        box(ctx, P.ink, h.x + 8, h.y - 7, w, 12);
+        txt(ctx, 'THE LAGOON', h.x + 12, h.y - 3, 6, { color: P.ink });
+        txt(ctx, 'YOU ARE HERE', h.x + 9, h.y + 7, 5, { color: P.red, tracking: 1, outline: P.sand });
+      }
+      for (const L of this.labs) {
+        const col = L.live ? P.redD : P.greyD;
+        const lab = (L.brg < 100 ? (L.brg < 10 ? '00' : '0') : '') + L.brg;
+        const tw = mText(lab, 5), bw = tw + 12;
+        const p = this.toScreen(L.x, L.y);
+        const lx = clamp(p.x - (bw >> 1), VIEW.x + 2, VIEW.x + VIEW.w - bw - 2);
+        const ly = clamp(L.up ? p.y - 13 : p.y + 7, VIEW.y + 2, VIEW.y + VIEW.h - 11);
+        R(ctx, P.shade, lx + 1, ly + 9, bw - 1, 1);
+        R(ctx, P.sand, lx, ly, bw, 9);
+        box(ctx, col, lx, ly, bw, 9);
+        txt(ctx, lab, lx + 3, ly + 2, 5, { color: col });
+        box(ctx, col, lx + 4 + tw, ly + 2, 3, 3);
+      }
+      void live;
     },
 
     drawRoute(ctx, T) {
       const d = DEST[this.selected], pts = d.route, total = d.routeLen;
+      this.labs.length = 0;
       const shown = total * this.routeT;
       const live = d.unlocked;
       // 1) a scrubbed light underlay so the track reads over stipple and rhumbs
@@ -2065,16 +2778,9 @@
         D1(ctx, live ? P.red : P.greyD, b.x, b.y);
         if (shownLab < 3 && b.len > 46) {
           shownLab++;
-          const col = live ? P.redD : P.greyD;
-          const lab = (b.brg < 100 ? (b.brg < 10 ? '00' : '0') : '') + b.brg;
-          const tw = mText(lab, 5), w = tw + 12;
-          const lx = clamp(b.x - (w >> 1), IN.x0 + 2, IN.x1 - w - 2);
-          const ly = (i & 1) ? b.y - 13 : b.y + 7;
-          R(ctx, P.stain2, lx + 1, ly + 9, w - 1, 1);
-          R(ctx, P.sand, lx, ly, w, 9);
-          box(ctx, col, lx, ly, w, 9);
-          txt(ctx, lab, lx + 3, ly + 2, 5, { color: col });
-          box(ctx, col, lx + 4 + tw, ly + 2, 3, 3);
+          // the bearing tag is chrome: it is queued here and inked in screen
+          // pixels once the chart transform has been put back
+          this.labs.push({ x: b.x, y: b.y, up: !!(i & 1), live: live, brg: b.brg });
         }
       }
     },

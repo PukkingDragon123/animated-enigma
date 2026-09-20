@@ -1400,3 +1400,1649 @@ MiniBoss.prototype.render = function (ctx, cam, t) {
 
 globalThis.MINIBOSS_TYPES = MINIBOSS_TYPES;
 globalThis.MiniBoss = MiniBoss;
+
+// ===========================================================================
+//  THE BOSS ROSTER
+//
+//  Three full bosses now sit behind one contract. game.js and ui.js only ever
+//  touch: name / hp / maxHp / phase / stunned / x / y / radius / dead, and
+//  hit(dmg,kx,ky,proj) / update(dt,t) / render(ctx,cam,t) / die(). Everything
+//  below keeps every one of those working.
+//
+//    THE VILLAGE CHIEF   shark rider      bait the charge into the rocks
+//    THE GREATCLAW       giant crab       armoured in front: get round behind
+//    THE DEEP LANTERN    anglerfish       a fight you cannot see
+//
+//  Both new bosses are animals, not boats, so they do what a hull cannot:
+//  burrow under the seabed, submerge, and come up underneath her.
+// ===========================================================================
+
+// ---- shared hard-edged primitives (the mb* telegraph helpers above are
+// reused as-is; these are the ones the animals need on top of them) --------
+
+// a chunky tapering limb segment: squares along a line, outlined, lit on the
+// north edge. No strokes, no antialiasing, integer coordinates only.
+function bxLimb(ctx, x0, y0, x1, y1, w0, w1, col, lit, out) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const n = Math.max(2, Math.round(Math.hypot(dx, dy) / 1.4));
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i <= n; i++) {
+      const u = i / n;
+      const x = Math.round(x0 + dx * u), y = Math.round(y0 + dy * u);
+      const w = Math.max(1, Math.round(w0 + (w1 - w0) * u));
+      if (pass === 0) { ctx.fillStyle = out; ctx.fillRect(x - (w >> 1) - 1, y - (w >> 1) - 1, w + 2, w + 2); }
+      else {
+        ctx.fillStyle = col; ctx.fillRect(x - (w >> 1), y - (w >> 1), w, w);
+        if (w > 2) { ctx.fillStyle = lit; ctx.fillRect(x - (w >> 1), y - (w >> 1), w, 1); }
+      }
+    }
+  }
+}
+// a filled, posterized disc built from rows of rects: round but hard-edged
+function bxDisc(ctx, cx, cy, r, col, squash) {
+  const sq = squash === undefined ? 1 : squash;
+  ctx.fillStyle = col;
+  const ry = Math.max(1, Math.round(r * sq));
+  for (let y = -ry; y <= ry; y++) {
+    const k = 1 - (y / ry) * (y / ry);
+    if (k <= 0) continue;
+    const hw = Math.round(r * Math.sqrt(k));
+    if (hw < 1) continue;
+    ctx.fillRect(Math.round(cx) - hw, Math.round(cy) + y, hw * 2 + 1, 1);
+  }
+}
+// a wedge of teeth along an arc: little hard triangles, tip inward
+function bxTeeth(ctx, cx, cy, r, a0, a1, n, len, col, out) {
+  for (let i = 0; i < n; i++) {
+    const a = a0 + (a1 - a0) * ((i + 0.5) / n);
+    const bx = cx + Math.cos(a) * r, by = cy + Math.sin(a) * r;
+    const tx = cx + Math.cos(a) * (r - len), ty = cy + Math.sin(a) * (r - len);
+    triFill(ctx, out, bx + Math.cos(a + 1.57) * 3, by + Math.sin(a + 1.57) * 3,
+      bx + Math.cos(a - 1.57) * 3, by + Math.sin(a - 1.57) * 3, tx, ty);
+    triFill(ctx, col, bx + Math.cos(a + 1.57) * 2, by + Math.sin(a + 1.57) * 2,
+      bx + Math.cos(a - 1.57) * 2, by + Math.sin(a - 1.57) * 2,
+      tx + Math.cos(a) * 1, ty + Math.sin(a) * 1);
+  }
+}
+// a small pip bar (shell integrity, claw condition) over a boss
+function bxPips(ctx, x, y, w, k, on, off, out) {
+  ctx.fillStyle = out; ctx.fillRect(x - 1, y - 1, w + 2, 5);
+  ctx.fillStyle = off; ctx.fillRect(x, y, w, 3);
+  ctx.fillStyle = on; ctx.fillRect(x, y, Math.round(w * clamp(k, 0, 1)), 3);
+  ctx.fillStyle = out;
+  for (let q = 1; q < 4; q++) ctx.fillRect(x + Math.round(w * q / 4), y, 1, 3);
+}
+
+// ===========================================================================
+//  BOSS 2 — THE GREATCLAW
+//
+//  A giant crab. It keeps its armoured front to you at all times, and the
+//  front eats damage. The whole fight is one sentence: GET BEHIND IT.
+//
+//    phase 1  ARMOURED   claw slams with a shockwave, sideways scuttle
+//                        charges, boulders lobbed from the seabed. Damage
+//                        that lands goes into the SHELL, not the body.
+//    phase 2  CRACKED    the shell splits. It burrows into the sand and
+//                        erupts under her, doubles its slams and rains rock.
+//
+//  Both claws are separate targets with their own health. Shoot one off and
+//  that side stops slamming; take both and it can only scuttle and spin.
+// ===========================================================================
+
+let CRAB_ART = null;
+function crabArt() {
+  if (CRAB_ART) return CRAB_ART;
+  const SHELL = ['#2a0e0c', '#4d1712', '#72251a', '#9c3a21', '#c25c2c', '#e08a44', '#f3b268'];
+  const OUT = '#180a10';
+
+  // ---- carapace: wide across the beam, broadest at the armoured front ----
+  const W = 136, H = 180, cx = 64, cy = 90;          // art px (68 x 90 world)
+  const f = blobField(W, H, [
+    { x: cx - 6, y: cy, rx: 50, ry: 76 },
+    { x: cx + 20, y: cy, rx: 32, ry: 64 },
+    { x: cx - 30, y: cy, rx: 30, ry: 56 },
+    { x: cx + 30, y: cy - 42, rx: 22, ry: 24 },
+    { x: cx + 30, y: cy + 42, rx: 22, ry: 24 },
+  ]);
+  const sh = shadeBlob(W, H, f, SHELL, { outline: OUT, lx: -0.5, ly: -0.8, contrast: 0.9, lift: 0.18, smooth: 4 });
+  const c = sh.ctx;
+  const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
+
+  // central groove and the two big shoulder ridges, as hard posterized lines
+  for (let x = cx - 34; x < cx + 30; x++) {
+    if (!inside(x, cy)) continue;
+    px(c, '#5c1c15', x, cy - 1, 1, 3); px(c, '#d46c34', x, cy - 2, 1, 1);
+  }
+  for (const s of [-1, 1]) for (let x = cx - 26; x < cx + 26; x++) {
+    const y = Math.round(cy + s * (26 + Math.cos((x - cx) / 30) * 8));
+    if (!inside(x, y)) continue;
+    px(c, '#6b2118', x, y, 1, 2); px(c, '#e8964c', x, y - 1, 1, 1);
+  }
+  // serrated armour rim along the leading edge
+  for (let y = 4; y < H - 4; y++) {
+    let ex = -1;
+    for (let x = W - 1; x >= 0; x--) if (inside(x, y)) { ex = x; break; }
+    if (ex < cx) continue;
+    if ((y % 8) < 4) { px(c, '#f6c47e', ex - 1, y, 2, 1); px(c, OUT, ex, y, 1, 1); }
+    else px(c, '#8e3220', ex - 1, y, 2, 1);
+  }
+  // plated bands across the shell
+  for (const bx0 of [cx - 22, cx - 2, cx + 18]) for (let y = 6; y < H - 6; y++) {
+    if (!inside(bx0, y) || !inside(bx0 + 1, y)) continue;
+    px(c, '#5e1d15', bx0, y, 1, 1); px(c, '#d9743a', bx0 + 1, y, 1, 1);
+  }
+  // barnacles and pitting, seeded so it is the same crab every run
+  {
+    const rng = new SeededRandom(0xc2ab0920);
+    for (let i = 0; i < 64; i++) {
+      const x = Math.round(rng.range(10, W - 10)), y = Math.round(rng.range(10, H - 10));
+      if (!inside(x, y) || !inside(x + 2, y + 2)) continue;
+      const r = rng.int(1, 2);
+      px(c, '#3d1410', x - r, y - r, r * 2 + 1, r * 2 + 1);
+      px(c, '#e9b070', x - r, y - r, r * 2 + 1, 1);
+      if (r > 1) px(c, '#fdf0d0', x, y, 1, 1);
+    }
+  }
+  // eye sockets, front and centre
+  for (const s of [-1, 1]) {
+    const ex = cx + 38, ey = cy + s * 13;
+    px(c, OUT, ex - 3, ey - 3, 7, 7); px(c, '#7a2a1c', ex - 2, ey - 2, 5, 5);
+  }
+  const shellSprite = spriteFromHi(sh.c, cx, cy);
+
+  // ---- the cracked carapace: same shell, split open, meat showing ---------
+  const cr = newCan(W, H), crc = cr.getContext('2d');
+  drawRaw(crc, sh.c, 0, 0);
+  {
+    const rng = new SeededRandom(0x51ce11);
+    for (let q = 0; q < 5; q++) {
+      let x = cx - 8 + rng.range(-24, 24), y = cy + rng.range(-40, 40);
+      let a = rng.range(0, TAU);
+      for (let s = 0; s < 22; s++) {
+        a += rng.range(-0.7, 0.7);
+        x += Math.cos(a) * 3; y += Math.sin(a) * 3;
+        const ix = Math.round(x), iy = Math.round(y);
+        if (!inside(ix, iy)) break;
+        px(crc, '#100508', ix - 1, iy - 1, 3, 3);
+        px(crc, q % 2 ? '#c2545e' : '#a33c48', ix, iy, 2, 2);
+        if ((s & 3) === 0) px(crc, '#ee9aa0', ix, iy, 1, 1);
+      }
+    }
+    // a whole plate blown off the back quarter
+    for (let y = cy - 26; y < cy + 26; y++) for (let x = cx - 40; x < cx - 14; x++) {
+      if (!inside(x, y)) continue;
+      const d = Math.hypot((x - (cx - 27)) / 13, (y - cy) / 26);
+      if (d > 1) continue;
+      px(crc, d > 0.86 ? '#100508' : ((x + y) & 3) === 0 ? '#e0808a' : d > 0.5 ? '#8f2f3a' : '#b84a54', x, y, 1, 1);
+    }
+  }
+  const crackedSprite = spriteFromHi(cr, cx, cy);
+
+  // ---- a claw: palm plus the fixed lower finger, hinged at the wrist ------
+  function buildClaw() {
+    const w = 104, h = 80, hx = 12, hy = 40;
+    const cf = blobField(w, h, [
+      { x: 14, y: hy, rx: 14, ry: 13 },
+      { x: 44, y: hy - 4, rx: 30, ry: 27 },
+      { x: 78, y: hy + 12, rx: 26, ry: 10, rot: 0.14 },
+    ]);
+    const s = shadeBlob(w, h, cf, SHELL, { outline: OUT, lx: -0.5, ly: -0.8, contrast: 0.92, lift: 0.2, smooth: 3 });
+    const q = s.ctx;
+    const ins = (x, y) => x >= 0 && y >= 0 && x < w && y < h && cf[y * w + x] > 0;
+    // knuckle ridge and the serrated bite edge on the inside of the finger
+    for (let x = 30; x < 62; x++) { const y = hy - 18 + Math.round(Math.sin((x - 30) / 16) * 4); if (ins(x, y)) { px(q, '#6b2118', x, y, 1, 2); px(q, '#f0a860', x, y - 1, 1, 1); } }
+    for (let x = 56; x < 96; x += 4) { const y = hy + 4; if (ins(x, y)) { px(q, '#fdf0d0', x, y, 2, 2); px(q, OUT, x + 2, y, 1, 2); } }
+    for (let i = 0; i < 26; i++) {
+      const rng2 = new SeededRandom(0x9911 + i * 77);
+      const x = Math.round(rng2.range(16, w - 14)), y = Math.round(rng2.range(8, h - 8));
+      if (!ins(x, y) || !ins(x + 1, y + 1)) continue;
+      px(q, '#3d1410', x, y, 2, 2); px(q, '#e9b070', x, y, 2, 1);
+    }
+    return spriteFromHi(s.c, hx, hy);
+  }
+  // the movable upper finger, hinged at its inner end
+  function buildJaw() {
+    const w = 72, h = 34, hx = 6, hy = 24;
+    const jf = blobField(w, h, [
+      { x: 10, y: hy, rx: 11, ry: 10 },
+      { x: 34, y: hy - 3, rx: 24, ry: 9 },
+      { x: 58, y: hy + 1, rx: 14, ry: 5 },
+    ]);
+    const s = shadeBlob(w, h, jf, SHELL, { outline: OUT, lx: -0.5, ly: -0.8, contrast: 0.92, lift: 0.24, smooth: 3 });
+    const q = s.ctx;
+    const ins = (x, y) => x >= 0 && y >= 0 && x < w && y < h && jf[y * w + x] > 0;
+    for (let x = 22; x < 66; x += 4) { const y = hy + 4; if (ins(x, y)) { px(q, '#fdf0d0', x, y, 2, 2); px(q, OUT, x + 2, y, 1, 2); } }
+    return spriteFromHi(s.c, hx, hy);
+  }
+
+  // ---- a boulder for the throwing ---------------------------------------
+  function buildRock() {
+    const w = 34, h = 30;
+    const rf = blobField(w, h, [{ x: 17, y: 15, rx: 15, ry: 13 }, { x: 12, y: 11, rx: 9, ry: 8 }]);
+    const s = shadeBlob(w, h, rf, ['#23262e', '#3a3f4a', '#545b68', '#6e7684', '#8b94a3', '#aab4c2'],
+      { outline: '#14141c', contrast: 0.9, lift: 0.2, smooth: 2 });
+    const rng = new SeededRandom(0x40c);
+    for (let i = 0; i < 14; i++) {
+      const x = Math.round(rng.range(6, w - 6)), y = Math.round(rng.range(5, h - 5));
+      if (rf[y * w + x] <= 0) continue;
+      px(s.ctx, '#2c3038', x, y, 2, 1); px(s.ctx, '#98a2b0', x, y - 1, 2, 1);
+    }
+    return spriteFromHi(s.c, 17, 15);
+  }
+
+  CRAB_ART = {
+    shell: shellSprite, shellHurt: tintHi(shellSprite, '#ffffff', 0.8),
+    cracked: crackedSprite, crackedHurt: tintHi(crackedSprite, '#ffffff', 0.8),
+    claw: buildClaw(), jaw: buildJaw(), rock: buildRock(),
+  };
+  CRAB_ART.clawHurt = tintHi(CRAB_ART.claw, '#ffffff', 0.8);
+  CRAB_ART.jawHurt = tintHi(CRAB_ART.jaw, '#ffffff', 0.8);
+  return CRAB_ART;
+}
+
+class CrabBoss {
+  constructor(x, y, difficulty = 1) {
+    this.key = 'crab';
+    this.art = crabArt();
+    this.diff = difficulty || 1;
+    this.name = 'THE GREATCLAW';
+    this.sub = 'Armoured in front. Get behind it and crack the shell';
+    this.color = '#e08a44';
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0;
+    this.maxHp = Math.round(1700 * (0.9 + 0.1 * this.diff)); this.hp = this.maxHp;
+    this.shellMax = 560; this.shell = this.shellMax;
+    this.radius = 46;
+    this.angle = angleTo(x, y, G.player.x, G.player.y);
+    this.moveAng = this.angle + Math.PI / 2;
+    this.phase = 1; this.dead = false; this.flash = 0;
+    this.state = 'enter'; this.stateT = 0; this.nextT = 2.2;
+    this.gait = 0; this.bob = rand(0, TAU); this.sub_ = 0;   // sub_ = how far into the sand
+    this.claws = [
+      { side: -1, hp: 320, max: 320, dead: false, open: 0, lift: 0, ang: 0, x: x, y: y, flash: 0 },
+      { side: 1, hp: 320, max: 320, dead: false, open: 0, lift: 0, ang: 0, x: x, y: y, flash: 0 },
+    ];
+    this.armIdx = 0; this.slamChain = 0; this.windDur = 0.9; this.target = { x, y }; this.waves = []; this.boulders = []; this.throwQ = 0; this.throwN = 0;
+    this.mound = null; this.spinT = 0; this.scuttleDir = 1; this.hitOnce = false;
+    this.wake = G.ocean.newWake(this, 18);
+    this.intro = 2.0; this.cycle = 0;
+    G.banner(this.name, this.color, 2.4, this.sub);
+  }
+  // ui.js flashes the bar and writes [STUNNED] off this
+  get stunned() { return this.exposed; }
+  get exposed() {
+    return this.state === 'slamRec' || this.state === 'scuttleRec' || this.state === 'stagger' || this.state === 'eruptRec';
+  }
+  get burrowed() { return this.state === 'burrowDown' || this.state === 'burrow'; }
+  get phaseName() { return this.phase === 2 ? 'SHELL CRACKED' : 'ARMOURED'; }
+  get liveClaws() { return this.claws.filter(c => !c.dead); }
+  setState(s) { this.state = s; this.stateT = 0; this.hitOnce = false; }
+  say(msg, col, size) { G.particles.text(this.x, this.y - this.radius - 16, msg, col || this.color, size || 9); }
+
+  // ------------------------------------------------------------- update
+  update(dt, t) {
+    if (this.dead) return;
+    const p = G.player;
+    this.stateT += dt; this.flash -= dt; this.intro -= dt;
+    for (const c of this.claws) c.flash -= dt;
+    const d = dist(this.x, this.y, p.x, p.y), toP = angleTo(this.x, this.y, p.x, p.y);
+    const p2 = this.phase === 2;
+    let turn = p2 ? 1.5 : 1.1, speed = 0, moveAng = this.moveAng;
+
+    switch (this.state) {
+      case 'enter': {
+        moveAng = toP; speed = 150;
+        if (Math.random() < 0.5) G.particles.spray(this.x - Math.cos(toP) * 40, this.y - Math.sin(toP) * 40, toP + Math.PI, 2, 70);
+        if (this.stateT > 1.5 || d < 260) { this.setState('stalk'); this.nextT = 1.4; }
+        break;
+      }
+      case 'stalk': {
+        // it sidles, always keeping the armoured face pointed at her
+        const ring = p2 ? 160 : 195;
+        if (d > ring + 70) { moveAng = toP; speed = p2 ? 118 : 92; }
+        else if (d < ring - 70) { moveAng = toP + Math.PI; speed = p2 ? 100 : 78; }
+        else { moveAng = toP + Math.PI / 2 * this.scuttleDir; speed = p2 ? 104 : 80; }
+        this.nextT -= dt;
+        if (this.nextT <= 0) this.chooseAttack(d);
+        break;
+      }
+      case 'slamWind': {
+        speed = 0;
+        const c = this.claws[this.armIdx];
+        if (!c || c.dead) { this.setState('stalk'); this.nextT = 0.6; break; }
+        const k = clamp(this.stateT / this.windDur, 0, 1);
+        c.lift = k; c.open = k * 0.9;
+        // the mark chases her a little, then locks for the last third
+        if (k < 0.66) { this.target.x = p.x + p.vx * 0.12; this.target.y = p.y + p.vy * 0.12; }
+        if (Math.random() < 0.5) G.particles.spray(this.x + rand(-30, 30), this.y + rand(-30, 30), rand(0, TAU), 1, 50);
+        if (this.stateT >= this.windDur) {
+          c.lift = 0; c.open = 0;
+          this.slamLand(this.target.x, this.target.y);
+          this.setState('slamRec');
+        }
+        break;
+      }
+      case 'slamRec': {
+        speed = 0;
+        const c = this.claws[this.armIdx];
+        if (c) { c.lift = -0.35; c.open = 0.1; }
+        if (Math.random() < 0.25) G.particles.bubbles(this.target.x + rand(-16, 16), this.target.y + rand(-12, 12), 1);
+        if (this.stateT >= (p2 ? 0.95 : 1.25)) {
+          if (c) { c.lift = 0; }
+          // in phase two the other claw follows straight through
+          const other = this.claws[1 - this.armIdx];
+          if (p2 && other && !other.dead && this.slamChain < 1) {
+            this.slamChain++; this.armIdx = 1 - this.armIdx; this.windDur = 0.45; this.setState('slamWind');
+          } else { this.setState('stalk'); this.nextT = p2 ? rand(0.7, 1.3) : rand(1.1, 1.9); }
+        }
+        break;
+      }
+      case 'scuttleWind': {
+        speed = 0; turn = 2.4;
+        if (Math.random() < 0.8) G.particles.spray(this.x - Math.cos(this.moveAng) * 34, this.y - Math.sin(this.moveAng) * 34, this.moveAng + Math.PI, 2, 110);
+        G.ocean.addFoam(this.x + rand(-26, 26), this.y + rand(-26, 26), 0.22);
+        if (this.stateT >= (p2 ? 0.55 : 0.8)) {
+          this.setState('scuttle'); Audio_.roar(); G.shake(6);
+          G.particles.splash(this.x, this.y, 2.4); G.ocean.ripple(this.x, this.y, 130, 240, 0.8);
+        }
+        break;
+      }
+      case 'scuttle': {
+        moveAng = this.moveAng; speed = p2 ? 520 : 440; turn = 3.2;
+        for (let i = 0; i < 2; i++) G.particles.spray(this.x - Math.cos(moveAng) * 30 + rand(-20, 20), this.y - Math.sin(moveAng) * 30 + rand(-20, 20), moveAng + Math.PI, 1, 150);
+        G.ocean.addFoam(this.x, this.y, 0.45);
+        if (!p.dead && !p.diving && !p.rolling && p.invuln <= 0 && d < this.radius + 16) {
+          p.damage((p2 ? 34 : 28) * (1 + (this.diff - 1) * 0.5), this.x, this.y);
+          p.vx += Math.cos(moveAng) * 420; p.vy += Math.sin(moveAng) * 420;
+          G.particles.splash(p.x, p.y, 2.5);
+        }
+        for (const r of G.rocks) if (dist(this.x, this.y, r.x, r.y) < r.r + this.radius - 6) { this.crash(r); break; }
+        if (this.state !== 'scuttle') break;
+        const nx = this.x + Math.cos(moveAng) * 50, ny = this.y + Math.sin(moveAng) * 50;
+        if (this.stateT > 1.25 || nx < 40 || nx > G.ocean.W - 40 || ny < WATER_TOP + 30 || ny > G.ocean.H - 40) this.setState('scuttleRec');
+        break;
+      }
+      case 'scuttleRec': {
+        speed = 0;
+        if (Math.random() < 0.3) G.particles.bubbles(this.x + rand(-30, 30), this.y + rand(-20, 20), 1);
+        if (this.stateT >= (p2 ? 0.55 : 0.8)) { this.setState('stalk'); this.nextT = rand(0.6, 1.2); this.scuttleDir *= -1; }
+        break;
+      }
+      case 'rockWind': {
+        speed = 0;
+        const c = this.liveClaws[0];
+        if (c) { c.lift = clamp(this.stateT / 0.7, 0, 1); c.open = 0.5; }
+        if (Math.random() < 0.6) G.particles.debris(this.x + rand(-30, 30), this.y + rand(-30, 30), 1, ['#6e7684', '#3a3f4a']);
+        if (this.stateT >= 0.7) { this.setState('rockThrow'); this.throwQ = 0; this.throwN = p2 ? 5 : 3; }
+        break;
+      }
+      case 'rockThrow': {
+        speed = 0;
+        const c = this.liveClaws[0]; if (c) { c.lift = Math.max(0, 1 - this.stateT * 3); c.open = 0.7; }
+        this.throwQ -= dt;
+        if (this.throwQ <= 0 && this.throwN > 0) { this.throwQ = 0.26; this.throwN--; this.throwRock(p); }
+        if (this.throwN <= 0 && this.stateT > 0.8) { if (c) c.lift = 0; this.setState('stalk'); this.nextT = rand(0.8, 1.5); }
+        break;
+      }
+      case 'burrowDown': {
+        speed = 0;
+        this.sub_ = clamp(this.stateT / 0.85, 0, 1);
+        if (Math.random() < 0.9) G.particles.debris(this.x + rand(-40, 40), this.y + rand(-30, 30), 2, ['#c9a86a', '#a6884f', '#7d6538']);
+        G.ocean.addFoam(this.x + rand(-30, 30), this.y + rand(-30, 30), 0.3);
+        if (this.stateT >= 0.85) {
+          this.sub_ = 1; this.setState('burrow');
+          this.mound = { x: this.x, y: this.y };
+          this.say('UNDER THE SAND', '#c9a86a', 9);
+        }
+        break;
+      }
+      case 'burrow': {
+        // a mound of displaced seabed runs her down: the whole attack is on
+        // screen the entire time, there is just no crab to shoot
+        const a = angleTo(this.x, this.y, p.x, p.y);
+        const sp = 235;
+        this.x += Math.cos(a) * sp * dt; this.y += Math.sin(a) * sp * dt;
+        this.angle = angleLerp(this.angle, a, dt * 3);
+        if (Math.random() < 0.8) G.particles.debris(this.x + rand(-22, 22), this.y + rand(-16, 16), 1, ['#c9a86a', '#a6884f']);
+        if (Math.random() < 0.4) G.ocean.ripple(this.x, this.y, 40, 90, 0.4);
+        if (this.stateT > 0.7 && (d < 46 || this.stateT > 3.0)) { this.setState('erupt'); G.shake(5); }
+        break;
+      }
+      case 'erupt': {
+        speed = 0;
+        // 0.45s of the seabed boiling before it comes through
+        if (this.stateT < 0.45) {
+          for (let i = 0; i < 3; i++) G.particles.debris(this.x + rand(-40, 40), this.y + rand(-34, 34), 1, ['#c9a86a', '#e0c78c']);
+          this.sub_ = 1 - this.stateT / 0.45 * 0.2;
+        } else {
+          if (!this.hitOnce) { this.hitOnce = true; this.eruptBlow(); }
+          this.sub_ = Math.max(0, 0.8 - (this.stateT - 0.45) * 3);
+          if (this.stateT > 0.75) { this.sub_ = 0; this.setState('eruptRec'); }
+        }
+        break;
+      }
+      case 'eruptRec': {
+        speed = 0;
+        if (Math.random() < 0.3) G.particles.bubbles(this.x + rand(-30, 30), this.y + rand(-20, 20), 1);
+        if (this.stateT >= 1.4) { this.setState('stalk'); this.nextT = rand(0.7, 1.3); }
+        break;
+      }
+      case 'spin': {
+        // both claws gone: it just turns into a rolling wall of shell
+        speed = 210; moveAng = angleLerp(this.moveAng, toP, dt * 1.2); turn = 6;
+        this.angle += dt * 5.5;
+        G.ocean.addFoam(this.x, this.y, 0.35);
+        if (Math.random() < 0.6) G.particles.spray(this.x + rand(-40, 40), this.y + rand(-40, 40), rand(0, TAU), 1, 90);
+        if (!p.dead && !p.diving && !p.rolling && p.invuln <= 0 && d < this.radius + 14) { p.damage(24 * (1 + (this.diff - 1) * 0.5), this.x, this.y); p.vx += Math.cos(toP) * 340; p.vy += Math.sin(toP) * 340; }
+        if (this.stateT > 2.6) { this.setState('scuttleRec'); }
+        break;
+      }
+      case 'crack': {
+        speed = 0;
+        this.angle += Math.sin(this.stateT * 26) * dt * 1.4;
+        if (Math.random() < 0.85) G.particles.debris(this.x + rand(-44, 44), this.y + rand(-38, 38), 2, ['#9c3a21', '#e08a44', '#c2545e']);
+        G.ocean.addFoam(this.x + rand(-40, 40), this.y + rand(-40, 40), 0.3);
+        if (this.stateT > 1.5) { this.setState('stalk'); this.nextT = 0.5; }
+        break;
+      }
+      case 'stagger': {
+        speed = 0;
+        this.angle += Math.sin(this.stateT * 7) * dt * 0.8;
+        if (Math.random() < 0.3) G.particles.bubbles(this.x + rand(-30, 30), this.y + rand(-20, 20), 1);
+        if (this.stateT >= this.stunDur) { this.setState('stalk'); this.nextT = 0.5; this.scuttleDir *= -1; }
+        break;
+      }
+    }
+
+    // ---- watchdog: nothing here is allowed to hold the fight up
+    if (this.state !== 'stalk' && this.stateT > 6) { this.sub_ = 0; this.mound = null; this.setState('stalk'); this.nextT = 0.6; }
+    // ---- facing: everything but the burrow and the spin keeps its front on her
+    if (this.state !== 'burrow' && this.state !== 'spin' && this.state !== 'crack' && this.state !== 'stagger')
+      this.angle = angleLerp(this.angle, toP, Math.min(1, dt * turn));
+    // ---- travel
+    if (this.state !== 'burrow') {
+      this.moveAng = this.state === 'scuttle' ? this.moveAng : angleLerp(this.moveAng, moveAng, Math.min(1, dt * 4));
+      const k = Math.min(1, dt * (this.state === 'scuttle' ? 9 : 2.6));
+      this.vx = lerp(this.vx, Math.cos(this.moveAng) * speed, k);
+      this.vy = lerp(this.vy, Math.sin(this.moveAng) * speed, k);
+      this.x += this.vx * dt; this.y += this.vy * dt;
+    } else { this.vx = 0; this.vy = 0; }
+    this.x = clamp(this.x, 40, G.ocean.W - 40);
+    this.y = clamp(this.y, WATER_TOP + 20, G.ocean.H - 40);
+    if (this.state !== 'scuttle' && !this.burrowed) for (const r of G.rocks) {
+      const dr = dist(this.x, this.y, r.x, r.y);
+      if (dr < r.r + this.radius) { const a = angleTo(r.x, r.y, this.x, this.y); this.x = r.x + Math.cos(a) * (r.r + this.radius); this.y = r.y + Math.sin(a) * (r.r + this.radius); }
+    }
+
+    // ---- claws ride in front, one to each shoulder
+    for (let i = 0; i < 2; i++) {
+      const c = this.claws[i];
+      const spread = 0.66 + c.open * 0.10 + (c.lift > 0 ? c.lift * 0.18 : 0);
+      const reach = 56 + c.lift * 14;
+      c.ang = this.angle + c.side * spread;
+      c.x = this.x + Math.cos(c.ang) * reach;
+      c.y = this.y + Math.sin(c.ang) * reach;
+    }
+
+    // ---- the water knows how heavy this thing is
+    const spd = Math.hypot(this.vx, this.vy);
+    this.gait += dt * (1.2 + spd * 0.045);
+    if (!this.burrowed) {
+      if (G.ocean.disturb && spd > 15) G.ocean.disturb(this.x, this.y, Math.min(7, spd / 50), this.vx, this.vy);
+      const stx = this.x - Math.cos(this.moveAng) * 34, sty = this.y - Math.sin(this.moveAng) * 34;
+      const last = this.wake.pts[this.wake.pts.length - 1];
+      if (spd > 26 && (!last || dist(last.x, last.y, stx, sty) > 5)) { this.wake.pts.push({ x: stx, y: sty, t }); G.ocean.addFoam(stx, sty, 0.12 + spd / 1800); }
+    }
+
+    this.stepWaves(dt, p);
+    this.stepBoulders(dt, p);
+  }
+
+  chooseAttack(d) {
+    const p2 = this.phase === 2;
+    this.cycle++;
+    const live = this.liveClaws;
+    if (!live.length) {
+      // nothing left to slam with
+      if (d < 260 && Math.random() < 0.5) { this.setState('spin'); this.say('IT ROLLS', '#ff6161', 10); }
+      else { this.scuttleDir = Math.random() < 0.5 ? -1 : 1; this.aimScuttle(); }
+      return;
+    }
+    const roll = Math.random();
+    if (p2 && this.cycle % 3 === 0) { this.setState('burrowDown'); Audio_.stun(); G.shake(7); return; }
+    if (d < 150) { this.beginSlam(); return; }
+    if (d > 320) { if (roll < 0.42) this.setState('rockWind'); else this.aimScuttle(); return; }
+    if (roll < 0.40) this.beginSlam();
+    else if (roll < 0.78) this.aimScuttle();
+    else this.setState('rockWind');
+  }
+  beginSlam() {
+    const live = this.liveClaws;
+    const c = live[(Math.random() * live.length) | 0];
+    this.armIdx = this.claws.indexOf(c);
+    this.windDur = this.phase === 2 ? 0.62 : 0.9;
+    this.slamChain = 0;
+    const p = G.player;
+    this.target.x = p.x; this.target.y = p.y;
+    this.setState('slamWind');
+    Audio_.tone(150, 0.2, 'sawtooth', 0.1, 60);
+  }
+  aimScuttle() {
+    // it charges ACROSS, not forward: the armoured face never leaves her
+    const p = G.player, toP = angleTo(this.x, this.y, p.x, p.y);
+    let best = toP + Math.PI / 2 * this.scuttleDir;
+    // if that runs it straight into the shore, go the other way
+    const ny = this.y + Math.sin(best) * 180, nx = this.x + Math.cos(best) * 180;
+    if (ny < WATER_TOP + 50 || ny > G.ocean.H - 50 || nx < 60 || nx > G.ocean.W - 60) { this.scuttleDir *= -1; best = toP + Math.PI / 2 * this.scuttleDir; }
+    this.moveAng = best;
+    this.setState('scuttleWind');
+    this.say('SCUTTLE', '#ffe48f', 9);
+  }
+  slamLand(tx, ty) {
+    const p = G.player, p2 = this.phase === 2;
+    G.shake(15); Audio_.stun(); Audio_.splash(2.4);
+    G.particles.splash(tx, ty, 4); G.ocean.ripple(tx, ty, 150, 300, 1);
+    G.particles.debris(tx, ty, 16, ['#c9a86a', '#a6884f', '#7d6538']);
+    Toon.burst(tx, ty, 3.4); Toon.shock(tx, ty, 150, 0.55);
+    G.particles.text(tx, ty - 26, 'SLAM!', '#ffe48f', 11);
+    if (!p.dead && !p.diving && !p.rolling && p.invuln <= 0 && dist(tx, ty, p.x, p.y) < 56) {
+      p.damage((p2 ? 40 : 32) * (1 + (this.diff - 1) * 0.5), tx, ty);
+    }
+    this.waves.push({ x: tx, y: ty, r: 26, max: 230, life: 0.85, hit: false, dmg: 18 * (1 + (this.diff - 1) * 0.5) });
+    if (p2) this.waves.push({ x: tx, y: ty, r: 6, max: 150, life: 1.0, hit: false, dmg: 14 * (1 + (this.diff - 1) * 0.5) });
+  }
+  eruptBlow() {
+    const p = G.player;
+    G.shake(20); Audio_.roar(); Audio_.splash(3);
+    G.particles.splash(this.x, this.y, 5); G.ocean.ripple(this.x, this.y, 210, 340, 1);
+    for (let i = 0; i < 4; i++) G.particles.debris(this.x + rand(-30, 30), this.y + rand(-24, 24), 8, ['#c9a86a', '#e0c78c', '#7d6538']);
+    Toon.burst(this.x, this.y, 5); Toon.shock(this.x, this.y, 220, 0.7);
+    G.particles.text(this.x, this.y - 40, 'ERUPTION!', '#e0c78c', 12);
+    if (!p.dead && !p.diving && !p.rolling && p.invuln <= 0 && dist(this.x, this.y, p.x, p.y) < 78) {
+      p.damage(38 * (1 + (this.diff - 1) * 0.5), this.x, this.y);
+      const a = angleTo(this.x, this.y, p.x, p.y);
+      p.vx += Math.cos(a) * 480; p.vy += Math.sin(a) * 480;
+    }
+    this.waves.push({ x: this.x, y: this.y, r: 30, max: 200, life: 0.8, hit: false, dmg: 14 * (1 + (this.diff - 1) * 0.5) });
+  }
+  throwRock(p) {
+    const lead = 0.85;
+    const tx = clamp(p.x + p.vx * lead + rand(-34, 34), 40, G.ocean.W - 40);
+    const ty = clamp(p.y + p.vy * lead + rand(-30, 30), WATER_TOP + 20, G.ocean.H - 40);
+    const c = this.liveClaws[0];
+    const sx = c ? c.x : this.x, sy = c ? c.y : this.y;
+    this.boulders.push({ sx, sy, x: tx, y: ty, t: 0, flight: 1.15, spin: rand(0, TAU), hit: false });
+    Audio_.shot('grenade');
+    G.particles.debris(sx, sy, 3, ['#6e7684', '#3a3f4a']);
+  }
+  stepWaves(dt, p) {
+    for (let i = this.waves.length - 1; i >= 0; i--) {
+      const w = this.waves[i];
+      w.r += dt * (w.max / 0.85); w.life -= dt;
+      const dw = dist(w.x, w.y, p.x, p.y);
+      if (!w.hit && Math.abs(dw - w.r) < 18 && !p.rolling && !p.diving && !p.dead && p.invuln <= 0) { w.hit = true; p.damage(w.dmg, w.x, w.y); }
+      if (w.life <= 0 || w.r > w.max) this.waves.splice(i, 1);
+    }
+  }
+  stepBoulders(dt, p) {
+    for (let i = this.boulders.length - 1; i >= 0; i--) {
+      const b = this.boulders[i];
+      b.t += dt; b.spin += dt * 4;
+      if (b.t >= b.flight) {
+        this.boulders.splice(i, 1);
+        G.particles.splash(b.x, b.y, 3); G.ocean.ripple(b.x, b.y, 90, 190, 0.8);
+        G.particles.debris(b.x, b.y, 12, ['#6e7684', '#3a3f4a', '#aab4c2']);
+        G.shake(7); Audio_.explosion(0.7);
+        Toon.shock(b.x, b.y, 70, 0.4);
+        if (!p.dead && !p.diving && !p.rolling && p.invuln <= 0 && dist(b.x, b.y, p.x, p.y) < 46)
+          p.damage(22 * (1 + (this.diff - 1) * 0.5), b.x, b.y);
+      }
+    }
+  }
+  crash(rock) {
+    this.setState('stagger');
+    this.stunDur = 2.6;
+    this.vx *= -0.15; this.vy *= -0.15;
+    const a = angleTo(rock.x, rock.y, this.x, this.y);
+    this.x = rock.x + Math.cos(a) * (rock.r + this.radius); this.y = rock.y + Math.sin(a) * (rock.r + this.radius);
+    G.particles.splash(this.x, this.y, 4); G.particles.debris(this.x, this.y, 16, ['#7c818b', '#5e636d', '#9a9ea8']);
+    G.particles.sparks(this.x, this.y, 14); G.shake(16); Audio_.stun();
+    G.ocean.ripple(this.x, this.y, 130, 280, 1);
+    Toon.burst(this.x, this.y, 3.2); Toon.shock(this.x, this.y, 150, 0.6);
+    for (let i = 0; i < 4; i++) Toon.emote(this.x + rand(-26, 26), this.y - 34, 'star');
+    G.banner('SHELL FIRST! HIT IT NOW', '#ffe48f', 1.4);
+    G.particles.text(this.x, this.y - 44, 'CRUNCH!', '#ffe48f', 12);
+    this.shell -= 90; this.hp -= 30;
+    if (G.stats) G.stats.bossCrashes++;
+    if (this.shell <= 0 && this.phase === 1) this.crackShell();
+  }
+
+  // ------------------------------------------------------------- damage
+  hit(dmg, kx, ky, proj) {
+    if (this.dead || this.state === 'enter' || this.state === 'crack') return;
+    // where did it come from? front armour is the whole fight
+    let from;
+    if (proj && typeof proj.x === 'number') from = angleTo(this.x, this.y, proj.x, proj.y);
+    else if (kx || ky) from = Math.atan2(-ky, -kx);
+    else from = angleTo(this.x, this.y, G.player.x, G.player.y);
+    const off = Math.abs(angleDiff(this.angle, from));
+
+    // a claw in the way takes the hit itself
+    if (proj && typeof proj.x === 'number') {
+      for (const c of this.claws) {
+        if (c.dead) continue;
+        if (dist(proj.x, proj.y, c.x, c.y) < 26) { this.hitClaw(c, dmg, proj); return; }
+      }
+    }
+
+    const armour = off < 1.05 ? 0.12 : off < 2.1 ? 0.7 : 1.55;
+    let mult = armour;
+    if (this.exposed) mult *= 2.2;
+    if (this.burrowed) mult *= 0.12;
+    if (this.claws[0].dead && this.claws[1].dead) mult *= 1.2;
+    let real = dmg * mult;
+
+    if (armour < 0.2) {
+      // it bounced off the face
+      G.particles.sparks(this.x + Math.cos(from) * 40, this.y + Math.sin(from) * 40, 6, from, 0.9);
+      G.particles.text(this.x + Math.cos(from) * 46, this.y + Math.sin(from) * 46 - 8, 'CLANG', '#c8d0d8', 7);
+      Audio_.tone(420, 0.06, 'square', 0.08, -200);
+    }
+
+    if (this.shell > 0 && this.phase === 1) {
+      this.shell -= real;
+      real *= 0.35;                       // the body only feels a third of it
+      if (this.shell <= 0) { this.hp -= real; this.crackShell(); return; }
+    }
+    this.hp -= real;
+    this.flash = 0.08;
+    if (G.stats) G.stats.damageDealt += real;
+    G.particles.sparks(this.x, this.y, 3);
+    if (armour > 1) G.particles.blood(this.x, this.y, 0.4);
+    Toon.impact(this.x, this.y, this.exposed ? 1.6 : 0.7, this.exposed ? '#ffe48f' : '#ffffff');
+    G.particles.text(this.x + rand(-12, 12), this.y - 34, Math.round(real) + (this.exposed ? '!' : ''),
+      this.exposed ? '#ffe48f' : armour > 1 ? '#6fd88e' : '#c8d0d8', this.exposed ? 9 : 7);
+    Audio_.hit();
+    if (this.hp <= 0) this.die();
+    else if (this.phase === 1 && this.hp <= this.maxHp * 0.5) this.crackShell();
+  }
+  hitClaw(c, dmg, proj) {
+    c.hp -= dmg; c.flash = 0.08;
+    this.hp -= dmg * 0.22;
+    if (G.stats) G.stats.damageDealt += dmg;
+    G.particles.sparks(c.x, c.y, 4);
+    G.particles.text(c.x + rand(-8, 8), c.y - 20, Math.round(dmg), '#ffd27a', 7);
+    Toon.impact(c.x, c.y, 0.8, '#ffd27a');
+    Audio_.hit();
+    if (c.hp <= 0) this.breakClaw(c);
+    if (this.hp <= 0) this.die();
+  }
+  breakClaw(c) {
+    c.dead = true; c.hp = 0;
+    G.shake(12); Audio_.stun();
+    G.particles.explode(c.x, c.y, 46, { debris: 16, debrisColors: ['#9c3a21', '#e08a44', '#c2545e'] });
+    G.particles.blood(c.x, c.y, 2.2); G.ocean.splatBlood(c.x, c.y, 3, 30);
+    Toon.burst(c.x, c.y, 3.4);
+    G.particles.text(c.x, c.y - 30, 'CLAW OFF!', '#6fd88e', 12);
+    G.banner(this.claws[0].dead && this.claws[1].dead ? 'BOTH CLAWS ARE OFF' : 'A CLAW COMES OFF', '#6fd88e', 1.6);
+    this.shell -= 110;
+    if (this.shell <= 0 && this.phase === 1) this.crackShell();
+    if (this.state === 'slamWind' && this.claws[this.armIdx] === c) { this.setState('stagger'); this.stunDur = 1.6; }
+  }
+  crackShell() {
+    if (this.phase === 2) return;
+    this.phase = 2; this.shell = 0;
+    this.setState('crack');
+    Audio_.roar(); G.shake(18);
+    G.banner('THE SHELL CRACKS', '#ff6161', 2.2, 'It stops hiding behind it');
+    G.particles.explode(this.x, this.y, 70, { debris: 24, debrisColors: ['#9c3a21', '#e08a44', '#c2545e'] });
+    G.particles.blood(this.x, this.y, 2.4); G.ocean.splatBlood(this.x, this.y, 4, 40);
+    G.ocean.ripple(this.x, this.y, 200, 320, 1);
+    Toon.burst(this.x, this.y, 5); Toon.shock(this.x, this.y, 240, 0.8);
+    for (const pr of G.projectiles) if (pr.owner === 'player') pr.dead = true;
+  }
+  die() {
+    if (this.dead) return;
+    this.dead = true; this.wake.dead = true;
+    this.waves.length = 0; this.boulders.length = 0;
+    G.particles.explode(this.x, this.y, 100, { debris: 34, debrisColors: ['#9c3a21', '#e08a44', '#c2545e', '#f3b268'] });
+    G.particles.blood(this.x, this.y, 4); G.ocean.splatBlood(this.x, this.y, 5, 80); G.shake(24);
+    Toon.burst(this.x, this.y, 5); Toon.shock(this.x, this.y, 260, 0.9);
+    for (let i = 0; i < 3; i++) setTimeout(() => {
+      if (!G || !G.particles) return;
+      G.particles.explode(this.x + rand(-46, 46), this.y + rand(-36, 36), 54, { debris: 10, debrisColors: ['#9c3a21', '#e08a44'] });
+      G.particles.blood(this.x + rand(-30, 30), this.y + rand(-30, 30), 3);
+    }, 250 + i * 300);
+    const drops = { metal: 12, wood: 8, fuel: 8, powder: 12, tech: 12 };
+    for (const k in drops) for (let i = 0; i < drops[k]; i++) G.pickups.push(new Pickup(this.x, this.y, k));
+    if (G.stats) G.stats.kills++;
+    if (G.onBossKilled) G.onBossKilled();
+  }
+
+  // ------------------------------------------------------------- render
+  render(ctx, cam, t) {
+    if (this.dead) return;
+    const sx = Math.round(this.x - cam.x), sy = Math.round(this.y - cam.y);
+    const p2 = this.phase === 2;
+    const A = this.art;
+
+    // ---------------- telegraphs on the water, under everything
+    for (const w of this.waves) {
+      const a = clamp(w.life, 0, 1);
+      mbRing(ctx, Math.round(w.x - cam.x), Math.round(w.y - cam.y), Math.round(w.r), a > 0.5 ? '#eaf8ff' : '#8ac6ff', 46, 0.8, t * 0.6, 3);
+      mbRing(ctx, Math.round(w.x - cam.x), Math.round(w.y - cam.y), Math.round(w.r) - 3, '#c9a86a', 40, 0.8, -t * 0.4, 4);
+    }
+    for (const b of this.boulders) {
+      const u = clamp(b.t / b.flight, 0, 1);
+      const mx = Math.round(b.x - cam.x), my = Math.round(b.y - cam.y);
+      mbMark(ctx, mx, my, u, t, u > 0.8 ? '#ffffff' : '#c8d0d8', '#8b94a3');
+      const bx = b.sx + (b.x - b.sx) * u, by = b.sy + (b.y - b.sy) * u;
+      const z = Math.sin(u * Math.PI) * 46;
+      const px2 = Math.round(bx - cam.x), py2 = Math.round(by - cam.y);
+      ctx.fillStyle = 'rgba(6,18,48,0.34)'; ctx.fillRect(px2 - 5, py2 - 3, 11, 6);
+      drawSprite(ctx, A.rock, px2, py2 - z, b.spin);
+    }
+    if (this.state === 'slamWind') {
+      const k = clamp(this.stateT / this.windDur, 0, 1), hot = k > 0.72;
+      const mx = Math.round(this.target.x - cam.x), my = Math.round(this.target.y - cam.y);
+      mbMark(ctx, mx, my, k, t, hot && Math.sin(t * 40) > 0 ? '#ffffff' : '#ff6161', '#ffd27a');
+      const rr = Math.round(56 * (0.4 + k * 0.6));
+      mbRing(ctx, mx, my, rr, hot ? '#ffffff' : '#ffd27a', 44, 0.8, t * 1.4, 3);
+      ctx.fillStyle = hot ? '#ffffff' : '#ffd27a';
+      ctx.fillRect(mx - 6, my, 13, 1); ctx.fillRect(mx, my - 6, 1, 13);
+    }
+    if (this.state === 'scuttleWind') {
+      const k = clamp(this.stateT / (p2 ? 0.55 : 0.8), 0, 1), hot = k > 0.7;
+      const col = hot && Math.sin(t * 40) > 0 ? '#ffffff' : '#ff6161';
+      for (const off of [-26, 0, 26]) {
+        const ox = Math.cos(this.moveAng + Math.PI / 2) * off, oy = Math.sin(this.moveAng + Math.PI / 2) * off;
+        mbDashLine(ctx, sx + ox, sy + oy, sx + ox + Math.cos(this.moveAng) * 300, sy + oy + Math.sin(this.moveAng) * 300, t, col, '#ffd27a', 2);
+      }
+      mbArcDots(ctx, sx, sy, 60, this.moveAng - 0.5, this.moveAng + 0.5, col, 0, 3);
+    }
+    if (this.state === 'burrow' || this.state === 'burrowDown' || (this.state === 'erupt' && this.stateT < 0.45)) {
+      // the mound: the only thing on the water while it is under the sand
+      const r = this.state === 'burrowDown' ? 30 + this.stateT * 24 : 46 + Math.sin(t * 9) * 4;
+      bxDisc(ctx, sx, sy, Math.round(r), 'rgba(160,132,78,0.5)', 0.66);
+      bxDisc(ctx, sx, sy, Math.round(r * 0.62), 'rgba(201,168,106,0.75)', 0.66);
+      bxDisc(ctx, sx, sy, Math.round(r * 0.3), '#e0c78c', 0.66);
+      mbRing(ctx, sx, sy, Math.round(r), '#e0c78c', 40, 0.66, t * 0.8, 3);
+      if (this.state === 'erupt') {
+        const k = clamp(this.stateT / 0.45, 0, 1);
+        mbRing(ctx, sx, sy, Math.round(20 + k * 70), Math.sin(t * 40) > 0 ? '#ffffff' : '#ff6161', 48, 0.7, -t * 2, 2);
+      }
+      if (this.state === 'burrow') {
+        for (let q = 0; q < 6; q++) {
+          const a = t * 2 + q, rr = r + 10 + (q % 3) * 6;
+          ctx.fillStyle = '#a6884f';
+          ctx.fillRect(Math.round(sx + Math.cos(a) * rr), Math.round(sy + Math.sin(a) * rr * 0.66), 2, 2);
+        }
+      }
+      if (this.sub_ > 0.9) { this.renderBars(ctx, sx, sy - 10); return; }
+    }
+
+    const bob = Math.round(Math.sin(t * 1.7 + this.bob) * 1);
+    const sink = Math.round(this.sub_ * 16);
+    const hurt = this.flash > 0 || (this.exposed && Math.floor(t * 8) % 2 === 0);
+
+    // ---------------- legs: eight of them, and they carry the weight
+    this.renderLegs(ctx, sx, sy + bob + sink, t);
+
+    // ---------------- the arms reach out to the claws, under the shell
+    for (const c of this.claws) {
+      if (c.dead) continue;
+      const cxp = Math.round(c.x - cam.x), cyp = Math.round(c.y - cam.y) + bob + sink;
+      const shx = sx + Math.cos(this.angle + c.side * 0.95) * 34, shy = sy + bob + sink + Math.sin(this.angle + c.side * 0.95) * 34;
+      const mx = (shx + cxp) / 2 + Math.cos(this.angle + c.side * 1.8) * 12;
+      const my = (shy + cyp) / 2 + Math.sin(this.angle + c.side * 1.8) * 12;
+      bxLimb(ctx, shx, shy, mx, my, 12, 10, '#9c3a21', '#e08a44', '#180a10');
+      bxLimb(ctx, mx, my, cxp, cyp, 10, 9, '#c25c2c', '#f3b268', '#180a10');
+    }
+
+    // ---------------- the carapace
+    const spr = p2 ? (hurt ? A.crackedHurt : A.cracked) : (hurt ? A.shellHurt : A.shell);
+    ctx.save();
+    ctx.translate(sx, sy + bob + sink);
+    ctx.rotate(this.angle);
+    const heave = this.state === 'scuttle' ? 1.06 : 1;
+    ctx.scale(heave, 2 - heave);
+    ctx.drawImage(spr.c, -spr.ax, -spr.ay);
+    ctx.restore();
+
+    // ---------------- eyes on stalks, front and centre, looking at her
+    {
+      const look = angleTo(this.x, this.y, G.player.x, G.player.y);
+      for (const s of [-1, 1]) {
+        const ba = this.angle + s * 0.30, br = 30;
+        const bx0 = sx + Math.cos(ba) * br, by0 = sy + bob + sink + Math.sin(ba) * br;
+        const ea = this.angle + s * 0.22 + Math.sin(t * 1.3 + s) * 0.06;
+        const ex = bx0 + Math.cos(ea) * 13, ey = by0 + Math.sin(ea) * 13;
+        bxLimb(ctx, bx0, by0, ex, ey, 5, 4, '#c25c2c', '#f3b268', '#180a10');
+        ctx.fillStyle = '#180a10'; ctx.fillRect(Math.round(ex) - 3, Math.round(ey) - 3, 6, 6);
+        ctx.fillStyle = this.exposed && Math.floor(t * 9) % 2 ? '#ff6161' : '#1a1a22';
+        ctx.fillRect(Math.round(ex) - 2, Math.round(ey) - 2, 4, 4);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(Math.round(ex + Math.cos(look) * 1) - 1, Math.round(ey + Math.sin(look) * 1) - 1, 1, 1);
+      }
+    }
+
+    // ---------------- the claws themselves, over the top
+    for (const c of this.claws) {
+      if (c.dead) {
+        // a torn stump, so a missing claw reads instantly
+        const shx = sx + Math.cos(this.angle + c.side * 0.95) * 34, shy = sy + bob + sink + Math.sin(this.angle + c.side * 0.95) * 34;
+        const ex = shx + Math.cos(this.angle + c.side * 1.4) * 18, ey = shy + Math.sin(this.angle + c.side * 1.4) * 18;
+        bxLimb(ctx, shx, shy, ex, ey, 11, 5, '#72251a', '#9c3a21', '#180a10');
+        ctx.fillStyle = Math.floor(t * 6) % 2 ? '#c2545e' : '#8f2f3a';
+        ctx.fillRect(Math.round(ex) - 3, Math.round(ey) - 3, 6, 6);
+        continue;
+      }
+      const cxp = Math.round(c.x - cam.x), cyp = Math.round(c.y - cam.y) + bob + sink;
+      const ch = c.flash > 0 ? A.clawHurt : A.claw;
+      const jh = c.flash > 0 ? A.jawHurt : A.jaw;
+      const raise = 1 + Math.max(0, c.lift) * 0.22;
+      ctx.save();
+      ctx.translate(cxp, cyp - Math.round(Math.max(0, c.lift) * 7));
+      // the pair is mirrored, so both pincers face in at each other
+      ctx.rotate(this.angle - c.side * (0.26 + c.open * 0.16));
+      ctx.scale(raise, raise * c.side);
+      ctx.drawImage(ch.c, -ch.ax, -ch.ay);
+      ctx.save();
+      ctx.translate(8, -5);
+      ctx.rotate(-c.open * 0.9 - 0.06);
+      ctx.drawImage(jh.c, -jh.ax, -jh.ay);
+      ctx.restore();
+      ctx.restore();
+      // claw condition pip, only once it has been worked on
+      if (c.hp < c.max) bxPips(ctx, cxp - 12, cyp - 26, 24, c.hp / c.max, '#ffd27a', '#2a2f38', '#14141c');
+    }
+
+    if (this.state === 'crack') {
+      ctx.strokeStyle = `rgba(255,80,60,${(0.6 + Math.sin(t * 30) * 0.3).toFixed(2)})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(sx, sy, 50 + this.stateT * 80, 40 + this.stateT * 60, 0, 0, TAU); ctx.stroke();
+    }
+    if (this.exposed) for (let i = 0; i < 3; i++) { const a = t * 5 + i * TAU / 3; drawSprite(ctx, SP.star, sx + Math.cos(a) * 30, sy - 44 + Math.sin(a) * 7); }
+
+    this.renderBars(ctx, sx, sy - 56);
+  }
+  renderBars(ctx, sx, sy) {
+    // the shell is a second health bar and it is the one that matters first
+    if (this.phase === 1) {
+      bxPips(ctx, sx - 32, sy, 64, this.shell / this.shellMax, '#f3b268', '#3a2413', '#14141c');
+      // a row of little plates over the bar: this is the SHELL, not the body
+      ctx.fillStyle = '#f3b268';
+      for (let q = 0; q < 5; q++) ctx.fillRect(sx - 32 + q * 14, sy - 5, 4, 2);
+    } else {
+      // cracked: the bar is gone and the split plates hang open
+      ctx.fillStyle = '#14141c'; ctx.fillRect(sx - 33, sy - 1, 66, 5);
+      ctx.fillStyle = '#8f2f3a'; ctx.fillRect(sx - 32, sy, 64, 3);
+      ctx.fillStyle = Math.floor(sy + this.hp) % 2 ? '#c2545e' : '#e0808a';
+      for (let q = 0; q < 8; q++) ctx.fillRect(sx - 30 + q * 8, sy, 3, 3);
+    }
+  }
+  renderLegs(ctx, sx, sy, t) {
+    const drive = Math.hypot(this.vx, this.vy) / 260;
+    for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
+      const phase = this.gait + i * 1.15 + (s > 0 ? Math.PI : 0);
+      const swing = Math.sin(phase) * (0.16 + drive * 0.3);
+      const lift = Math.cos(phase) > 0 ? 1 : 0;            // stepping vs planted
+      const base = this.angle + s * (Math.PI / 2) + (1.5 - i) * 0.40;
+      const hipA = this.angle + s * (Math.PI / 2 - 0.16) + (1.5 - i) * 0.36;
+      const hipR = 32 - Math.abs(1.5 - i) * 3;
+      const hx = sx + Math.cos(hipA) * hipR, hy = sy + Math.sin(hipA) * hipR;
+      const a1 = base + swing;
+      const kx = hx + Math.cos(a1) * (17 + lift * 2), ky = hy + Math.sin(a1) * (17 + lift * 2);
+      const a2 = a1 + s * (1.15 - lift * 0.35) - swing * 0.6;
+      const ex2 = kx + Math.cos(a2) * (18 - lift * 3), ey2 = ky + Math.sin(a2) * (18 - lift * 3);
+      const a3 = a2 + s * (0.55 + lift * 0.2);
+      const fx = ex2 + Math.cos(a3) * (15 - lift * 3), fy = ey2 + Math.sin(a3) * (15 - lift * 3);
+      bxLimb(ctx, hx, hy, kx, ky, 9, 7, lift ? '#8e3220' : '#72251a', '#c25c2c', '#180a10');
+      bxLimb(ctx, kx, ky, ex2, ey2, 7, 5, lift ? '#c25c2c' : '#9c3a21', '#e08a44', '#180a10');
+      bxLimb(ctx, ex2, ey2, fx, fy, 5, 2, lift ? '#e08a44' : '#c25c2c', '#f3b268', '#180a10');
+      ctx.fillStyle = '#180a10'; ctx.fillRect(Math.round(fx) - 1, Math.round(fy) - 1, 3, 3);
+    }
+  }
+}
+
+// ===========================================================================
+//  BOSS 3 — THE DEEP LANTERN
+//
+//  An anglerfish. It brings the deep up with it: the bay goes black and the
+//  only thing you can see is its lure. The fight is about what you can and
+//  cannot see, and about not swimming toward the light.
+//
+//    phase 1  THE DARK   near-total darkness. The lure drags her toward it.
+//                        A vast telegraphed bite comes out of the black, a
+//                        scatter of little lights turns out to be teeth, and
+//                        it goes under her and comes up.
+//    phase 2  SURFACED   it breaches. The dark lifts, you finally see the
+//                        whole animal, and it fights in the open — until it
+//                        snuffs the lure and puts the lights out again.
+//
+//  The lure itself is a weak point: shoot it for double, and the bay gets
+//  darker for a second and a half while it relights.
+// ===========================================================================
+
+let ANG_ART = null;
+function anglerArt() {
+  if (ANG_ART) return ANG_ART;
+  const DARK = ['#05070c', '#0b1018', '#131a26', '#1d2634', '#2a3648', '#3b4a60', '#51637d'];
+  const LIT = ['#080d14', '#101a26', '#1b2938', '#28394c', '#3a5166', '#527087', '#7a9bb4'];
+  const OUT = '#02040a';
+
+  function buildBody(ramp) {
+    const W = 196, H = 172, cx = 84, cy = 86;     // art px (98 x 86 world)
+    const f = blobField(W, H, [
+      { x: cx + 34, y: cy, rx: 52, ry: 62 },       // the head IS the animal
+      { x: cx + 4, y: cy, rx: 42, ry: 50 },
+      { x: cx - 34, y: cy, rx: 24, ry: 28 },
+      { x: cx - 58, y: cy, rx: 14, ry: 18 },       // tail root
+      { x: cx + 46, y: cy - 46, rx: 22, ry: 16 },  // gill shoulders
+      { x: cx + 46, y: cy + 46, rx: 22, ry: 16 },
+      { x: cx + 14, y: cy - 52, rx: 20, ry: 12 },  // pectorals
+      { x: cx + 14, y: cy + 52, rx: 20, ry: 12 },
+    ]);
+    const s = shadeBlob(W, H, f, ramp, { outline: OUT, lx: -0.5, ly: -0.78, contrast: 0.84, lift: 0.2, smooth: 4 });
+    const q = s.ctx;
+    const ins = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
+    // a spined dorsal ridge down the middle
+    for (let x = cx - 56; x < cx + 44; x++) {
+      if (!ins(x, cy)) continue;
+      px(q, ramp[1], x, cy - 1, 1, 3);
+      if ((x & 7) === 0) { px(q, ramp[5], x, cy - 4, 1, 4); px(q, OUT, x, cy - 5, 1, 1); }
+    }
+    // loose sagging skin: horizontal posterized folds
+    for (const s2 of [-1, 1]) for (let i = 0; i < 4; i++) {
+      const yy = Math.round(cy + s2 * (15 + i * 12));
+      for (let x = cx - 46; x < cx + 56; x++) {
+        if (!ins(x, yy)) continue;
+        if (((x + i) % 5) < 3) { px(q, ramp[1], x, yy, 1, 1); px(q, ramp[4], x, yy - 1, 1, 1); }
+      }
+    }
+    // pallid speckling, the only light thing on it
+    const rng = new SeededRandom(0xdeadbee);
+    for (let i = 0; i < 70; i++) {
+      const x = Math.round(rng.range(8, W - 8)), y = Math.round(rng.range(8, H - 8));
+      if (!ins(x, y)) continue;
+      px(q, ramp[5], x, y, 1, 1);
+      if (rng.next() < 0.3) px(q, ramp[6], x, y, 1, 1);
+    }
+    // the eye: small, dead, high on the head
+    for (const s2 of [-1, 1]) {
+      const ex = cx + 52, ey = cy + s2 * 26;
+      px(q, OUT, ex - 4, ey - 4, 9, 9);
+      px(q, '#b9c9d8', ex - 3, ey - 3, 7, 7);
+      px(q, '#0a0d14', ex - 2, ey - 1, 4, 4);
+      px(q, '#ffffff', ex - 1, ey - 1, 1, 1);
+    }
+    // tail fin, a ragged fan
+    for (let i = -20; i <= 20; i++) {
+      const len = 20 - Math.abs(i) * 0.4 + ((i & 3) === 0 ? 5 : 0);
+      for (let q2 = 0; q2 < len; q2++) {
+        const x = cx - 70 - q2, y = cy + Math.round(i * (1 + q2 * 0.07));
+        if (x < 1 || y < 1 || y > H - 2) continue;
+        px(q, (q2 & 1) ? ramp[1] : ramp[2], x, y, 1, 1);
+      }
+    }
+    return spriteFromHi(s.c, cx, cy);
+  }
+
+  // one jaw wedge, hinged at the inner corner, teeth along its biting edge
+  function buildJaw(ramp) {
+    const W = 96, H = 54, hx = 8, hy = 46;
+    const f = blobField(W, H, [
+      { x: 16, y: hy - 8, rx: 16, ry: 14 },
+      { x: 46, y: hy - 12, rx: 28, ry: 15 },
+      { x: 78, y: hy - 8, rx: 18, ry: 9 },
+    ]);
+    const s = shadeBlob(W, H, f, ramp, { outline: OUT, lx: -0.5, ly: -0.8, contrast: 0.86, lift: 0.22, smooth: 3 });
+    const q = s.ctx;
+    const ins = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
+    // find the lower edge of the wedge and hang teeth off it
+    for (let x = 10; x < W - 6; x += 5) {
+      let by = -1;
+      for (let y = H - 1; y >= 0; y--) if (ins(x, y)) { by = y; break; }
+      if (by < 0) continue;
+      const len = 5 + ((x >> 2) % 3) * 3;
+      for (let k = 0; k < len; k++) {
+        const w = Math.max(1, 4 - Math.round(k * 4 / len));
+        px(q, OUT, x - (w >> 1) - 1, by + k, w + 2, 1);
+        px(q, k < 2 ? '#e8eef5' : '#f8fbff', x - (w >> 1), by + k, w, 1);
+      }
+    }
+    return spriteFromHi(s.c, hx, hy);
+  }
+
+  function buildTooth() {
+    const c = newCanHi(9, 5), q = c.getContext('2d');
+    for (let i = 0; i < 16; i++) {
+      const w = Math.max(1, 5 - Math.round(i * 5 / 16));
+      px(q, '#02040a', i, 5 - (w >> 1) - 1, 1, w + 2);
+      px(q, i < 4 ? '#8ae6ff' : '#f8fbff', i, 5 - (w >> 1), 1, w);
+    }
+    return spriteFromHi(c, 2, 5);
+  }
+
+  const body = buildBody(DARK), bodyLit = buildBody(LIT);
+  ANG_ART = {
+    body, bodyLit,
+    bodyHurt: tintHi(bodyLit, '#ffffff', 0.8),
+    jaw: buildJaw(DARK), jawLit: buildJaw(LIT), tooth: buildTooth(),
+  };
+  return ANG_ART;
+}
+
+// ---- the darkness. A chunky posterized field, one cell per 10 world units,
+// rasterized into a tiny canvas and blown up with nearest-neighbour so the
+// bands stay hard. Lights punch holes in it; nothing here is a gradient.
+const ANG_CELL = 10;
+let ANG_DARKC = null;
+function angDarkness(ctx, cam, lights, maxDark) {
+  if (maxDark <= 0.01) return;
+  const gx0 = Math.floor(cam.x / ANG_CELL) - 1, gy0 = Math.floor(cam.y / ANG_CELL) - 1;
+  const gw = Math.ceil(VIEW_W / ANG_CELL) + 3, gh = Math.ceil(VIEW_H / ANG_CELL) + 3;
+  if (!ANG_DARKC || ANG_DARKC.c.width !== gw || ANG_DARKC.c.height !== gh) {
+    const c = newCan(gw, gh);
+    ANG_DARKC = { c, ctx: c.getContext('2d'), img: c.getContext('2d').createImageData(gw, gh), lit: new Float32Array(gw * gh) };
+  }
+  const D = ANG_DARKC, lit = D.lit;
+  lit.fill(0);
+  for (const L of lights) {
+    const r = L.r; if (r <= 0 || L.s <= 0) continue;
+    const cx0 = Math.max(0, Math.floor((L.x - r) / ANG_CELL) - gx0), cx1 = Math.min(gw - 1, Math.ceil((L.x + r) / ANG_CELL) - gx0);
+    const cy0 = Math.max(0, Math.floor((L.y - r) / ANG_CELL) - gy0), cy1 = Math.min(gh - 1, Math.ceil((L.y + r) / ANG_CELL) - gy0);
+    const r2 = r * r;
+    for (let gy = cy0; gy <= cy1; gy++) {
+      const wy = (gy0 + gy + 0.5) * ANG_CELL;
+      for (let gx = cx0; gx <= cx1; gx++) {
+        const wx = (gx0 + gx + 0.5) * ANG_CELL;
+        const dx = wx - L.x, dy = wy - L.y, q = dx * dx + dy * dy;
+        if (q >= r2) continue;
+        const v = (1 - Math.sqrt(q) / r) * L.s;
+        const i = gy * gw + gx;
+        if (v > lit[i]) lit[i] = v;
+      }
+    }
+  }
+  const d = D.img.data;
+  for (let i = 0, n = gw * gh; i < n; i++) {
+    let v = 1 - lit[i]; if (v < 0) v = 0;
+    const band = Math.round(v * 5) / 5;                 // six hard steps
+    d[i * 4] = 3; d[i * 4 + 1] = 7; d[i * 4 + 2] = 16;
+    d[i * 4 + 3] = Math.round(band * maxDark * 255);
+  }
+  D.ctx.putImageData(D.img, 0, 0);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(D.c, gx0 * ANG_CELL - cam.x, gy0 * ANG_CELL - cam.y, gw * ANG_CELL, gh * ANG_CELL);
+  ctx.restore();
+}
+
+class AnglerBoss {
+  constructor(x, y, difficulty = 1) {
+    this.key = 'angler';
+    this.art = anglerArt();
+    this.diff = difficulty || 1;
+    this.name = 'THE DEEP LANTERN';
+    this.sub = 'Do not swim toward the light';
+    this.color = '#8ae6ff';
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0;
+    this.maxHp = Math.round(1500 * (0.9 + 0.1 * this.diff)); this.hp = this.maxHp;
+    this.radius = 48;
+    this.angle = angleTo(x, y, G.player.x, G.player.y);
+    this.phase = 1; this.dead = false; this.flash = 0;
+    this.state = 'arrive'; this.stateT = 0; this.nextT = 2.4;
+    this.dark = 0; this.darkWant = 0.94;
+    this.mouth = 0; this.lureOut = 0; this.lureSway = rand(0, TAU);
+    this.lure = { x, y, r: 0 };
+    this.surf = 0; this.blackT = 0; this.cycle = 0;
+    this.motes = []; this.snaps = []; this.drift = [];
+    this.wake = G.ocean.newWake(this, 12);
+    this.bob = rand(0, TAU); this.hitOnce = false;
+    G.banner(this.name, this.color, 2.4, this.sub);
+  }
+  get stunned() { return this.exposed; }
+  get exposed() { return this.state === 'biteRec' || this.state === 'beached'; }
+  get submerged() { return this.state === 'dive' || this.state === 'under'; }
+  get phaseName() { return this.phase === 2 ? 'SURFACED' : 'THE DARK'; }
+  get lureLit() { return this.lureOut <= 0 && !this.submerged; }
+  setState(s) { this.state = s; this.stateT = 0; this.hitOnce = false; }
+  say(msg, col, size) { G.particles.text(this.x, this.y - 40, msg, col || this.color, size || 9); }
+
+  // ------------------------------------------------------------- update
+  update(dt, t) {
+    if (this.dead) return;
+    const p = G.player;
+    this.stateT += dt; this.flash -= dt; this.lureOut -= dt; this.lureSway += dt * 1.3;
+    const d = dist(this.x, this.y, p.x, p.y), toP = angleTo(this.x, this.y, p.x, p.y);
+    const p2 = this.phase === 2;
+    let speed = 0, desired = this.angle, turn = p2 ? 2.0 : 1.3;
+
+    switch (this.state) {
+      case 'arrive': {
+        desired = toP; speed = 70;
+        this.darkWant = 0.94;
+        if (this.stateT > 2.0) { this.setState('lurk'); this.nextT = 2.0; }
+        break;
+      }
+      case 'lurk': case 'lurk2': {
+        // it holds off and lets the lure do the work
+        const ring = p2 ? 150 : 215;
+        if (d > ring + 70) { desired = toP; speed = p2 ? 110 : 74; }
+        else if (d < ring - 60) { desired = toP + Math.PI; speed = p2 ? 96 : 62; }
+        else { desired = toP + Math.PI / 2 * (Math.sin(t * 0.3) > 0 ? 1 : -1); speed = p2 ? 92 : 56; }
+        this.pull(dt, p);
+        this.nextT -= dt;
+        if (this.nextT <= 0) this.chooseAttack(d);
+        break;
+      }
+      case 'biteWind': {
+        desired = toP; speed = 12;
+        const k = clamp(this.stateT / this.windDur, 0, 1);
+        this.mouth = k;
+        if (k < 0.6) this.biteAng = toP;
+        if (Math.random() < 0.5) G.particles.bubbles(this.x + Math.cos(this.angle) * 40 + rand(-20, 20), this.y + Math.sin(this.angle) * 40 + rand(-16, 16), 1);
+        if (this.stateT >= this.windDur) {
+          this.setState('bite'); this.angle = this.biteAng;
+          Audio_.roar(); G.shake(7);
+          G.particles.splash(this.x, this.y, 2.4);
+        }
+        break;
+      }
+      case 'bite': {
+        desired = this.biteAng; speed = p2 ? 600 : 520; turn = 0.6;
+        this.mouth = 1;
+        G.ocean.addFoam(this.x, this.y, 0.5);
+        for (let i = 0; i < 2; i++) G.particles.spray(this.x + Math.cos(this.angle) * 40, this.y + Math.sin(this.angle) * 40, this.angle + (i ? 1.3 : -1.3), 2, 170);
+        const mx = this.x + Math.cos(this.angle) * 34, my = this.y + Math.sin(this.angle) * 34;
+        if (!this.hitOnce && !p.dead && !p.diving && !p.rolling && p.invuln <= 0 && dist(mx, my, p.x, p.y) < 54) {
+          this.hitOnce = true;
+          p.damage((p2 ? 46 : 40) * (1 + (this.diff - 1) * 0.5), mx, my);
+          p.vx += Math.cos(this.angle) * 430; p.vy += Math.sin(this.angle) * 430;
+          G.particles.blood(p.x, p.y, 2); G.shake(14);
+          G.particles.text(p.x, p.y - 30, 'BITTEN!', '#ff6161', 11);
+        }
+        if (this.stateT > 0.62) this.setState('biteRec');
+        break;
+      }
+      case 'biteRec': {
+        desired = this.angle; speed = 20;
+        this.mouth = Math.max(0.35, 1 - this.stateT * 0.6);
+        if (Math.random() < 0.3) G.particles.bubbles(this.x + rand(-30, 30), this.y + rand(-24, 24), 1);
+        if (this.stateT >= (p2 ? 1.1 : 1.45)) { this.mouth = 0; this.setState(p2 ? 'lurk2' : 'lurk'); this.nextT = rand(1.0, 1.8); }
+        break;
+      }
+      case 'cast': {
+        desired = toP; speed = 30;
+        if (this.stateT > 0.45 && !this.hitOnce) { this.hitOnce = true; this.castTeeth(p); }
+        if (this.stateT > 0.9) { this.setState(p2 ? 'lurk2' : 'lurk'); this.nextT = rand(1.4, 2.4); }
+        break;
+      }
+      case 'spit': {
+        desired = toP; speed = 40;
+        this.mouth = clamp(this.stateT / 0.5, 0, 1) * 0.7;
+        if (this.stateT > 0.5 && !this.hitOnce) { this.hitOnce = true; this.spitTeeth(toP); }
+        if (this.stateT > 0.9) { this.mouth = 0; this.setState('lurk2'); this.nextT = rand(1.2, 2.0); }
+        break;
+      }
+      case 'dive': {
+        desired = toP; speed = 60;
+        this.surf = Math.max(0, this.surf - dt * 2);
+        if (Math.random() < 0.6) G.particles.bubbles(this.x + rand(-26, 26), this.y + rand(-20, 20), 2);
+        if (this.stateT > 0.75) { this.setState('under'); this.say('IT IS GONE', '#5e7f98', 8); }
+        break;
+      }
+      case 'under': {
+        // it is directly under her and there is nothing to shoot
+        const a = angleTo(this.x, this.y, p.x, p.y);
+        const sp = p2 ? 300 : 250;
+        this.x += Math.cos(a) * sp * dt; this.y += Math.sin(a) * sp * dt;
+        this.angle = angleLerp(this.angle, a, dt * 3);
+        if (Math.random() < 0.7) G.particles.bubbles(this.x + rand(-24, 24), this.y + rand(-20, 20), 1);
+        if (Math.random() < 0.3) G.ocean.ripple(this.x, this.y, 36, 80, 0.35);
+        if (this.stateT > 0.6 && (d < 52 || this.stateT > 3.2)) { this.setState('surge'); G.shake(5); }
+        break;
+      }
+      case 'surge': {
+        speed = 0;
+        if (this.stateT < 0.42) {
+          this.surf = this.stateT / 0.42 * 0.5;
+          if (Math.random() < 0.7) G.particles.bubbles(this.x + rand(-36, 36), this.y + rand(-30, 30), 2);
+        } else {
+          if (!this.hitOnce) { this.hitOnce = true; this.surgeBlow(); }
+          this.surf = Math.min(1, 0.5 + (this.stateT - 0.42) * 2);
+          if (this.stateT > 0.85) {
+            if (!p2) this.surf = 0;
+            this.setState(p2 ? 'lurk2' : 'lurk'); this.nextT = rand(1.2, 2.0);
+          }
+        }
+        break;
+      }
+      case 'breach': {
+        speed = 26; desired = toP;
+        this.surf = clamp(this.stateT / 1.2, 0, 1);
+        this.darkWant = 0.45;
+        this.mouth = Math.sin(clamp(this.stateT / 1.8, 0, 1) * Math.PI) * 0.9;
+        if (Math.random() < 0.9) G.particles.spray(this.x + rand(-44, 44), this.y + rand(-36, 36), rand(0, TAU), 2, 120);
+        G.ocean.addFoam(this.x + rand(-40, 40), this.y + rand(-34, 34), 0.35);
+        if (this.stateT > 1.8) { this.mouth = 0; this.setState('lurk2'); this.nextT = 0.7; }
+        break;
+      }
+      case 'blackout': {
+        // it snuffs the lure and takes the whole bay back into the dark
+        desired = toP; speed = 90;
+        this.darkWant = 0.97;
+        this.lureOut = 0.2;
+        if (this.stateT > 2.2) { this.darkWant = 0.45; this.lureOut = 0; this.windDur = 0.5; this.biteAng = toP; this.setState('biteWind'); }
+        break;
+      }
+    }
+
+    // ---- watchdog: nothing here is allowed to hold the fight up
+    if (this.state !== 'lurk' && this.state !== 'lurk2' && this.stateT > 6) {
+      this.mouth = 0; this.darkWant = p2 ? 0.45 : 0.94;
+      if (p2) this.surf = 1;
+      this.setState(p2 ? 'lurk2' : 'lurk'); this.nextT = 0.8;
+    }
+    // ---- darkness eases toward what the state wants, and never snaps
+    this.dark = lerp(this.dark, this.darkWant + (this.lureOut > 0 ? 0.04 : 0), Math.min(1, dt * 3.4));
+
+    // ---- steering
+    if (this.state !== 'under') {
+      this.angle = angleLerp(this.angle, desired, Math.min(1, dt * turn * (this.state === 'bite' ? 0.5 : 1)));
+      const k = Math.min(1, dt * (this.state === 'bite' ? 9 : 2.4));
+      this.vx = lerp(this.vx, Math.cos(this.angle) * speed, k);
+      this.vy = lerp(this.vy, Math.sin(this.angle) * speed, k);
+      this.x += this.vx * dt; this.y += this.vy * dt;
+    } else { this.vx = 0; this.vy = 0; }
+    this.x = clamp(this.x, 40, G.ocean.W - 40);
+    this.y = clamp(this.y, WATER_TOP + 20, G.ocean.H - 40);
+
+    // ---- the lure rides out in front on its stalk
+    const sway = Math.sin(this.lureSway) * 0.34;
+    const la = this.angle + sway;
+    const reach = 62 + Math.sin(this.lureSway * 0.7) * 7;
+    this.lure.x = this.x + Math.cos(la) * reach;
+    this.lure.y = this.y + Math.sin(la) * reach;
+    this.lure.r = this.lureLit ? (this.phase === 2 ? 250 : 205) + Math.sin(t * 2.2) * 14 : 0;
+
+    // ---- surface presence
+    const spd = Math.hypot(this.vx, this.vy);
+    if (this.surf > 0.2 && !this.submerged) {
+      if (G.ocean.disturb && spd > 20) G.ocean.disturb(this.x, this.y, Math.min(6, spd / 60), this.vx, this.vy);
+      const stx = this.x - Math.cos(this.angle) * 40, sty = this.y - Math.sin(this.angle) * 40;
+      const last = this.wake.pts[this.wake.pts.length - 1];
+      if (spd > 28 && (!last || dist(last.x, last.y, stx, sty) > 5)) { this.wake.pts.push({ x: stx, y: sty, t }); G.ocean.addFoam(stx, sty, 0.1 + spd / 2000); }
+    }
+
+    this.stepMotes(dt, p);
+    this.stepDrift(dt, p);
+    for (let i = this.snaps.length - 1; i >= 0; i--) { this.snaps[i].t += dt; if (this.snaps[i].t > 0.3) this.snaps.splice(i, 1); }
+  }
+
+  chooseAttack(d) {
+    const p2 = this.phase === 2;
+    this.cycle++;
+    const roll = Math.random();
+    if (p2) {
+      if (this.cycle % 5 === 0) { this.setState('blackout'); this.say('THE LIGHT GOES OUT', '#ff6161', 10); G.shake(6); return; }
+      if (d < 190 || roll < 0.32) { this.beginBite(0.62); return; }
+      if (roll < 0.58) { this.setState('cast'); this.say('LITTLE LIGHTS', '#8ae6ff', 9); return; }
+      if (roll < 0.80) { this.setState('spit'); return; }
+      this.setState('dive'); this.darkWant = 0.86;
+      return;
+    }
+    if (d < 200 || roll < 0.34) { this.beginBite(0.95); return; }
+    if (roll < 0.66) { this.setState('cast'); this.say('LITTLE LIGHTS', '#8ae6ff', 9); return; }
+    this.setState('dive'); this.darkWant = 0.985;
+  }
+  beginBite(dur) {
+    this.windDur = dur;
+    this.biteAng = angleTo(this.x, this.y, G.player.x, G.player.y);
+    this.setState('biteWind');
+    Audio_.tone(90, 0.5, 'sawtooth', 0.14, 30);
+    this.say('IT OPENS', '#ff6161', 10);
+  }
+  pull(dt, p) {
+    if (!this.lureLit || p.dead) return;
+    const d = dist(this.lure.x, this.lure.y, p.x, p.y);
+    if (d > 340) return;
+    const a = angleTo(p.x, p.y, this.lure.x, this.lure.y);
+    const k = (1 - d / 340) * (this.phase === 2 ? 110 : 145);
+    p.vx += Math.cos(a) * k * dt; p.vy += Math.sin(a) * k * dt;
+    // the pull is drawn: motes of light streaming off her toward the lure
+    if (Math.random() < dt * 14 && this.drift.length < 40)
+      this.drift.push({ x: p.x + rand(-22, 22), y: p.y + rand(-18, 18), t: 0, dur: rand(0.7, 1.2) });
+  }
+  stepDrift(dt) {
+    for (let i = this.drift.length - 1; i >= 0; i--) {
+      const m = this.drift[i]; m.t += dt;
+      const a = angleTo(m.x, m.y, this.lure.x, this.lure.y);
+      m.x += Math.cos(a) * 130 * dt; m.y += Math.sin(a) * 130 * dt;
+      if (m.t > m.dur) this.drift.splice(i, 1);
+    }
+  }
+  castTeeth(p) {
+    const n = this.phase === 2 ? randi(7, 9) : randi(5, 7);
+    const base = rand(0, TAU);
+    for (let i = 0; i < n; i++) {
+      const a = base + i / n * TAU + rand(-0.25, 0.25), r = rand(62, 190);
+      const x = clamp(p.x + Math.cos(a) * r, 40, G.ocean.W - 40);
+      const y = clamp(p.y + Math.sin(a) * r, WATER_TOP + 20, G.ocean.H - 40);
+      this.motes.push({ x, y, t: 0, dur: this.phase === 2 ? 2.0 : 2.5, a: rand(0, TAU) });
+    }
+    Audio_.tone(760, 0.24, 'sine', 0.1, 260);
+  }
+  spitTeeth(toP) {
+    const n = this.phase === 2 ? 5 : 3;
+    for (let i = 0; i < n; i++) {
+      const a = toP + (i - (n - 1) / 2) * 0.20;
+      const pr = new Projectile({
+        x: this.x + Math.cos(a) * 34, y: this.y + Math.sin(a) * 34,
+        vx: Math.cos(a) * 320, vy: Math.sin(a) * 320, life: 2.0,
+        dmg: 13 * (1 + (this.diff - 1) * 0.5), owner: 'enemy',
+        sprite: this.art.tooth, size: 4, trail: true, knock: 0,
+      });
+      pr.anglerTooth = 1;
+      G.projectiles.push(pr);
+    }
+    G.particles.text(this.x, this.y - 40, 'IT SPITS TEETH', '#8ae6ff', 9);
+    Audio_.shot('harpoon');
+  }
+  stepMotes(dt, p) {
+    for (let i = this.motes.length - 1; i >= 0; i--) {
+      const m = this.motes[i]; m.t += dt;
+      if (m.t >= m.dur) {
+        this.motes.splice(i, 1);
+        this.snaps.push({ x: m.x, y: m.y, t: 0, a: m.a });
+        G.particles.sparks(m.x, m.y, 6); G.particles.splash(m.x, m.y, 0.9);
+        Audio_.tone(240, 0.08, 'square', 0.1, -140);
+        if (!p.dead && !p.diving && !p.rolling && p.invuln <= 0 && dist(m.x, m.y, p.x, p.y) < 30) {
+          p.damage(17 * (1 + (this.diff - 1) * 0.5), m.x, m.y);
+        }
+      }
+    }
+  }
+  surgeBlow() {
+    const p = G.player;
+    G.shake(20); Audio_.roar(); Audio_.splash(3);
+    G.particles.splash(this.x, this.y, 5); G.ocean.ripple(this.x, this.y, 210, 340, 1);
+    Toon.burst(this.x, this.y, 4.6); Toon.shock(this.x, this.y, 210, 0.7);
+    G.particles.text(this.x, this.y - 46, 'FROM BELOW!', '#8ae6ff', 12);
+    if (!p.dead && !p.diving && !p.rolling && p.invuln <= 0 && dist(this.x, this.y, p.x, p.y) < 74) {
+      p.damage(36 * (1 + (this.diff - 1) * 0.5), this.x, this.y);
+      const a = angleTo(this.x, this.y, p.x, p.y);
+      p.vx += Math.cos(a) * 460; p.vy += Math.sin(a) * 460;
+    }
+  }
+
+  // ------------------------------------------------------------- damage
+  hit(dmg, kx, ky, proj) {
+    if (this.dead || this.state === 'arrive' || this.state === 'breach') return;
+    // the lure is the weak point, and knocking it out costs you the light
+    if (this.lureLit && proj && typeof proj.x === 'number' && dist(proj.x, proj.y, this.lure.x, this.lure.y) < 22) {
+      const real = dmg * 2.4;
+      this.hp -= real; this.flash = 0.08; this.lureOut = 1.2;
+      if (G.stats) G.stats.damageDealt += real;
+      G.particles.sparks(this.lure.x, this.lure.y, 10);
+      G.particles.text(this.lure.x, this.lure.y - 22, 'LURE! ' + Math.round(real), '#8ae6ff', 10);
+      Toon.impact(this.lure.x, this.lure.y, 1.5, '#8ae6ff');
+      Audio_.tone(900, 0.14, 'sine', 0.16, -600);
+      if (this.hp <= 0) { this.die(); return; }
+      if (this.phase === 1 && this.hp <= this.maxHp * 0.5) this.breach();
+      return;
+    }
+    let mult = this.phase === 2 ? 1.0 : 0.8;
+    if (this.exposed) mult *= 2.2;
+    if (this.submerged) mult *= 0.18;
+    const real = dmg * mult;
+    this.hp -= real; this.flash = 0.08;
+    if (G.stats) G.stats.damageDealt += real;
+    G.particles.sparks(this.x, this.y, 3);
+    if (Math.random() < 0.7) G.particles.blood(this.x, this.y, 0.4);
+    Toon.impact(this.x, this.y, this.exposed ? 1.6 : 0.7, this.exposed ? '#ffe48f' : '#ffffff');
+    G.particles.text(this.x + rand(-12, 12), this.y - 34, Math.round(real) + (this.exposed ? '!' : ''),
+      this.exposed ? '#ffe48f' : this.submerged ? '#5e7f98' : '#c8d0d8', this.exposed ? 9 : 7);
+    Audio_.hit();
+    if (this.hp <= 0) { this.die(); return; }
+    if (this.phase === 1 && this.hp <= this.maxHp * 0.5) this.breach();
+  }
+  breach() {
+    if (this.phase === 2) return;
+    this.phase = 2;
+    this.setState('breach');
+    this.motes.length = 0;
+    Audio_.roar(); G.shake(20);
+    G.banner('IT COMES UP', '#8ae6ff', 2.4, 'Now you can see it');
+    G.particles.splash(this.x, this.y, 6); G.ocean.ripple(this.x, this.y, 240, 360, 1);
+    Toon.burst(this.x, this.y, 5); Toon.shock(this.x, this.y, 280, 0.9);
+    for (const pr of G.projectiles) if (pr.owner === 'player') pr.dead = true;
+  }
+  die() {
+    if (this.dead) return;
+    this.dead = true; this.wake.dead = true;
+    this.motes.length = 0; this.snaps.length = 0; this.drift.length = 0;
+    this.dark = 0;
+    for (const pr of G.projectiles) if (pr.anglerTooth) pr.dead = true;
+    G.particles.explode(this.x, this.y, 100, { debris: 28, debrisColors: ['#1d2634', '#3b4a60', '#86a9c0', '#e8eef5'] });
+    G.particles.blood(this.x, this.y, 4); G.ocean.splatBlood(this.x, this.y, 5, 80); G.shake(24);
+    Toon.burst(this.x, this.y, 5); Toon.shock(this.x, this.y, 260, 0.9);
+    for (let i = 0; i < 3; i++) setTimeout(() => {
+      if (!G || !G.particles) return;
+      G.particles.explode(this.x + rand(-40, 40), this.y + rand(-34, 34), 50);
+      G.particles.blood(this.x + rand(-30, 30), this.y + rand(-30, 30), 3);
+    }, 250 + i * 300);
+    const drops = { metal: 8, wood: 8, fuel: 12, powder: 10, tech: 16 };
+    for (const k in drops) for (let i = 0; i < drops[k]; i++) G.pickups.push(new Pickup(this.x, this.y, k));
+    if (G.stats) G.stats.kills++;
+    if (G.onBossKilled) G.onBossKilled();
+  }
+
+  // ------------------------------------------------------------- render
+  render(ctx, cam, t) {
+    if (this.dead) return;
+    const A = this.art, p = G.player;
+    const sx = Math.round(this.x - cam.x), sy = Math.round(this.y - cam.y);
+    const p2 = this.phase === 2;
+    const bob = Math.round(Math.sin(t * 1.6 + this.bob) * 1);
+
+    // ---------------- the animal itself, drawn UNDER the dark so the dark
+    // is what decides how much of it you get to see
+    if (!this.submerged) {
+      const lit = p2 || this.surf > 0.3;
+      const body = this.flash > 0 ? A.bodyHurt : (lit ? A.bodyLit : A.body);
+      const jaw = lit ? A.jawLit : A.jaw;
+      ctx.save();
+      ctx.translate(sx, sy + bob);
+      ctx.rotate(this.angle);
+      const swim = 1 + Math.sin(t * 3 + this.bob) * 0.02;
+      ctx.scale(this.state === 'bite' ? 1.08 : 1, swim * (0.86 + this.surf * 0.14));
+      ctx.drawImage(body.c, -body.ax, -body.ay);
+      if (this.mouth > 0.05) {
+        // the gullet: a hard black wedge between the jaws, bounded by them,
+        // so an open mouth reads as a hole rather than as water
+        const oa = this.mouth * 0.85, L = 42;
+        const tx = 26 + Math.cos(oa) * L, ty = 5 + Math.sin(oa) * L;
+        triFill(ctx, '#02040a', 20, 0, tx, -ty, tx, ty);
+        triFill(ctx, '#160c14', 24, 0, tx - 6, -ty * 0.62, tx - 6, ty * 0.62);
+      }
+      // the jaws hinge open at the front of the head
+      for (const s of [-1, 1]) {
+        ctx.save();
+        ctx.translate(26, s * 5);
+        ctx.scale(1, -s);                 // upper and lower jaw are one sprite
+        ctx.rotate(-this.mouth * 0.85);
+        ctx.drawImage(jaw.c, -jaw.ax, -jaw.ay);
+        ctx.restore();
+      }
+      ctx.restore();
+    } else {
+      // submerged: a darker patch of water and a rising column of bubbles
+      bxDisc(ctx, sx, sy, 44, 'rgba(2,6,14,0.55)', 0.6);
+      bxDisc(ctx, sx, sy, 26, 'rgba(2,6,14,0.5)', 0.6);
+    }
+
+    // ---------------- the lure and its stalk, over the body, under the dark
+    if (this.lureLit) this.renderLure(ctx, cam, t, false);
+
+    // ---------------- THE DARK
+    const lights = [];
+    if (this.lureLit) lights.push({ x: this.lure.x, y: this.lure.y, r: this.lure.r, s: 1 });
+    if (!p.dead) lights.push({ x: p.x, y: p.y, r: p2 ? 104 : 86, s: 0.66 });
+    for (const m of this.motes) {
+      const k = m.t / m.dur;
+      lights.push({ x: m.x, y: m.y, r: 58 + (k > 0.6 ? 20 : 0), s: 0.55 });
+    }
+    for (const pr of G.projectiles) if (pr.anglerTooth || pr.owner === 'player') lights.push({ x: pr.x, y: pr.y, r: 30, s: 0.4 });
+    if (this.state === 'biteWind' || this.state === 'bite') lights.push({ x: this.x + Math.cos(this.angle) * 30, y: this.y + Math.sin(this.angle) * 30, r: 110 * this.mouth, s: 0.85 });
+    if (this.surf > 0.3) lights.push({ x: this.x, y: this.y, r: 70 * this.surf, s: 0.45 });
+    angDarkness(ctx, cam, lights, this.dark);
+
+    // ---------------- everything from here is drawn ON the dark: it is the
+    // light, so it is the only thing you can see when the bay is black
+    if (this.lureLit) this.renderLure(ctx, cam, t, true);
+
+    // the drag: motes of her own light peeling off toward the lure
+    for (const m of this.drift) {
+      const k = 1 - m.t / m.dur;
+      ctx.fillStyle = k > 0.6 ? '#dff6ff' : k > 0.3 ? '#8ae6ff' : '#3aa6d8';
+      ctx.fillRect(Math.round(m.x - cam.x), Math.round(m.y - cam.y), 2, 2);
+    }
+
+    // the little lights that are teeth
+    for (const m of this.motes) {
+      const k = m.t / m.dur, arm = k > 0.6;
+      const mx = Math.round(m.x - cam.x), my = Math.round(m.y - cam.y);
+      const blink = Math.sin(t * 30) > 0;
+      const col = arm ? (blink ? '#ffffff' : '#ff6161') : '#8ae6ff';
+      const r = arm ? 5 + Math.round((k - 0.6) * 14) : 3;
+      bxDisc(ctx, mx, my, r + 2, arm ? 'rgba(255,97,97,0.35)' : 'rgba(138,230,255,0.25)', 1);
+      bxDisc(ctx, mx, my, r, col, 1);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(mx - 1, my - 1, 2, 2);
+      if (arm) mbRing(ctx, mx, my, 16 + Math.round((1 - (k - 0.6) / 0.4) * 14), blink ? '#ffffff' : '#ff6161', 28, 1, t * 3, 3);
+    }
+    // a mote that has gone off: the teeth you never saw, closing
+    for (const s of this.snaps) {
+      const k = clamp(s.t / 0.3, 0, 1);
+      const mx = Math.round(s.x - cam.x), my = Math.round(s.y - cam.y);
+      const gap = Math.round(20 * (1 - k)) + 3;
+      for (const side of [-1, 1]) {
+        const a = s.a + (side > 0 ? 0 : Math.PI);
+        bxTeeth(ctx, mx + Math.cos(a) * gap, my + Math.sin(a) * gap, 10, a + 2.0, a + 4.28, 5, 9, '#f8fbff', '#02040a');
+      }
+    }
+
+    // the bite telegraph: the jaw lights up in the dark before it comes
+    if (this.state === 'biteWind') {
+      const k = clamp(this.stateT / this.windDur, 0, 1), hot = k > 0.7;
+      const a = this.biteAng;
+      const col = hot && Math.sin(t * 40) > 0 ? '#ffffff' : '#ff6161';
+      mbDashLine(ctx, sx, sy, sx + Math.cos(a) * 520, sy + Math.sin(a) * 520, t, col, '#8ae6ff', 3);
+      const jx = sx + Math.cos(a) * 30, jy = sy + Math.sin(a) * 30;
+      for (const s of [-1, 1]) {
+        const ja = a + s * (0.18 + k * 0.62);
+        bxTeeth(ctx, jx, jy, 56, ja - s * 0.55, ja + s * 0.05, 7, 12, hot ? '#ffffff' : '#dff6ff', '#02040a');
+        mbArcDots(ctx, jx, jy, 56, Math.min(ja - s * 0.55, ja + s * 0.05), Math.max(ja - s * 0.55, ja + s * 0.05), col, 0, 2);
+      }
+      mbRing(ctx, jx, jy, Math.round(62 - k * 18), col, 50, 1, -t * 2, 4);
+    }
+    // the tell that it is under her
+    if (this.state === 'under' || this.state === 'surge') {
+      const k = this.state === 'surge' ? clamp(this.stateT / 0.42, 0, 1) : clamp((this.stateT - 0.4) / 1.4, 0, 1);
+      if (k > 0) {
+        const blink = Math.sin(t * 34) > 0;
+        mbRing(ctx, sx, sy, Math.round(24 + k * 58), blink ? '#ffffff' : '#8ae6ff', 46, 0.72, t * 1.6, 3);
+        mbRing(ctx, sx, sy, Math.round(14 + k * 34), '#3aa6d8', 34, 0.72, -t * 1.2, 4);
+        for (let q = 0; q < 8; q++) {
+          const a = t * 1.5 + q / 8 * TAU;
+          ctx.fillStyle = blink ? '#dff6ff' : '#3aa6d8';
+          ctx.fillRect(Math.round(sx + Math.cos(a) * (30 + k * 40)), Math.round(sy + Math.sin(a) * (30 + k * 40) * 0.72), 2, 2);
+        }
+      }
+    }
+    if (this.state === 'breach') {
+      const k = clamp(this.stateT / 1.8, 0, 1);
+      mbRing(ctx, sx, sy, Math.round(40 + k * 150), '#dff6ff', 60, 0.76, t * 0.5, 3);
+      mbRing(ctx, sx, sy, Math.round(20 + k * 90), '#8ae6ff', 44, 0.76, -t * 0.7, 4);
+    }
+    if (this.exposed) for (let i = 0; i < 3; i++) { const a = t * 5 + i * TAU / 3; drawSprite(ctx, SP.star, sx + Math.cos(a) * 30, sy - 44 + Math.sin(a) * 7); }
+  }
+  renderLure(ctx, cam, t, over) {
+    const lx = Math.round(this.lure.x - cam.x), ly = Math.round(this.lure.y - cam.y);
+    const hx = Math.round(this.x - cam.x + Math.cos(this.angle) * 18), hy = Math.round(this.y - cam.y + Math.sin(this.angle) * 18);
+    if (!over) {
+      // the stalk, under the dark: it is meat, not light
+      const nx = -(ly - hy), ny = (lx - hx), nl = Math.hypot(nx, ny) || 1;
+      const b1x = hx + (lx - hx) * 0.36 + nx / nl * 10, b1y = hy + (ly - hy) * 0.36 + ny / nl * 10;
+      const b2x = hx + (lx - hx) * 0.74 + nx / nl * 7, b2y = hy + (ly - hy) * 0.74 + ny / nl * 7;
+      bxLimb(ctx, hx, hy, b1x, b1y, 6, 5, '#1d2634', '#3b4a60', '#02040a');
+      bxLimb(ctx, b1x, b1y, b2x, b2y, 5, 4, '#2a3648', '#51637d', '#02040a');
+      this._stalk = [b2x, b2y];
+      return;
+    }
+    // the last of the stalk is inside the lure's own light, so it is drawn
+    // over the dark: a hard black stem with a lit edge, hanging into the glow
+    if (this._stalk) {
+      const red = this.state === 'biteWind' || this.state === 'bite';
+      bxLimb(ctx, this._stalk[0], this._stalk[1], lx, ly, 5, 3, '#0b1018', red ? '#ff8a6a' : '#3aa6d8', '#02040a');
+    }
+    const pulse = 0.82 + Math.sin(t * 3.1) * 0.18;
+    const red = this.state === 'biteWind' || this.state === 'bite';
+    const r = Math.round((this.phase === 2 ? 9 : 7) * pulse);
+    // posterized halo: hard bands, no gradient anywhere
+    const bands = red
+      ? ['rgba(255,97,97,0.16)', 'rgba(255,97,97,0.26)', 'rgba(255,160,120,0.42)', '#ff8a6a', '#ffd7c0', '#ffffff']
+      : ['rgba(58,166,216,0.14)', 'rgba(58,166,216,0.24)', 'rgba(138,230,255,0.40)', '#3aa6d8', '#8ae6ff', '#ffffff'];
+    for (let i = 0; i < bands.length; i++) {
+      const rr = Math.round(r * (1 + (bands.length - 1 - i) * 0.85));
+      bxDisc(ctx, lx, ly, rr, bands[i], 1);
+    }
+    // four hard spokes of light, in the game's own dashed idiom
+    for (let q = 0; q < 4; q++) {
+      const a = t * 0.8 + q / 4 * TAU;
+      for (let s = 1; s < 5; s++) {
+        const rr = r * 2 + s * 5;
+        ctx.fillStyle = s < 3 ? (red ? '#ffd7c0' : '#8ae6ff') : (red ? 'rgba(255,138,106,0.5)' : 'rgba(58,166,216,0.5)');
+        ctx.fillRect(Math.round(lx + Math.cos(a) * rr), Math.round(ly + Math.sin(a) * rr), 2, 2);
+      }
+    }
+    mbRing(ctx, lx, ly, Math.round(r * 3.2), red ? '#ff8a6a' : '#3aa6d8', 30, 1, -t * 0.6, 3);
+  }
+}
+
+// ===========================================================================
+//  THE ROSTER  —  what game.js and waves.js pick a boss out of.
+//  makeBoss('chief', x, y, d) returns exactly what `new Boss(x, y)` returns,
+//  so the Chief fight is untouched.
+// ===========================================================================
+const BOSS_TYPES = {
+  chief: {
+    key: 'chief', name: 'THE VILLAGE CHIEF', sub: 'He rides a shark. Bait his charge into the rocks',
+    hp: 1500, color: '#ff6161', radius: 26,
+    obj: 'Bait the Chief into the rocks, then hit him while he is down',
+    make: (x, y) => new Boss(x, y),
+  },
+  crab: {
+    key: 'crab', name: 'THE GREATCLAW', sub: 'Armoured in front. Get behind it and crack the shell',
+    hp: 1700, color: '#e08a44', radius: 46,
+    obj: 'Crack the shell, then take the claws off it',
+    make: (x, y, d) => new CrabBoss(x, y, d),
+  },
+  angler: {
+    key: 'angler', name: 'THE DEEP LANTERN', sub: 'Do not swim toward the light',
+    hp: 1500, color: '#8ae6ff', radius: 48,
+    obj: 'Shoot the lure. Do not follow it',
+    make: (x, y, d) => new AnglerBoss(x, y, d),
+  },
+};
+
+function makeBoss(key, x, y, difficulty) {
+  const c = BOSS_TYPES[key || 'chief'];
+  if (!c) return null;
+  return c.make(x, y, difficulty === undefined ? 1 : difficulty);
+}
+
+globalThis.Boss = Boss;
+globalThis.CrabBoss = CrabBoss;
+globalThis.AnglerBoss = AnglerBoss;
+globalThis.BOSS_TYPES = BOSS_TYPES;
+globalThis.makeBoss = makeBoss;
