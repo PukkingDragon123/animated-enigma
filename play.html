@@ -21832,7 +21832,7 @@ const UI = {
   const DEST = [
     {
       name: 'FISHER VILLAGE', chapter: 'I', kind: 'village', x: 176, y: 218, lab: 'below', threat: 0.22,
-      blurb: 'Where they took her. The nets still hang wet on the racks, and every hut on that pier keeps a gun behind the door.',
+      blurb: 'Where they loaded him out. The nets still hang wet on the racks, and every hut on that pier keeps a gun behind the door.',
       foes: ['dinghy', 'netter', 'harpooner'], need: null, note: 'HUTS ON PILES. A SHINGLE BEACH.',
     },
     {
@@ -23359,7 +23359,7 @@ const UI = {
     { l: ['GOOD KELP.', 'HIDE IN IT.'], x: 306, y: 206, c: 'green' },
     { l: ['THEY WATCH FROM', 'THIS HEADLAND'], x: 420, y: 100, c: 'violet' },
     { l: ['NO BOTTOM FOUND', 'AT 90 FATHOM'], x: 542, y: 140, c: 'blue' },
-    { l: ['TIDE TURNS AT DUSK'], x: 96, y: 240, c: 'green' },
+    { l: ['TIDE TURNS AT DUSK'], x: 96, y: 234, c: 'green' },
     { l: ['COUNTED 9 HULLS'], x: 258, y: 108, c: 'red' },
     { l: ['DO NOT GO BY NIGHT'], x: 502, y: 128, c: 'red' },
   ];
@@ -23584,7 +23584,7 @@ const UI = {
         for (let c = 0; c <= wide; c += 6) {
           for (let r = 0; r < n.l.length; r++) {
             const xi = Math.round(nx + c), yi = Math.round(ty + r * 4);
-            if (xi < IN.x0 || xi > IN.x1 || yi < IN.y0 || yi > IN.y1 || mask[yi * MAP_W + xi]) { ok = false; break; }
+            if (xi < IN.x0 + 8 || xi > IN.x1 - 8 || yi < IN.y0 + 10 || yi > IN.y1 - 12 || mask[yi * MAP_W + xi]) { ok = false; break; }
           }
           if (!ok) break;
         }
@@ -23599,7 +23599,7 @@ const UI = {
     }
 
     // ---- two slips pinned to the sheet
-    pinnedNote(ctx, 92 * SC, 234 * SC, 92, 30, ['SHE IS ALIVE.', 'THEY TOOK HER EAST.'], 0.06);
+    pinnedNote(ctx, 92 * SC, 234 * SC, 92, 30, ['HE IS ALIVE.', 'THEY TOOK HIM EAST.'], 0.06);
     pinnedNote(ctx, 494 * SC, 36 * SC, 86, 30, ['SIX PORTS.', 'THEN THE CHIEF.'], -0.05);
 
     // ---- ink blots and a thumbprint, because she was in a hurry
