@@ -1166,7 +1166,7 @@
       const col = BRANCHES[this.branchIndex(n)].color;
       this.grow[n.id] = 0;
       this.socketSparks(p.x, p.y);
-      this.labels.push({ text: '+ ' + n.name, x: p.x, y: p.y - 16, t: 0, color: col });
+      this.labels.push({ text: '+ ' + n.name, x: p.x, y: p.y - 34, t: 0, color: col });
       this._limbKey = null;
       if (typeof G !== 'undefined' && G && G.particles && G.player && G.particles.text) {
         try { G.particles.text(G.player.x, G.player.y - 24, n.name + '!', '#6fd88e', 8); } catch (e) { /* cosmetic only */ }
@@ -1513,18 +1513,19 @@
         R(ctx, on || hv ? '#a4813d' : '#66512c', x + 1, y + 1, BANNER_W - 2, 1);
         R(ctx, '#2a2011', x + 1, y + BANNER_H - 2, BANNER_W - 2, 1);
         R(ctx, b.color, x + 1, y + 1, 2, BANNER_H - 2);
-        for (const sx of [x + BANNER_W - 4, x + 2]) { R(ctx, '#1a140a', sx, y + 2, 3, 3); R(ctx, '#c3c9d3', sx, y + 2, 2, 2); }
+        for (const sx of [x + 2]) { R(ctx, '#1a140a', sx, y + 2, 3, 3); R(ctx, '#c3c9d3', sx, y + 2, 2, 2); }
+        R(ctx, '#1a140a', x + BANNER_W - 5, y + BANNER_H - 5, 3, 3); R(ctx, '#c3c9d3', x + BANNER_W - 5, y + BANNER_H - 5, 2, 2);
         drawSprite(ctx, SP[b.icon], x + 6, y + 2);
         pixelText(ctx, b.name, x + 15, y + 1, 6, on || hv ? '#fff6d2' : b.color, 'left', false);
         const pw = BANNER_W - 44;
         R(ctx, '#140f08', x + 15, y + 9, pw, 5);
         R(ctx, '#241a0e', x + 16, y + 10, pw - 2, 3);
         R(ctx, b.color, x + 16, y + 10, Math.round((pw - 2) * have / nodes.length), 3);
-        pixelText(ctx, have + '/' + nodes.length, x + BANNER_W - 5, y + 8, 5, '#e8d6ac', 'right', false);
+        pixelText(ctx, have + '/' + nodes.length, x + BANNER_W - 7, y + 8, 5, '#e8d6ac', 'right', false);
         if (ready) {
           const f = Math.floor(T * 3) % 2;
-          R(ctx, '#14141c', x + BANNER_W - 10, y + 8, 6, 6);
-          R(ctx, f ? '#b6f5cd' : '#6fd88e', x + BANNER_W - 9, y + 9, 4, 4);
+          R(ctx, '#14141c', x + BANNER_W - 9, y + 1, 7, 7);
+          R(ctx, f ? '#b6f5cd' : '#6fd88e', x + BANNER_W - 8, y + 2, 5, 5);
         }
         ctx.globalAlpha = 1;
       }

@@ -127,7 +127,7 @@ function buildTopArt() {
   A.bloodDisc = [];
   for (let i = 0; i < 15; i++) {
     const r = 4 + i * 4;
-    A.bloodDisc.push(bakeDisc(r, r * 0.74, [DP.blood[0], DP.blood[1], DP.blood[2], DP.blood[3], DP.blood[1], DP.blood[0]]));
+    A.bloodDisc.push(bakeDisc(r, r * 0.74, [DP.blood[3], DP.blood[2], DP.blood[2], DP.blood[1], DP.blood[0]]));
   }
   A.darkDisc = [];
   for (let i = 0; i < 10; i++) { const r = 8 + i * 8; A.darkDisc.push(bakeDisc(r, r * 0.60, ['#040a14', '#08121f', '#0d1c2c'])); }
@@ -253,7 +253,7 @@ const MA = {
   wound:  [-14,-16],   // the gash he stitches, running down her shoulder
   plate:  [ 10,-25],   // where the torn steel plate goes back on
   strap:  [ 32,-17],   // the harness strap, bolted back down
-  band:   [ 52, -6],   // the bandage, around the tail stock
+  band:   [ 42, -8],   // the bandage, around the tail stock
   chest:  [-30,-14],   // where he presses to pump the water out
   tailX:  [ 30,  0],
   shoX:   [-30, 17],
@@ -712,6 +712,66 @@ function buildBeach() {
     for (let i = 0; i < 6; i++) P(x, DP.fire[(fr + i) % 2 ? 2 : 1], 6 + i * 3, 36, 2, 1);
     A.flame.push(spr(c, 15, 38));
   }
+  // ---- shadows, baked once
+  A.herShadow = bakeDisc(68, 11, ['#0e0a12', '#171120', '#211929']);
+  A.logShadow = bakeDisc(58, 7, ['#0e0a12', '#171120']);
+
+  // ---- the surf, baked as one looping cycle of frames.  Rasterizing this
+  //      per frame cost more than everything else in the scene put together.
+  const SURF_TOP = SANDY - 40, SURF_H = 86;
+  A.surfTop = SURF_TOP; A.surfPer = 4.2;
+  A.surf = [];
+  const SN = 28;
+  for (let fr = 0; fr < SN; fr++) {
+    const T = fr / SN * A.surfPer;
+    const c = can(640, SURF_H), x = cx2(c);
+    const img = x.createImageData(640, SURF_H), d = img.data;
+    const put = (px, py, hex, a) => {
+      if (px < 0 || px > 639 || py < 0 || py >= SURF_H) return;
+      const col = hexToRgb(hex), i = (py * 640 + px) * 4;
+      const al = Math.max(0, Math.min(1, a));
+      d[i] = col[0] * al + d[i] * (1 - al);
+      d[i + 1] = col[1] * al + d[i + 1] * (1 - al);
+      d[i + 2] = col[2] * al + d[i + 2] * (1 - al);
+      d[i + 3] = Math.min(255, d[i + 3] + 255 * al);
+    };
+    for (let w = 0; w < 3; w++) {
+      const ph = ((T / A.surfPer) + w / 3) % 1;
+      const reach = Math.pow(Math.sin(ph * Math.PI), 0.7);
+      const y0 = (SANDY - 30 + w * 12) + reach * (20 + w * 7) - SURF_TOP;
+      const bright = 0.45 + reach * 0.55;
+      for (let px = 0; px < 640; px++) {
+        const n = vnoise(px * 0.015 + w * 5, T * 0.25 + w);
+        const gap = vnoise(px * 0.008 + w * 11, T * 0.1);
+        if (gap < 0.30) continue;
+        const wob = Math.sin(px * 0.031 + T * (1.2 + w * 0.35) + w * 2) * 3.0 + (n - 0.5) * 7;
+        const y = R(y0 + wob);
+        const thick = 1 + (n > 0.58 ? 1 : 0) + (n > 0.78 ? 1 : 0);
+        for (let q = 0; q < thick; q++) put(px, y + q, DP.foam[3], bright);
+        put(px, y + thick, DP.foam[2], bright * 0.8);
+        const run = R(reach * (12 + w * 5));
+        for (let q = 1; q < run; q++) {
+          const a = (1 - q / run) * 0.55 * bright;
+          if (bay(px, y + q) < a) put(px, y + thick + q, DP.foam[q > run * 0.6 ? 0 : 1], a + 0.25);
+        }
+        if (n > 0.45) put(px, y - 1, '#0a1522', 0.45);
+      }
+    }
+    x.putImageData(img, 0, 0);
+    A.surf.push(c);
+  }
+  // ---- swell lines out on the water, as scrolling 640-wide strips
+  A.swell = [];
+  for (let i = 0; i < 7; i++) {
+    const c = can(640, 2), x = cx2(c);
+    const u = i / 6;
+    for (let px = 0; px < 640; px++) {
+      const n = vnoise(px * 0.022, i * 4.1);
+      if (n > 0.70 - u * 0.10) P(x, rgbaq(DP.foam[u > 0.6 ? 2 : 1], 0.35 + u * 0.35), px, 0, 1 + (n > 0.84 ? 2 : 0), 1);
+    }
+    A.swell.push(c);
+  }
+
   // ---- firelight pool on the sand (three intensities)
   A.pool = [];
   for (let i = 0; i < 3; i++) {
@@ -780,10 +840,10 @@ const K2 = {
 };
 const HER = { x: 342, y: 256, feet: 324 };
 const SHORE_LINES = [
-  [0.45, 2.7, 'he would not let go.'],
-  [5.70, 1.6, 'breathe, you stubborn old cow.'],
-  [8.15, 1.4, 'not like this. not tonight.'],
-  [9.95, 1.8, '...aye. again, then.'],
+  [0.45, 1.9, 'he would not let go.'],
+  [5.65, 1.2, 'breathe, you stubborn old cow.'],
+  [8.10, 1.2, 'not like this. not tonight.'],
+  [9.95, 1.6, '...aye. again, then.'],
 ];
 
 // =========================================================================
@@ -807,11 +867,22 @@ const DeathScene = {
     const mb = buildManateeSide();
     A.man = flipSprite(spr(mb.c, mb.ax, mb.ay));           // she faces LEFT
     A.fluke = flipSprite(buildSideFluke(ML));
-    A.flip = flipSprite(buildSideFlipper(ML, DP.man));
-    A.flipFar = flipSprite(buildSideFlipper(ML * 0.82, [DP.man[0], DP.man[0], DP.man[1], DP.man[1], DP.man[2]]));
+    A.flip = flipSprite(buildSideFlipper(ML * 0.66, DP.man));
+    A.flipFar = flipSprite(buildSideFlipper(ML * 0.56, [DP.man[0], DP.man[0], DP.man[1], DP.man[1], DP.man[2]]));
     buildOtterSide();
     buildTools();
     buildBeach();
+    // Warm every baked canvas by drawing it once now, at build time, so the
+    // first frame of the shore does not pay for uploading them all at once.
+    {
+      const wc = cx2(can(8, 8));
+      const warm = o => { if (!o) return; const c = o.c || o; if (c && c.width) wc.drawImage(c, 0, 0, c.width, c.height, 0, 0, 8, 8); };
+      for (const k in A) {
+        const v = A[k];
+        if (Array.isArray(v)) v.forEach(warm); else warm(v);
+      }
+      if (typeof CH !== 'undefined') { warm(CH.manateeArmor); warm(CH.manateeHurt); warm(CH.flipper); warm(CH.otterTorso); warm(CH.otterHead); warm(CH.otterArm); warm(CH.otterTail); }
+    }
     BUILT = true;
   },
 
@@ -947,8 +1018,8 @@ const DeathScene = {
     } else o.sink = 0;
 
     // ---- camera push-in, colour drain, vignette, fade
-    this.zoom = 1 + Math.pow(Math.min(1, T / K1.under), 0.8) * 0.85;
-    this.drain = clamp((T - 0.35) / 3.6, 0, 1) * 0.52;
+    this.zoom = 1 + Math.pow(Math.min(1, T / K1.under), 0.8) * 0.16;
+    this.drain = clamp((T - 0.30) / 2.4, 0, 1) * 0.74;
     this.vign = clamp((T - 0.5) / 3.2, 0, 1);
     if (T > K1.fade) this.fade = clamp((T - K1.fade) / (K1.end - K1.fade - 0.1), 0, 1);
     if (T >= K1.under) this.worldActive = this.fade < 0.995;
@@ -1039,17 +1110,20 @@ const DeathScene = {
     ctx.translate(R(fx), R(fy)); ctx.scale(z, z); ctx.translate(-R(fx), -R(fy));
 
     // ---- blood on the water, under everything
+    const rec = this._stainScreen = [];
     for (const s of this.stains) {
       const sx = s.x - cam.x, sy = s.y - cam.y;
       if (sx < -120 || sy < -120 || sx > 760 || sy > 480) continue;
       ctx.globalAlpha = qa(s.a * 0.98);
-      const bd = A.bloodDisc[clamp(Math.round((s.r - 4) / 4), 0, A.bloodDisc.length - 1)];
+      const bi = clamp(Math.round((s.r - 4) / 4), 0, A.bloodDisc.length - 1);
+      const bd = A.bloodDisc[bi];
       ctx.drawImage(bd.c, R(sx) - bd.ax, R(sy) - bd.ay);
       ctx.globalAlpha = 1;
+      if (rec.length < 24 && s.r > 12) rec.push([R(fx + (sx - fx) * z), R(fy + (sy - fy) * z), bi, s.a]);
     }
     // a dark deep-water hole opening beneath her as she goes down
     if (m.sink > 0) {
-      ctx.globalAlpha = qa(m.sink * 0.85);
+      ctx.globalAlpha = qa(m.sink * 0.65);
       const dd = A.darkDisc[clamp(Math.round(((26 + m.sink * 40) - 8) / 8), 0, A.darkDisc.length - 1)];
       ctx.drawImage(dd.c, R(cx) - dd.ax, R(cy + 6) - dd.ay);
       ctx.globalAlpha = 1;
@@ -1069,7 +1143,7 @@ const DeathScene = {
     if (typeof CH !== 'undefined' && CH.manateeArmor) {
       ctx.save();
       const sk = 1 - m.sink * 0.30;
-      ctx.globalAlpha = qa(1 - m.sink * 0.50);
+      ctx.globalAlpha = qa(1 - m.sink * 0.28);
       const RS = rigScale() * sk;
       ctx.translate(R(cx), R(cy - (m.lift || 0) + m.sink * 5));
       ctx.scale(RS, RS);
@@ -1082,7 +1156,7 @@ const DeathScene = {
       ctx.globalAlpha = 1;
       // as she goes under, silhouette her against the dark
       if (m.sink > 0.35) {
-        ctx.globalAlpha = qa((m.sink - 0.35) * 0.9);
+        ctx.globalAlpha = qa((m.sink - 0.35) * 0.45);
         const sd = A.sinkDisc[clamp(Math.round((42 * (1 - m.sink * 0.3) - 14) / 6), 0, A.sinkDisc.length - 1)];
         ctx.drawImage(sd.c, R(cx) - sd.ax, R(cy + m.sink * 5) - sd.ay);
         ctx.globalAlpha = 1;
@@ -1091,11 +1165,12 @@ const DeathScene = {
 
     // ---- him
     const ox = o.x - cam.x, oy = o.y - cam.y;
+    this._irisX = R(lerp(fx, ox, 0.6)); this._irisY = R(lerp(fy, oy, 0.6));
     const osk = 1 - (o.sink || 0) * 0.3;
     drawOtterTop(ctx, {
       x: ox, y: oy + (o.sink || 0) * 4, ang: o.ang, s: rigScale() * 0.66 * osk,
       exp: o.exp, arms: [o.armA === undefined ? 0.9 : o.armA, o.armB === undefined ? -0.9 : o.armB],
-      alpha: 1 - (o.sink || 0) * 0.5,
+      alpha: 1 - (o.sink || 0) * 0.22,
       headR: o.state === 'hold' ? Math.sin(T * 9) * 0.12 : 0,
     }, t);
     // the grip: two knuckle-white paws on her harness
@@ -1143,19 +1218,50 @@ const DeathScene = {
       }
       // a cold blue cast over the drained image
       P(ctx, rgbaq('#0a1424', this.drain * 0.30), 0, 0, 640, 360);
-    }
-    // blood-red bloom at the edges early on, then black vignette
-    if (this.vign > 0.02) {
-      const red = clamp(1 - this.t / 2.6, 0, 1);
-      for (let i = 0; i < 12; i++) {
-        const inset = i * 7;
-        const a = qa(this.vign * (0.055 + i * 0.012));
-        const col = red > 0.2 ? mixHex('#000000', '#3a0810', red * 0.8) : '#000000';
-        ctx.fillStyle = rgbaq(col, a);
-        ctx.fillRect(0, inset, 640, 1); ctx.fillRect(0, 359 - inset, 640, 1);
-        ctx.fillRect(inset, 0, 1, 360); ctx.fillRect(639 - inset, 0, 1, 360);
+      // ...but the blood stays red.  The world layer and this logical screen
+      // share one 1:1 grid in this game, so the positions recorded by
+      // renderWorld land in the right place; if it was never called we skip.
+      const rec = this._stainScreen;
+      if (rec && rec.length && this.worldActive) {
+        ctx.globalCompositeOperation = 'color';
+        if (ctx.globalCompositeOperation === 'color') {
+          for (const [bx, by, bi, ba] of rec) {
+            const bd = A.bloodDisc[bi];
+            ctx.globalAlpha = qa(ba * this.drain * 0.8);
+            ctx.drawImage(bd.c, bx - bd.ax, by - bd.ay);
+          }
+        }
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
       }
     }
+    // the frame closes down on the two of them: a hard-edged iris, drawn as
+    // black rows either side of the opening, with a dithered rim
+    const T = this.t;
+    const k = clamp((T - K1.swim) / (K1.fade - K1.swim), 0, 1);
+    const rad = lerp(340, 84, Math.pow(k, 1.25));
+    const icx = R(lerp(320, this._irisX === undefined ? 320 : this._irisX, 0.45));
+    const icy = R(lerp(180, this._irisY === undefined ? 180 : this._irisY, 0.45));
+    const red = clamp(1 - T / 2.4, 0, 1);
+    const frame = red > 0.15 ? mixHex('#000000', '#3a0810', red * 0.75) : '#000000';
+    const soft = clamp(this.vign, 0, 1);
+    ctx.fillStyle = frame;
+    for (let y = 0; y < 360; y++) {
+      const dy = (y - icy) / (rad * 0.62);
+      const hw = Math.abs(dy) >= 1 ? -1 : rad * Math.sqrt(1 - dy * dy);
+      if (hw < 0) { ctx.globalAlpha = qa(0.92 * soft + 0.08); ctx.fillRect(0, y, 640, 1); continue; }
+      ctx.globalAlpha = qa(0.92 * soft + 0.08);
+      const l = Math.floor(icx - hw), r = Math.ceil(icx + hw);
+      if (l > 0) ctx.fillRect(0, y, l, 1);
+      if (r < 640) ctx.fillRect(r, y, 640 - r, 1);
+      // a dithered rim so the opening never reads as a clean vector circle
+      ctx.globalAlpha = qa(0.5 * soft);
+      for (let q = 0; q < 7; q++) {
+        if (bay(l + q, y) < 0.6 - q * 0.09) ctx.fillRect(l + q, y, 1, 1);
+        if (bay(r - q, y) < 0.6 - q * 0.09) ctx.fillRect(r - q - 1, y, 1, 1);
+      }
+    }
+    ctx.globalAlpha = 1;
     this.letterbox(ctx, clamp(this.t / 0.8, 0, 1));
     if (this.fade > 0) P(ctx, rgbaq('#000000', this.fade), 0, 0, 640, 360);
   },
@@ -1223,11 +1329,11 @@ const DeathScene = {
     // ------------------------------------------------------------- text
     this.letterbox(ctx, 1);
     for (const [at, dur, line] of SHORE_LINES) {
-      if (T < at || T > at + dur + 1.4) continue;
+      if (T < at || T > at + dur + 0.7) continue;
       const prog = T - at;
       const n = Math.max(0, Math.min(line.length, Math.floor(prog * 34)));
       const shown = line.slice(0, n);
-      const a = T > at + dur ? qa(1 - (T - at - dur) / 1.4) : 1;
+      const a = T > at + dur ? qa(1 - (T - at - dur) / 0.7) : 1;
       ctx.globalAlpha = a;
       pixelTextOutlined(ctx, shown, 320, 344, 8, '#e8eef4', '#000000', 'center');
       if (n < line.length && (Math.floor(prog * 8) & 1)) P(ctx, '#e8eef4', 320 + R(textWidth(shown, 8) / 2) + 2, 345, 4, 7);
@@ -1241,47 +1347,21 @@ const DeathScene = {
     if (this.fade > 0) P(ctx, rgbaq('#000000', this.fade), 0, 0, 640, 360);
   },
 
-  // ---- rolling surf on the sand -----------------------------------------
+  // ---- rolling surf on the sand (baked frames, blitted) ------------------
   drawSurf(ctx, T) {
     const SY = A.SANDY, HZ = A.HORIZON;
-    // swell lines out on the water, smaller and denser toward the horizon
+    // swell out on the water: scrolling strips, wrapped
     for (let i = 0; i < 7; i++) {
       const u = i / 6;
       const y = R(HZ + 3 + Math.pow(u, 1.6) * (SY - HZ - 16) + Math.sin(T * 0.6 + i * 1.7) * 1.4);
-      for (let x = 0; x < 640; x++) {
-        const n = vnoise(x * 0.022 + T * (0.18 + u * 0.3), i * 4.1);
-        if (n > 0.70 - u * 0.10) P(ctx, rgbaq(DP.foam[u > 0.6 ? 2 : 1], 0.35 + u * 0.35), x, y, 1 + (n > 0.84 ? 2 : 0), 1);
-      }
+      const off = R(T * (6 + u * 22)) % 640;
+      const c = A.swell[i];
+      ctx.drawImage(c, -off, y);
+      ctx.drawImage(c, 640 - off, y);
     }
-    // three breakers rolling up the sand, each on its own cycle
-    for (let w = 0; w < 3; w++) {
-      const per = 4.1 + w * 0.9, ph = ((T + w * 1.5) % per) / per;
-      const reach = Math.pow(Math.sin(ph * Math.PI), 0.7);
-      const base = SY - 30 + w * 12;
-      const y0 = base + reach * (20 + w * 7);
-      const bright = 0.45 + reach * 0.55;
-      for (let x = 0; x < 640; x++) {
-        // the crest is broken up so it never reads as one straight stripe
-        const n = vnoise(x * 0.015 + w * 5, T * 0.25 + w);
-        const gap = vnoise(x * 0.008 + w * 11, T * 0.1);
-        const wob = Math.sin(x * 0.031 + T * (1.2 + w * 0.35) + w * 2) * 3.0 + (n - 0.5) * 7;
-        const y = R(y0 + wob);
-        if (gap < 0.30) continue;                      // the crest goes flat here
-        const thick = 1 + (n > 0.58 ? 1 : 0) + (n > 0.78 ? 1 : 0);
-        ctx.fillStyle = rgbaq(DP.foam[3], qa(bright));
-        ctx.fillRect(x, y, 1, thick);
-        ctx.fillStyle = rgbaq(DP.foam[2], qa(bright * 0.8));
-        ctx.fillRect(x, y + thick, 1, 1);
-        // the thin wash running up the sand behind the crest
-        const run = R(reach * (12 + w * 5));
-        for (let q = 1; q < run; q++) {
-          const a = (1 - q / run) * 0.55 * bright;
-          if (bay(x, y + q) < a) { ctx.fillStyle = rgbaq(DP.foam[q > run * 0.6 ? 0 : 1], qa(a + 0.25)); ctx.fillRect(x, y + thick + q, 1, 1); }
-        }
-        // the dark, wet lip in front of it
-        if (n > 0.45) { ctx.fillStyle = rgbaq('#0a1522', 0.45); ctx.fillRect(x, y - 1, 1, 1); }
-      }
-    }
+    // the shorebreak
+    const fr = Math.floor(((T % A.surfPer) / A.surfPer) * A.surf.length) % A.surf.length;
+    ctx.drawImage(A.surf[fr], 0, A.surfTop);
   },
 
   // ---- the manatee on the sand ------------------------------------------
