@@ -18,6 +18,8 @@ const VIEW_W = 640, VIEW_H = 360;     // world units visible
 const CROP_X = 0, CROP_Y = 0;
 const ZOOM = HUD_W / VIEW_W;          // world units -> logical interface units (1)
 const WORLD_LAYER_W = VIEW_W * DETAIL, WORLD_LAYER_H = VIEW_H * DETAIL;
+// how long the skip button has to be held down before a cinematic gives way
+const SKIP_HOLD = 1.5;
 
 class Game {
   constructor() {
@@ -90,6 +92,57 @@ class Game {
     UI.banner = null;
     if (!this.firstRun) { this.director.begin(); this.banner('REMATCH', '#ffe48f', 2, 'The village heard you were coming.'); }
   }
+  // ---------------------------------------------------------- skipping
+  // A cutscene is never skipped by a stray tap. You hold the button down and
+  // watch a ring fill; let go early and it drains back. The hold has to START
+  // after the scene does, so a button already down when it begins counts for
+  // nothing.
+  skipArm() { this.skip = { t: 0, locked: true, fired: false }; }
+  skipHeld() {
+    // deliberately NOT space or the mouse: both are combat inputs, and a boss
+    // cinematic interrupts combat. Skipping should never be something you do
+    // by still having your hand on the controls.
+    if (Input.down('Escape') || Input.down('Enter') || Input.down('NumpadEnter')) return true;
+    if (typeof MobileUI !== 'undefined' && MobileUI.enabled && MobileUI.touches && MobileUI.touches.size > 0) return true;
+    return false;
+  }
+  // returns true on the frame the hold completes
+  updateSkip(dt) {
+    if (!this.skip) this.skipArm();
+    const k = this.skip;
+    const held = this.skipHeld();
+    if (k.locked) { if (!held) k.locked = false; k.t = 0; return false; }
+    if (held) {
+      k.t += dt;
+      if (k.t >= SKIP_HOLD && !k.fired) { k.fired = true; k.t = SKIP_HOLD; Audio_.rampage(); return true; }
+    } else {
+      k.t = Math.max(0, k.t - dt * 2.2);   // drains faster than it fills
+    }
+    return false;
+  }
+  drawSkip(ctx) {
+    const k = this.skip; if (!k || k.locked) return;
+    const f = clamp(k.t / SKIP_HOLD, 0, 1);
+    const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+    // clear of the caption line and of the letterbox bars the cinematics use
+    const cx = 596, cy = 312, r = 11;
+    // the prompt sits quiet until you start holding, then lights up
+    const lit = f > 0.01;
+    pixelTextOutlined(ctx, touch ? 'HOLD TO SKIP' : 'HOLD [ESC] TO SKIP', cx - r - 8, cy - 4, 5,
+      lit ? '#ffe48f' : 'rgba(214,226,238,0.72)', 'rgba(8,12,20,0.85)', 'right');
+    // the ring: a hard-edged pixel arc, filling clockwise from the top
+    for (let i = 0; i < 24; i++) {
+      const a = -Math.PI / 2 + (i / 24) * TAU;
+      const on = (i / 24) < f;
+      ctx.fillStyle = on ? '#ffe48f' : 'rgba(200,214,226,0.28)';
+      ctx.fillRect(Math.round(cx + Math.cos(a) * r) - 1, Math.round(cy + Math.sin(a) * r) - 1, 2, 2);
+    }
+    if (f > 0) {
+      ctx.fillStyle = f >= 1 ? '#ffffff' : '#ffe48f';
+      const ir = Math.round(r * 0.45 * f);
+      if (ir > 0) ctx.fillRect(cx - ir, cy - ir, ir * 2, ir * 2);
+    }
+  }
   // ---------------------------------------------------------- progress
   // Called at the moments worth remembering rather than on a timer. Save.save
   // debounces, so calling it freely costs nothing.
@@ -119,6 +172,7 @@ class Game {
     BossCut.start(kind, opts || {});
     if (BossCut.done || !BossCut.active) return false;
     this.cutReturn = this.state === 'cut' ? (this.cutReturn || 'play') : this.state;
+    this.skipArm();
     this.state = 'cut';
     return true;
   }
@@ -187,7 +241,7 @@ class Game {
     this.shake(16); this.endT = 0;
     // she sinks, the otter hauls her out and puts her back together on the
     // shore; the short red fade is only the fallback when that scene is absent
-    if (typeof DeathScene !== 'undefined') { DeathScene.start(this.player.x, this.player.y, this.player.facing); this.state = 'death'; }
+    if (typeof DeathScene !== 'undefined') { DeathScene.start(this.player.x, this.player.y, this.player.facing); this.skipArm(); this.state = 'death'; }
     else this.state = 'dead_wait';
   }
   // ---------------------------------------------------------- loop
@@ -208,7 +262,7 @@ class Game {
         const a = MainMenu.action;
         if (a) {
           MainMenu.consume();
-          if (a === 'play') { this.firstRun = true; this.newRun(); this.runActive = false; Intro.reset(); this.state = 'intro'; }
+          if (a === 'play') { this.firstRun = true; this.newRun(); this.runActive = false; Intro.reset(); this.skipArm(); this.state = 'intro'; }
           else if (a === 'continue' && this.runActive) this.state = 'play';
           else if (a === 'deep') this.openTree('menu');
           else if (a === 'controls') this.showControls = !this.showControls;
@@ -217,6 +271,8 @@ class Game {
       }
       case 'intro':
         Intro.update(dt);
+        // the cinematic itself reads no input; this is the only way past it
+        if (this.updateSkip(dt)) { if (Intro.skip) Intro.skip(); Intro.done = true; }
         if (Intro.done) {
           this.seenIntro = true;
           if (typeof WorldMap !== 'undefined') {
@@ -286,7 +342,7 @@ class Game {
         if (typeof BossCut === 'undefined') { this.state = this.cutReturn || 'play'; break; }
         if (BossCut.worldActive) this.updateWorld(dt * 0.6, true);
         BossCut.update(dt, this.time);
-        if (Input.actHit('fire') || Input.hit('Escape') || Input.hit('Enter')) BossCut.skip();
+        if (this.updateSkip(dt)) BossCut.skip();
         if (BossCut.done) {
           const back = this.cutReturn || 'play'; this.cutReturn = null;
           this.state = back === 'cut' ? 'play' : back;
@@ -299,6 +355,7 @@ class Game {
         // the sinking half still plays out in the world; the shore half does not
         if (DeathScene.worldActive) this.updateWorld(dt * 0.35, true);
         DeathScene.update(dt, this.time);
+        if (this.updateSkip(dt)) DeathScene.skip();
         if (DeathScene.done) this.openTree('gameover');
         break;
       case 'dead_wait':
@@ -413,11 +470,11 @@ class Game {
       }
       this.blit(); return;
     }
-    if (this.state === 'intro') { Intro.render(ctx); this.blit(); return; }
+    if (this.state === 'intro') { Intro.render(ctx); this.drawSkip(ctx); this.blit(); return; }
     if (this.state === 'worldmap') { WorldMap.render(ctx, t); this.blit(); return; }
     // the shore half of the death scene is its own side-on frame: the bay is
     // not in it at all, so nothing of the world is drawn under it
-    if (this.state === 'death' && !DeathScene.worldActive) { DeathScene.renderScreen(ctx, t); this.blit(); return; }
+    if (this.state === 'death' && !DeathScene.worldActive) { DeathScene.renderScreen(ctx, t); this.drawSkip(ctx); this.blit(); return; }
     this.full(ctx);
     const cam = { x: Math.round(this.cam.x + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)), y: Math.round(this.cam.y + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)) };
     const W = this.wctx;
@@ -483,6 +540,7 @@ class Game {
     if (this.state === 'dead_wait') { ctx.fillStyle = `rgba(120,10,20,${Math.min(0.7, this.endT * 0.4).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
     if (this.state === 'death') DeathScene.renderScreen(ctx, this.time);
     if (this.state === 'cut' && typeof BossCut !== 'undefined') BossCut.renderScreen(ctx, this.time);
+    if (this.state === 'death' || this.state === 'cut') this.drawSkip(ctx);
     if (this.state === 'dialogue' && !this.director.started) { /* controls hint in dialogue */ }
     if (typeof MobileUI !== 'undefined' && MobileUI.enabled && (this.state === 'play' || this.state === 'dialogue' || this.state === 'dead_wait' || this.state === 'victory_wait')) MobileUI.render(ctx, t);
     if (Audio_.muted) pixelText(ctx, 'MUTED [M]', 634, 350, 6, '#889', 'right');

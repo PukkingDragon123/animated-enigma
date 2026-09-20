@@ -312,20 +312,25 @@ function buildManateeBody(armored) {
   // The original features, doubled, with the sub-pixels spent on an iris, a
   // lid and a lit brow rather than on making anything bigger.
   for (const ey of [20, 44]) {
-    // heavy-lidded manatee eye: pale lid ring, amber iris, black pupil, glint
+    // A dot eye: one round black bead with a single glint, sitting straight in
+    // the hide. No lid ring, no iris -- the extra pixels go into the roundness
+    // of the bead and a soft socket shadow under it, not into anatomy.
     stamp(ctx, [
-      '..kkkkkkkk..',
-      '.kLLLLLLLLk.',
-      'kLLaaaaaaLLk',
-      'kLaaaeeaaaLk',
-      'kLaaeeeeaaLk',
-      'kLaaeeeeaaLk',
-      'kLaaaeeaaaLk',
-      'kLLaaaaaaLLk',
-      '.kLLLLLLLLk.',
-      '..kkkkkkkk..',
-    ], 117, ey, { k: CPAL.out, L: CPAL.manLL, a: '#5c4326', e: CPAL.eye });
-    px(ctx, CPAL.shine, 121, ey + 3, 2, 2);
+      '...eeeeee...',
+      '..eeeeeeee..',
+      '.eeeeeeeeee.',
+      'eeeeeeeeeeee',
+      'eeeeeeeeeeee',
+      'eeeeeeeeeeee',
+      'eeeeeeeeeeee',
+      '.eeeeeeeeee.',
+      '..eeeeeeee..',
+      '...eeeeee...',
+    ], 117, ey, { e: CPAL.eye });
+    // the glint, high and left, the way a wet bead catches the sky
+    px(ctx, CPAL.shine, 120, ey + 2, 3, 3);
+    px(ctx, CPAL.shine, 123, ey + 3, 1, 1);
+    // a lit crease above and a soft shadow below so the bead sits in the hide
     px(ctx, CPAL.manL, 118, ey - 1, 10, 1);
     px(ctx, CPAL.manDD, 118, ey + 10, 10, 1);
   }
