@@ -36,6 +36,59 @@ const CPAL = {
 function newCan(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 function spriteFrom(c, ax, ay) { return { c, w: c.width, h: c.height, ax: ax ?? c.width / 2, ay: ay ?? c.height / 2 }; }
 
+// ===========================================================================
+//  HI-RES ART  (DETAIL x)
+//  Every character/boat canvas in this file is rasterized at DETAIL art pixels
+//  per world unit, so one art pixel lands on (about) one screen pixel instead
+//  of being blown up. The sprite record still reports its size in WORLD units
+//  — w/h/ax/ay are unchanged from the old build — so every call site in the
+//  rest of the codebase keeps working with the offsets it already has.
+//
+//  The bridge is here: a hi-res canvas remembers that it is hi-res, and the
+//  3-argument `drawImage(img, dx, dy)` (the only form used for sprites) draws
+//  it through a 1/DETAIL scale. Callers that bake a copy into `can(s.w, s.h)`
+//  therefore still get a correctly-sized copy, and `drawImage(c, sx, sy, sw,
+//  sh, dx, dy, dw, dh)` (the warm-up path) is left completely alone.
+// ===========================================================================
+const AS = DETAIL;                 // art pixels per world unit
+const HIRES = new WeakSet();
+function newCanHi(w, h) { const c = newCan(w * AS, h * AS); HIRES.add(c); return c; }
+// ax/ay are given in ART pixels; the record exposes them in world units.
+function spriteFromHi(c, ax, ay) {
+  HIRES.add(c);
+  return { c, w: c.width / AS, h: c.height / AS, ax: (ax ?? c.width / 2) / AS, ay: (ay ?? c.height / 2) / AS, hi: 1 };
+}
+let RAWDI = CanvasRenderingContext2D.prototype.drawImage;
+(function patchDrawImage() {
+  const proto = CanvasRenderingContext2D.prototype;
+  if (proto.__hiresPatched) { RAWDI = proto.__hiresRawDraw; return; }
+  const di = RAWDI;
+  const inv = 1 / AS;
+  proto.drawImage = function (img, a, b, c, d, e, f, g, h) {
+    if (c === undefined) {
+      if (HIRES.has(img)) {
+        this.save(); this.scale(inv, inv); di.call(this, img, a * AS, b * AS); this.restore(); return;
+      }
+      return di.call(this, img, a, b);
+    }
+    if (e === undefined) return di.call(this, img, a, b, c, d);
+    return di.call(this, img, a, b, c, d, e, f, g, h);
+  };
+  proto.__hiresPatched = 1; proto.__hiresRawDraw = di;
+})();
+// Draw a hi-res canvas 1:1 into another hi-res canvas (skips the bridge).
+function drawRaw(ctx, img, x, y) { RAWDI.call(ctx, img, x, y); }
+// A tint that keeps the hi-res canvas hi-res (the shared tintSprite would bake
+// a world-resolution copy, because it sizes the copy from s.w/s.h).
+function tintHi(s, color, alpha) {
+  const c = newCan(s.c.width, s.c.height), ctx = c.getContext('2d');
+  drawRaw(ctx, s.c, 0, 0);
+  ctx.globalCompositeOperation = 'source-atop'; ctx.globalAlpha = alpha; ctx.fillStyle = color;
+  ctx.fillRect(0, 0, c.width, c.height); ctx.globalAlpha = 1;
+  HIRES.add(c);
+  return { c, w: s.w, h: s.h, ax: s.ax, ay: s.ay, hi: 1 };
+}
+
 // A soft "blob" field made of ellipses along a spine. Returns {field,w,h}.
 // Each lobe: {x,y,rx,ry,rot?}  field value >0 inside, peaks at the core.
 function blobField(w, h, lobes) {
@@ -124,174 +177,314 @@ function px(ctx, col, x, y, w = 1, h = 1) { ctx.fillStyle = col; ctx.fillRect(x 
 // ===========================================================================
 //  WAR MANATEE  — top-down, facing RIGHT
 // ===========================================================================
-const MAN_W = 78, MAN_H = 38, MAN_CX = 40, MAN_CY = 19;
+const MAN_W = 156, MAN_H = 76, MAN_CX = 80, MAN_CY = 38;
 
 function buildManateeBody(armored) {
   // classic manatee silhouette: fat rounded barrel, narrow peduncle, blunt head
+  // authored at AS art pixels per world unit (see spriteFromHi)
   const lobes = [
-    { x: 6,  y: 19, rx: 5.2,  ry: 8.2 },   // fluke trailing edge
-    { x: 11, y: 19, rx: 6.4,  ry: 9.2 },   // spade fluke
-    { x: 16, y: 19, rx: 6.6,  ry: 8.0 },
-    { x: 23, y: 19, rx: 6.4,  ry: 6.0 },   // peduncle waist
-    { x: 29, y: 19, rx: 10.0, ry: 10.0 },
-    { x: 36, y: 19, rx: 13.0, ry: 13.5 },  // widest belly
-    { x: 44, y: 19, rx: 13.0, ry: 13.0 },
-    { x: 52, y: 19, rx: 11.0, ry: 11.0 },  // shoulders
-    { x: 59, y: 19, rx: 8.6,  ry: 9.0 },   // head
-    { x: 64, y: 19, rx: 6.4,  ry: 6.8 },   // muzzle
-    { x: 67, y: 19, rx: 4.2,  ry: 4.6 },   // snout tip
+    { x: 12,  y: 38, rx: 10.4, ry: 16.4 },  // fluke trailing edge
+    { x: 22,  y: 38, rx: 12.8, ry: 18.4 },  // spade fluke
+    { x: 32,  y: 38, rx: 13.2, ry: 16.0 },
+    { x: 46,  y: 38, rx: 12.8, ry: 12.0 },  // peduncle waist
+    { x: 58,  y: 38, rx: 20.0, ry: 20.0 },
+    { x: 72,  y: 38, rx: 26.0, ry: 27.0 },  // widest belly
+    { x: 88,  y: 38, rx: 26.0, ry: 26.0 },
+    { x: 104, y: 38, rx: 22.0, ry: 22.0 },  // shoulders
+    { x: 118, y: 38, rx: 17.2, ry: 18.0 },  // head
+    { x: 128, y: 38, rx: 12.8, ry: 13.6 },  // muzzle
+    { x: 134, y: 38, rx: 8.4,  ry: 9.2 },   // snout tip
   ];
   const f = blobField(MAN_W, MAN_H, lobes);
   const ramp = [CPAL.manDD, CPAL.manD, CPAL.man, CPAL.manL, CPAL.manLL];
   const { c, ctx } = shadeBlob(MAN_W, MAN_H, f, ramp, { outline: CPAL.out });
+  const solid = (x, y, lim) => { const i = y * MAN_W + x; return i >= 0 && i < f.length && x >= 0 && x < MAN_W && f[i] > (lim === undefined ? 0.04 : lim); };
 
-  // ---- hide: manatees have transverse skin folds, not granite speckle
-  for (const fx of [26, 33, 49, 56]) {
-    for (let y = 2; y < MAN_H - 2; y++) {
-      const bend = Math.round(Math.sin((y - 19) / 19 * 1.2) * 2.2);
-      const x = fx + bend, i = y * MAN_W + x;
-      if (i < 0 || i >= f.length || f[i] <= 0.10) continue;
-      px(ctx, CPAL.manD, x, y);
-      if (f[i] > 0.4 && (y & 1) === 0) px(ctx, CPAL.manL, x + 1, y);
+  // ---- hide: manatees have transverse skin folds, not granite speckle.
+  // At 2x each fold is a shaded crease (dark core, lit upper lip) instead of
+  // a single grey pixel.
+  for (const fx of [52, 66, 98, 112]) {
+    for (let y = 4; y < MAN_H - 4; y++) {
+      const bend = Math.round(Math.sin((y - 38) / 38 * 1.2) * 4.4);
+      const x = fx + bend;
+      if (!solid(x, y, 0.10)) continue;
+      px(ctx, CPAL.manD, x, y, 2, 1);
+      px(ctx, CPAL.manDD, x + 1, y);
+      if (solid(x, y, 0.4)) px(ctx, CPAL.manL, x - 1, y);
     }
   }
-  // a sparse dusting of barnacles and old nicks
-  for (let y = 4; y < MAN_H - 4; y++) for (let x = 4; x < MAN_W - 4; x++) {
-    const i = y * MAN_W + x; if (f[i] <= 0.25) continue;
-    if (hash2(x * 7, y * 11) > 0.992) { px(ctx, CPAL.manLL, x, y); px(ctx, CPAL.manDD, x, y + 1); }
+  // fine cross-hatch of wrinkles over the shoulders — only visible at 2x
+  for (let y = 8; y < MAN_H - 8; y++) for (let x = 44; x < 124; x++) {
+    if (!solid(x, y, 0.55)) continue;
+    if (((x * 3 + y * 5) % 23) === 0 && hash2(x, y) > 0.55) px(ctx, CPAL.manD, x, y, 2, 1);
   }
-  // a couple of old propeller scars across the back (this is a manatee, after all)
-  for (let i = 0; i < 5; i++) px(ctx, CPAL.manLL, 32 + i * 2, 8 + i);
-  for (let i = 0; i < 4; i++) px(ctx, CPAL.manLL, 40 + i * 2, 28 - i);
-  // fluke ridges fanning from the peduncle
-  for (let i = -3; i <= 3; i++) {
+  // barnacles: a rim, a lit crown and a shadow, instead of one stray pixel
+  for (let y = 8; y < MAN_H - 8; y++) for (let x = 8; x < MAN_W - 8; x++) {
+    if (!solid(x, y, 0.25)) continue;
+    if (hash2(x * 7, y * 11) > 0.9965) {
+      px(ctx, CPAL.manDD, x - 1, y - 1, 4, 4);
+      px(ctx, CPAL.manLL, x, y, 2, 2);
+      px(ctx, CPAL.bone, x, y);
+      px(ctx, CPAL.manDD, x + 1, y + 2, 2, 1);
+    }
+  }
+  // old propeller scars: paired pale gouges with a dark lower lip
+  for (let i = 0; i < 11; i++) {
+    px(ctx, CPAL.manLL, 64 + i * 3, 16 + i * 2, 2, 1); px(ctx, CPAL.manDD, 64 + i * 3, 17 + i * 2, 2, 1);
+  }
+  for (let i = 0; i < 9; i++) {
+    px(ctx, CPAL.manLL, 80 + i * 3, 56 - i * 2, 2, 1); px(ctx, CPAL.manDD, 80 + i * 3, 57 - i * 2, 2, 1);
+  }
+  // fluke ridges fanning from the peduncle, with a lit edge on each
+  for (let i = -6; i <= 6; i++) {
     if (!i) continue;
-    for (let x = 3; x < 20; x++) {
-      const y = Math.round(19 + i * 2.1 + (20 - x) * i * 0.09);
-      if (y > 0 && y < MAN_H && f[y * MAN_W + x] > 0.05 && ((x + i) & 1) === 0) px(ctx, CPAL.manD, x, y);
+    for (let x = 6; x < 42; x++) {
+      const y = Math.round(38 + i * 2.1 + (42 - x) * i * 0.09);
+      if (!solid(x, y, 0.05)) continue;
+      px(ctx, CPAL.manD, x, y);
+      if ((x & 3) === 0) px(ctx, CPAL.manL, x, y - 1);
     }
   }
-  for (let i = 0; i < 4; i++) px(ctx, CPAL.manLL, 5, 14 + i * 3);
+  for (let i = 0; i < 9; i++) px(ctx, CPAL.manLL, 9 + (i & 1), 26 + i * 3, 1, 2);
 
-  // ---- head: eyes set wide, whisker pad, nostrils
-  px(ctx, CPAL.out, 60, 12, 4, 4); px(ctx, CPAL.eye, 61, 13, 2, 2); px(ctx, CPAL.shine, 61, 13);
-  px(ctx, CPAL.out, 60, 23, 4, 4); px(ctx, CPAL.eye, 61, 24, 2, 2); px(ctx, CPAL.shine, 61, 24);
+  // ---- head: eyes set wide, whisker pad, nostrils ------------------------
+  for (const ey of [22, 46]) {
+    // lid, sclera crease, iris, catchlight — a real eye now, not a 2x2 blob
+    px(ctx, CPAL.out, 118, ey, 10, 9);
+    px(ctx, CPAL.manDD, 119, ey + 1, 8, 7);
+    px(ctx, CPAL.eye, 120, ey + 2, 6, 5);
+    px(ctx, '#3d2f24', 121, ey + 3, 4, 3);
+    px(ctx, CPAL.shine, 121, ey + 3, 2, 2);
+    px(ctx, CPAL.manL, 118, ey - 1, 10, 1);      // brow ridge
+    px(ctx, CPAL.manDD, 118, ey + 9, 10, 1);     // lower lid shadow
+  }
+  // whisker pad, dimpled
   stamp(ctx, [
-    '..kkkk..',
-    '.kWWWWk.',
-    'kWWwwWWk',
-    'kWwwwwWk',
-    'kWWwwWWk',
-    '.kWWWWk.',
-    '..kkkk..',
-  ], 63, 16, { k: CPAL.out, W: CPAL.manL, w: CPAL.manD });
-  px(ctx, CPAL.out, 66, 17, 2, 2); px(ctx, CPAL.out, 66, 21, 2, 2);
-  for (let i = 0; i < 5; i++) {
-    px(ctx, CPAL.manLL, 69 - (i & 1), 15 - (i * 1.4 | 0));
-    px(ctx, CPAL.manLL, 69 - (i & 1), 24 + (i * 1.4 | 0));
+    '....kkkkkkkk....',
+    '..kkWWWWWWWWkk..',
+    '.kWWWWWWWWWWWWk.',
+    'kWWWWwwwwwwWWWWk',
+    'kWWWwwwwwwwwWWWk',
+    'kWWwwwwwwwwwwWWk',
+    'kWWwwwwwwwwwwWWk',
+    'kWWWwwwwwwwwWWWk',
+    'kWWWWwwwwwwWWWWk',
+    '.kWWWWWWWWWWWWk.',
+    '..kkWWWWWWWWkk..',
+    '....kkkkkkkk....',
+  ], 126, 32, { k: CPAL.out, W: CPAL.manL, w: CPAL.manD });
+  // dimples in the pad
+  for (let r = 0; r < 4; r++) for (let q = 0; q < 5; q++)
+    px(ctx, CPAL.manDD, 130 + q * 2, 36 + r * 2);
+  // nostrils: two crescent slits with a lit upper edge
+  px(ctx, CPAL.out, 132, 34, 4, 3); px(ctx, CPAL.manLL, 132, 33, 4, 1);
+  px(ctx, CPAL.out, 132, 43, 4, 3); px(ctx, CPAL.manLL, 132, 42, 4, 1);
+  // mouth line under the pad
+  px(ctx, CPAL.manDD, 128, 52, 10, 1); px(ctx, CPAL.manD, 129, 53, 8, 1);
+  // individual whiskers, now that a whisker can be more than one pixel
+  for (let i = 0; i < 7; i++) {
+    const wy = 28 - i * 2, wx = 138 + (i & 1) * 2;
+    px(ctx, CPAL.bone, wx, wy, 3, 1); px(ctx, CPAL.creamD, wx + 3, wy - 1, 2, 1);
+    const wy2 = 48 + i * 2;
+    px(ctx, CPAL.bone, wx, wy2, 3, 1); px(ctx, CPAL.creamD, wx + 3, wy2 + 1, 2, 1);
   }
 
   if (armored) {
     // ---- two riveted steel back plates, leaving plenty of hide showing
-    const plates = [[31, 8, 10, 23], [42, 9, 9, 21]];
+    const plates = [[62, 16, 20, 46], [84, 18, 18, 42]];
     for (const [pxx, pyy, pw, ph] of plates) {
       for (let y = pyy; y < pyy + ph; y++) for (let x = pxx; x < pxx + pw; x++) {
-        const i = y * MAN_W + x; if (i < 0 || i >= f.length || f[i] <= 0.04) continue;
-        const top = y < pyy + 3, bot = y > pyy + ph - 4, lef = x < pxx + 2;
+        if (!solid(x, y)) continue;
+        const top = y < pyy + 5, bot = y > pyy + ph - 7, lef = x < pxx + 4;
         let col = top ? CPAL.metL : bot ? CPAL.metDD : lef ? CPAL.metD : CPAL.met;
-        if (((x * 3 + y) % 7) === 0 && !top && !bot) col = CPAL.metD;
+        if (top && y < pyy + 2) col = CPAL.metLL;
+        // hammered-plate mottle, one pixel at a time
+        if (!top && !bot && hash2(x * 5, y * 3) > 0.80) col = CPAL.metD;
+        if (!top && !bot && hash2(x * 13, y * 7) > 0.94) col = CPAL.metL;
         px(ctx, col, x, y);
       }
+      // rolled edges
       for (let y = pyy; y < pyy + ph; y++) {
-        const a = y * MAN_W + pxx, b = y * MAN_W + pxx + pw - 1;
-        if (f[a] > 0.04) px(ctx, CPAL.out2, pxx, y);
-        if (f[b] > 0.04) px(ctx, CPAL.out2, pxx + pw - 1, y);
+        if (solid(pxx, y)) { px(ctx, CPAL.out2, pxx, y); px(ctx, CPAL.metD, pxx + 1, y); }
+        if (solid(pxx + pw - 1, y)) { px(ctx, CPAL.out2, pxx + pw - 1, y); px(ctx, CPAL.metDD, pxx + pw - 2, y); }
       }
-      for (let y = pyy + 2; y < pyy + ph - 1; y += 5) {
-        px(ctx, CPAL.metLL, pxx + 1, y); px(ctx, CPAL.metDD, pxx + 1, y + 1);
-        px(ctx, CPAL.metLL, pxx + pw - 2, y); px(ctx, CPAL.metDD, pxx + pw - 2, y + 1);
+      // rivets: dome + highlight + drop shadow
+      for (let y = pyy + 4; y < pyy + ph - 3; y += 8) {
+        for (const rx of [pxx + 2, pxx + pw - 4]) {
+          px(ctx, CPAL.metDD, rx - 1, y - 1, 4, 4);
+          px(ctx, CPAL.metL, rx, y, 2, 2);
+          px(ctx, CPAL.metLL, rx, y);
+          px(ctx, CPAL.out2, rx + 1, y + 2, 2, 1);
+        }
       }
+      // battle scratches across the face of the plate
+      for (let i = 0; i < 6; i++) px(ctx, CPAL.metLL, pxx + 5 + i, pyy + 12 + i * 2, 2, 1);
+      for (let i = 0; i < 4; i++) px(ctx, CPAL.metDD, pxx + 7 + i * 2, pyy + ph - 12 - i, 2, 1);
     }
-    // ---- leather harness straps over the bare hide fore and aft
-    for (const sx of [27, 54]) {
-      for (let y = 2; y < MAN_H - 2; y++) {
-        const i = y * MAN_W + sx; if (f[i] <= 0.04) continue;
-        px(ctx, CPAL.lea, sx, y); px(ctx, CPAL.leaD, sx + 1, y);
-        if ((y & 3) === 1) px(ctx, CPAL.leaL, sx, y);
+    // ---- leather harness straps with stitching down both edges
+    for (const sx of [54, 108]) {
+      for (let y = 4; y < MAN_H - 4; y++) {
+        if (!solid(sx, y)) continue;
+        px(ctx, CPAL.leaD, sx, y); px(ctx, CPAL.lea, sx + 1, y, 2, 1); px(ctx, CPAL.leaD, sx + 3, y);
+        if ((y & 3) === 1) { px(ctx, CPAL.leaL, sx + 1, y); px(ctx, CPAL.creamD, sx, y); px(ctx, CPAL.creamD, sx + 3, y); }
       }
-      px(ctx, CPAL.gold, sx, 18, 2, 3); px(ctx, CPAL.goldL, sx, 18, 2, 1);
+      // brass buckle with a tongue and two holes
+      px(ctx, CPAL.goldD, sx - 1, 33, 6, 10);
+      px(ctx, CPAL.gold, sx, 34, 4, 8);
+      px(ctx, CPAL.goldL, sx, 34, 4, 2);
+      px(ctx, CPAL.out, sx + 1, 36, 2, 4);
+      px(ctx, CPAL.out, sx + 1, 30, 2, 2); px(ctx, CPAL.out, sx + 1, 44, 2, 2);
     }
-    // ---- shoulder spikes
-    stamp(ctx, ['..k..', '.kMk.', 'kMMMk', 'kkkkk'], 45, 5, { k: CPAL.out, M: CPAL.metL });
-    stamp(ctx, ['kkkkk', 'kMMMk', '.kMk.', '..k..'], 45, 30, { k: CPAL.out, M: CPAL.metL });
-    // ---- brow plate with a brass boss
+    // ---- shoulder spikes, bevelled
     stamp(ctx, [
-      '.kkkkkk.',
-      'kMMMMMMk',
-      'kMLLLLMk',
-      'kMMMMMMk',
-      '.kkkkkk.',
-    ], 55, 15, { k: CPAL.out, M: CPAL.met, L: CPAL.metL });
-    px(ctx, CPAL.gold, 58, 17, 2, 3); px(ctx, CPAL.goldL, 58, 17, 2, 1);
+      '....kk....',
+      '...kLLk...',
+      '..kLMMLk..',
+      '.kLMMMMLk.',
+      'kLMMMMMMLk',
+      'kMMmmmmMMk',
+      'kkkkkkkkkk',
+    ], 90, 6, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL, m: CPAL.metD });
+    stamp(ctx, [
+      'kkkkkkkkkk',
+      'kMMmmmmMMk',
+      'kLMMMMMMLk',
+      '.kLMMMMLk.',
+      '..kLMMLk..',
+      '...kLLk...',
+      '....kk....',
+    ], 90, 63, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL, m: CPAL.metD });
+    // ---- brow plate with a brass boss and four rivets
+    stamp(ctx, [
+      '..kkkkkkkkkkkk..',
+      '.kLLLLLLLLLLLLk.',
+      'kLMMMMMMMMMMMMLk',
+      'kMMMMMMMMMMMMMMk',
+      'kMMMMMMMMMMMMMMk',
+      'kMMMMMMMMMMMMMMk',
+      'kMMMMMMMMMMMMMMk',
+      'kmMMMMMMMMMMMMmk',
+      'kmmmmmmmmmmmmmmk',
+      '.kkkkkkkkkkkkkk.',
+    ], 108, 28, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL, m: CPAL.metDD });
+    px(ctx, CPAL.goldD, 113, 33, 8, 10); px(ctx, CPAL.gold, 114, 34, 6, 8);
+    px(ctx, CPAL.goldL, 114, 34, 6, 2); px(ctx, CPAL.goldL, 114, 34, 2, 6);
+    for (const [rx, ry] of [[110, 31], [124, 31], [110, 42], [124, 42]]) {
+      px(ctx, CPAL.metDD, rx, ry, 3, 3); px(ctx, CPAL.metLL, rx, ry, 2, 2);
+    }
   }
-  return spriteFrom(c, MAN_CX, MAN_CY);
+  return spriteFromHi(c, MAN_CX, MAN_CY);
 }
 
 // ---- saddle (sits mid-back, the otter perches here) -----------------------
 function buildSaddle() {
-  const c = newCan(22, 20), ctx = c.getContext('2d');
-  stamp(ctx, [
-    '...kkkkkkkkkkkk...',
-    '..kLLLLLLLLLLLLk..',
-    '.kLllllllllllllLk.',
-    'kLllddddddddddllLk',
-    'kLlddDDDDDDDDddlLk',
-    'kLldDDDDDDDDDDdlLk',
-    'kLldDDDDDDDDDDdlLk',
-    'kLlddDDDDDDDDddlLk',
-    'kLllddddddddddllLk',
-    '.kLllllllllllllLk.',
-    '..kLLLLLLLLLLLLk..',
-    '...kkkkkkkkkkkk...',
-  ], 2, 4, { k: CPAL.out, L: CPAL.leaL, l: CPAL.lea, d: CPAL.leaD, D: CPAL.leaD });
-  // stitching + brass studs
-  for (let x = 5; x < 19; x += 3) { px(ctx, CPAL.goldL, x, 6); px(ctx, CPAL.goldD, x, 7); px(ctx, CPAL.goldL, x, 14); px(ctx, CPAL.goldD, x, 15); }
-  return spriteFrom(c, 11, 10);
+  const W = 44, H = 40, c = newCan(W, H), ctx = c.getContext('2d');
+  const cx = 22, cy = 20, rx = 19, ry = 13;
+  // superellipse pad, shaded by distance from the rim so it reads as tooled
+  // leather with a rolled edge rather than a flat slab
+  const dAt = (x, y) => {
+    const u = (x - cx) / rx, v = (y - cy) / ry;
+    return Math.pow(Math.abs(u), 2.6) + Math.pow(Math.abs(v), 2.6);
+  };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const d = dAt(x, y); if (d > 1) continue;
+    const edge = dAt(x + 1, y) > 1 || dAt(x - 1, y) > 1 || dAt(x, y + 1) > 1 || dAt(x, y - 1) > 1;
+    if (edge) { px(ctx, CPAL.out, x, y); continue; }
+    let col;
+    if (d > 0.80) col = CPAL.leaL;            // rolled, lit rim
+    else if (d > 0.62) col = CPAL.lea;
+    else if (d > 0.30) col = CPAL.leaD;
+    else col = '#3a2412';                      // worn seat dip
+    if (y < cy - 8 && d < 0.85) col = CPAL.leaL;
+    px(ctx, col, x, y);
+  }
+  // grain: short scuffs following the length of the pad
+  for (let y = 6; y < H - 6; y++) for (let x = 5; x < W - 5; x++) {
+    if (dAt(x, y) > 0.92) continue;
+    if (hash2(x * 3, y * 9) > 0.93) px(ctx, CPAL.leaD, x, y, 2, 1);
+    else if (hash2(x * 11, y * 5) > 0.965) px(ctx, CPAL.leaL, x, y, 2, 1);
+  }
+  // stitching: a running dashed seam inset from the rim, both sides
+  for (let a2 = 0; a2 < 64; a2++) {
+    const th = a2 / 64 * TAU;
+    const sx = Math.round(cx + Math.cos(th) * (rx - 4)), sy = Math.round(cy + Math.sin(th) * (ry - 3));
+    if ((a2 & 1) === 0) { px(ctx, CPAL.cream, sx, sy); px(ctx, CPAL.creamD, sx, sy + 1); }
+  }
+  // brass studs down both flanks, each a dome with a highlight and a shadow
+  for (let i = 0; i < 6; i++) {
+    const sx = 8 + i * 6;
+    for (const sy of [8, 31]) {
+      px(ctx, CPAL.out, sx - 1, sy - 1, 4, 4);
+      px(ctx, CPAL.gold, sx, sy, 2, 2);
+      px(ctx, CPAL.goldL, sx, sy);
+      px(ctx, CPAL.goldD, sx + 1, sy + 1);
+    }
+  }
+  // cantle ridge across the back of the seat
+  for (let x = 8; x < W - 8; x++) { px(ctx, CPAL.leaL, x, 15); px(ctx, '#3a2412', x, 16); }
+  return spriteFromHi(c, 22, 20);
 }
 
-// ---- tail fluke (swings) --------------------------------------------------
 // ---- flipper --------------------------------------------------------------
 function buildFlipper() {
-  const W = 13, H = 9;
-  const f = blobField(W, H, [{ x: 3, y: 4.5, rx: 3.6, ry: 3.8 }, { x: 7, y: 4.5, rx: 4.4, ry: 3.2 }, { x: 10.5, y: 4.5, rx: 2.6, ry: 2.1 }]);
+  const W = 26, H = 18;
+  const f = blobField(W, H, [{ x: 6, y: 9, rx: 7.2, ry: 7.6 }, { x: 14, y: 9, rx: 8.8, ry: 6.4 }, { x: 21, y: 9, rx: 5.2, ry: 4.2 }]);
   const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manDD, CPAL.manD, CPAL.man], { outline: CPAL.out, lift: 0.04, smooth: 1 });
-  for (let i = 0; i < 3; i++) px(ctx, CPAL.manDD, 8 + i, 3 + i * 1.5 | 0);
-  return spriteFrom(c, 2.5, 4.5);
+  // finger bones under the skin — a manatee flipper has a real hand in it
+  for (let k = 0; k < 3; k++) {
+    for (let i = 0; i < 9; i++) {
+      const x = 12 + i, y = 6 + k * 3 + Math.round(i * 0.25 * (k - 1));
+      if (f[y * W + x] > 0.06) px(ctx, CPAL.manDD, x, y);
+    }
+  }
+  // three nails along the leading edge
+  for (let i = 0; i < 3; i++) px(ctx, CPAL.bone, 20 + (i & 1), 5 + i * 4, 2, 1);
+  px(ctx, CPAL.manL, 6, 4, 6, 1);
+  return spriteFromHi(c, 5, 9);
 }
 
 // ---- pirate flag on a pole (flies behind the saddle) ----------------------
 function buildFlag(frame) {
-  const c = newCan(22, 18), ctx = c.getContext('2d');
-  const wav = [0, 1, 2, 1, 0, -1, -2, -1][frame & 7];
-  // cloth
-  for (let y = 0; y < 12; y++) {
-    const off = Math.round(Math.sin((y / 12) * 3.1 + frame * 0.8) * 1.4 + wav * 0.4);
-    for (let x = 0; x < 16; x++) {
-      const edge = x === 15 ? 1 : 0;
-      px(ctx, edge ? CPAL.out : (y < 2 || x < 2 ? CPAL.out2 : CPAL.hatD), 4 + x, 2 + y + off);
+  const c = newCan(44, 36), ctx = c.getContext('2d');
+  const wav = [0, 2, 4, 2, 0, -2, -4, -2][frame & 7];
+  // cloth, with a shaded fold following the wave
+  for (let y = 0; y < 24; y++) {
+    const ph = (y / 24) * 3.1 + frame * 0.8;
+    const off = Math.round(Math.sin(ph) * 2.8 + wav * 0.4);
+    const lit = Math.cos(ph);
+    for (let x = 0; x < 32; x++) {
+      const yy = 4 + y + off;
+      let col = CPAL.hatD;
+      if (lit > 0.45) col = CPAL.hat;
+      if (lit < -0.55) col = CPAL.out2;
+      if (x > 29) col = CPAL.out;
+      if (y < 2 || y > 21) col = CPAL.out2;
+      px(ctx, col, 8 + x, yy);
     }
+    // frayed trailing edge
+    if ((y & 3) === 1) px(ctx, CPAL.hatD, 40, 4 + y + off, 2, 1);
   }
-  // skull & crossbones
-  const off0 = Math.round(Math.sin(0.45 * 3.1 + frame * 0.8) * 1.4 + wav * 0.4);
+  // skull & crossbones, big enough to actually be a skull now
+  const off0 = Math.round(Math.sin(0.45 * 3.1 + frame * 0.8) * 2.8 + wav * 0.4);
   stamp(ctx, [
-    '.kkkk.',
-    'kWWWWk',
-    'kWkWkW',
-    'kWWWWk',
-    '.kWkW.',
-    '.kkkk.',
-  ], 8, 5 + off0, { k: CPAL.out, W: CPAL.white });
-  return spriteFrom(c, 2, 9);
+    '..kkkkkkkk..',
+    '.kWWWWWWWWk.',
+    'kWWWWWWWWWWk',
+    'kWWkkWWkkWWk',
+    'kWkeekWkeekW',
+    'kWkeekWkeekW',
+    'kWWkkWWkkWWk',
+    'kWWWWWWWWWWk',
+    '.kWWWkkWWWk.',
+    '..kWkWkWk...',
+    '..kWWkkWWk..',
+    '...kkkkkk...',
+  ], 16, 9 + off0, { k: CPAL.out, W: CPAL.white, e: CPAL.out2 });
+  // crossed bones under the jaw
+  for (let i = 0; i < 10; i++) {
+    px(ctx, CPAL.white, 15 + i, 22 + i + off0); px(ctx, CPAL.white, 24 - i, 22 + i + off0);
+  }
+  return spriteFromHi(c, 4, 18);
 }
 
 // ===========================================================================
