@@ -17,6 +17,7 @@ const HUD_SCALE = OUT_W / HUD_W;      // 2
 const VIEW_W = 640, VIEW_H = 360;     // world units visible
 const CROP_X = 0, CROP_Y = 0;
 const ZOOM = HUD_W / VIEW_W;          // world units -> logical interface units (1)
+const WORLD_LAYER_W = VIEW_W * DETAIL, WORLD_LAYER_H = VIEW_H * DETAIL;
 
 class Game {
   constructor() {
@@ -24,7 +25,7 @@ class Game {
     this.g = document.createElement('canvas'); this.g.width = OUT_W; this.g.height = OUT_H;
     this.ctx = this.g.getContext('2d'); this.ctx.imageSmoothingEnabled = false;
     // the world layer, drawn at 1:1 and then cropped + magnified
-    this.world = document.createElement('canvas'); this.world.width = 640; this.world.height = 360;
+    this.world = document.createElement('canvas'); this.world.width = WORLD_LAYER_W; this.world.height = WORLD_LAYER_H;
     this.wctx = this.world.getContext('2d'); this.wctx.imageSmoothingEnabled = false;
     Input.init(this.display);
     if (typeof MobileUI !== 'undefined') MobileUI.init(this.display);
@@ -42,9 +43,11 @@ class Game {
     this.state = (typeof MainMenu !== 'undefined') ? 'menu' : 'intro';
     this.showControls = false;
     if (typeof Intro !== 'undefined' && Intro.reset) Intro.reset();
-    this.firstRun = true; this.muted = false;
+    this.firstRun = true; this.muted = false; this.bossBeaten = false; this.seenIntro = false;
     this.t = 0; this.last = performance.now(); this.fps = 60;
     this.newRun();
+    // progress from a previous session, if there is any and storage works
+    if (typeof Save !== 'undefined') { Save.applyTo(this); Save.noteRunStart(); }
     requestAnimationFrame(ts => this.frame(ts));
   }
   resize() {
@@ -86,6 +89,14 @@ class Game {
     this.cam.x = this.player.x - (CROP_X + VIEW_W / 2); this.cam.y = this.player.y - (CROP_Y + VIEW_H / 2);
     UI.banner = null;
     if (!this.firstRun) { this.director.begin(); this.banner('REMATCH', '#ffe48f', 2, 'The village heard you were coming.'); }
+  }
+  // ---------------------------------------------------------- progress
+  // Called at the moments worth remembering rather than on a timer. Save.save
+  // debounces, so calling it freely costs nothing.
+  persist(now = false) {
+    if (typeof Save === 'undefined' || !Save.available) return;
+    Save.save(Save.captureFrom(this));
+    if (now) Save.flush();
   }
   // ---------------------------------------------------------- helpers
   spawnEnemy(type, x, y) { const e = new Enemy(type, x, y); this.enemies.push(e); this.particles.splash(x, y, 0.6); return e; }
@@ -138,6 +149,7 @@ class Game {
   }
   // one way in to the skill tree, so every caller gets the same setup
   openTree(prev) {
+    this.persist();
     this.autoTree = 0;
     this.prevState = prev || 'play';
     this.state = 'tree';
@@ -151,10 +163,13 @@ class Game {
     this.pickups.forEach(p => { p.life = Math.max(p.life, 30); });
     // the tree comes up on its own once the banner has had its moment
     this.autoTree = 2.4;
+    this.persist();
   }
   onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() {
     this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0;
+    this.bossBeaten = true;
+    this.persist(true);
     this.state = 'victory_wait';
     // the chapter's payoff plays before the victory screen
     this.pendingVictory = true;
@@ -166,6 +181,8 @@ class Game {
   }
   onPlayerDeath() {
     this.runActive = false;
+    if (typeof Save !== 'undefined') Save.noteDeath();
+    this.persist(true);
     this.particles.blood(this.player.x, this.player.y, 4); this.particles.splash(this.player.x, this.player.y, 3);
     this.shake(16); this.endT = 0;
     // she sinks, the otter hauls her out and puts her back together on the
@@ -201,7 +218,12 @@ class Game {
       case 'intro':
         Intro.update(dt);
         if (Intro.done) {
-          if (typeof WorldMap !== 'undefined') { WorldMap.init(); WorldMap.open(1); this.state = 'worldmap'; }
+          this.seenIntro = true;
+          if (typeof WorldMap !== 'undefined') {
+            WorldMap.init();
+            WorldMap.open(Math.max(1, (typeof Save !== 'undefined' && Save.data && Save.data.unlockedDests) || 1));
+            this.state = 'worldmap';
+          }
           else { this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; }
         }
         break;
@@ -250,6 +272,7 @@ class Game {
           Upgrades.update(dt, this.time);
           if (Upgrades.wantsClose || Input.hit('Tab') || Input.hit('Escape')) {
             Upgrades.wantsClose = false; this.state = this.prevState || 'play';
+            this.persist(true);   // whatever was just bought is banked
           }
         } else {
           TreeScene.update(dt, this.time); UI.updateTree();
@@ -325,7 +348,9 @@ class Game {
     if (this.buoy) { this.buoy.update(dt); if (this.buoy.dead) this.buoy = null; }
     if (typeof Village !== 'undefined') Village.update(dt, t);
     if (typeof Hazards !== 'undefined') {
-      if (Hazards.tune) Hazards.tune.autoSpawn = this.director.state === 'fighting';
+      // the opening waves teach one thing at a time, so mines, cannon and
+      // boarders stay out of the water until the basics have been used
+      if (Hazards.tune) Hazards.tune.autoSpawn = this.director.state === 'fighting' && this.director.waveIdx >= 3;
       Hazards.update(dt, t);
     }
     if (typeof Wildlife !== 'undefined') Wildlife.update(dt, t);
@@ -393,7 +418,10 @@ class Game {
     this.full(ctx);
     const cam = { x: Math.round(this.cam.x + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)), y: Math.round(this.cam.y + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)) };
     const W = this.wctx;
-    W.clearRect(0, 0, 640, 360);
+    W.setTransform(1, 0, 0, 1, 0, 0);
+    W.clearRect(0, 0, WORLD_LAYER_W, WORLD_LAYER_H);
+    // from here on the world layer is in world units at DETAIL pixels each
+    W.setTransform(DETAIL, 0, 0, DETAIL, 0, 0);
     this.ocean.render(W, cam, t);
     if (this.state === 'dialogue') Dialogue.renderWorld(W, cam);
     if (typeof Village !== 'undefined') Village.render(W, cam, t); else this.renderVillage(W, cam, t);
@@ -430,9 +458,10 @@ class Game {
     if (this.ocean.renderSurfaceOverlay) this.ocean.renderSurfaceOverlay(W, cam, t);
 
     // magnify the centred crop of the world onto the presentation canvas
+    W.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
     this.full(ctx);
-    ctx.drawImage(this.world, CROP_X, CROP_Y, VIEW_W, VIEW_H, 0, 0, OUT_W, OUT_H);
+    ctx.drawImage(this.world, CROP_X * DETAIL, CROP_Y * DETAIL, VIEW_W * DETAIL, VIEW_H * DETAIL, 0, 0, OUT_W, OUT_H);
     // every interface pass below draws in 640x360 logical units
     this.hud(ctx);
     // overlays

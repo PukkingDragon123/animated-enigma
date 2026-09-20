@@ -1,3 +1,8 @@
+// How many layer pixels the world is drawn at per world unit. Render code all
+// works in world units; the world layer carries this as a scale transform.
+// Art built at DETAIL times its world size and drawn at 1/DETAIL lands one art
+// pixel on one screen pixel, which is where the extra resolution comes from.
+const DETAIL = 2;
 // ---- Math & helpers ------------------------------------------------------
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;

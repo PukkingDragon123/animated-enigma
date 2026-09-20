@@ -87,7 +87,7 @@ const UI = {
     // ---------- top-centre: clock & wave ----------
     const w0 = G.director.currentWave();
     // before the fight the village's own sign is on screen, so don't repeat it
-    const waveLabel = G.director.started ? (w0.boss ? 'BOSS' : w0.name) : null;
+    const waveLabel = G.director.started ? (w0.boss ? 'BOSS' : G.director.waveName(G.director.waveIdx)) : null;
     void waveLabel;
     const cw = Math.max(88, waveLabel ? textWidth(waveLabel, 6) + 20 : 0);
     UIKit.panel(ctx, 320 - cw / 2, 2, cw, waveLabel ? 24 : 18, 'dark');

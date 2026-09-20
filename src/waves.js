@@ -7,64 +7,68 @@
 // come back with salvage. The objective is what the wave is really about and
 // it is on screen the whole time.
 const WAVES = [
-  { name: 'WAVE 1', sub: 'Fishing dinghies leave the pier',
-    obj: { kind: 'clear', text: 'Sink every boat that leaves the pier' },
-    pool: { dinghy: 1 }, count: 7, interval: 2.0, max: 4, burst: [['dinghy', 2]] },
+  { sub: 'Two dinghies leave the pier. Hold the mouse to shoot',
+    obj: { kind: 'clear', text: 'Hold left mouse. Sink the two dinghies' },
+    pool: { dinghy: 1 }, count: 4, interval: 3.0, max: 2, burst: [['dinghy', 2]] },
 
-  { name: 'WAVE 2', sub: 'Net boats. Shield the nets [E / right-click]',
-    obj: { kind: 'clear', text: 'Sink the net boats' },
-    pool: { dinghy: 2, netter: 1.4 }, count: 9, interval: 1.9, max: 5, burst: [['netter', 2]] },
+  { sub: 'A few more. Try SPACE to roll out of the way',
+    obj: { kind: 'clear', text: 'Sink them. SPACE rolls you clear' },
+    pool: { dinghy: 1 }, count: 6, interval: 2.6, max: 3, burst: [['dinghy', 2]] },
 
-  { name: 'WAVE 3', sub: 'Harpooners keep their distance',
+  { sub: 'Net boats. Hold E or right-click to raise the shield',
+    obj: { kind: 'clear', text: 'Shield the nets [E / right-click], then sink them' },
+    pool: { dinghy: 1.6, netter: 1.2 }, count: 8, interval: 2.4, max: 4, burst: [['netter', 2]] },
+
+  { sub: 'Harpooners keep their distance',
     obj: { kind: 'clear', text: 'Close on the harpooners and sink them' },
-    pool: { dinghy: 1.6, netter: 1, harpooner: 1.4 }, count: 11, interval: 1.8, max: 6, burst: [['harpooner', 2]] },
+    pool: { dinghy: 1.6, netter: 1, harpooner: 1.2 }, count: 10, interval: 2.2, max: 5, burst: [['harpooner', 2]] },
 
-  { name: 'WAVE 4', sub: 'A spotter is painting you for the fleet',
+  { sub: 'A spotter is painting you for the fleet',
     obj: { kind: 'hunt', target: 'spotter', text: 'Kill the Spotter before it calls the fleet in' },
-    pool: { dinghy: 1.4, netter: 1, harpooner: 1, spotter: 0.9 }, count: 12, interval: 1.7, max: 6, burst: [['spotter', 1], ['dinghy', 2]] },
+    pool: { dinghy: 1.4, netter: 1, harpooner: 1, spotter: 0.9 }, count: 11, interval: 2.0, max: 5, burst: [['spotter', 1], ['dinghy', 2]] },
 
-  { name: 'WAVE 5', sub: 'Speedboats on strafing runs',
+  { sub: 'Speedboats on strafing runs',
     obj: { kind: 'clear', text: 'Sink the strafing runs' },
-    pool: { dinghy: 1.2, netter: 1, harpooner: 1, speedboat: 1.5, spotter: 0.4 }, count: 13, interval: 1.6, max: 7, burst: [['speedboat', 3]] },
+    pool: { dinghy: 1.2, netter: 1, harpooner: 1, speedboat: 1.5, spotter: 0.4 }, count: 13, interval: 1.8, max: 6, burst: [['speedboat', 3]] },
 
-  { name: 'WAVE 6', sub: 'Something big is coming out of the harbour',
+  { sub: 'Something big is coming out of the harbour',
     obj: { kind: 'hunt', mini: true, text: 'Put the harbour rig on the bottom' },
     mini: true,
     pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, crabber: 1.1 }, count: 12, interval: 1.7, max: 7 },
 
-  { name: 'WAVE 7', sub: 'Jetski bombers. Roll away from them',
+  { sub: 'Jetski bombers. Roll away from them',
     obj: { kind: 'survive', seconds: 45, text: 'Hold this water for 45 seconds' },
     pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 2.0, longliner: 1 }, count: 16, interval: 1.5, max: 8, burst: [['jetski', 3]] },
 
-  { name: 'WAVE 8', sub: 'Longliners and crab pots. Watch the water',
+  { sub: 'Longliners and crab pots. Watch the water',
     obj: { kind: 'clear', text: 'Clear the hooks and the pots out of the bay' },
     pool: { netter: 1, harpooner: 1, longliner: 1.6, crabber: 1.5, jetski: 0.8 }, count: 16, interval: 1.5, max: 8, burst: [['longliner', 2], ['crabber', 2]] },
 
-  { name: 'WAVE 9', sub: 'Dynamite skiffs. Shield the sticks',
+  { sub: 'Dynamite skiffs. Shield the sticks',
     obj: { kind: 'salvage', amount: 30, text: 'Strip 30 pieces of salvage out of them' },
     pool: { netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1.8, tug: 0.7 }, count: 17, interval: 1.45, max: 8, burst: [['dynaboat', 3]] },
 
-  { name: 'WAVE 10', sub: 'The Trawler',
+  { sub: 'The Trawler',
     obj: { kind: 'hunt', target: 'trawler', text: 'Sink the Trawler' },
     pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, tug: 0.8, trawler: 0.5 },
     count: 18, interval: 1.4, max: 9, burst: [['trawler', 1], ['dinghy', 3]] },
 
-  { name: 'WAVE 11', sub: 'The harbour sends its own',
+  { sub: 'The harbour sends its own',
     obj: { kind: 'hunt', mini: true, text: 'Break whatever they just let off the chain' },
     mini: true,
     pool: { harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, crabber: 1, tug: 1 }, count: 15, interval: 1.5, max: 8 },
 
-  { name: 'WAVE 12', sub: 'Gunboats out of the harbour',
+  { sub: 'Gunboats out of the harbour',
     obj: { kind: 'clear', text: 'Sink the gunboats' },
     pool: { netter: 1, harpooner: 1.2, speedboat: 1, jetski: 1, dynaboat: 1, trawler: 0.4, gunboat: 0.8, tug: 0.7 },
     count: 19, interval: 1.35, max: 9, burst: [['gunboat', 2], ['speedboat', 2]] },
 
-  { name: 'WAVE 13', sub: 'The whole fleet is awake now',
+  { sub: 'The whole fleet is awake now',
     obj: { kind: 'clear', text: 'Sink all of it' },
     pool: { netter: 1, harpooner: 1.2, speedboat: 1.2, jetski: 1.4, dynaboat: 1.2, longliner: 1, crabber: 1, trawler: 0.5, gunboat: 0.9 },
     count: 21, interval: 1.3, max: 10, burst: [['jetski', 4], ['gunboat', 2]] },
 
-  { name: 'WAVE 14', sub: 'Everything they have left',
+  { sub: 'Everything they have left',
     obj: { kind: 'hunt', mini: true, text: 'Clear the way to the Chief' },
     mini: true,
     pool: { speedboat: 1.3, jetski: 1.5, dynaboat: 1.3, tug: 1, trawler: 0.8, gunboat: 1.1 },
@@ -88,6 +92,8 @@ class Director {
   // than it was: the fleet gets more varied faster than it gets deadlier.
   get difficulty() { return 1 + Math.max(0, this.waveIdx) * 0.065; }
   currentWave() { return WAVES[clamp(this.waveIdx, 0, WAVES.length - 1)]; }
+  // the list is numbered by position, so inserting a wave can never desync it
+  waveName(i) { const w = WAVES[i]; return w && w.name ? w.name : 'WAVE ' + (i + 1); }
   get isBossWave() { return !!this.currentWave().boss; }
   get cleared() { return this.state === 'cleared'; }
   get lastWave() { return this.waveIdx >= WAVES.length - 1; }
@@ -102,7 +108,7 @@ class Director {
     this.remaining = w.count;
     this.spawnT = 1.2;
     this.objT = 0; this.objSalvage = 0; this.objTarget = null; this.objDone = false;
-    G.banner(w.name, w.boss ? '#ff6161' : '#ffe48f', 2.4, w.sub);
+    G.banner(this.waveName(i), w.boss ? '#ff6161' : '#ffe48f', 2.4, w.sub);
     if (typeof Hazards !== 'undefined') {
       Hazards.difficulty = this.difficulty;
       if (Hazards.applyWaveScaling) Hazards.applyWaveScaling(this.waveIdx, this.difficulty);

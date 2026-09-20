@@ -51,7 +51,9 @@ function tintSprite(s, color, alpha = 0.7) {
 }
 // draw sprite at world->screen position with rotation/scale
 function drawSprite(ctx, s, x, y, rot = 0, sx = 1, sy = 1) {
-  ctx.save(); ctx.translate(Math.round(x), Math.round(y));
+  // snap to the layer's pixel grid, not to whole world units, or half the
+  // resolution of a DETAIL-scaled layer is thrown away on placement alone
+  ctx.save(); ctx.translate(Math.round(x * DETAIL) / DETAIL, Math.round(y * DETAIL) / DETAIL);
   if (rot) ctx.rotate(rot);
   if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
   ctx.drawImage(s.c, -s.ax, -s.ay);
