@@ -150,7 +150,6 @@
     },
     { name: 'THE SISTERS', x: 298, y: 182, rx: 16, ry: 11, seed: 3301, rough: 1.3, hills: 1, woods: 1, label: [300, 166], ls: 4, lobes: [{ dx: 10, dy: 6, rx: 8, ry: 6 }] },
     { name: '', x: 332, y: 208, rx: 12, ry: 9, seed: 3307, rough: 1.3, hills: 1, woods: 0, lobes: [] },
-    { name: '', x: 264, y: 222, rx: 14, ry: 10, seed: 3313, rough: 1.3, hills: 1, woods: 1, lobes: [{ dx: -9, dy: 4, rx: 7, ry: 5 }] },
     {
       name: 'MARROW ISLE', x: 408, y: 176, rx: 52, ry: 36, seed: 4409, rough: 1.25,
       hills: 9, woods: 8, label: [410, 168], ls: 5,
@@ -220,14 +219,13 @@
 
   // sea doodles: kind, x, y, facing
   const DOODLES = [
-    { k: 'serpent', x: 40, y: 110, f: 1 },
-    { k: 'lugger', x: 186, y: 150, f: -1 },
-    { k: 'whale', x: 474, y: 236, f: -1 },
-    { k: 'fish', x: 256, y: 166, f: -1 },
-    { k: 'kraken', x: 602, y: 152 },
-    { k: 'ray', x: 300, y: 242 },
-    { k: 'fish', x: 96, y: 178, f: 1 },
-    { k: 'fish', x: 520, y: 56, f: -1 },
+    { k: 'serpent', x: 222, y: 176, f: 1 },
+    { k: 'lugger', x: 96, y: 138, f: -1 },
+    { k: 'whale', x: 478, y: 234, f: -1 },
+    { k: 'kraken', x: 490, y: 172 },
+    { k: 'ray', x: 266, y: 216 },
+    { k: 'fish', x: 530, y: 50, f: -1 },
+    { k: 'fish', x: 322, y: 58, f: 1 },
   ];
 
   // reef / shoal fields
@@ -245,7 +243,7 @@
 
   // names of the water itself, set wide the way a chart letters an open sea
   const SEA_NAMES = [
-    ['MOTHER DEEP', 96, 136, 6, 3],
+    ['MOTHER DEEP', 166, 126, 6, 3],
     ['THE NARROWS', 232, 196, 5, 2],
     ['BONE CHANNEL', 372, 132, 5, 2],
     ['OPEN SEA', 580, 228, 6, 3],
@@ -676,38 +674,46 @@
     for (let k = 0; k < 7; k++) { D1(ctx, P.ink, x - f * (9 + k), y - 1 - k); D1(ctx, P.ink, x - f * (9 + k), y + 1 + Math.round(k * 0.7)); }
     D1(ctx, P.ink, x - f * 16, y - 8); D1(ctx, P.ink, x - f * 16, y + 6);
   }
+  // a right whale, blowing: counter-shaded back, hatched flank, solid flukes
   function drawWhale(ctx, x, y, f) {
     y += 6;
-    const W = 32;
-    const fat = u => u < 0.78 ? Math.pow(u / 0.78, 0.45) : Math.sqrt(Math.max(0, 1 - Math.pow((u - 0.78) / 0.23, 2)));
-    let lastT = 0, lastB = 0;
+    const W = 36, TL = 10, BL = 7.5;
+    const g = u => u < 0.15 ? 0.20 + u / 0.15 * 0.30
+      : u < 0.56 ? 0.50 + (u - 0.15) / 0.41 * 0.50
+      : u < 0.88 ? 1
+      : Math.sqrt(Math.max(0, 1 - Math.pow((u - 0.88) / 0.13, 2)));
+    let pt = 0, pb = 0;
     for (let i = 0; i < W; i++) {
-      const u = i / (W - 1), k = fat(u);
-      const t = Math.round(9 * k), b2 = Math.round(6.5 * k);
-      const cx = x + f * Math.round(i - W * 0.55);
-      for (let q = -t + 1; q < b2; q++) D1(ctx, P.sand, cx, y + q);
-      D1(ctx, P.ink, cx, y - t); D1(ctx, P.ink, cx, y + b2);
-      for (let q = Math.min(t, lastT); q < Math.max(t, lastT); q++) D1(ctx, P.ink, cx, y - q);
-      for (let q = Math.min(b2, lastB); q < Math.max(b2, lastB); q++) D1(ctx, P.ink, cx, y + q);
-      lastT = t; lastB = b2;
-      if (i % 2 === 0) for (let q = -t + 2; q < b2 - 1; q += 3) D1(ctx, P.ink2, cx, y + q);
-      if (u > 0.4 && u < 0.92 && i % 3 === 0) D1(ctx, P.ink2, cx, y + b2 - 1);
+      const u = i / (W - 1), k = g(u);
+      let t = Math.round(TL * k); const b = Math.round(BL * k);
+      if (u > 0.28 && u < 0.46) t += 1;                       // the dorsal hump
+      const cx = x + f * Math.round(i - W * 0.52);
+      for (let q = -t + 1; q < b; q++) D1(ctx, P.sand, cx, y + q);
+      for (let q = -t + 1; q < Math.min(b, -t + 3); q++) D1(ctx, P.ink2, cx, y + q);
+      D1(ctx, P.ink, cx, y - t); D1(ctx, P.ink, cx, y + b);
+      for (let q = Math.min(t, pt); q < Math.max(t, pt); q++) D1(ctx, P.ink, cx, y - q);
+      for (let q = Math.min(b, pb); q < Math.max(b, pb); q++) D1(ctx, P.ink, cx, y + q);
+      pt = t; pb = b;
+      if (i % 2 === 0) for (let q = -t + 4; q < b - 1; q += 3) D1(ctx, P.inkL, cx, y + q);
+      if (u > 0.58 && i % 2 === 0) for (let q = 2; q < b; q += 2) D1(ctx, P.ink2, cx, y + q);
     }
     const hx = x + f * Math.round(W * 0.45);
-    for (let i = 0; i < 12; i++) D1(ctx, P.ink, hx + f * i, y + 2 + Math.round(i * 0.18));
-    D1(ctx, P.ink, hx + f * 7, y - 2); D1(ctx, P.ink, hx + f * 8, y - 2);
-    for (let k = 0; k < 6; k++) { D1(ctx, P.ink, hx - f * (2 + k), y + 5 + (k >> 1)); D1(ctx, P.ink, hx - f * (2 + k), y + 7 + (k >> 1)); }
-    const tx = x - f * Math.round(W * 0.56);
-    tri(ctx, P.ink, tx, y, tx - f * 9, y - 9, tx - f * 5, y - 1);
-    tri(ctx, P.ink, tx, y, tx - f * 9, y + 8, tx - f * 5, y + 1);
-    for (let k = 2; k < 8; k++) { D1(ctx, P.sand, tx - f * k, y - k + 1); D1(ctx, P.sand, tx - f * k, y + k - 1); }
-    for (let i = 0; i < 14; i++) {
-      const sy = y - 11 - i, lean = Math.round(i * 0.5);
-      D1(ctx, P.ink, hx - f * (2 + lean), sy); D1(ctx, P.ink, hx - f * (3 + lean), sy);
-      if (i > 3) { D1(ctx, P.ink, hx + f * (lean - 2), sy); D1(ctx, P.ink, hx + f * (lean - 1), sy); }
-      if (i > 8) { D1(ctx, P.ink2, hx - f * (5 + lean), sy + 1); D1(ctx, P.ink2, hx + f * (lean + 1), sy + 1); }
+    for (let i = 0; i < 15; i++) D1(ctx, P.ink, hx + f * i - f * 8, y + 2 + Math.round(i * 0.16));
+    D1(ctx, P.ink, hx + f * 5, y - 2); D1(ctx, P.ink, hx + f * 6, y - 2); D1(ctx, P.ink, hx + f * 5, y - 1);
+    tri(ctx, P.ink, hx - f * 4, y + 5, hx - f * 12, y + 11, hx - f * 7, y + 4);
+    const tx = x - f * Math.round(W * 0.54);
+    tri(ctx, P.ink, tx, y, tx - f * 11, y - 10, tx - f * 5, y - 1);
+    tri(ctx, P.ink, tx, y, tx - f * 11, y + 9, tx - f * 5, y + 1);
+    for (let k = 4; k < 8; k++) { D1(ctx, P.sand, tx - f * k, y - k); D1(ctx, P.sand, tx - f * k, y + k - 2); }
+    // the blow, rooted in her back so it never floats free of her
+    const bhx = hx - f * 4;
+    for (let k = 0; k < 4; k++) R(ctx, P.ink, bhx - 2, y - 8 - k, 5, 1);
+    for (let i = 0; i < 15; i++) {
+      const sy = y - 12 - i, lean = Math.round(i * 0.42);
+      D1(ctx, P.ink, bhx - f * lean, sy); D1(ctx, P.ink, bhx - f * (lean + 1), sy);
+      D1(ctx, P.ink, bhx + f * (lean + 1), sy); D1(ctx, P.ink, bhx + f * (lean + 2), sy);
+      if (i > 7 && (i & 1)) { D1(ctx, P.ink2, bhx - f * (lean + 3), sy); D1(ctx, P.ink2, bhx + f * (lean + 4), sy); }
     }
-    D1(ctx, P.ink, hx - f * 9, y - 24); D1(ctx, P.ink, hx - f * 11, y - 22); D1(ctx, P.ink, hx + f * 6, y - 23);
   }
   function drawKraken(ctx, x, y) {
     y += 4;
@@ -1644,8 +1650,8 @@
     keepOut.push({ x: 580, y: 234, rx: 44, ry: 14 });      // the open-sea note
     for (const w of WRECKS) keepOut.push({ x: w[0], y: w[1], rx: 13, ry: 11 });
     for (const dd of DOODLES) {
-      const rx = dd.k === 'serpent' ? 62 : dd.k === 'whale' ? 28 : dd.k === 'lugger' ? 32 : 18;
-      const ry = dd.k === 'serpent' ? 32 : dd.k === 'whale' ? 28 : dd.k === 'lugger' ? 26 : 16;
+      const rx = dd.k === 'serpent' ? 62 : dd.k === 'whale' ? 38 : dd.k === 'lugger' ? 34 : 20;
+      const ry = dd.k === 'serpent' ? 34 : dd.k === 'whale' ? 30 : dd.k === 'lugger' ? 26 : 18;
       const ox = dd.k === 'serpent' ? (dd.f || 1) * 22 : 0;
       keepOut.push({ x: dd.x + ox, y: dd.y, rx: rx, ry: ry });
     }

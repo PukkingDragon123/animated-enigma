@@ -1195,7 +1195,8 @@ class MiniBoss {
       for (let i = 0; i < n; i++) G.pickups.push(new Pickup(this.x, this.y, k));
     }
     G.stats.kills++;
-    if (G.onMiniBossKilled) G.onMiniBossKilled(this);
+    // NOTE: the mini-boss death sting is fired by Game.updateWorld when it
+    // sweeps G.miniBosses, so it is deliberately NOT called from here.
     if (G.onEnemyKilled) G.onEnemyKilled(this);
   }
 }

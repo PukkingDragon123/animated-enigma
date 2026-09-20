@@ -175,6 +175,18 @@ function outlineIt(c, ink) {
   x.putImageData(img, 0, 0);
   return c;
 }
+// Bake-time pixel buffer.  Speckly sprites (foam rings, spray, flame) are
+// tens of thousands of single pixels each; as fillRect calls the whole bake
+// cost most of half a second, so they are written straight into bytes.
+function pixBuf(w, h) { return { w: w, h: h, d: new Uint8ClampedArray(w * h * 4) }; }
+function pixTo(b) { const c = can(b.w, b.h); cx2(c).putImageData(new ImageData(b.d, b.w, b.h), 0, 0); return c; }
+function pset(b, c, x, y) {
+  x = x | 0; y = y | 0;
+  if (x < 0 || y < 0 || x >= b.w || y >= b.h) return;
+  const p = (y * b.w + x) * 4;
+  b.d[p] = c[0]; b.d[p + 1] = c[1]; b.d[p + 2] = c[2]; b.d[p + 3] = 255;
+}
+
 // posterized, ordered-dithered ramp fill straight into pixels (bake only)
 function paintRamp(ctx, x0, y0, w, h, ramp, fy) {
   const img = ctx.createImageData(w, h), d = img.data;
@@ -272,6 +284,51 @@ function drawFarBoat(x, bx, by, col, rim, broke) {
   if (broke) { LN(x, col, bx + 12, by - 2, bx + 22, by - 16); P(x, col, bx + 6, by - 8, 2, 8); }
   else { P(x, col, bx + 11, by - 17, 2, 17); P(x, rim, bx + 13, by - 16, 5, 6); }
 }
+const SEA_CACHE = {};
+function seaLayer(seaRamp, opt) {
+  const chop = opt.chop || BP.foam[0], sun = opt.sun ? opt.sun[0] : -1;
+  const key = seaRamp.join('') + chop + sun + (opt.road || '');
+  if (SEA_CACHE[key]) return SEA_CACHE[key];
+  const H = 360 - HZ, b = pixBuf(640, H);
+  const cols = seaRamp.map(hexToRgb), n = cols.length;
+  for (let y = 0; y < H; y++) {
+    const u = y / (H - 1);
+    for (let px = 0; px < 640; px++) {
+      let v = 1 - Math.pow(u, 0.62) + (hash2(px >> 2, y) - 0.5) * 0.12;
+      if (v < 0) v = 0; else if (v > 1) v = 1;
+      const fi = v * (n - 1);
+      let i = Math.floor(fi);
+      if (bay(px, y + HZ) < fi - i) i++;
+      if (i < 0) i = 0; else if (i > n - 1) i = n - 1;
+      pset(b, cols[i], px, y);
+    }
+  }
+  // chop: flat dashes, longer and sparser as the water comes towards us
+  const CH_ = hexToRgb(chop);
+  for (let y = 2; y < H; y++) {
+    const u = y / H, step = 3 + R(u * 5), len = 1 + R(u * 5);
+    let sx = R(hash2(y, 91) * 40);
+    while (sx < 640) {
+      if (hash2(sx * 3 + y, y * 7 + 11) < 0.42) for (let d = 0; d < len; d++) pset(b, CH_, sx + d, y);
+      sx += step + R(hash2(sx, y) * 9);
+    }
+  }
+  // the light on the water under the sun, a hard dithered road
+  if (sun >= 0) {
+    const RD = hexToRgb(opt.road || opt.sun[3]);
+    for (let y = 0; y < H; y++) {
+      const u = y / H, sp = 6 + u * 62, len = 1 + R(u * 2);
+      for (let dx = -sp; dx <= sp; dx += 1) {
+        const px = R(sun + dx);
+        if (px < 0 || px > 639) continue;
+        const fall = 1 - Math.abs(dx) / sp;
+        if (bay(px, y + HZ) > fall * (0.72 - u * 0.45)) continue;
+        for (let d = 0; d < len; d++) pset(b, RD, px + d, y);
+      }
+    }
+  }
+  return SEA_CACHE[key] = pixTo(b);
+}
 function buildBay(skyRamp, seaRamp, opt) {
   const c = can(640, 360), x = cx2(c);
   // ---- sky: posterized bands with a little ordered break-up
@@ -291,36 +348,9 @@ function buildBay(skyRamp, seaRamp, opt) {
     disc(x, opt.sun[0], opt.sun[1], opt.sun[2], opt.sun[3]);
     disc(x, opt.sun[0], opt.sun[1], opt.sun[2] - 3, opt.sun[4]);
   }
-  // ---- the sea: brightest where it meets the sky, darkest underfoot
-  // (painted straight into pixels, so it has to land before anything that
-  //  stands in the water)
-  paintRamp(x, 0, HZ, 640, 360 - HZ, seaRamp, (u, px, py) =>
-    1 - Math.pow(u, 0.62) + (hash2(px >> 2, py) - 0.5) * 0.12);
-  // chop: flat dashes, longer and sparser as the water comes towards us
-  const chop = opt.chop || BP.foam[0];
-  for (let y = HZ + 2; y < 360; y++) {
-    const u = (y - HZ) / (360 - HZ);
-    const step = 3 + R(u * 5);
-    let sx = R(hash2(y, 91) * 40);
-    while (sx < 640) {
-      if (hash2(sx * 3 + y, y * 7 + 11) < 0.42) P(x, chop, sx, y, 1 + R(u * 5), 1);
-      sx += step + R(hash2(sx, y) * 9);
-    }
-  }
-  // the light on the water under the sun, a hard dithered road
-  if (opt.sun) {
-    const sxp = opt.sun[0], road = opt.road || opt.sun[3];
-    for (let y = HZ; y < 360; y++) {
-      const u = (y - HZ) / (360 - HZ), sp = 6 + u * 62;
-      for (let dx = -sp; dx <= sp; dx += 1) {
-        const px = R(sxp + dx);
-        if (px < 0 || px > 639) continue;
-        const fall = 1 - Math.abs(dx) / sp;
-        if (bay(px, y) > fall * (0.72 - u * 0.45)) continue;
-        P(x, road, px, y, 1 + R(u * 2), 1);
-      }
-    }
-  }
+  // ---- the sea, in ONE pixel pass: ramp, chop and the road under the sun.
+  // as fillRect-per-dash this alone was most of the bake budget.
+  x.drawImage(seaLayer(seaRamp, opt), 0, HZ);
   // ---- the village on its pier, standing in the water
   drawVillage(x, HZ - 16, BP.vill, opt.rim || BP.villR, opt.wrecked);
   drawFarBoat(x, 300, HZ - 4, BP.vill, opt.rim || BP.villR, opt.wrecked);
@@ -586,23 +616,23 @@ function buildRifle() {
 
 // ---- water furniture ----------------------------------------------------
 function ringSprite(rx, ry, th, col) {
-  const w = rx * 2 + 5, h = ry * 2 + 5, c = can(w, h), x = cx2(c);
+  const w = rx * 2 + 5, h = ry * 2 + 5, b = pixBuf(w, h), C = hexToRgb(col);
   const cx0 = rx + 2, cy0 = ry + 2, riy = Math.max(1, ry - th * 0.6), ri = Math.max(0, rx - th);
   for (let y = -ry; y <= ry; y++) {
     const q = 1 - (y / ry) * (y / ry); if (q <= 0) continue;
     const hw = Math.floor(rx * Math.sqrt(q));
     const q2 = 1 - (y / riy) * (y / riy);
     const lo = q2 > 0 ? Math.floor(ri * Math.sqrt(q2)) : 0;
-    for (let s = -1; s <= 1; s += 2) for (let d = lo; d <= hw; d++) {
-      const px = cx0 + s * d, py = cy0 + y;
-      if (bay(px, py) > 0.78) continue;
-      P(x, col, px, py, 1, 1);
+    for (let sg = -1; sg <= 1; sg += 2) for (let d = lo; d <= hw; d++) {
+      const px = cx0 + sg * d, py = cy0 + y;
+      if (bay(px, py) * 0.55 + hash2(px >> 1, py) * 0.7 > 0.66) continue;
+      pset(b, C, px, py);
     }
   }
-  return spr(c, cx0, cy0);
+  return spr(pixTo(b), cx0, cy0);
 }
 function discSprite(rx, ry, col, dens) {
-  const w = rx * 2 + 4, h = ry * 2 + 4, c = can(w, h), x = cx2(c);
+  const w = rx * 2 + 4, h = ry * 2 + 4, b = pixBuf(w, h), C = hexToRgb(col);
   const cx0 = rx + 2, cy0 = ry + 2;
   for (let y = -ry; y <= ry; y++) {
     const q = 1 - (y / ry) * (y / ry); if (q <= 0) continue;
@@ -611,41 +641,40 @@ function discSprite(rx, ry, col, dens) {
       const px = cx0 + d, py = cy0 + y;
       const fall = 1 - Math.sqrt((d / rx) * (d / rx) + (y / ry) * (y / ry));
       if (bay(px, py) > dens * (0.3 + fall)) continue;
-      P(x, col, px, py, 1, 1);
+      pset(b, C, px, py);
     }
   }
-  return spr(c, cx0, cy0);
+  return spr(pixTo(b), cx0, cy0);
 }
 function buildSpray(w, h, seed) {
-  const c = can(w, h), x = cx2(c);
+  const b = pixBuf(w, h), CO = BP.foam.map(hexToRgb);
   for (let px = 0; px < w; px++) {
     const u = px / (w - 1);
     const top = h - Math.sin(u * Math.PI) * h * (0.62 + 0.38 * hash2(px >> 2, seed));
     for (let y = Math.floor(top); y < h; y++) {
       const dv = (y - top) / Math.max(1, h - top);
       if (hash2(px + seed * 131, y * 3) > 0.22 + dv * 0.72) continue;
-      let ci = Math.floor((1 - dv) * BP.foam.length + (bay(px, y) - 0.5) * 1.6);
-      if (ci < 0) ci = 0; else if (ci > BP.foam.length - 1) ci = BP.foam.length - 1;
-      P(x, BP.foam[ci], px, y, 1, 1);
+      let ci = Math.floor((1 - dv) * CO.length + (bay(px, y) - 0.5) * 1.6);
+      if (ci < 0) ci = 0; else if (ci > CO.length - 1) ci = CO.length - 1;
+      pset(b, CO[ci], px, y);
     }
   }
-  return spr(c, w / 2, h);
+  return spr(pixTo(b), w / 2, h);
 }
 function buildFlame(seed) {
-  const c = can(26, 34), x = cx2(c);
+  const b = pixBuf(26, 34), CO = BP.fire.map(hexToRgb);
   for (let y = 0; y < 34; y++) {
     const u = 1 - y / 33;
     const w = R((1 - u * u) * 11 + 1 + (hash2(y, seed) - 0.5) * 4);
     for (let d = -w; d <= w; d++) {
-      const px = 13 + d;
-      const fall = 1 - Math.abs(d) / (w + 1);
-      let ci = Math.floor(fall * 3 + (1 - u) * 1.6);
+      const px = 13 + d, fall = 1 - Math.abs(d) / (w + 1);
       if (bay(px, y + seed) > 0.25 + fall * 0.7) continue;
+      let ci = Math.floor(fall * 3 + (1 - u) * 1.6);
       if (ci < 0) ci = 0; else if (ci > 4) ci = 4;
-      P(x, BP.fire[ci], px, y, 1, 1);
+      pset(b, CO[ci], px, y);
     }
   }
-  return spr(c, 13, 33);
+  return spr(pixTo(b), 13, 33);
 }
 // the dark, near-black frame the Chief is held in for his close-up
 function buildCloseBg() {
@@ -771,7 +800,7 @@ const BossCut = {
       A.bayDusk = buildBay(BP.skyDusk, BP.seaDusk, { sun: [462, 168, 22, '#e9a061', '#ffd7a0'], road: '#c88257', chop: '#4a6272' });
       A.bayNight = [
         buildBay(BP.skyNight, BP.sea, { chop: '#26405a', wrecked: true, rim: '#1a1626' }),
-        buildBay(BP.skyDim, BP.sea, { chop: '#2b4866', wrecked: true, rim: '#241f32' }),
+        buildBay(BP.skyDim, BP.sea, { chop: '#26405a', wrecked: true, rim: '#241f32' }),
         buildBay(BP.skyDawn, BP.seaDusk, { sun: [112, 182, 17, '#c48c6c', '#f0c39a'], road: '#8a6a60', chop: '#3a5a78', wrecked: true, rim: '#2c2438' }),
       ];
       A.closeBg = buildCloseBg();
@@ -794,14 +823,19 @@ const BossCut = {
         return spr(outlineIt(c, BP.ink), 13, 21);
       })();
       A.shadow = discSprite(104, 22, '#020509', 1.5);
-      A.ring = []; for (let i = 0; i < 8; i++) A.ring.push(ringSprite(26 + i * 20, 7 + i * 5, 2, BP.foam[Math.min(3, 3 - (i >> 2))]));
-      A.mRing = []; for (let i = 0; i < 8; i++) A.mRing.push(ringSprite(26 + i * 18, 12 + i * 8, 4, BP.foam[Math.min(4, 4 - (i >> 1))]));
+      A.ring = []; for (let i = 0; i < 8; i++) A.ring.push(ringSprite(26 + i * 20, 7 + i * 5, 3 + i, BP.foam[Math.min(3, 3 - (i >> 2))]));
+      A.mRing = []; for (let i = 0; i < 8; i++) A.mRing.push(ringSprite(26 + i * 18, 12 + i * 8, 4 + i * 2, BP.foam[Math.min(4, 4 - (i >> 1))]));
       A.spray = []; for (let i = 0; i < 4; i++) A.spray.push(buildSpray(300, 170, i + 1));
       A.sprayS = []; for (let i = 0; i < 4; i++) A.sprayS.push(buildSpray(120, 70, i + 5));
       A.flame = []; for (let i = 0; i < 4; i++) A.flame.push(buildFlame(i));
       A.mini = buildMiniShade();
       A.miniWhite = tintSprite(A.mini, '#ffffff', 1);
       A.buf = can(640, 360); A.bufCtx = cx2(A.buf);
+      // the half-tone the minis darken the bay with, baked once: doing this
+      // as 57k fillRects per frame cost 30ms a frame before it was baked
+      A.dither = can(640, 360);
+      { const dx = cx2(A.dither); dx.fillStyle = '#000308';
+        for (let y = 0; y < 360; y += 2) for (let x = (y >> 1) & 1; x < 640; x += 2) dx.fillRect(x, y, 1, 1); }
       // warm every baked canvas once so the first frame never pays to upload
       const wc = cx2(can(8, 8));
       const warm = o => { if (!o) return; const c = o.c || o; if (c && c.width) wc.drawImage(c, 0, 0, c.width, c.height, 0, 0, 8, 8); };
@@ -874,7 +908,7 @@ const BossCut = {
     else if (this.kind === 'mini_intro') { if (T > KM.end) this.finish(); }
     else if (this.kind === 'mini_defeat') {
       this.cue('burst', KX.crack, () => { Audio_.splash(2); Audio_.noise(0.5, 0.3, 900, 60); });
-      if (T > KX.crack && T < KX.crack + 0.06) FX.shard(this.anchored ? this.ax : 320, this.anchored ? this.ay : 196, 16);
+      if (T > KX.crack && T < KX.crack + 0.06) FX.shard(this.anchored ? this.ax : 320, this.anchored ? this.ay : 214, 16);
       this.cue('stamp', KX.stamp, () => { Audio_.tone(120, 0.22, 'square', 0.28, -60); Audio_.noise(0.2, 0.25, 1600, 200); });
       if (T > KX.stamp && T < KX.stamp + 0.05) this.shake = 5;
       if (T > KX.end) this.finish();
@@ -1341,23 +1375,24 @@ const BossCut = {
 
   // ---- MINI: the arrival --------------------------------------------------
   drawMiniIntro(ctx, T) {
-    const dark = clamp(T / 0.18, 0, 1) * (T > KM.out ? clamp(1 - (T - KM.out) / 0.3, 0, 1) : 1);
-    P(ctx, rgbaq('#03070e', dark * 0.62), 0, 0, 640, 360);
-    if (!this.anchored) { this.drawMini(ctx, 320, 196, T); FX.render(ctx, 0, 0); }
+    const dark = clamp(T / 0.16, 0, 1) * (T > KM.out ? clamp(1 - (T - KM.out) / 0.3, 0, 1) : 1);
+    P(ctx, rgbaq('#03070e', dark * 0.78), 0, 0, 640, 360);
+    // a second, dithered pass: the water goes properly black around it
+    if (dark > 0.2) { ctx.globalAlpha = qa(dark * 0.5); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1; }
+    if (!this.anchored) { this.drawMini(ctx, 320, 214, T); FX.render(ctx, 0, 0); }
     const lb = clamp(T / 0.12, 0, 1) * (T > KM.out ? clamp(1 - (T - KM.out) / 0.28, 0, 1) : 1);
-    this.letterbox(ctx, lb * 0.55);
-    // the card
+    this.letterbox(ctx, lb * 0.6);
     const ck = clamp((T - KM.card) / 0.16, 0, 1);
-    const out = T > KM.out ? clamp((T - KM.out) / 0.34, 0, 1) : 0;
     if (ck <= 0) return;
-    const fly = out * out * 700;
-    const nameSize = this.fitSize(this.name, 560, 20);
-    const topOx = this.slab(ctx, 120, 20, ck, -1, '#0a0910', -fly);
-    P(ctx, BP.red, topOx, 138, 640, 2);
-    pixelText(ctx, 'THE WATER MOVES WRONG', 320 + topOx, 125, 8, '#c86a6a', 'center');
-    const botOx = this.slab(ctx, 140, 34, ck, 1, '#0a0910', fly);
-    pixelTextOutlined(ctx, this.name, 320 + botOx, 148, nameSize, BP.gold, '#14141c', 'center');
-    P(ctx, BP.red, botOx, 174, 640, 1);
+    const out = T > KM.out ? clamp((T - KM.out) / 0.34, 0, 1) : 0;
+    const fly = out * out * 760;
+    const nameSize = this.fitSize(this.name, 560, 22);
+    const topOx = this.slab(ctx, 54, 20, ck, -1, '#0a0910', -fly);
+    P(ctx, BP.red, topOx, 72, 640, 2);
+    pixelText(ctx, 'THE WATER MOVES WRONG', 320 + topOx, 59, 8, '#c86a6a', 'center');
+    const botOx = this.slab(ctx, 74, 36, ck, 1, '#0a0910', fly);
+    pixelTextOutlined(ctx, this.name, 320 + botOx, 82, nameSize, BP.gold, '#14141c', 'center');
+    P(ctx, BP.red, botOx, 109, 640, 1);
   },
   fitSize(s, maxW, start) {
     for (let sz = start; sz > 8; sz -= 2) if (textWidth(s, sz) <= maxW) return sz;
@@ -1367,51 +1402,58 @@ const BossCut = {
   drawMini(ctx, cx, cy, T) {
     const k = clamp((T - KM.rise) / 0.55, 0, 1);
     const e = 1 - (1 - k) * (1 - k);
-    const y = R(cy + (1 - e) * 42);
-    const ri = Math.min(7, Math.floor(clamp(T / 0.8, 0, 1) * 8));
+    const y = R(cy + (1 - e) * 44);
+    // the shock the water takes when it comes up
+    const sk = clamp(T / 0.42, 0, 1);
+    if (sk < 1) {
+      const fr = A.mRing[Math.min(7, Math.floor(sk * 8))];
+      ctx.globalAlpha = qa(1 - sk * 0.7);
+      ctx.drawImage(fr.c, R(cx) - fr.ax, R(cy) - fr.ay);
+      ctx.globalAlpha = 1;
+    }
+    const ri = Math.min(7, Math.floor(clamp((T - 0.2) / 0.9, 0, 1) * 8));
     const rg = A.mRing[ri];
-    ctx.globalAlpha = qa(clamp(1 - T / 1.1, 0.15, 1));
+    ctx.globalAlpha = qa(clamp(1 - T / 1.2, 0.12, 1));
     ctx.drawImage(rg.c, R(cx) - rg.ax, R(cy) - rg.ay);
-    ctx.globalAlpha = qa(0.35 + e * 0.65);
+    ctx.globalAlpha = qa(0.4 + e * 0.6);
     ctx.drawImage(A.mini.c, R(cx) - A.mini.ax, y - A.mini.ay);
     ctx.globalAlpha = 1;
     // the eyes come on last
     if (T > 0.34) {
       const f = (Math.floor(T * 22) & 1) || T > 0.55;
-      const ex = R(cx) + 48, ey = y - 12;
-      for (let s = -1; s <= 1; s += 2) {
-        P(ctx, f ? BP.red : '#5a0d12', ex, ey + s * 12 - 2, 5, 4);
-        if (f) P(ctx, '#ffd0a0', ex + 1, ey + s * 12 - 1, 2, 2);
+      const ex = R(cx) + 44, ey = y;
+      for (let sgn = -1; sgn <= 1; sgn += 2) {
+        P(ctx, f ? BP.red : '#5a0d12', ex, ey + sgn * 8 - 2, 5, 4);
+        if (f) P(ctx, '#ffd0a0', ex + 1, ey + sgn * 8 - 1, 2, 2);
       }
     }
   },
   // ---- MINI: the sting ----------------------------------------------------
   drawMiniDefeat(ctx, T) {
     const dark = clamp(T / 0.1, 0, 1) * (T > KX.out ? clamp(1 - (T - KX.out) / 0.3, 0, 1) : 1);
-    P(ctx, rgbaq('#03070e', dark * 0.55), 0, 0, 640, 360);
-    if (!this.anchored) { this.drawMiniBreak(ctx, 320, 196, T); FX.render(ctx, 0, 0); }
+    P(ctx, rgbaq('#03070e', dark * 0.72), 0, 0, 640, 360);
+    if (dark > 0.2) { ctx.globalAlpha = qa(dark * 0.45); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1; }
+    if (!this.anchored) { this.drawMiniBreak(ctx, 320, 214, T); FX.render(ctx, 0, 0); }
     const lb = clamp(T / 0.1, 0, 1) * (T > KX.out ? clamp(1 - (T - KX.out) / 0.26, 0, 1) : 1);
-    this.letterbox(ctx, lb * 0.5);
+    this.letterbox(ctx, lb * 0.55);
     const ck = clamp((T - KX.card) / 0.14, 0, 1);
     if (ck <= 0) return;
     const out = T > KX.out ? clamp((T - KX.out) / 0.34, 0, 1) : 0;
-    const drop = R(out * out * 260);
+    const drop = R(out * out * 300);
     const nameSize = this.fitSize(this.name, 520, 18);
-    const ox = R(this.slab(ctx, 148 + drop, 34, ck, -1, '#0a0910'));
-    P(ctx, '#3a3040', ox, 148 + drop, 640, 1);
-    P(ctx, '#3a3040', ox, 181 + drop, 640, 1);
-    pixelTextOutlined(ctx, this.name, 320 + ox, 154 + drop, nameSize, '#8e9aa8', '#14141c', 'center');
+    const ox = this.slab(ctx, 58 + drop, 58, ck, -1, '#0a0910');
+    P(ctx, '#3a3040', ox, 58 + drop, 640, 1);
+    P(ctx, '#3a3040', ox, 115 + drop, 640, 1);
+    pixelTextOutlined(ctx, this.name, 320 + ox, 64 + drop, nameSize, '#8e9aa8', '#14141c', 'center');
     if (T >= KX.stamp) {
       // struck through, and stamped
       const w = Math.min(600, textWidth(this.name, nameSize) + 40);
-      for (let i = 0; i < 5; i++) {
-        const y = 163 + drop + i;
-        P(ctx, i === 0 || i === 4 ? '#7a0d16' : BP.red, 320 - w / 2 + i * 2, y, w, 1);
+      for (let i = 0; i < 4; i++) {
+        P(ctx, i === 0 || i === 3 ? '#7a0d16' : BP.red, 320 - w / 2 + i * 2, 72 + drop + i, w, 1);
       }
       const sk = clamp((T - KX.stamp) / 0.1, 0, 1);
-      const sc = R(lerp(30, 22, sk));
       ctx.globalAlpha = qa(sk);
-      pixelTextOutlined(ctx, 'DOWN', 320, 190 + drop - R((1 - sk) * 6), sc, '#ff6161', '#14141c', 'center');
+      pixelTextOutlined(ctx, 'DOWN', 320, 88 + drop - R((1 - sk) * 6), R(lerp(30, 24, sk)), '#ff6161', '#14141c', 'center');
       ctx.globalAlpha = 1;
     }
   },
@@ -1425,9 +1467,8 @@ const BossCut = {
       ctx.drawImage(s.c, R(cx) - s.ax + jitter, R(cy) - s.ay, s.w, s.h);
       ctx.globalAlpha = 1;
     }
-    const ri = Math.min(7, Math.floor(clamp((T - KX.crack) / 0.7, 0, 1) * 8));
     if (T >= KX.crack) {
-      const rg = A.mRing[ri];
+      const rg = A.mRing[Math.min(7, Math.floor(clamp((T - KX.crack) / 0.7, 0, 1) * 8))];
       ctx.globalAlpha = qa(clamp(1 - (T - KX.crack) / 0.9, 0.1, 1));
       ctx.drawImage(rg.c, R(cx) - rg.ax, R(cy) - rg.ay);
       ctx.globalAlpha = 1;
