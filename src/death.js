@@ -1547,7 +1547,7 @@ const DeathScene = {
     const near = clamp(1 - Math.abs(x - 120) / 330, 0, 1);
     return {
       fire: clamp(f * (0.30 + near * 0.72), 0, 1),
-      cold: 0.42 * (1 - d),
+      cold: 0.55 * (1 - d),
       dawn: 0.88 * d,
     };
   },
