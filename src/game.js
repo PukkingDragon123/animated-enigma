@@ -35,6 +35,7 @@ class Game {
     this.viewW = VIEW_W; this.viewH = VIEW_H; this.cropX = CROP_X; this.cropY = CROP_Y;
     if (typeof Wildlife !== 'undefined') { Wildlife.init(); Wildlife.keyLabel = 'G'; }
     if (typeof DeathScene !== 'undefined') DeathScene.init();
+    if (typeof BossCut !== 'undefined' && BossCut.init) BossCut.init();
     if (typeof Upgrades !== 'undefined') Upgrades.init();
     if (typeof MainMenu !== 'undefined') MainMenu.init();
     this.tree = new SkillTree();
@@ -57,7 +58,7 @@ class Game {
     this.ocean = new Ocean(WORLD_W, WORLD_H, SHORE_Y);
     this.particles = new Particles(this.ocean);
     this.enemies = []; this.projectiles = []; this.pickups = []; this.wrecks = []; this.rocks = [];
-    this.boss = null; this.buoy = null; this.holdFire = false;
+    this.boss = null; this.buoy = null; this.holdFire = false; this.cutReturn = null; this.pendingVictory = false; this.miniBosses = [];
     this.stats = { kills: 0, shots: 0, absorbs: 0, damageDealt: 0, damageTaken: 0, scrapCollected: 0, bossCrashes: 0 };
     this.cam = { x: 0, y: 0 }; this.shakeAmt = 0; this.time = 0; this.endT = 0;
     this.pier = { x: WORLD_W / 2, y0: SHORE_Y - 24, y1: SHORE_Y + 130, w: 44 };
@@ -88,12 +89,35 @@ class Game {
   }
   // ---------------------------------------------------------- helpers
   spawnEnemy(type, x, y) { const e = new Enemy(type, x, y); this.enemies.push(e); this.particles.splash(x, y, 0.6); return e; }
+  // A named mid-run encounter. Lives in this.enemies like any other boat, so
+  // every system that already knows about enemies handles it for free.
+  spawnMiniBoss(type, x, y, difficulty) {
+    if (typeof MiniBoss === 'undefined' || typeof MINIBOSS_TYPES === 'undefined') return null;
+    const keys = Object.keys(MINIBOSS_TYPES); if (!keys.length) return null;
+    const key = (type && MINIBOSS_TYPES[type]) ? type : keys[(Math.random() * keys.length) | 0];
+    const m = new MiniBoss(key, x, y, difficulty || this.director.difficulty);
+    this.enemies.push(m); this.miniBosses.push(m);
+    this.particles.splash(x, y, 3); this.shake(7); Audio_.roar();
+    this.playCut('mini_intro', { name: m.displayName || m.name || MINIBOSS_TYPES[key].name });
+    return m;
+  }
+  // Boss and mini-boss cinematics. They are short, so the world keeps running
+  // underneath unless the cutscene says otherwise.
+  playCut(kind, opts) {
+    if (typeof BossCut === 'undefined' || !BossCut.start) return false;
+    BossCut.start(kind, opts || {});
+    if (BossCut.done || !BossCut.active) return false;
+    this.cutReturn = this.state === 'cut' ? (this.cutReturn || 'play') : this.state;
+    this.state = 'cut';
+    return true;
+  }
   spawnBoss() {
     const p = this.player; let a = rand(0, TAU), x, y;
     for (let i = 0; i < 20; i++) { x = p.x + Math.cos(a) * 420; y = p.y + Math.sin(a) * 420; if (x > 60 && x < WORLD_W - 60 && y > SHORE_Y + 60 && y < WORLD_H - 60) break; a += 0.7; }
     this.boss = new Boss(clamp(x, 60, WORLD_W - 60), clamp(y, SHORE_Y + 60, WORLD_H - 60));
     Audio_.roar(); this.shake(10);
     for (let i = 0; i < 6; i++) this.particles.splash(this.boss.x + rand(-40, 40), this.boss.y + rand(-20, 20), 2);
+    this.playCut('chief_intro');
   }
   nearestEnemy(x, y, range, exclude = null, includeBoss = false) {
     let best = null, bd = range * range;
@@ -129,7 +153,17 @@ class Game {
     this.autoTree = 2.4;
   }
   onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
-  onBossKilled() { this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0; this.state = 'victory_wait'; }
+  onBossKilled() {
+    this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0;
+    this.state = 'victory_wait';
+    // the chapter's payoff plays before the victory screen
+    this.pendingVictory = true;
+    this.playCut('chief_defeat');
+  }
+  onMiniBossKilled(m) {
+    this.banner((m && (m.displayName || m.name) || 'IT') + ' IS DOWN', '#ffe48f', 2);
+    this.playCut('mini_defeat', { name: m && (m.displayName || m.name) || '' });
+  }
   onPlayerDeath() {
     this.runActive = false;
     this.particles.blood(this.player.x, this.player.y, 4); this.particles.splash(this.player.x, this.player.y, 3);
@@ -197,7 +231,7 @@ class Game {
         this.updateWorld(dt);
         if (Input.hit('Tab')) {
           if (this.upgradesOpen()) this.openTree('play');
-          else { this.banner('SINK THE WAVE FIRST', '#ff6161', 1.6, 'The Deep only opens between waves.'); Audio_.deny(); }
+          else { this.banner('FINISH THE WAVE FIRST', '#ff6161', 1.6, 'The skill tree only opens between waves.'); Audio_.deny(); }
         }
         else if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'paused';
         if (this.director.cleared && !this.director.lastWave) {
@@ -225,6 +259,17 @@ class Game {
       case 'paused':
         if (typeof MainMenu !== 'undefined' && Input.hit('Backspace')) { this.runActive = true; this.state = 'menu'; break; }
         if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'play'; if (Input.hit('Tab') && this.upgradesOpen()) this.openTree('play'); break;
+      case 'cut':
+        if (typeof BossCut === 'undefined') { this.state = this.cutReturn || 'play'; break; }
+        if (BossCut.worldActive) this.updateWorld(dt * 0.6, true);
+        BossCut.update(dt, this.time);
+        if (Input.actHit('fire') || Input.hit('Escape') || Input.hit('Enter')) BossCut.skip();
+        if (BossCut.done) {
+          const back = this.cutReturn || 'play'; this.cutReturn = null;
+          this.state = back === 'cut' ? 'play' : back;
+          if (this.pendingVictory) { this.pendingVictory = false; this.endT = 0; this.state = 'victory_wait'; }
+        }
+        break;
       case 'death':
         // the sinking half still plays out in the world; the shore half does not
         if (DeathScene.worldActive) this.updateWorld(dt * 0.35, true);
@@ -266,6 +311,11 @@ class Game {
     if (this.fisherman) this.fisherman.update(dt);
     this.director.update(dt);
     for (const e of this.enemies) e.update(dt, t);
+    // a mini-boss going down is a moment, so it gets its own sting
+    for (let i = this.miniBosses.length - 1; i >= 0; i--) {
+      const m = this.miniBosses[i];
+      if (m.dead) { this.miniBosses.splice(i, 1); this.onMiniBossKilled(m); }
+    }
     if (this.boss) this.boss.update(dt, t);
     for (const p of this.projectiles) p.update(dt);
     for (const p of this.pickups) p.update(dt);
@@ -371,6 +421,7 @@ class Game {
     if (typeof Hazards !== 'undefined') Hazards.renderOver(W, cam, t);
     if (typeof Wildlife !== 'undefined') Wildlife.renderHint(W, cam, t);
     if (this.state === 'death' && DeathScene.renderWorld) DeathScene.renderWorld(W, cam, t);
+    if (this.state === 'cut' && typeof BossCut !== 'undefined' && BossCut.renderWorld) BossCut.renderWorld(W, cam, t);
     Toon.render(W, cam);
     this.ocean.renderRipples(W, cam);
     // sun sheen and swell ribbons pass OVER the entities so they read as submerged
@@ -384,7 +435,7 @@ class Game {
     this.hud(ctx);
     // overlays
     if (this.state === 'dialogue') Dialogue.renderHUD(ctx);
-    if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree' && this.state !== 'death') UI.drawHUD(ctx, t);
+    if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree' && this.state !== 'death' && this.state !== 'cut') UI.drawHUD(ctx, t);
     if (this.state === 'tree') { if (typeof Upgrades !== 'undefined') Upgrades.render(ctx, t); else UI.drawTree(ctx, t); }
     if (this.state === 'paused') {
       ctx.fillStyle = 'rgba(2,8,18,0.78)'; ctx.fillRect(0, 0, 640, 360);
@@ -397,6 +448,7 @@ class Game {
     if (this.state === 'victory') drawEndScreen(ctx, t, true);
     if (this.state === 'dead_wait') { ctx.fillStyle = `rgba(120,10,20,${Math.min(0.7, this.endT * 0.4).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
     if (this.state === 'death') DeathScene.renderScreen(ctx, this.time);
+    if (this.state === 'cut' && typeof BossCut !== 'undefined') BossCut.renderScreen(ctx, this.time);
     if (this.state === 'dialogue' && !this.director.started) { /* controls hint in dialogue */ }
     if (typeof MobileUI !== 'undefined' && MobileUI.enabled && (this.state === 'play' || this.state === 'dialogue' || this.state === 'dead_wait' || this.state === 'victory_wait')) MobileUI.render(ctx, t);
     if (Audio_.muted) pixelText(ctx, 'MUTED [M]', 634, 350, 6, '#889', 'right');

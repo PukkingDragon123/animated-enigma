@@ -5,10 +5,10 @@ const SCRAP_COLORS = { metal: '#aeb6c1', wood: '#b57d3f', fuel: '#ff6161', powde
 
 function baseStats() {
   return {
-    maxHp: 100, regen: 0, armor: 0, dmg: 1, fireRate: 1, projSpeed: 1, projCount: 0, pierce: 0, ricochet: 0, explosive: 0,
+    maxHp: 130, regen: 0, armor: 0, dmg: 1, fireRate: 1, projSpeed: 1, projCount: 0, pierce: 0, ricochet: 0, explosive: 0,
     crit: 0, critMult: 2.5, knock: 1, burn: 0, bigIron: false,
     speed: 1, accel: 1, turn: 1, rollCd: 1, rollDist: 1, rollCharges: 1, rollDmg: 0, rollSplash: 0, slipstream: false, currentRider: false, dive: false, absorbBoost: false,
-    absorbWindow: 0.3, absorbCd: 1.3, absorbReflect: false, absorbHeal: 0, absorbShock: 0, rampGain: 1, rampDur: 5, rampExplosive: false, rampFrenzy: false,
+    absorbWindow: 0.55, absorbCd: 0.9, absorbReflect: false, absorbHeal: 0, absorbShock: 0, rampGain: 1, rampDur: 5, rampExplosive: false, rampFrenzy: false,
     magnet: 1, scrapBonus: 0, scrapMult: 1, decoy: false, tidal: false, cdMult: 1, rockSense: false, secondWind: false, sidearm: false,
     weapons: ['revolver'],
   };
@@ -36,7 +36,7 @@ const SKILL_NODES = [
   { id: 'w_hollow2', branch: 'weapons', pos: [1, 6], name: 'Armor Piercing', desc: '+35% damage and +1 pierce for all weapons.', cost: { metal: 22, powder: 12, tech: 8 }, req: ['w_incend', 'w_sidearm', 'w_barrel'], reqAny: true, apply: s => { s.dmg *= 1.35; s.pierce += 1; } },
 
   // ================= UTILITY =================
-  { id: 'u_window', branch: 'utility', pos: [0, 0], name: 'Wide Absorb', desc: 'Absorb window 0.30s -> 0.48s. Easier parries.', cost: { tech: 3 }, req: [], apply: s => s.absorbWindow = 0.48 },
+  { id: 'u_window', branch: 'utility', pos: [0, 0], name: 'Wide Absorb', desc: 'Absorb window 0.55s -> 0.85s. Hold the shield almost twice as long.', cost: { tech: 3 }, req: [], apply: s => s.absorbWindow = 0.85 },
   { id: 'u_reflex', branch: 'utility', pos: [0, 1], name: 'Absorb Reflex', desc: 'Absorb cooldown -40%.', cost: { tech: 6 }, req: ['u_window'], apply: s => s.absorbCd *= 0.6 },
   { id: 'u_heal', branch: 'utility', pos: [1, 1], name: 'Absorb & Mend', desc: 'Each absorbed attack heals 5 HP.', cost: { wood: 8, tech: 4 }, req: ['u_window'], apply: s => s.absorbHeal += 5 },
   { id: 'u_magnet', branch: 'utility', pos: [2, 1], name: 'Scrap Magnet', desc: 'Pickup radius +70%.', cost: { metal: 5 }, req: ['u_window'], apply: s => s.magnet *= 1.7 },

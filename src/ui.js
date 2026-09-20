@@ -94,6 +94,24 @@ const UI = {
     pixelTextOutlined(ctx, fmtTime(G.director.time), 320, waveLabel ? 5 : 4, 9, '#ffffff', '#14141c', 'center');
     if (waveLabel) pixelTextOutlined(ctx, waveLabel, 320, 16, 6, '#ffe48f', '#14141c', 'center');
 
+    // ---------- objective ----------
+    // What this wave is actually asking for, on screen the whole time it lasts.
+    const d0 = G.director;
+    if (d0.started && d0.state === 'fighting' && d0.objectiveStatus) {
+      const ob = d0.objectiveStatus();
+      if (ob) {
+        const ow = Math.max(240, textWidth(ob.text, 6) + 30);
+        const oy = (G.boss && !G.boss.dead) ? 52 : 28;
+        UIKit.panel(ctx, 320 - ow / 2, oy, ow, 26, 'dark');
+        pixelTextOutlined(ctx, 'OBJECTIVE', 320 - ow / 2 + 8, oy + 4, 5, '#9ab0c0', '#14141c');
+        const vc = ob.done ? '#6fd88e' : '#ffe48f';
+        pixelTextOutlined(ctx, ob.value, 320 + ow / 2 - 8, oy + 4, 5, vc, '#14141c', 'right');
+        pixelTextOutlined(ctx, ob.text, 320, oy + 13, 6, ob.done ? '#6fd88e' : '#ffffff', '#14141c', 'center');
+        ctx.fillStyle = '#1b2028'; ctx.fillRect(320 - ow / 2 + 6, oy + 22, ow - 12, 2);
+        ctx.fillStyle = vc; ctx.fillRect(320 - ow / 2 + 6, oy + 22, Math.round((ow - 12) * clamp(ob.frac || 0, 0, 1)), 2);
+      }
+    }
+
     // ---------- boss bar ----------
     const b = G.boss;
     if (b && !b.dead) {
@@ -109,6 +127,22 @@ const UI = {
         ctx.moveTo(ex + Math.cos(a) * 8, ey + Math.sin(a) * 8);
         ctx.lineTo(ex + Math.cos(a + 2.4) * 7, ey + Math.sin(a + 2.4) * 7);
         ctx.lineTo(ex + Math.cos(a - 2.4) * 7, ey + Math.sin(a - 2.4) * 7); ctx.fill();
+      }
+    }
+
+    // ---------- mini-boss bar ----------
+    const mb = (G.miniBosses || []).find(m => !m.dead);
+    if (mb && !(G.boss && !G.boss.dead)) {
+      const mname = mb.displayName || mb.name || 'SOMETHING BIG';
+      UIKit.panel(ctx, 190, 80, 260, 18, 'dark');
+      UIKit.bar(ctx, 195, 89, 250, 5, clamp(mb.hp / mb.maxHp, 0, 1), '#e6802a', '#1b2028');
+      pixelTextOutlined(ctx, mname, 320, 81, 6, '#ffd27a', '#14141c', 'center');
+      const mp = G.worldToScreen(mb.x, mb.y);
+      if (mp.x < 0 || mp.y < 0 || mp.x > 640 || mp.y > 360) {
+        const a = angleTo(320, 180, mp.x, mp.y), ex = clamp(320 + Math.cos(a) * 400, 12, 628), ey = clamp(180 + Math.sin(a) * 400, 56, 348);
+        ctx.fillStyle = '#e6802a';
+        ctx.fillRect(Math.round(ex) - 3, Math.round(ey) - 3, 6, 6);
+        ctx.fillRect(Math.round(ex + Math.cos(a) * 5) - 2, Math.round(ey + Math.sin(a) * 5) - 2, 4, 4);
       }
     }
 
@@ -133,12 +167,14 @@ const UI = {
     if (!touch) {
       const wp = WEAPONS[G.tree.primary];
       const side = st.sidearm && G.tree.sidearm && G.tree.sidearm !== G.tree.primary;
-      UIKit.panel(ctx, 2, 326, 200, 32, 'dark');
-      drawSprite(ctx, SP.guns[G.tree.primary], 16, 338);
-      pixelText(ctx, wp.name, 42, 332, 6, '#ffffff');
+      UIKit.panel(ctx, 2, 318, 210, 40, 'dark');
+      drawSprite(ctx, SP.guns[G.tree.primary], 16, 332);
+      pixelText(ctx, wp.name, 42, 324, 6, '#ffffff');
       const wl = G.tree.weaponsUnlocked();
+      // the otter fires when you tell him to and not before, so say it plainly
+      pixelText(ctx, 'HOLD LEFT MOUSE TO FIRE', 42, 333, 5, Input.mouse.down ? '#ffe48f' : '#8fa6b8');
       pixelText(ctx, wl.length > 1 ? `[1-${wl.length}] switch  (${wl.indexOf(G.tree.primary) + 1}/${wl.length})` : 'unlock more in the skill tree', 42, 341, 5, '#8fa6b8');
-      if (side) { drawSprite(ctx, SP.guns[G.tree.sidearm], 16, 350); pixelText(ctx, '+ ' + WEAPONS[G.tree.sidearm].name, 42, 349, 5, '#ffe48f'); }
+      if (side) { drawSprite(ctx, SP.guns[G.tree.sidearm], 16, 351); pixelText(ctx, '+ ' + WEAPONS[G.tree.sidearm].name, 42, 349, 5, '#ffe48f'); }
     }
 
     // ---------- bottom-right: tally ----------
@@ -179,13 +215,6 @@ const UI = {
         pixelTextOutlined(ctx, touch ? 'TAP HERE FOR THE NEXT WAVE' : '[ENTER] CALL IN THE NEXT WAVE', 320, 282, 8,
           pulse ? '#ffe48f' : '#ffffff', '#14141c', 'center');
       }
-    } else if (d.started && d.state === 'fighting' && !d.isBossWave) {
-      // a live wave: how much of it is left
-      const w = d.currentWave();
-      const left = d.remaining + G.enemies.length, total = w.count;
-      const k = clamp(1 - left / Math.max(1, total), 0, 1);
-      UIKit.bar(ctx, 256, 30, 128, 8, k, '#ffe48f', '#1b2028');
-      pixelTextOutlined(ctx, `${Math.max(0, left)} LEFT`, 320, 31, 5, '#ffffff', '#14141c', 'center');
     }
 
     if (hpk < 0.3) { ctx.fillStyle = `rgba(200,20,20,${(0.12 + Math.sin(t * 6) * 0.08).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }

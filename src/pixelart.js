@@ -323,7 +323,48 @@ SP.pellet = makeSprite(['Yk', 'yk'], { ax: 1, ay: 1 });
 SP.harpoonShot = makeSprite(['uTTTTTTTMMk', 'kkkkkkkkMk.'], { ax: 5, ay: 0 });
 SP.grenadeShot = makeSprite(['.kkk.', 'kvEek', 'kveek', '.kkk.'], { ax: 2, ay: 2 });
 SP.flakShot = makeSprite(['kkk', 'kOk', 'kkk'], { ax: 1, ay: 1 });
-SP.enemyBullet = makeSprite(['Rrk', 'rrk'], { ax: 1, ay: 1 });
+SP.enemyBullet = makeSprite([
+  '.kkkk.',
+  'kRRwwk',
+  'kRwwrk',
+  'kqrrrk',
+  '.kkkk.',
+], { ax: 3, ay: 2 });
+SP.buckshotBig = makeSprite([
+  '.kk.',
+  'kRwk',
+  'kqrk',
+  '.kk.',
+], { ax: 2, ay: 2 });
+// a baited hook drifting on a longline
+SP.hookShot = makeSprite([
+  '.kkk.',
+  'kMMMk',
+  'kMwMk',
+  'kMMMk',
+  '.kMk.',
+  '.kMk.',
+  'kMMk.',
+  '.kk..',
+], { ax: 2, ay: 4 });
+// a crab pot, dropped in your path
+SP.potShot = makeSprite([
+  '.kkkkk.',
+  'kTUTUTk',
+  'kUTkTUk',
+  'kTUkUTk',
+  'kUTUTUk',
+  '.kkkkk.',
+], { ax: 3, ay: 3 });
+// a signal flare: the spotter calling the fleet onto you
+SP.flareShot = makeSprite([
+  '..kk..',
+  '.kffk.',
+  'kfwwfk',
+  'kfwwfk',
+  '.kOfk.',
+  '..kk..',
+], { ax: 3, ay: 3 });
 SP.enemyHarpoon = makeSprite(['xxxxxxxxMMk', 'kkkkkkkkMk.'], { ax: 5, ay: 0 });
 SP.net = makeSprite([
   '.k.k.k.k.k.k.',
@@ -338,6 +379,42 @@ SP.net = makeSprite([
 ], { ax: 6, ay: 4 });
 SP.dynamite = makeSprite(['....Yk', '...kk.', '.kkkk.', 'krrrrk', 'kPrPrk', 'krrrrk', '.kkkk.'], { ax: 3, ay: 4 });
 SP.buckshot = makeSprite(['Ok', 'kk'], { ax: 1, ay: 1 });
+
+// ---- salvaged kit the boats leave behind ---------------------------------
+// A boat fixer: the otter's patch kit, hull plate and a roll of tape.
+SP.item = {};
+SP.item.repair = makeSprite([
+  '.kkkkkkk.',
+  'kTUUUUUTk',
+  'kUEEEEEUk',
+  'kUEwwwEUk',
+  'kUEwEwEUk',
+  'kUEwwwEUk',
+  'kUEEEEEUk',
+  'kTUUUUUTk',
+  '.kkkkkkk.',
+], { ax: 4, ay: 4 });
+// A plate of hull armour, still wet.
+SP.item.plate = makeSprite([
+  '.kkkkkk.',
+  'kMMMMMMk',
+  'kMzzzzMk',
+  'kMzXXzMk',
+  'kMzXXzMk',
+  'kMzzzzMk',
+  'kMMMMMMk',
+  '.kkkkkk.',
+], { ax: 4, ay: 4 });
+// A jerry can of fuel: straight into the rampage meter.
+SP.item.tonic = makeSprite([
+  '..kkk..',
+  '.kOOOk.',
+  'kOffOOk',
+  'kOfwfOk',
+  'kOffOOk',
+  'kOOOOOk',
+  '.kkkkk.',
+], { ax: 3, ay: 3 });
 SP.shell = makeSprite(['yYk', 'ook'], { ax: 1, ay: 1 });
 
 // ============================ PICKUPS ==================================

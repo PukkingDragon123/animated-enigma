@@ -1,19 +1,78 @@
 // ---- Spawn director: discrete, clearable waves --------------------------
-// You must WIPE OUT a wave before the upgrade screen opens. Between waves the
-// ocean goes quiet, you spend your salvage, then you call the next one in.
+// You must FINISH a wave before the skill tree opens. Between waves the ocean
+// goes quiet, you spend your salvage, then you call the next one in.
+//
+// Every wave carries an OBJECTIVE. Most of them are "sink the lot", but some
+// ask for something else: hunt one boat down, hold the water for a count, or
+// come back with salvage. The objective is what the wave is really about and
+// it is on screen the whole time.
 const WAVES = [
-  { name: 'WAVE 1',  sub: 'Fishing dinghies leave the pier',            pool: { dinghy: 1 },                                                        count: 8,  interval: 1.5, max: 5,  burst: [['dinghy', 3]] },
-  { name: 'WAVE 2',  sub: 'Net boats. Absorb the nets [E / right-click]', pool: { dinghy: 2, netter: 1.4 },                                          count: 11, interval: 1.4, max: 6,  burst: [['netter', 3]] },
-  { name: 'WAVE 3',  sub: 'Harpooners keep their distance',             pool: { dinghy: 1.6, netter: 1, harpooner: 1.4 },                           count: 13, interval: 1.3, max: 7,  burst: [['harpooner', 3]] },
-  { name: 'WAVE 4',  sub: 'Speedboats on strafing runs',                pool: { dinghy: 1.2, netter: 1, harpooner: 1, speedboat: 1.5 },             count: 15, interval: 1.2, max: 8,  burst: [['speedboat', 4]] },
-  { name: 'WAVE 5',  sub: 'Jetski bombers. Roll away from them',        pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 2.2 },    count: 17, interval: 1.1, max: 9,  burst: [['jetski', 5]] },
-  { name: 'WAVE 6',  sub: 'Dynamite skiffs. Absorb the sticks',         pool: { netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1.8 },  count: 18, interval: 1.05, max: 9, burst: [['dynaboat', 4]] },
-  { name: 'WAVE 7',  sub: 'The Trawler',                                pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, trawler: 0.5 }, count: 20, interval: 1.0, max: 10, burst: [['trawler', 1], ['dinghy', 4]] },
-  { name: 'WAVE 8',  sub: 'Gunboats out of the harbour',                pool: { netter: 1, harpooner: 1.2, speedboat: 1, jetski: 1, dynaboat: 1, trawler: 0.4, gunboat: 0.8 }, count: 22, interval: 0.95, max: 11, burst: [['gunboat', 2], ['speedboat', 3]] },
-  { name: 'WAVE 9',  sub: 'The whole fleet is awake now',               pool: { netter: 1, harpooner: 1.2, speedboat: 1.2, jetski: 1.4, dynaboat: 1.2, trawler: 0.5, gunboat: 0.9 }, count: 25, interval: 0.9, max: 12, burst: [['jetski', 5], ['gunboat', 2]] },
-  { name: 'WAVE 10', sub: 'They are not holding anything back',         pool: { harpooner: 1.2, speedboat: 1.3, jetski: 1.4, dynaboat: 1.3, trawler: 0.7, gunboat: 1.1 }, count: 28, interval: 0.85, max: 13, burst: [['trawler', 2], ['gunboat', 3]] },
-  { name: 'WAVE 11', sub: 'Everything they have left',                  pool: { speedboat: 1.3, jetski: 1.5, dynaboat: 1.3, trawler: 0.8, gunboat: 1.3 }, count: 32, interval: 0.8, max: 14, burst: [['gunboat', 3], ['dynaboat', 4]] },
-  { name: 'THE VILLAGE CHIEF', sub: 'He rides a shark. Bait his charge into the rocks', boss: true, pool: { jetski: 1, dinghy: 1 }, count: 999, interval: 5.0, max: 4 },
+  { name: 'WAVE 1', sub: 'Fishing dinghies leave the pier',
+    obj: { kind: 'clear', text: 'Sink every boat that leaves the pier' },
+    pool: { dinghy: 1 }, count: 7, interval: 2.0, max: 4, burst: [['dinghy', 2]] },
+
+  { name: 'WAVE 2', sub: 'Net boats. Shield the nets [E / right-click]',
+    obj: { kind: 'clear', text: 'Sink the net boats' },
+    pool: { dinghy: 2, netter: 1.4 }, count: 9, interval: 1.9, max: 5, burst: [['netter', 2]] },
+
+  { name: 'WAVE 3', sub: 'Harpooners keep their distance',
+    obj: { kind: 'clear', text: 'Close on the harpooners and sink them' },
+    pool: { dinghy: 1.6, netter: 1, harpooner: 1.4 }, count: 11, interval: 1.8, max: 6, burst: [['harpooner', 2]] },
+
+  { name: 'WAVE 4', sub: 'A spotter is painting you for the fleet',
+    obj: { kind: 'hunt', target: 'spotter', text: 'Kill the Spotter before it calls the fleet in' },
+    pool: { dinghy: 1.4, netter: 1, harpooner: 1, spotter: 0.9 }, count: 12, interval: 1.7, max: 6, burst: [['spotter', 1], ['dinghy', 2]] },
+
+  { name: 'WAVE 5', sub: 'Speedboats on strafing runs',
+    obj: { kind: 'clear', text: 'Sink the strafing runs' },
+    pool: { dinghy: 1.2, netter: 1, harpooner: 1, speedboat: 1.5, spotter: 0.4 }, count: 13, interval: 1.6, max: 7, burst: [['speedboat', 3]] },
+
+  { name: 'WAVE 6', sub: 'Something big is coming out of the harbour',
+    obj: { kind: 'hunt', mini: true, text: 'Put the harbour rig on the bottom' },
+    mini: true,
+    pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, crabber: 1.1 }, count: 12, interval: 1.7, max: 7 },
+
+  { name: 'WAVE 7', sub: 'Jetski bombers. Roll away from them',
+    obj: { kind: 'survive', seconds: 45, text: 'Hold this water for 45 seconds' },
+    pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 2.0, longliner: 1 }, count: 16, interval: 1.5, max: 8, burst: [['jetski', 3]] },
+
+  { name: 'WAVE 8', sub: 'Longliners and crab pots. Watch the water',
+    obj: { kind: 'clear', text: 'Clear the hooks and the pots out of the bay' },
+    pool: { netter: 1, harpooner: 1, longliner: 1.6, crabber: 1.5, jetski: 0.8 }, count: 16, interval: 1.5, max: 8, burst: [['longliner', 2], ['crabber', 2]] },
+
+  { name: 'WAVE 9', sub: 'Dynamite skiffs. Shield the sticks',
+    obj: { kind: 'salvage', amount: 30, text: 'Strip 30 pieces of salvage out of them' },
+    pool: { netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1.8, tug: 0.7 }, count: 17, interval: 1.45, max: 8, burst: [['dynaboat', 3]] },
+
+  { name: 'WAVE 10', sub: 'The Trawler',
+    obj: { kind: 'hunt', target: 'trawler', text: 'Sink the Trawler' },
+    pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, tug: 0.8, trawler: 0.5 },
+    count: 18, interval: 1.4, max: 9, burst: [['trawler', 1], ['dinghy', 3]] },
+
+  { name: 'WAVE 11', sub: 'The harbour sends its own',
+    obj: { kind: 'hunt', mini: true, text: 'Break whatever they just let off the chain' },
+    mini: true,
+    pool: { harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, crabber: 1, tug: 1 }, count: 15, interval: 1.5, max: 8 },
+
+  { name: 'WAVE 12', sub: 'Gunboats out of the harbour',
+    obj: { kind: 'clear', text: 'Sink the gunboats' },
+    pool: { netter: 1, harpooner: 1.2, speedboat: 1, jetski: 1, dynaboat: 1, trawler: 0.4, gunboat: 0.8, tug: 0.7 },
+    count: 19, interval: 1.35, max: 9, burst: [['gunboat', 2], ['speedboat', 2]] },
+
+  { name: 'WAVE 13', sub: 'The whole fleet is awake now',
+    obj: { kind: 'clear', text: 'Sink all of it' },
+    pool: { netter: 1, harpooner: 1.2, speedboat: 1.2, jetski: 1.4, dynaboat: 1.2, longliner: 1, crabber: 1, trawler: 0.5, gunboat: 0.9 },
+    count: 21, interval: 1.3, max: 10, burst: [['jetski', 4], ['gunboat', 2]] },
+
+  { name: 'WAVE 14', sub: 'Everything they have left',
+    obj: { kind: 'hunt', mini: true, text: 'Clear the way to the Chief' },
+    mini: true,
+    pool: { speedboat: 1.3, jetski: 1.5, dynaboat: 1.3, tug: 1, trawler: 0.8, gunboat: 1.1 },
+    count: 20, interval: 1.3, max: 10, burst: [['gunboat', 2]] },
+
+  { name: 'THE VILLAGE CHIEF', sub: 'He rides a shark. Bait his charge into the rocks',
+    obj: { kind: 'boss', text: 'Bait the Chief into the rocks, then hit him while he is down' },
+    boss: true, pool: { jetski: 1, dinghy: 1 }, count: 999, interval: 6.0, max: 3 },
 ];
 
 class Director {
@@ -22,13 +81,17 @@ class Director {
     this.started = false; this.bossSpawned = false;
     this.state = 'idle';        // idle | fighting | cleared
     this.remaining = 0; this.clearedAt = 0; this.wavesCleared = 0;
+    // objective bookkeeping, reset at the top of every wave
+    this.objT = 0; this.objSalvage = 0; this.objTarget = null; this.objDone = false;
   }
-  // enemies get tougher every wave; hazards read this too
-  get difficulty() { return 1 + Math.max(0, this.waveIdx) * 0.09; }
+  // enemies get tougher every wave; hazards read this too. The curve is gentler
+  // than it was: the fleet gets more varied faster than it gets deadlier.
+  get difficulty() { return 1 + Math.max(0, this.waveIdx) * 0.065; }
   currentWave() { return WAVES[clamp(this.waveIdx, 0, WAVES.length - 1)]; }
   get isBossWave() { return !!this.currentWave().boss; }
   get cleared() { return this.state === 'cleared'; }
   get lastWave() { return this.waveIdx >= WAVES.length - 1; }
+  get objective() { return this.currentWave().obj || null; }
 
   begin() { this.started = true; this.startWave(0); }
 
@@ -37,14 +100,24 @@ class Director {
     const w = WAVES[i]; if (!w) return;
     this.state = 'fighting';
     this.remaining = w.count;
-    this.spawnT = 0.8;
+    this.spawnT = 1.2;
+    this.objT = 0; this.objSalvage = 0; this.objTarget = null; this.objDone = false;
     G.banner(w.name, w.boss ? '#ff6161' : '#ffe48f', 2.4, w.sub);
     if (typeof Hazards !== 'undefined') {
       Hazards.difficulty = this.difficulty;
       if (Hazards.applyWaveScaling) Hazards.applyWaveScaling(this.waveIdx, this.difficulty);
     }
     if (w.burst) for (const [type, n] of w.burst) { this.spawnBurst(type, n); this.remaining -= n; }
+    if (w.mini) this.spawnMini();
     if (w.boss && !this.bossSpawned) { this.bossSpawned = true; G.spawnBoss(); }
+  }
+
+  // a named encounter in the middle of an ordinary wave
+  spawnMini() {
+    if (typeof G.spawnMiniBoss !== 'function') return;
+    const pos = this.spawnPos();
+    const m = G.spawnMiniBoss(null, pos.x, pos.y, this.difficulty);
+    if (m) this.objTarget = m;
   }
 
   next() {
@@ -54,11 +127,49 @@ class Director {
     return true;
   }
 
+  // ---- objectives --------------------------------------------------------
+  // What the player is being asked for, and how far along they are. Returns
+  // null on a plain "sink everything" wave that has nothing extra to say.
+  objectiveStatus() {
+    const w = this.currentWave(), o = w && w.obj; if (!o) return null;
+    switch (o.kind) {
+      case 'survive': {
+        const left = Math.max(0, o.seconds - this.objT);
+        return { text: o.text, value: left > 0 ? Math.ceil(left) + 's left' : 'HELD', done: left <= 0, frac: 1 - left / o.seconds };
+      }
+      case 'salvage':
+        return { text: o.text, value: Math.min(o.amount, this.objSalvage) + '/' + o.amount, done: this.objSalvage >= o.amount, frac: Math.min(1, this.objSalvage / o.amount) };
+      case 'hunt': {
+        const t = this.objTarget;
+        const alive = t && !t.dead;
+        const label = t && (t.displayName || t.name || (t.cfg && t.cfg.name)) || 'the target';
+        return { text: o.text, value: alive ? label : 'DOWN', done: !alive && !!t, frac: alive && t.maxHp ? 1 - t.hp / t.maxHp : (t ? 1 : 0) };
+      }
+      case 'boss': {
+        const b = G.boss;
+        return { text: o.text, value: b && !b.dead ? 'THE CHIEF' : 'DOWN', done: !!(b && b.dead), frac: b && b.maxHp ? 1 - b.hp / b.maxHp : 0 };
+      }
+      default: {
+        const total = this.currentWave().count;
+        const left = this.remaining + G.enemies.length;
+        return { text: o.text, value: left + ' left', done: left <= 0, frac: total ? 1 - left / total : 0 };
+      }
+    }
+  }
+  // the player collected scrap; a salvage objective counts it
+  onSalvage(n) { this.objSalvage += n; }
+  // a hunt wave latches onto the first of its named type to show up
+  noteSpawn(type, e) {
+    const o = this.objective;
+    if (o && o.kind === 'hunt' && o.target === type && !this.objTarget) this.objTarget = e;
+  }
+
   update(dt) {
     if (!this.started) return;
     this.time += dt;
     if (this.state !== 'fighting') return;
     const w = this.currentWave(); if (!w) return;
+    this.objT += dt;
     const alive = G.enemies.length;
 
     if (w.boss) {
@@ -67,6 +178,20 @@ class Director {
       if (G.boss && G.boss.dead) return;
       this.spawnT -= dt;
       if (this.spawnT <= 0 && alive < w.max) { this.spawnT = w.interval * rand(0.7, 1.3); this.spawnOne(w); }
+      return;
+    }
+
+    // a timed or collected objective ends the wave on its own terms: the boats
+    // still out there scatter rather than having to be hunted down one by one
+    const st = this.objectiveStatus();
+    if (st && st.done && (w.obj.kind === 'survive' || w.obj.kind === 'salvage' || w.obj.kind === 'hunt')) {
+      this.remaining = 0;
+      if (alive === 0) { this.clear(); return; }
+      if (!this.objDone) {
+        this.objDone = true;
+        G.banner('OBJECTIVE COMPLETE', '#6fd88e', 1.8, 'They are breaking off');
+        for (const e of G.enemies) if (!e.dead) e.retreatT = 99;
+      }
       return;
     }
 
@@ -86,24 +211,29 @@ class Director {
     G.onWaveCleared(this.waveIdx);
   }
 
-  spawnOne(w) { const pos = this.spawnPos(); G.spawnEnemy(this.pickType(w.pool), pos.x, pos.y); }
+  spawnOne(w) {
+    const pos = this.spawnPos();
+    const type = this.pickType(w.pool);
+    const e = G.spawnEnemy(type, pos.x, pos.y);
+    this.noteSpawn(type, e);
+  }
   pickType(pool) { let tot = 0; for (const k in pool) tot += pool[k]; let r = Math.random() * tot; for (const k in pool) { r -= pool[k]; if (r <= 0) return k; } return Object.keys(pool)[0]; }
   spawnPos() {
     const p = G.player;
     for (let i = 0; i < 12; i++) {
-      const a = rand(0, TAU), r = rand(270, 340);
+      const a = rand(0, TAU), r = rand(300, 380);
       const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
       if (x > 30 && x < G.ocean.W - 30 && y > WATER_TOP && y < G.ocean.H - 30) return { x, y };
     }
-    return { x: clamp(p.x + 300, 30, G.ocean.W - 30), y: clamp(p.y, WATER_TOP + 20, G.ocean.H - 30) };
+    return { x: clamp(p.x + 320, 30, G.ocean.W - 30), y: clamp(p.y, WATER_TOP + 20, G.ocean.H - 30) };
   }
   spawnBurst(type, n) {
     const base = rand(0, TAU), p = G.player;
     for (let i = 0; i < n; i++) {
-      const a = base + (i - n / 2) * 0.25, r = 310;
+      const a = base + (i - n / 2) * 0.25, r = 340;
       const x = clamp(p.x + Math.cos(a) * r, 30, G.ocean.W - 30);
       const y = clamp(p.y + Math.sin(a) * r, WATER_TOP + 20, G.ocean.H - 30);
-      G.spawnEnemy(type, x, y);
+      this.noteSpawn(type, G.spawnEnemy(type, x, y));
     }
   }
 }

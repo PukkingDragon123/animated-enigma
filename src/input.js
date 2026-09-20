@@ -1,6 +1,6 @@
 // ---- Input --------------------------------------------------------------
 const Input = {
-  keys: {}, pressed: {}, mouse: { x: 320, y: 180, down: false, rdown: false, clicked: false, rclicked: false },
+  keys: {}, pressed: {}, mouse: { x: 320, y: 180, down: false, rdown: false, clicked: false, rclicked: false, moved: false },
   canvas: null, scale: 1, offX: 0, offY: 0,
   init(canvas) {
     this.canvas = canvas;
@@ -32,8 +32,11 @@ const Input = {
   updateMouse(e) {
     const r = this.canvas.getBoundingClientRect();
     // the canvas is high-res, but all interface coordinates are a fixed 640x360
-    this.mouse.x = (e.clientX - r.left) / r.width * 640;
-    this.mouse.y = (e.clientY - r.top) / r.height * 360;
+    const nx = (e.clientX - r.left) / r.width * 640, ny = (e.clientY - r.top) / r.height * 360;
+    // once the player has actually aimed, the cursor owns the aim; until then
+    // the otter tracks whatever is nearest so the gun is never pointing nowhere
+    if (Math.abs(nx - this.mouse.x) > 0.5 || Math.abs(ny - this.mouse.y) > 0.5) this.mouse.moved = true;
+    this.mouse.x = nx; this.mouse.y = ny;
   },
   down(code) { return !!this.keys[code]; },
   hit(code) { return !!this.pressed[code]; },

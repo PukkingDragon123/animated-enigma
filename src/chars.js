@@ -860,6 +860,18 @@ function buildBoats() {
                  hull: '#8f6a3a', hullL: '#d9a25a', hullD: '#6a4a24', hullDD: '#432d14' },
     gunboat:   { len: 46, beam: 10, motor: 1, cabin: 0.18, gear: 'turret', thwarts: [],
                  hull: '#4c535e', hullL: '#98a2b0', hullD: '#343a43', hullDD: '#20242b', deck: '#454b55', deckD: '#2e333a' },
+    // a squat pusher with a high wheelhouse and a fendered bow
+    tug:       { len: 34, beam: 11, motor: 1, cabin: 0.22, gear: 'crates', thwarts: [0.72],
+                 hull: '#7a3f22', hullL: '#c07a3e', hullD: '#542914', hullDD: '#32180b', deck: '#4a3a2a', deckD: '#31251a' },
+    // a long low hull paying out line off a drum in the stern
+    longliner: { len: 40, beam: 7,  motor: 1, cabin: 0.20, gear: 'net', thwarts: [0.5, 0.74],
+                 hull: '#2f5f52', hullL: '#66ab95', hullD: '#1f4138', hullDD: '#132924', deck: '#3d5a52', deckD: '#263a35' },
+    // pots stacked on the afterdeck
+    crabber:   { len: 32, beam: 9,  motor: 1, cabin: 0.24, gear: 'crates', thwarts: [0.66],
+                 hull: '#7a6a2a', hullL: '#c8b155', hullD: '#544819', hullDD: '#32290c', deck: '#5c5327', deckD: '#3c3617' },
+    // small, fast, and carrying nothing but a flare rack
+    spotter:   { len: 24, beam: 5,  motor: 1, gear: 'dyna', thwarts: [0.55],
+                 hull: '#d97a2a', hullL: '#ffc06a', hullD: '#954914', hullDD: '#5c2c08', deck: '#33384a', deckD: '#212532' },
   };
   for (const k in defs) {
     SP.boats[k] = buildBoat(defs[k]);
