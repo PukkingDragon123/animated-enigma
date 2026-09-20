@@ -81,6 +81,15 @@ function ditherDisc(ctx, cx, cy, r, ry, cols) {
   }
 }
 
+// Bake a dithered disc into its own sprite so it can be blitted instead of
+// rasterized every frame.
+function bakeDisc(r, ry, cols) {
+  const w = r * 2 + 1, h = Math.ceil(ry) * 2 + 1;
+  const c = can(w, h), x = cx2(c);
+  ditherDisc(x, r, Math.ceil(ry), r, ry, cols);
+  return spr(c, r, Math.ceil(ry));
+}
+
 // ================================================================ palettes
 const DP = {
   ink: '#0b0912', ink2: '#171423',
@@ -114,6 +123,16 @@ const A = {};          // the sprite bank
 //  game exactly; only the loose props below are new.
 // =========================================================================
 function buildTopArt() {
+  // ---- blood pools, baked at a ladder of sizes
+  A.bloodDisc = [];
+  for (let i = 0; i < 15; i++) {
+    const r = 4 + i * 4;
+    A.bloodDisc.push(bakeDisc(r, r * 0.74, [DP.blood[0], DP.blood[1], DP.blood[2], DP.blood[3], DP.blood[1], DP.blood[0]]));
+  }
+  A.darkDisc = [];
+  for (let i = 0; i < 10; i++) { const r = 8 + i * 8; A.darkDisc.push(bakeDisc(r, r * 0.60, ['#040a14', '#08121f', '#0d1c2c'])); }
+  A.sinkDisc = [];
+  for (let i = 0; i < 6; i++) { const r = 14 + i * 6; A.sinkDisc.push(bakeDisc(r, r * 0.50, ['#0a1420', '#0d1a28'])); }
   // ---- her underside, for the moment she rolls belly-up
   {
     const src = CH.manatee;
@@ -231,13 +250,13 @@ const ML = 126;                                   // her length in pixels
 const MA = {
   eye:    [-47, -9],
   mouth:  [-56,  7],
-  wound:  [-12, 14],   // the gash he stitches, running down her flank
-  plate:  [ 10,  2],   // where the torn steel plate goes back on
-  strap:  [ 32,  0],   // the harness strap, bolted back down
-  band:   [ 50,  0],   // the bandage, around the tail stock
-  chest:  [-30,  8],   // where he presses to pump the water out
+  wound:  [-14,-16],   // the gash he stitches, running down her shoulder
+  plate:  [ 10,-25],   // where the torn steel plate goes back on
+  strap:  [ 32,-17],   // the harness strap, bolted back down
+  band:   [ 52, -6],   // the bandage, around the tail stock
+  chest:  [-30,-14],   // where he presses to pump the water out
   tailX:  [ 30,  0],
-  shoX:   [-20, 14],
+  shoX:   [-30, 17],
 };
 function buildManateeSide() {
   const L = ML, W = R(L) + 10, H = R(L * 0.58) + 10, cy = H / 2;
@@ -481,7 +500,7 @@ function drawOtterSide(ctx, o, t) {
   ctx.restore();
   ctx.drawImage(A.oBody.c, -A.oBody.ax, -A.oBody.ay);
   // near arm (holds the tool)
-  ctx.save(); ctx.translate(6, -3); ctx.rotate(o.armNear === undefined ? 0.35 : o.armNear);
+  ctx.save(); ctx.translate(8, -2); ctx.rotate(o.armNear === undefined ? 0.35 : o.armNear);
   ctx.drawImage(A.oArm.c, -A.oArm.ax, -A.oArm.ay);
   if (o.tool) o.tool(ctx);
   ctx.restore();
@@ -1024,13 +1043,15 @@ const DeathScene = {
       const sx = s.x - cam.x, sy = s.y - cam.y;
       if (sx < -120 || sy < -120 || sx > 760 || sy > 480) continue;
       ctx.globalAlpha = qa(s.a * 0.98);
-      ditherDisc(ctx, sx, sy, s.r, s.r * 0.74, [DP.blood[0], DP.blood[1], DP.blood[2], DP.blood[3], DP.blood[1], DP.blood[0]]);
+      const bd = A.bloodDisc[clamp(Math.round((s.r - 4) / 4), 0, A.bloodDisc.length - 1)];
+      ctx.drawImage(bd.c, R(sx) - bd.ax, R(sy) - bd.ay);
       ctx.globalAlpha = 1;
     }
     // a dark deep-water hole opening beneath her as she goes down
     if (m.sink > 0) {
       ctx.globalAlpha = qa(m.sink * 0.85);
-      ditherDisc(ctx, cx, cy + 6, 26 + m.sink * 40, (26 + m.sink * 40) * 0.6, ['#040a14', '#08121f', '#0d1c2c']);
+      const dd = A.darkDisc[clamp(Math.round(((26 + m.sink * 40) - 8) / 8), 0, A.darkDisc.length - 1)];
+      ctx.drawImage(dd.c, R(cx) - dd.ax, R(cy + 6) - dd.ay);
       ctx.globalAlpha = 1;
     }
 
@@ -1062,7 +1083,8 @@ const DeathScene = {
       // as she goes under, silhouette her against the dark
       if (m.sink > 0.35) {
         ctx.globalAlpha = qa((m.sink - 0.35) * 0.9);
-        ditherDisc(ctx, cx, cy + m.sink * 5, 42 * (1 - m.sink * 0.3), 21 * (1 - m.sink * 0.3), ['#0a1420', '#0d1a28']);
+        const sd = A.sinkDisc[clamp(Math.round((42 * (1 - m.sink * 0.3) - 14) / 6), 0, A.sinkDisc.length - 1)];
+        ctx.drawImage(sd.c, R(cx) - sd.ax, R(cy + m.sink * 5) - sd.ay);
         ctx.globalAlpha = 1;
       }
     }
@@ -1161,7 +1183,7 @@ const DeathScene = {
     this.drawSurf(ctx, T);
 
     // -------------------------------------------------------- driftwood
-    ctx.globalAlpha = 0.45; ditherDisc(ctx, 522, 258, 58, 7, ['#0e0a12', '#171120']); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.45; ctx.drawImage(A.logShadow.c, 522 - A.logShadow.ax, 258 - A.logShadow.ay); ctx.globalAlpha = 1;
     ctx.drawImage(A.log.c, 520 - A.log.ax, 252 - A.log.ay);
     ctx.drawImage(A.bucket.c, 188 - A.bucket.ax, 336 - A.bucket.ay);
 
@@ -1283,11 +1305,11 @@ const DeathScene = {
 
     // cast shadow on the sand
     ctx.globalAlpha = qa(0.55 - goK * 0.45);
-    ditherDisc(ctx, 6, 38, 68, 11, ['#0e0a12', '#171120', '#211929']);
+    ctx.drawImage(A.herShadow.c, 6 - A.herShadow.ax, 38 - A.herShadow.ay);
     ctx.globalAlpha = 1;
 
     // far flipper, under the body
-    ctx.save(); ctx.translate(-MA.shoX[0] - 4, MA.shoX[1] - 6); ctx.rotate(-2.5 + (T > K2.rise ? Math.sin(T * 9) * 0.25 : 0));
+    ctx.save(); ctx.translate(MA.shoX[0] + 12, MA.shoX[1] - 8); ctx.rotate(-0.30 + (T > K2.rise ? Math.sin(T * 9) * 0.25 : 0));
     ctx.drawImage(A.flipFar.c, -A.flipFar.ax, -A.flipFar.ay); ctx.restore();
     // fluke
     ctx.save(); ctx.translate(MA.tailX[0] + 18, 2);
@@ -1331,10 +1353,11 @@ const DeathScene = {
     }
     // ---- the harness strap, bolted back down across her girth
     if (this.bolted > 0) {
-      const sx = MA.strap[0], sy = MA.strap[1];
-      const h = R(this.bolted * 40);
+      const sx = MA.strap[0], sy = 0;
+      const hh = R(26 * Math.sqrt(Math.max(0, 1 - Math.pow(sx / 58, 2))));
+      const h = R(this.bolted * hh * 2);
       for (let i = 0; i < h; i++) {
-        const y = sy - 20 + i;
+        const y = sy - hh + i;
         const xx = sx + R(Math.sin((y - sy) / 24) * 2);
         P(ctx, DP.ink, xx - 1, y, 7, 1);
         P(ctx, DP.lea[2], xx, y, 5, 1);
@@ -1348,8 +1371,9 @@ const DeathScene = {
       const n = R(this.wraps * 5);
       for (let i = 0; i < n; i++) {
         const x = bx - 2 + i * 4;
-        for (let y = -20; y <= 20; y++) {
-          const k = Math.abs(y) / 21; if (k > 0.95) continue;
+        const hh = R(25 * Math.sqrt(Math.max(0, 1 - Math.pow(x / 58, 2))));
+        for (let y = -hh; y <= hh; y++) {
+          const k = Math.abs(y) / (hh + 1);
           const xx = x + R(Math.sin(k * 1.4) * 2);
           P(ctx, DP.ink, xx - 1, y, 1, 1);
           P(ctx, DP.bandage[2], xx, y, 3, 1);
@@ -1360,7 +1384,7 @@ const DeathScene = {
     }
     // ---- near flipper, over the body
     ctx.save(); ctx.translate(MA.shoX[0], MA.shoX[1]);
-    ctx.rotate(-2.3 + (T > K2.cough ? Math.sin(T * 8) * 0.3 : -0.04));
+    ctx.rotate(-0.55 + (T > K2.cough ? Math.sin(T * 8) * 0.30 : -0.05));
     ctx.drawImage(A.flip.c, -A.flip.ax, -A.flip.ay); ctx.restore();
 
     // ---- her face
@@ -1399,107 +1423,102 @@ const DeathScene = {
   drawHim(ctx, T, t) {
     const hx = this._herX === undefined ? HER.x : this._herX;
     const hy = this._herY === undefined ? HER.y : this._herY;
-    const FEET = HER.feet;                                  // his standing line
-    const o = { s: 1, flip: false, phase: t * 2, exp: 'focus', hat: true };
+    const FEET = HER.feet;
+    // the curve of her back, so he can stand on her
+    const backY = lx => { const k = clamp(lx / 58, -1, 1); return -R(25 * Math.sqrt(Math.max(0, 1 - k * k))); };
+    const o = { s: 1, flip: true, phase: t * 2, exp: 'focus', hat: true };
     let x = hx, y = FEET - 16, rot = 0;
-
-    const at = (ax, ay) => { x = R(hx + ax); y = R(FEET - 16 + (ay || 0)); };
+    // stand him on her back, a little behind the thing he is working on
+    const onBack = (anchor, dx, dy) => {
+      const lx = anchor[0] + dx;
+      x = R(hx + lx); y = R(hy + backY(lx) - 15 + (dy || 0));
+    };
+    const RAISED = -1.45, STRUCK = 0.85;                // his arm, in his own frame
 
     if (T < K2.hammer) {
       // hauling her the last few feet, leaning into a rope over his shoulder
       const k = clamp(T / 1.25, 0, 1);
-      x = R(lerp(HER.x - 96, HER.x - 128, k)); y = FEET - 16;
-      o.flip = true;
+      x = R(lerp(HER.x - 98, HER.x - 132, k)); y = FEET - 16;
       rot = -0.34 + Math.sin(T * 6) * 0.05;
-      o.armNear = -1.05 + Math.sin(T * 6) * 0.22; o.armFar = -0.7;
+      o.armNear = -1.05 + Math.sin(T * 6) * 0.22; o.armFar = -0.85;
       o.exp = 'strain'; o.headR = -0.14;
-      // the rope, from his shoulder back to her harness
-      const rx0 = x + 15, ry0 = y - 16;
+      const rx0 = x - 14, ry0 = y - 14;
       for (let i = 0; i <= 44; i++) {
         const q = i / 44;
-        const rx = R(lerp(rx0, hx - 34, q)), ry = R(lerp(ry0, hy + 2, q) + Math.sin(q * Math.PI) * 7);
+        const rx = R(lerp(rx0, hx - 40, q)), ry = R(lerp(ry0, hy + 6, q) + Math.sin(q * Math.PI) * 7);
         P(ctx, i % 4 === 0 ? DP.lea[1] : DP.lea[2], rx, ry, 2, 2);
       }
-      if (Math.random() < 0.25) FX.drop(x + 12, FEET, 1, '#584a59', 0.35);
+      if (Math.random() < 0.25) FX.drop(x + 10, FEET, 1, '#584a59', 0.35);
     } else if (T < K2.stitch) {
-      // hammering the plate back on
-      at(MA.plate[0] + 10, 0);
-      o.flip = true;
+      // up on her back, hammering the torn plate home
+      onBack(MA.plate, 15, 0);
       const ph = ((T - K2.hammer) % 0.30) / 0.30;
-      const swing = ph < 0.55 ? -1.9 + ph / 0.55 * 2.5 : 0.6 - (ph - 0.55) / 0.45 * 2.5;
-      o.armNear = swing; o.armFar = 0.3;
-      o.exp = 'strain'; o.headR = 0.18; rot = 0.10;
+      o.armNear = ph < 0.55 ? RAISED + ph / 0.55 * (STRUCK - RAISED) : STRUCK + (ph - 0.55) / 0.45 * (RAISED - STRUCK);
+      o.armFar = 0.45;
+      o.exp = 'strain'; o.headR = 0.14; rot = 0.06;
       o.tool = c => { c.save(); c.translate(12, 0); c.rotate(-0.35); c.drawImage(A.hammer.c, -A.hammer.ax, -A.hammer.ay); c.restore(); };
     } else if (T < K2.bolt) {
-      // stitching the gash shut
-      at(MA.wound[0] + 12, 2);
-      o.flip = true;
+      // stitching the gash shut, hunched right over it
+      onBack(MA.wound, 15, 1);
       const ph = ((T - K2.stitch) % 0.19) / 0.19;
-      o.armNear = -0.35 - ph * 1.35; o.armFar = 0.45 - ph * 0.3;
-      o.exp = 'focus'; o.headR = 0.24; rot = 0.14;
-      o.tool = c => { c.save(); c.translate(12, 0); c.rotate(0.6); c.drawImage(A.needle.c, -A.needle.ax, -A.needle.ay); c.restore(); };
-      // the thread, running from his paw down to the wound
-      const px2 = x - 15, py2 = y - 12 - R(ph * 14);
+      o.armNear = 0.85 - ph * 1.05; o.armFar = 0.55;
+      o.exp = 'focus'; o.headR = 0.26; rot = 0.14;
+      o.tool = c => { c.save(); c.translate(12, 0); c.rotate(0.5); c.drawImage(A.needle.c, -A.needle.ax, -A.needle.ay); c.restore(); };
+      const px2 = x - 16, py2 = y - 10 - R(ph * 13);
       LN(ctx, DP.bone, px2, py2, hx + MA.wound[0], hy + MA.wound[1] + 4);
     } else if (T < K2.band) {
       // bolting the harness back down
-      at(MA.strap[0] + 12, 0);
-      o.flip = true;
-      o.armNear = -0.75 + Math.sin(T * 13) * 0.55; o.armFar = 0.3;
-      o.exp = 'focus'; o.headR = 0.2; rot = 0.10;
+      onBack(MA.strap, 15, 0);
+      o.armNear = 0.70 + Math.sin(T * 13) * 0.40; o.armFar = 0.5;
+      o.exp = 'focus'; o.headR = 0.2; rot = 0.08;
       o.tool = c => { c.save(); c.translate(12, 0); c.rotate(Math.sin(T * 13) * 0.8); c.drawImage(A.wrench.c, -A.wrench.ax, -A.wrench.ay); c.restore(); };
     } else if (T < K2.pump) {
-      // winding the bandage round her tail stock
+      // walking the bandage round her tail stock
       const k = (T - K2.band) / (K2.pump - K2.band);
-      at(MA.band[0] + 14 + k * 8, Math.sin(k * 9) * 2);
-      o.flip = true;
-      o.armNear = -1.25 + Math.sin(T * 9) * 0.65; o.armFar = -0.7 + Math.sin(T * 9 + 1.6) * 0.5;
-      o.exp = 'focus'; rot = 0.06;
+      onBack(MA.band, 12 + k * 10, Math.sin(k * 9) * 2);
+      o.armNear = 0.75 + Math.sin(T * 9) * 0.55; o.armFar = 0.55 + Math.sin(T * 9 + 1.6) * 0.45;
+      o.exp = 'focus'; rot = 0.04;
       o.tool = c => { c.save(); c.translate(12, 0); c.drawImage(A.roll.c, -A.roll.ax, -A.roll.ay); c.restore(); };
-      // the loose end of the bandage, trailing from her flank
-      LN(ctx, DP.bandage[2], x - 14, y - 10, hx + MA.band[0] + 6, hy - 14);
+      LN(ctx, DP.bandage[2], x - 13, y - 8, hx + MA.band[0] + 4, hy - 16);
     } else if (T < K2.listen) {
-      // pumping the water out of her, both paws on her chest
+      // both paws on her chest, throwing his whole weight into it
       const ph = ((T - K2.pump) % 0.42) / 0.42;
       const push = ph < 0.35 ? ph / 0.35 : 1 - (ph - 0.35) / 0.65;
-      at(MA.chest[0] + 6, -R(push * 4));
-      o.flip = true;
-      rot = 0.20 + push * 0.18;
-      o.armNear = -1.35 + push * 0.6; o.armFar = -1.3 + push * 0.6;
+      onBack(MA.chest, 8, -R(push * 4));
+      rot = 0.18 + push * 0.22;
+      o.armNear = -0.30 + push * 1.20; o.armFar = -0.25 + push * 1.15;
       o.exp = push > 0.7 ? 'shout' : 'strain';
-      o.headR = 0.22;
+      o.headR = 0.24;
     } else if (T < K2.grieve) {
-      // listening at her muzzle for a breath that is not there
-      at(MA.mouth[0] + 10, 4);
-      o.flip = true;
-      rot = 0.52; o.armNear = -2.0; o.armFar = -1.8;
-      o.exp = 'shut'; o.headR = 0.6; o.headY = 4; o.headX = -2;
-      // a listening mark, then nothing
-      if (T < K2.listen + 0.5 && (Math.floor(T * 6) & 1)) {
-        pixelTextOutlined(ctx, '?', x - 20, y - 34, 8, '#8ea4b8', '#000000', 'center');
+      // down at her muzzle, listening for a breath that does not come
+      onBack(MA.eye, 4, 6);
+      rot = 0.42; o.armNear = 0.70; o.armFar = 0.60;
+      o.exp = 'shut'; o.headR = 0.66; o.headY = 5; o.headX = -3;
+      if (T < K2.listen + 0.6 && (Math.floor(T * 6) & 1)) {
+        pixelTextOutlined(ctx, '?', x - 18, y - 34, 8, '#8ea4b8', '#000000', 'center');
       }
     } else if (T < K2.cough) {
-      // hat off, head down on her flank
-      at(MA.chest[0] + 2, 6);
-      o.flip = true;
-      rot = 0.66; o.armNear = -2.3; o.armFar = -2.1;
-      o.exp = 'grieve'; o.headR = 0.9; o.headY = 6; o.headX = -5;
+      // hat off, head down on her shoulder
+      onBack(MA.chest, 10, 8);
+      rot = 0.58; o.armNear = 1.05; o.armFar = 0.95;
+      o.exp = 'grieve'; o.headR = 0.95; o.headY = 7; o.headX = -6;
       o.hat = false;
-      ctx.drawImage(A.hatSide.c, R(x - 30) - A.hatSide.ax, FEET - 3 - A.hatSide.ay);
+      ctx.drawImage(A.hatSide.c, R(x + 22) - A.hatSide.ax, R(y + 14) - A.hatSide.ay);
     } else if (T < K2.rise) {
-      // she coughs; he is thrown back, then scrambles up
+      // she heaves; he is thrown clear, then scrambles back up
       const k = clamp((T - K2.cough) / 0.8, 0, 1);
-      at(MA.chest[0] + 2 - Math.sin(k * Math.PI) * 30, 6 - Math.sin(k * Math.PI) * 20);
-      o.flip = true;
-      rot = 0.66 - k * 0.66 + Math.sin(k * 11) * 0.12;
-      o.armNear = -2.3 + k * 1.8; o.armFar = -2.1 + k * 1.6;
+      const arc = Math.sin(k * Math.PI);
+      onBack(MA.chest, 10 + k * 26, 8 - arc * 26);
+      rot = 0.58 - k * 0.58 + Math.sin(k * 12) * 0.14;
+      o.armNear = 1.05 - k * 0.5; o.armFar = 0.95 - k * 0.45;
       o.exp = k < 0.4 ? 'shout' : 'joy'; o.headR = 0.5 - k * 0.5;
       o.hat = k > 0.55;
-      if (k <= 0.55) ctx.drawImage(A.hatSide.c, R(x - 30 + k * 46) - A.hatSide.ax, R(FEET - 3 - Math.sin(k * 5.7) * 26) - A.hatSide.ay);
+      if (k <= 0.55) ctx.drawImage(A.hatSide.c, R(x + 22 - k * 30) - A.hatSide.ax, R(y + 14 - Math.sin(k * 5.7) * 24) - A.hatSide.ay);
     } else {
       // the two of them drag back into the surf together
       const k = clamp((T - K2.surf) / 1.3, 0, 1);
-      x = R(lerp(hx + MA.chest[0], hx + 60, k)); y = R(FEET - 16 - k * 30);
+      onBack(MA.chest, 12, 0);
+      x = R(x + k * 30); y = R(y - k * 6);
       o.flip = false;
       rot = -0.12 + Math.sin(T * 9) * 0.08;
       o.armNear = 0.9 + Math.sin(T * 9) * 0.45; o.armFar = 0.6 + Math.sin(T * 9 + 2) * 0.45;
