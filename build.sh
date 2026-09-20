@@ -4,6 +4,9 @@ python3 - <<'PY'
 import re
 html = open('index.html').read()
 scripts = re.findall(r'<script src="([^"]+)"></script>', html)
+# take the canvas verbatim from index.html so the build can never fall behind
+# the presentation resolution the game is authored against
+canvas = re.search(r'<canvas id="screen"[^>]*></canvas>', html).group(0)
 css = open('style.css').read()
 js = '\n'.join('/* ===== %s ===== */\n%s' % (s, open(s).read()) for s in scripts)
 open('play.html','w').write("""<!DOCTYPE html>
@@ -18,13 +21,13 @@ open('play.html','w').write("""<!DOCTYPE html>
 </head>
 <body>
 <div id="wrap">
-  <canvas id="screen" width="640" height="360"></canvas>
+  %s
 </div>
 <script>
 %s
 </script>
 </body>
 </html>
-""" % (css, js))
+""" % (css, canvas, js))
 print('play.html rebuilt from', len(scripts), 'scripts')
 PY

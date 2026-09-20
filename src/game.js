@@ -34,6 +34,7 @@ class Game {
     // hand the modules the real crop window so their culling matches
     this.viewW = VIEW_W; this.viewH = VIEW_H; this.cropX = CROP_X; this.cropY = CROP_Y;
     if (typeof Wildlife !== 'undefined') { Wildlife.init(); Wildlife.keyLabel = 'G'; }
+    if (typeof DeathScene !== 'undefined') DeathScene.init();
     if (typeof Upgrades !== 'undefined') Upgrades.init();
     if (typeof MainMenu !== 'undefined') MainMenu.init();
     this.tree = new SkillTree();
@@ -130,7 +131,14 @@ class Game {
   onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() { this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0; this.state = 'victory_wait'; }
   onPlayerDeath() {
-    this.runActive = false; this.particles.blood(this.player.x, this.player.y, 4); this.particles.splash(this.player.x, this.player.y, 3); this.shake(16); this.endT = 0; this.state = 'dead_wait'; }
+    this.runActive = false;
+    this.particles.blood(this.player.x, this.player.y, 4); this.particles.splash(this.player.x, this.player.y, 3);
+    this.shake(16); this.endT = 0;
+    // she sinks, the otter hauls her out and puts her back together on the
+    // shore; the short red fade is only the fallback when that scene is absent
+    if (typeof DeathScene !== 'undefined') { DeathScene.start(this.player.x, this.player.y, this.player.facing); this.state = 'death'; }
+    else this.state = 'dead_wait';
+  }
   // ---------------------------------------------------------- loop
   frame(ts) {
     let dt = (ts - this.last) / 1000; this.last = ts; if (dt > 1 / 20) dt = 1 / 20;
@@ -217,6 +225,12 @@ class Game {
       case 'paused':
         if (typeof MainMenu !== 'undefined' && Input.hit('Backspace')) { this.runActive = true; this.state = 'menu'; break; }
         if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'play'; if (Input.hit('Tab') && this.upgradesOpen()) this.openTree('play'); break;
+      case 'death':
+        // the sinking half still plays out in the world; the shore half does not
+        if (DeathScene.worldActive) this.updateWorld(dt * 0.35, true);
+        DeathScene.update(dt, this.time);
+        if (DeathScene.done) this.openTree('gameover');
+        break;
       case 'dead_wait':
         this.updateWorld(dt * 0.5, true); this.endT += dt;
         // the otter patches her up on the shore, then the tree opens so the
@@ -321,6 +335,9 @@ class Game {
     }
     if (this.state === 'intro') { Intro.render(ctx); this.blit(); return; }
     if (this.state === 'worldmap') { WorldMap.render(ctx, t); this.blit(); return; }
+    // the shore half of the death scene is its own side-on frame: the bay is
+    // not in it at all, so nothing of the world is drawn under it
+    if (this.state === 'death' && !DeathScene.worldActive) { DeathScene.renderScreen(ctx, t); this.blit(); return; }
     this.full(ctx);
     const cam = { x: Math.round(this.cam.x + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)), y: Math.round(this.cam.y + (this.shakeAmt ? rand(-this.shakeAmt, this.shakeAmt) : 0)) };
     const W = this.wctx;
@@ -353,6 +370,7 @@ class Game {
     if (typeof Gore !== 'undefined') Gore.render(W, cam);
     if (typeof Hazards !== 'undefined') Hazards.renderOver(W, cam, t);
     if (typeof Wildlife !== 'undefined') Wildlife.renderHint(W, cam, t);
+    if (this.state === 'death' && DeathScene.renderWorld) DeathScene.renderWorld(W, cam, t);
     Toon.render(W, cam);
     this.ocean.renderRipples(W, cam);
     // sun sheen and swell ribbons pass OVER the entities so they read as submerged
@@ -366,18 +384,19 @@ class Game {
     this.hud(ctx);
     // overlays
     if (this.state === 'dialogue') Dialogue.renderHUD(ctx);
-    if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree') UI.drawHUD(ctx, t);
+    if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree' && this.state !== 'death') UI.drawHUD(ctx, t);
     if (this.state === 'tree') { if (typeof Upgrades !== 'undefined') Upgrades.render(ctx, t); else UI.drawTree(ctx, t); }
     if (this.state === 'paused') {
       ctx.fillStyle = 'rgba(2,8,18,0.78)'; ctx.fillRect(0, 0, 640, 360);
       UIKit.ribbon(ctx, 320, 54, 'PAUSED', 'gold');
       UIKit.panel(ctx, 120, 96, 400, 150, 'dark');
-      pixelText(ctx, '[ESC] resume    [TAB] the deep    [M] mute', 320, 106, 7, '#ffe48f', 'center');
+      pixelText(ctx, '[ESC] resume    [TAB] skill tree    [M] mute', 320, 106, 7, '#ffe48f', 'center');
       this.drawControls(ctx, 126);
     }
     if (this.state === 'gameover') drawEndScreen(ctx, t, false);
     if (this.state === 'victory') drawEndScreen(ctx, t, true);
     if (this.state === 'dead_wait') { ctx.fillStyle = `rgba(120,10,20,${Math.min(0.7, this.endT * 0.4).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
+    if (this.state === 'death') DeathScene.renderScreen(ctx, this.time);
     if (this.state === 'dialogue' && !this.director.started) { /* controls hint in dialogue */ }
     if (typeof MobileUI !== 'undefined' && MobileUI.enabled && (this.state === 'play' || this.state === 'dialogue' || this.state === 'dead_wait' || this.state === 'victory_wait')) MobileUI.render(ctx, t);
     if (Audio_.muted) pixelText(ctx, 'MUTED [M]', 634, 350, 6, '#889', 'right');
