@@ -102,6 +102,11 @@ const DP = {
   // the dawn can be a real posterised ramp instead of a three-step wash
   skyN: ['#03040c', '#050916', '#081024', '#0b1834', '#0e2146', '#122a58', '#17356a', '#1e4179', '#2a5088', '#3a6296'],
   skyD: ['#1a0a2c', '#2e0f3e', '#4a1547', '#6c1d46','#901f3f', '#b83a38', '#dc632c', '#f2903a', '#ffc25c', '#ffe9a6'],
+  // the midpoint of the crossfade: a saturated violet twilight, so night
+  // never mixes straight into gold and goes grey on the way
+  skyM: ['#0a0618', '#140a24', '#1e0e32', '#2c1140', '#3e144a', '#54184e', '#701f4e', '#8e2a4a', '#ac3c48', '#c85446'],
+  seaM: ['#050510', '#0b0a1c', '#12102a', '#1b1636', '#281c40', '#3a2448'],
+  sandM: ['#181020', '#231628', '#312036', '#422c40', '#553a48'],
   seaN: ['#02050e', '#05101f', '#08192f', '#0d2444', '#12325e', '#1a4278'],
   seaD: ['#160a1e', '#2a1030', '#451a3c', '#6c2a40', '#a34a42', '#d98a58'],
   foam: ['#5d7d95', '#8fb0c4', '#c8dde9', '#f2fbff'],
@@ -140,9 +145,12 @@ function buildTopArt() {
     A.bloodDisc.push(bakeDisc(r, r * 0.74, [DP.blood[3], DP.blood[2], DP.blood[2], DP.blood[1], DP.blood[0]]));
   }
   A.darkDisc = [];
-  for (let i = 0; i < 10; i++) { const r = 8 + i * 8; A.darkDisc.push(bakeDisc(r, r * 0.60, ['#040a14', '#08121f', '#0d1c2c'])); }
+  for (let i = 0; i < 10; i++) { const r = 8 + i * 8; A.darkDisc.push(bakeDisc(r, r * 0.60, [DP.deep[0], DP.bruise[0], DP.deep[1], DP.deep[2]])); }
   A.sinkDisc = [];
-  for (let i = 0; i < 6; i++) { const r = 14 + i * 6; A.sinkDisc.push(bakeDisc(r, r * 0.50, ['#0a1420', '#0d1a28'])); }
+  for (let i = 0; i < 6; i++) { const r = 14 + i * 6; A.sinkDisc.push(bakeDisc(r, r * 0.50, [DP.deep[0], DP.bruise[1]])); }
+  // a cold bloom of stirred-up bioluminescence
+  A.bioDisc = [];
+  for (let i = 0; i < 5; i++) { const r = 16 + i * 10; A.bioDisc.push(bakeDisc(r, r * 0.55, [DP.biolum[2], DP.biolum[1], DP.biolum[0], DP.deep[2]])); }
   // ---- her underside, for the moment she rolls belly-up
   {
     const src = CH.manatee;
@@ -500,7 +508,11 @@ function rimBlit(ctx, key, lit, mirror) {
   for (const which of ['fire', 'cold', 'dawn']) {
     const a = lit[which];
     if (!a || a < 0.03) continue;
-    const s = A.rim[key][which][which === 'fire' ? m : 1 - m];
+    const idx = which === 'fire' ? m : 1 - m;
+    const wsh = A.rim[key][which + 'W'][idx];
+    ctx.globalAlpha = qa(a * 0.9);
+    ctx.drawImage(wsh.c, -wsh.ax, -wsh.ay);
+    const s = A.rim[key][which][idx];
     ctx.globalAlpha = qa(a);
     ctx.drawImage(s.c, -s.ax, -s.ay);
   }
@@ -593,9 +605,10 @@ function buildBeach() {
     //      this with fillRect cost a second of load time per frame.
     // Ten sky bands, ten sea bands: the dawn is a posterised ramp of many
     // discrete colours, not a wash.  Every band crossfades night -> dawn.
-    const sky = DP.skyN.map((h, i) => hexToRgb(mixHex(h, DP.skyD[i], k)));
-    const sea = DP.seaN.map((h, i) => hexToRgb(mixHex(h, DP.seaD[i], Math.min(1, k * 1.05))));
-    const sand = DP.sand.map((h, i) => hexToRgb(mixHex(h, DP.sandD[i], k)));
+    const ramp = (a, m, b, kk) => kk < 0.5 ? mixHex(a, m, kk * 2) : mixHex(m, b, (kk - 0.5) * 2);
+    const sky = DP.skyN.map((h, i) => hexToRgb(ramp(h, DP.skyM[i], DP.skyD[i], k)));
+    const sea = DP.seaN.map((h, i) => hexToRgb(ramp(h, DP.seaM[i], DP.seaD[i], Math.min(1, k * 1.05))));
+    const sand = DP.sand.map((h, i) => hexToRgb(ramp(h, DP.sandM[i], DP.sandD[i], k)));
     const wet = DP.sandW.map((h, i) => hexToRgb(mixHex(h, ['#3a1c26', '#582a2e', '#7a4238', '#9a6048'][i], k)));
     // how high the dawn has climbed, and where its heart sits
     const SUNX = 516, sunUp = clamp((k - 0.26) / 0.74, 0, 1);
@@ -605,13 +618,13 @@ function buildBeach() {
       let col;
       if (y < HORIZON) {
         const u = y / (HORIZON - 1);
-        const fb = Math.pow(u, 0.80) * (sky.length - 1);
+        const fb = Math.pow(u, 1.10) * (sky.length - 1);
         let bi2 = Math.floor(fb); const fr = fb - bi2;
         let idx = bi2 + (fr > bay(px, y) ? 1 : 0);
         // the glow around the sun lifts the band index by up to four steps,
         // so the ramp bulges into a real dawn instead of tinting flat
-        const glow = Math.max(0, 1 - Math.hypot((px - SUNX) / 340, (y - SUNY) / 210)) * k;
-        const lift = glow * 5.4 + (k > 0.5 ? (1 - u) * 0 : 0);
+        const glow = Math.max(0, 1 - Math.hypot((px - SUNX) / 250, (y - SUNY) / 155)) * k;
+        const lift = glow * 5.2;
         let li = Math.floor(lift); if (lift - li > bay(px + 2, y + 1)) li++;
         idx = Math.min(sky.length - 1, idx + li);
         col = sky[idx];
@@ -636,10 +649,10 @@ function buildBeach() {
         // the sea takes the sky's colour back: a broad band of reflected
         // dawn under the sun, dashed and dithered so it stays pixel art
         let idx = Math.min(sea.length - 1, Math.max(0, bi2 + ((fr + (n - 0.5) * 0.5) > bay(px, y) ? 1 : 0)));
-        const refl = Math.max(0, 1 - Math.abs(px - SUNX) / 220) * k;
+        const refl = Math.max(0, 1 - Math.abs(px - SUNX) / 360) * k;
         if (refl > 0.04) {
           const dash = vnoise(px * 0.09, y * 0.55);
-          const amt = refl * (0.45 + dash * 0.85) * (1 - u * 0.45);
+          const amt = (0.09 * k + refl * (0.5 + dash * 1.15)) * (1 - u * 0.40);
           let ri = Math.floor(amt * 4.2); if (amt * 4.2 - ri > bay(px, y + 2)) ri++;
           idx = Math.min(sea.length - 1, idx + ri);
         }
@@ -705,14 +718,16 @@ function buildBeach() {
     }
     // a low dune and marram grass along the top of the beach, right
     for (let px = 430; px < 640; px++) {
-      const h = R(6 + vnoise(px * 0.03, 8) * 12 + (px - 430) * 0.05);
+      const tp = clamp((px - 430) / 46, 0, 1);
+      const h = R((6 + vnoise(px * 0.03, 8) * 12 + (px - 430) * 0.05) * tp);
+      if (h < 1) continue;
       P(x, mixHex('#141024', '#3a2032', k), px, SANDY - h, 1, h);
       P(x, mixHex('#241d2e', '#8a5044', k), px, SANDY - h, 1, 1);
     }
     const grng = new SeededRandom(551);
     for (let i = 0; i < 90; i++) {
       const gx2 = R(grng.range(436, 638)), gh = R(grng.range(5, 13));
-      const gy2 = SANDY - R(6 + vnoise(gx2 * 0.03, 8) * 12 + (gx2 - 430) * 0.05);
+      const gy2 = SANDY - R((6 + vnoise(gx2 * 0.03, 8) * 12 + (gx2 - 430) * 0.05) * clamp((gx2 - 430) / 46, 0, 1));
       for (let j = 0; j < gh; j++) P(x, j > gh - 3 ? mixHex('#3b4436', '#c88a52', k) : mixHex('#1b2420', '#4a3030', k), gx2 + R(j * j * 0.05 * (grng.next() > 0.5 ? 1 : -1)), gy2 - j);
     }
         // pebbles, shells and weed
@@ -899,6 +914,31 @@ function rimOf(s, dx, dy, cols) {
   }
   return spr(c, s.ax, s.ay);
 }
+// A wash is the light that falls on the whole form, not just its edge: the
+// sprite's own silhouette filled with a posterised ramp of the light's colour
+// running along the light's direction.  Baked once, blitted over the sprite.
+function washOf(s, dx, dy, cols) {
+  const w = s.w, h = s.h;
+  const c = can(w, h), x = cx2(c);
+  x.drawImage(s.c, 0, 0);
+  x.globalCompositeOperation = 'source-atop';
+  // project every pixel onto the light direction and band it
+  let lo = 1e9, hi = -1e9;
+  for (const [px, py] of [[0, 0], [w, 0], [0, h], [w, h]]) { const v = px * dx + py * dy; if (v < lo) lo = v; if (v > hi) hi = v; }
+  const span = Math.max(1, hi - lo);
+  const N = cols.length;
+  for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
+    const u = 1 - (px * dx + py * dy - lo) / span;      // 1 at the lit face
+    let b = u * u * N;
+    let bi = Math.floor(b); if (b - bi > bay(px, py)) bi++;
+    if (bi <= 0) continue;
+    x.fillStyle = cols[Math.min(N - 1, bi - 1)];
+    x.fillRect(px, py, 1, 1);
+  }
+  x.globalCompositeOperation = 'source-over';
+  return spr(c, s.ax, s.ay);
+}
+
 function buildRims() {
   // the fire is down-left of everything on the beach; the sky is up-right
   const FIRE = [-1, 1], SKY = [1, -1];
@@ -910,10 +950,16 @@ function buildRims() {
   // mirrored draw can pick the variant that still faces the right way.
   const mk = (key, s) => {
     if (!s) return;
+    const WW = ['rgba(120,52,16,0.16)', 'rgba(184,90,26,0.20)', 'rgba(255,164,70,0.24)'];
+    const CW = ['rgba(24,44,86,0.18)', 'rgba(46,82,140,0.18)', 'rgba(108,158,214,0.18)'];
+    const DW = ['rgba(96,36,64,0.18)', 'rgba(176,72,74,0.20)', 'rgba(255,152,104,0.22)'];
     A.rim[key] = {
       fire: [rimOf(s, FIRE[0], FIRE[1], WARM), rimOf(s, -FIRE[0], FIRE[1], WARM)],
       cold: [rimOf(s, -SKY[0], SKY[1], COLD), rimOf(s, SKY[0], SKY[1], COLD)],
       dawn: [rimOf(s, -SKY[0], SKY[1], DAWN), rimOf(s, SKY[0], SKY[1], DAWN)],
+      fireW: [washOf(s, -0.70, 0.71, WW), washOf(s, 0.70, 0.71, WW)],
+      coldW: [washOf(s, -0.71, -0.70, CW), washOf(s, 0.71, -0.70, CW)],
+      dawnW: [washOf(s, -0.71, -0.70, DW), washOf(s, 0.71, -0.70, DW)],
     };
   };
   mk('man', A.man); mk('fluke', A.fluke); mk('flip', A.flip);
@@ -1268,11 +1314,18 @@ const DeathScene = {
     }
     // a dark deep-water hole opening beneath her as she goes down
     if (m.sink > 0) {
-      ctx.globalAlpha = qa(m.sink * 0.65);
+      ctx.globalAlpha = qa(m.sink * 0.72);
       const dd = A.darkDisc[clamp(Math.round(((26 + m.sink * 40) - 8) / 8), 0, A.darkDisc.length - 1)];
       ctx.drawImage(dd.c, R(cx) - dd.ax, R(cy + 6) - dd.ay);
       ctx.globalAlpha = 1;
+      // the water they disturb lights up cold around the hole they leave
+      ctx.globalAlpha = qa(m.sink * (0.30 + Math.sin(t * 3.1) * 0.06));
+      const bd2 = A.bioDisc[clamp(Math.round(m.sink * 4), 0, A.bioDisc.length - 1)];
+      ctx.drawImage(bd2.c, R(cx) - bd2.ax, R(cy + 6) - bd2.ay);
+      ctx.globalAlpha = 1;
     }
+
+    this._bioC = [R(fx + (cx - fx) * z), R(fy + (cy - fy) * z)];
 
     // ---- loose gear
     for (const j of this.junk) {
@@ -1369,29 +1422,39 @@ const DeathScene = {
       try {
         ctx.globalCompositeOperation = 'multiply';
         if (ctx.globalCompositeOperation === 'multiply') {
-          ctx.globalAlpha = qa(dr * 0.80);
-          ctx.fillStyle = '#3a63b4'; ctx.fillRect(0, 0, 640, 360);
+          ctx.globalAlpha = qa(dr * 0.95);
+          ctx.fillStyle = '#25468e'; ctx.fillRect(0, 0, 640, 360);
         }
         ctx.globalCompositeOperation = 'screen';
         if (ctx.globalCompositeOperation === 'screen') {
-          ctx.globalAlpha = qa(dr * 0.42);
-          ctx.fillStyle = '#2a1848'; ctx.fillRect(0, 0, 640, 360);
+          ctx.globalAlpha = qa(dr * 0.28);
+          ctx.fillStyle = '#1e1038'; ctx.fillRect(0, 0, 640, 360);
         }
       } catch (e) { /* fall through to the flat cast below */ }
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
       // and a last flat cast of deep-sea blue over the whole plate
-      P(ctx, rgbaq(DP.deep[1], dr * 0.26), 0, 0, 640, 360);
+      P(ctx, rgbaq(DP.deep[1], dr * 0.38), 0, 0, 640, 360);
       // ...but the blood stays red.  The world layer and this logical screen
       // share one 1:1 grid in this game, so the positions recorded by
       // renderWorld land in the right place; if it was never called we skip.
       const rec = this._stainScreen;
       if (rec && rec.length && this.worldActive) {
+        // paint the hue straight back in, then add light to it, so the blood
+        // is not merely un-drained but the one hot thing in a cold frame
         ctx.globalCompositeOperation = 'color';
         if (ctx.globalCompositeOperation === 'color') {
           for (const [bx, by, bi, ba] of rec) {
             const bd = A.bloodDisc[bi];
-            ctx.globalAlpha = qa(ba * this.drain * 0.60);
+            ctx.globalAlpha = qa(ba * dr * 0.92);
+            ctx.drawImage(bd.c, bx - bd.ax, by - bd.ay);
+          }
+        }
+        ctx.globalCompositeOperation = 'lighter';
+        if (ctx.globalCompositeOperation === 'lighter') {
+          for (const [bx, by, bi, ba] of rec) {
+            const bd = A.bloodDisc[bi];
+            ctx.globalAlpha = qa(ba * dr * 0.30);
             ctx.drawImage(bd.c, bx - bd.ax, by - bd.ay);
           }
         }
@@ -1399,6 +1462,29 @@ const DeathScene = {
         ctx.globalAlpha = 1;
       }
     }
+    // ---- bioluminescence: cold motes stirred out of the water by the two
+    //      of them.  Drawn after the grade, so with the blood they are the
+    //      only two colours left alive in the frame.
+    {
+      const glow = clamp((this.t - 0.6) / 1.8, 0, 1) * (1 - this.fade);
+      const C = this._bioC;
+      if (glow > 0.02 && C) {
+        for (let i = 0; i < 54; i++) {
+          const a0 = hash2(i, 3) * TAU, rr = 30 + hash2(i, 11) * 110;
+          const dr2 = Math.sin(t * (0.6 + hash2(i, 17) * 1.4) + i) * 8;
+          const px = R(C[0] + Math.cos(a0 + t * 0.10) * (rr + dr2));
+          const py = R(C[1] + Math.sin(a0 + t * 0.10) * (rr + dr2) * 0.62);
+          if (px < 0 || py < 0 || px > 639 || py > 359) continue;
+          const tw = 0.5 + 0.5 * Math.sin(t * (1.6 + hash2(i, 23) * 3.2) + i * 2.1);
+          const a = glow * tw * (0.5 + hash2(i, 29) * 0.75);
+          if (a < 0.12) continue;
+          const bi2 = a > 0.70 ? 3 : a > 0.42 ? 2 : 1;
+          ctx.fillStyle = rgbaq(DP.biolum[bi2], a);
+          ctx.fillRect(px, py, hash2(i, 31) > 0.72 ? 2 : 1, 1);
+        }
+      }
+    }
+
     // the frame closes down on the two of them: a hard-edged iris, drawn as
     // black rows either side of the opening, with a dithered rim
     const T = this.t;
@@ -1407,7 +1493,9 @@ const DeathScene = {
     const icx = R(lerp(320, this._irisX === undefined ? 320 : this._irisX, 0.45));
     const icy = R(lerp(180, this._irisY === undefined ? 180 : this._irisY, 0.45));
     const red = clamp(1 - T / 2.4, 0, 1);
-    const frame = red > 0.15 ? mixHex('#000000', '#3a0810', red * 0.75) : '#000000';
+    // the frame is never flat black: it starts as a blood bruise and settles
+    // into the deep indigo of water with no light left in it
+    const frame = mixHex(mixHex('#050716', DP.bruise[1], clamp((T - 2.0) / 3.0, 0, 1) * 0.46), '#40080f', red * 0.80);
     const soft = clamp(this.vign, 0, 1);
     ctx.fillStyle = frame;
     for (let y = 0; y < 360; y++) {
@@ -1423,6 +1511,20 @@ const DeathScene = {
       for (let q = 0; q < 7; q++) {
         if (bay(l + q, y) < 0.6 - q * 0.09) ctx.fillRect(l + q, y, 1, 1);
         if (bay(r - q, y) < 0.6 - q * 0.09) ctx.fillRect(r - q - 1, y, 1, 1);
+      }
+    }
+    // a cold rind of deep-water blue just inside the opening, dithered, so
+    // the closing frame reads as water pressing in rather than as a mask
+    ctx.fillStyle = DP.deep[3];
+    ctx.globalAlpha = qa(0.30 * soft);
+    for (let y = 0; y < 360; y += 1) {
+      const dy = (y - icy) / (rad * 0.62);
+      if (Math.abs(dy) >= 1) continue;
+      const hw = rad * Math.sqrt(1 - dy * dy);
+      const l = Math.floor(icx - hw), r = Math.ceil(icx + hw);
+      for (let q = 0; q < 6; q++) {
+        if (bay(l + q + 6, y) < 0.55 - q * 0.08) ctx.fillRect(l + q + 6, y, 1, 1);
+        if (bay(r - q - 6, y) < 0.55 - q * 0.08) ctx.fillRect(r - q - 7, y, 1, 1);
       }
     }
     ctx.globalAlpha = 1;
@@ -1446,7 +1548,7 @@ const DeathScene = {
     return {
       fire: clamp(f * (0.30 + near * 0.72), 0, 1),
       cold: 0.42 * (1 - d),
-      dawn: 0.62 * d,
+      dawn: 0.88 * d,
     };
   },
 
