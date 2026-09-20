@@ -755,15 +755,18 @@ class Player {
       ctx.fillRect(cx + Math.round(Math.cos(ang) * r) - (sz >> 1), cy + Math.round(Math.sin(ang) * r * 0.82) - (sz >> 1), sz, sz);
     };
     if (m.phase === 'wind') {
+      // the tail cocked back, and the water piling up behind it: a dark
+      // trough with a pale crest so it reads against any colour of sea
       const k = clamp(m.t / this.MELEE_WIND, 0, 1);
       const a0 = m.dir - m.side * arc / 2;
-      for (let i = 0; i < 5; i++) {
-        const ang = a0 - m.side * i * 0.11;
-        const r = range * (0.40 + 0.34 * k);
-        blk(ang, r, i < 2 ? '#24466e' : '#1a3352', 3);
-        blk(ang, r - 6, '#3f7cb0', 2);
+      for (let i = 0; i < 6; i++) {
+        const ang = a0 - m.side * i * 0.12;
+        const r = range * (0.40 + 0.36 * k);
+        blk(ang, r + 3, '#0f2440', 4);
+        blk(ang, r, '#3f7cb0', 3);
+        blk(ang, r - 4, '#8fd4ff', 2);
       }
-      blk(a0, range * (0.48 + 0.42 * k), '#cfe9ff', 3);
+      blk(a0, range * (0.50 + 0.44 * k), '#f4fbff', 4);
       return;
     }
     const k = m.phase === 'strike' ? m.arcT : 1;
@@ -777,7 +780,7 @@ class Player {
       if (age > fade) continue;
       const band = age < 0.12 ? 0 : age < 0.34 ? 1 : age < 0.62 ? 2 : 3;
       const rOut = range * (0.98 - age * 0.16), rIn = range * (0.50 + age * 0.24);
-      for (let r = rIn; r <= rOut; r += 4) blk(ang, r, BANDS[band], band === 0 ? 3 : 2);
+      for (let r = rIn; r <= rOut; r += 3) blk(ang, r, BANDS[band], band < 2 ? 3 : 2);
     }
   }
 
@@ -825,7 +828,10 @@ class Player {
     const speed = Math.hypot(this.vx, this.vy);
     ctx.save();
     if (this.dive.active) ctx.globalAlpha = 0.45;
-    ctx.translate(Math.round(sx), Math.round(sy + bob + (this.dive.active ? 4 : 0)));
+    // snap to the layer's pixel grid, not to whole world units: rounding here
+    // was quantising the bob into visible two-pixel steps
+    ctx.translate(Math.round(sx * DETAIL) / DETAIL,
+      Math.round((sy + bob + (this.dive.active ? 4 : 0)) * DETAIL) / DETAIL);
     ctx.scale(RIG_SCALE, RIG_SCALE);
     Rig.draw(ctx, 0, 0, {
       t, aim: this.aim, facing: this.facing, tilt: this.tilt,
@@ -837,6 +843,14 @@ class Player {
       flash: Math.max(this.flash.primary, this.flash.sidearm),
       bigFlash: (WEAPONS[this.tree.primary].kick > 4),
       speed, armored: true,
+      // the rig leads and lags off these: a velocity vector so it can throw the
+      // otter sideways, an unclamped heading so a facing flip is seen coming
+      // rather than masked, the roll's direction so the barrel roll spins the
+      // right way, and the dash so it can wind up for one
+      vx: this.vx, vy: this.vy,
+      heading: (this.vx || this.vy) ? Math.atan2(this.vy, this.vx) : null,
+      rollDirX: this.roll.dirx, rollDirY: this.roll.diry,
+      boost: this.boost,
       gunSprite: SP.guns[this.tree.primary] || SP.guns.revolver,
     });
     ctx.restore();
@@ -1073,38 +1087,10 @@ function ensureExtraBoats() {
   }
 }
 
-// The wider fleet has to actually turn up, and the wave table lives in
-// src/waves.js, which is not this file's to edit. So the new boats are merged
-// into the mid and late pools once, at the first spawn of a run, and only
-// where a pool does not already name them: if waves.js starts listing them
-// itself this becomes a no-op and can be deleted along with the call below.
-const LATE_FLEET_POOLS = {
-  5:  { stalker: 0.7 },
-  6:  { tender: 0.7 },
-  7:  { minelayer: 0.8 },
-  8:  { twin: 0.9, sub: 0.7 },
-  9:  { grappler: 0.8, courier: 0.5 },
-  10: { ironclad: 0.5, sub: 0.6 },
-  11: { bulwark: 0.6, minelayer: 0.7 },
-  12: { ironclad: 0.7, grappler: 0.7, bulwark: 0.5 },
-  13: { sub: 0.8, twin: 0.8, dredger: 0.5, tender: 0.6, stalker: 0.6 },
-  14: { dredger: 0.7, ironclad: 0.9, bulwark: 0.7, courier: 0.5, grappler: 0.6 },
-};
-let _lateFleetSeeded = false;
-function seedLateFleet() {
-  if (_lateFleetSeeded) return;
-  if (typeof WAVES === 'undefined' || !Array.isArray(WAVES)) return;
-  _lateFleetSeeded = true;
-  for (const i in LATE_FLEET_POOLS) {
-    const w = WAVES[i]; if (!w || !w.pool || w.boss) continue;
-    const add = LATE_FLEET_POOLS[i];
-    for (const k in add) if (!(k in w.pool) && ENEMY_TYPES[k]) w.pool[k] = add[k];
-  }
-}
 
 class Enemy {
   constructor(type, x, y) {
-    ensureExtraBoats(); seedLateFleet();
+    ensureExtraBoats();
     const c = this.cfg = ENEMY_TYPES[type]; this.type = type;
     const diff = (G.director && G.director.difficulty) || 1;
     this.diff = diff;
@@ -1808,7 +1794,7 @@ class Enemy {
           const px0 = Math.round(p.x - cam.x), py0 = Math.round(p.y - cam.y);
           dots(sx, sy, px0, py0, k > 0.7 ? '#ff6161' : '#ffd27a', 5, (t * 3) % 1);
           // brackets closing on her while she stays still
-          const g = Math.round(16 - k * 9);
+          const g = Math.round(32 - k * 10);
           ctx.fillStyle = k > 0.7 && ((t * 14) | 0) % 2 ? '#ffffff' : '#ff6161';
           for (const [ox, oy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
             ctx.fillRect(px0 + ox * g - (ox < 0 ? 0 : 4), py0 + oy * g - (oy < 0 ? 0 : 1), 5, 1);
@@ -1851,7 +1837,7 @@ class Enemy {
           const p = G.player;
           const px0 = Math.round(p.x - cam.x), py0 = Math.round(p.y - cam.y);
           dots(sx, sy, px0, py0, k > 0.6 ? '#ff6161' : '#ffd27a', 6, (t * 4) % 1, 2);
-          const hr = Math.round(26 - k * 12);
+          const hr = Math.round(36 - k * 12);
           for (let i = 0; i < 10; i++) {
             const a = i / 10 * TAU + t * 3;
             mark(px0 + Math.round(Math.cos(a) * hr), py0 + Math.round(Math.sin(a) * hr * 0.8), k > 0.6 && ((t * 14) | 0) % 2 ? '#ffffff' : '#ff9a3c', 2);
@@ -1944,7 +1930,8 @@ class Enemy {
     // heel into turns, and list further as the hull fills with water
     ctx.save();
     if (this.submerged) ctx.globalAlpha = 0.34;      // down under the surface
-    ctx.translate(Math.round(sx), Math.round(sy + bob));
+    // same grid as the player: whole world units would step the bob
+    ctx.translate(Math.round(sx * DETAIL) / DETAIL, Math.round((sy + bob) * DETAIL) / DETAIL);
     ctx.rotate(this.angle);
     const hk2 = this.hp / this.maxHp;
     ctx.scale(1, 1 - (1 - hk2) * 0.14);

@@ -89,6 +89,11 @@
       ctx.fillRect(cx - w, cy + y, w * 2 + 1, 1);
     }
   }
+  // a colour packed the way an ImageData word wants it, so a raster pass can
+  // write one 32-bit word per pixel instead of four bytes
+  // kept as a signed 32-bit int on purpose: it stays a small integer for the
+  // engine, which is what makes a million-pixel pass cheap
+  function packed(hex) { const c = hexToRgb(hex); return ((255 << 24) | (c[2] << 16) | (c[1] << 8) | c[0]) | 0; }
   // the font's display face, on demand (pixelText picks a face by size alone)
   function txt(ctx, s, x, y, size, opts) { return PixelFont.drawText(ctx, s, x, y, size, opts); }
   function mText(s, size) { return textWidth(s, size); }
@@ -350,12 +355,14 @@
   // only the paint is at bake resolution.
   function paintSea(ctx, m, dOut) {
     const W = MAP_W * SC, H = MAP_H * SC;
-    const band = [P.sea0, P.sea1, P.sea2, P.sea3, P.sea4].map(hexToRgb);
-    const stain = hexToRgb(P.stain), stain2 = hexToRgb(P.stain2), spot = hexToRgb(P.foxing);
-    const surf = hexToRgb(P.seaL), deep = hexToRgb(P.seaX), cof = hexToRgb(P.coffee);
-    const img = ctx.createImageData(W, H), d = img.data;
-    // rings the otter's mug left on the sheet, in chart units
+    const band = [P.sea0, P.sea1, P.sea2, P.sea3, P.sea4].map(packed);
+    const stain = packed(P.stain), stain2 = packed(P.stain2), spot = packed(P.foxing);
+    const surf = packed(P.seaL), deep = packed(P.seaX), cof = hexToRgb(P.coffee);
+    const img = ctx.createImageData(W, H), u32 = new Uint32Array(img.data.buffer);
+    // rings the otter's mug left on the sheet, in chart units, each with the
+    // box outside which it cannot possibly matter
     const RINGS = [[98, 62, 22], [505, 200, 18.5], [278, 237, 14.5]];
+    for (const r of RINGS) { r[3] = r[0] - r[2] - 6; r[4] = r[0] + r[2] + 6; r[5] = r[1] - r[2] - 6; r[6] = r[1] + r[2] + 6; }
     const EDGE = [0, 0, 13, 24, 38];
     // The wash is decided once per chart unit — it is a brush, not a pen —
     // and only the grain, the dither and the foxing are per bake pixel.
@@ -365,44 +372,60 @@
         const dep = m[i] ? 0 : dOut[i];
         const nlo = vnoise(sx * 0.055 + 30, sy * 0.055 + 11) * 0.62;
         const st = vnoise(sx * 0.011 + 77, sy * 0.011 + 21);
-        const stc = st > 0.755 ? (st > 0.825 ? stain2 : stain) : null;
+        const stc = st > 0.755 ? (st > 0.825 ? stain2 : stain) : 0;
         const surfy = dep >= 1 && dep <= 2;
+        // the grain can only shift the band where the unit already straddles
+        // a threshold, so most units settle their colour once and skip it
+        const lo = dep + (nlo - 0.5) * 4.6, hi = lo + 1.748;
+        const bLo = lo < 5 ? 0 : lo < 13 ? 1 : lo < 24 ? 2 : lo < 38 ? 3 : 4;
+        const bHi = hi < 5 ? 0 : hi < 13 ? 1 : hi < 24 ? 2 : hi < 38 ? 3 : 4;
+        const flat = (bLo === bHi);
+        const rimmable = !flat || (bLo >= 2 && lo - EDGE[bLo] < 1.3);
         // is this unit anywhere near a coffee ring?
         let ring = -1;
         for (let k = 0; k < RINGS.length; k++) {
-          const rr = RINGS[k], dx = sx - rr[0], dy = sy - rr[1];
+          const rr = RINGS[k];
+          if (sx < rr[3] || sx > rr[4] || sy < rr[5] || sy > rr[6]) continue;
+          const dx = sx - rr[0], dy = sy - rr[1];
           const dl = Math.sqrt(dx * dx + dy * dy * 1.32) - rr[2];
           if (dl > -6 && dl < 3) { ring = k; break; }
         }
         for (let oy = 0; oy < SC; oy++) {
-          const y = sy * SC + oy;
+          const y = sy * SC + oy, row = y * W, laid = (y % 18) < 2;
           for (let ox = 0; ox < SC; ox++) {
-            const x = sx * SC + ox, p = (y * W + x) * 4;
-            const dd = dep + (nlo + hash2(x, y) * 0.38 - 0.5) * 4.6;
-            const b = dd < 5 ? 0 : dd < 13 ? 1 : dd < 24 ? 2 : dd < 38 ? 3 : 4;
-            let c = band[b];
-            if (stc) c = stc;                                   // tea stains
+            const x = sx * SC + ox, p = row + x;
+            let b = bLo, dd = lo;
+            if (!flat) { dd = lo + hash2(x, y) * 1.748; b = dd < 5 ? 0 : dd < 13 ? 1 : dd < 24 ? 2 : dd < 38 ? 3 : 4; }
+            let c = stc || band[b];                             // tea stains
             // where the brush stopped, the wash pooled: a darker rim
-            if (b >= 2 && dd - EDGE[b] < 1.3 && hash2(x * 5, y * 3) > 0.44) c = band[b + 1] || deep;
+            if (rimmable && b >= 2 && dd - EDGE[b] < 1.3 && hash2(x * 5, y * 3) > 0.44) c = band[b + 1] || deep;
             if (surfy && ((x + y) % 7) < 4) c = surf;            // the first fathom
-            if (y % 18 < 2 && hash2(x * 3, y) > 0.66) c = stain2; // laid lines
-            if (hash2(x * 13 + 5, y * 7 + 3) > 0.99935) c = spot; // foxing
+            if (laid && hash2(x * 3, y) > 0.66) c = stain2;      // laid lines
             if (ring >= 0) {
               const rr = RINGS[ring], dx = x - rr[0] * SC, dy = (y - rr[1] * SC) * 1.15;
               const dl = Math.sqrt(dx * dx + dy * dy) - rr[2] * SC - vnoise(x * 0.03 + ring * 9, y * 0.03) * 5;
               if (dl > -9 && dl < 2) {
                 const edge = dl > -2.4;
                 if (edge ? hash2(x * 7 + ring, y * 5) > 0.20 : hash2(x * 9 + ring, y * 11) > 0.82) {
-                  c = edge
-                    ? [(c[0] + cof[0]) >> 1, (c[1] + cof[1]) >> 1, (c[2] + cof[2]) >> 1]
-                    : [(c[0] * 3 + cof[0]) >> 2, (c[1] * 3 + cof[1]) >> 2, (c[2] * 3 + cof[2]) >> 2];
+                  const cr = c & 255, cg = (c >> 8) & 255, cb = (c >> 16) & 255;
+                  const r2 = edge ? (cr + cof[0]) >> 1 : (cr * 3 + cof[0]) >> 2;
+                  const g2 = edge ? (cg + cof[1]) >> 1 : (cg * 3 + cof[1]) >> 2;
+                  const b2 = edge ? (cb + cof[2]) >> 1 : (cb * 3 + cof[2]) >> 2;
+                  c = ((255 << 24) | (b2 << 16) | (g2 << 8) | r2) | 0;
                 }
               }
             }
-            d[p] = c[0]; d[p + 1] = c[1]; d[p + 2] = c[2]; d[p + 3] = 255;
+            u32[p] = c;
           }
         }
       }
+    }
+    // foxing: a few hundred rust specks, stamped rather than tested for
+    const fx = new SeededRandom(7717);
+    for (let i = 0; i < 900; i++) {
+      const x = fx.int(0, W - 1), y = fx.int(0, H - 1);
+      u32[y * W + x] = spot;
+      if (fx.next() < 0.3) u32[y * W + Math.min(W - 1, x + 1)] = spot;
     }
     ctx.putImageData(img, 0, 0);
   }
@@ -430,10 +453,10 @@
   // ------------------------------------------------------------ the land --
   function paintLand(m, dIn, dOut, hg) {
     const W = MAP_W * SC, H = MAP_H * SC, c = can(W, H), ctx = c.getContext('2d');
-    const ink = hexToRgb(P.ink), ink2 = hexToRgb(P.ink2), inkL = hexToRgb(P.inkL);
-    const beach = hexToRgb(P.beach), sand = hexToRgb(P.sand), marsh = hexToRgb(P.green);
-    const LIT = P.lit.map(hexToRgb), MID = P.mid.map(hexToRgb), SHD = P.shd.map(hexToRgb);
-    const img = ctx.createImageData(W, H), d = img.data;
+    const ink = packed(P.ink), ink2 = packed(P.ink2), inkL = packed(P.inkL);
+    const beach = packed(P.beach), sand = packed(P.sand), marsh = packed(P.green);
+    const LIT = P.lit.map(packed), MID = P.mid.map(packed), SHD = P.shd.map(packed);
+    const img = ctx.createImageData(W, H), u32 = new Uint32Array(img.data.buffer);
     // only the land and the shore band it stipples are visited; the open sea
     // is already painted and is left alone
     for (let sy = 1; sy < MAP_H - 1; sy++) {
@@ -442,7 +465,7 @@
         const isLand = m[i];
         const dout = dOut[i];
         if (!isLand && (dout < 2 || dout > 8)) continue;
-        let din = 0, hv = 0, lum = 0, b = 0, steep0 = 0;
+        let din = 0, hv = 0, lum = 0, b = 0, steep0 = 0, flat = false, ramp0 = MID;
         if (isLand) {
           din = dIn[i];
           if (din > 2) {
@@ -450,19 +473,22 @@
             lum = -((hg[i + 1] - hg[i - 1]) + (hg[i + MAP_W] - hg[i - MAP_W]));
             b = hv < 0.085 ? 0 : hv < 0.215 ? 1 : hv < 0.395 ? 2 : hv < 0.60 ? 3 : 4;
             steep0 = Math.max(0, -lum) * 26;
+            // the jitter only decides the ramp where the slope is ambiguous
+            flat = Math.abs(lum) > 0.0346;
+            ramp0 = lum > 0.012 ? LIT : lum < -0.012 ? SHD : MID;
           }
         }
         for (let oy = 0; oy < SC; oy++) {
           const y = sy * SC + oy;
           for (let ox = 0; ox < SC; ox++) {
-            const x = sx * SC + ox, p = (y * W + x) * 4;
-            let col = null;
+            const x = sx * SC + ox, p = y * W + x;
+            let col = 0;
             if (isLand) {
               if (din <= 1) col = ink;                                  // inked coastline
               else if (din === 2) col = ((x + y) & 1) ? beach : sand;   // a thread of beach
               else {
-                const jit = (hash2(x * 5, y * 3) - 0.5) * 0.045;
-                col = ((lum + jit) > 0.012 ? LIT : (lum + jit) < -0.012 ? SHD : MID)[b];
+                const jit = flat ? 0 : (hash2(x * 5, y * 3) - 0.5) * 0.045;
+                col = (flat ? ramp0 : ((lum + jit) > 0.012 ? LIT : (lum + jit) < -0.012 ? SHD : MID))[b];
                 // salt marsh in the low flat ground behind the beaches
                 if (b === 0 && din > 3 && din < 11 && (y % 4) < 1 && hash2(x * 3 + 2, y * 7) > 0.62) col = marsh;
                 // hachures down the shaded flanks: the steeper, the denser
@@ -474,8 +500,7 @@
             } else if (hash2(x * 5 + 3, y * 9 + 13) < (9 - dout) * 0.0135) {
               col = inkL;                                 // offshore dot-screen
             }
-            if (!col) continue;
-            d[p] = col[0]; d[p + 1] = col[1]; d[p + 2] = col[2]; d[p + 3] = 255;
+            if (col) u32[p] = col;
           }
         }
       }
@@ -1678,8 +1703,8 @@
     { l: ['SHALLOW - I SCRAPED', 'MY BELLY RIGHT HERE'], x: 146, y: 166, c: 'red' },
     { l: ['GOOD KELP.', 'HIDE IN IT.'], x: 306, y: 206, c: 'green' },
     { l: ['THEY WATCH FROM', 'THIS HEADLAND'], x: 420, y: 100, c: 'violet' },
-    { l: ['NO BOTTOM FOUND', 'AT 90 FATHOM'], x: 566, y: 166, c: 'blue' },
-    { l: ['TIDE TURNS AT DUSK'], x: 108, y: 254, c: 'green' },
+    { l: ['NO BOTTOM FOUND', 'AT 90 FATHOM'], x: 542, y: 140, c: 'blue' },
+    { l: ['TIDE TURNS AT DUSK'], x: 96, y: 240, c: 'green' },
     { l: ['COUNTED 9 HULLS'], x: 258, y: 108, c: 'red' },
     { l: ['DO NOT GO BY NIGHT'], x: 502, y: 128, c: 'red' },
   ];
@@ -1722,15 +1747,23 @@
     const x0 = Math.round((rf.x - rf.rx) * SC), x1 = Math.round((rf.x + rf.rx) * SC);
     const y0 = Math.round((rf.y - rf.ry) * SC), y1 = Math.round((rf.y + rf.ry) * SC);
     const cx0 = rf.x * SC, cy0 = rf.y * SC, rx = rf.rx * SC, ry = rf.ry * SC;
-    for (let y = Math.max(2, y0); y <= Math.min(SH_H * SC - 3, y1); y++) {
-      for (let x = Math.max(2, x0); x <= Math.min(MAP_W * SC - 3, x1); x++) {
-        const u = (x - cx0) / rx, v = (y - cy0) / ry;
-        const rr = u * u + v * v;
-        if (rr > 1.15) continue;
-        if (rr > 0.94 && rr > 0.94 + vnoise(x * 0.04 + rf.seed, y * 0.04) * 0.2) continue;
-        if (mask[((y / SC) | 0) * MAP_W + ((x / SC) | 0)]) continue;
-        if ((x + y) % 7 === 0) D1(ctx, rr > 0.6 ? P.blueL : P.blue, x, y);
-        else if ((x - y + 210) % 7 === 0 && rr < 0.55) D1(ctx, P.blueL, x, y);
+    const ya = Math.max(2, y0), yb = Math.min(SH_H * SC - 3, y1);
+    for (let y = ya; y <= yb; y++) {
+      const v = (y - cy0) / ry, vv = v * v;
+      if (vv >= 1.14) continue;
+      const half = rx * Math.sqrt(1.14 - vv);
+      const xa = Math.max(2, Math.ceil(cx0 - half)), xb = Math.min(MAP_W * SC - 3, Math.floor(cx0 + half));
+      // step straight down each ruling rather than testing every pixel
+      for (let pass = 0; pass < 2; pass++) {
+        const base = pass ? (y - 210) : -y;
+        let x = xa + ((((base - xa) % 7) + 7) % 7);
+        for (; x <= xb; x += 7) {
+          const u = (x - cx0) / rx, rr = u * u + vv;
+          if (rr > 1.14 || (pass && rr >= 0.55)) continue;
+          if (rr > 0.94 && rr > 0.94 + vnoise(x * 0.04 + rf.seed, y * 0.04) * 0.2) continue;
+          if (mask[((y / SC) | 0) * MAP_W + ((x / SC) | 0)]) continue;
+          D1(ctx, (pass || rr > 0.6) ? P.blueL : P.blue, x, y);
+        }
       }
     }
   }
@@ -1786,9 +1819,8 @@
     D1(ctx, P.redL, px - 1, py - 1);
   }
 
-  function nearDetail(ctx, mask, dOut, dIn, keepOut) {
+  function nearDetail(ctx, mask, dOut, keepOut) {
     const rng = new SeededRandom(24601);
-    const W = MAP_W * SC;
     const water = (x, y) => {
       const xi = Math.round(x), yi = Math.round(y);
       if (xi < IN.x0 + 1 || yi < IN.y0 + 1 || xi > IN.x1 - 1 || yi > IN.y1 - 1) return -1;
@@ -1924,12 +1956,9 @@
         D1(ctx, hash2(x, y) > 0.8 ? P.ink2 : P.ink, bx * SC + x, by * SC + y);
       }
     }
-    void dIn; void W;
   }
 
-  let _t0=0; const _TMS=[]; function TM(n){ const t=performance.now(); if(_t0) _TMS.push(n+':'+(t-_t0).toFixed(1)); _t0=t; if(n==='downscale') { global.__WMT=_TMS.join(' '); } }
   function buildChart(self) {
-    _t0=performance.now(); _TMS.length=0;
     // the table is its own plate: it does not move when the sheet is dragged
     const out = can(640, 360), octx = out.getContext('2d');
     paintTable(octx);
@@ -1941,7 +1970,6 @@
     // its size, which for integer fillRects is an exact, hard-edged blow-up
     const up = () => { cx.setTransform(SC, 0, 0, SC, 0, 0); };
     const nat = () => { cx.setTransform(1, 0, 0, 1, 0, 0); };
-    TM('start');
     const mask = buildMask();
     let oc = oceanFill(mask);
     let dOut0 = distField(mask, 1);
@@ -1960,23 +1988,18 @@
     oc = oceanFill(mask);
     const hgt = heightField(mask, dIn);
 
-    TM('fields');
     paintSea(cx, mask, dOut);                 // native bake resolution
-    TM('sea');
     up();
     drawRhumbs(cx);
     drawGraticule(cx);
     drawContours(cx, mask, dOut, oc);
 
-    TM('rhumb+grat+cont');
     const land = paintLand(mask, dIn, dOut, hgt);
     land.ctx.setTransform(SC, 0, 0, SC, 0, 0);
     dressLand(land.ctx, mask, dIn, hgt);
     land.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    TM('land');
     nat(); cx.drawImage(land.c, 0, 0); up();
 
-    TM('landblit');
     // ---- reefs and soundings
     for (const rf of REEFS) drawReef(cx, rf, mask);
 
@@ -1999,7 +2022,6 @@
 
     // soundings, set out on a jittered lattice so they read as a survey
     // rather than as litter, and deepened as the bottom falls away
-    TM('reefs');
     const rng = new SeededRandom(9137);
     for (let gy = IN.y0 + 12; gy < IN.y1 - 8; gy += 24) {
       for (let gx = IN.x0 + 14; gx < IN.x1 - 12; gx += 30) {
@@ -2014,7 +2036,6 @@
         txt(cx, String(v), x, y, 5, { color: cl > 22 ? P.ink2 : P.inkL, align: 'center' });
       }
     }
-    TM('soundings');
     for (const w of WRECKS) drawWreck(cx, w[0], w[1]);
     for (const d of DOODLES) {
       const f = d.f || 1;
@@ -2025,7 +2046,6 @@
       else if (d.k === 'fish') vignette(cx, drawFish, d.x + f * 4, d.y, 40, 30, f);
       else if (d.k === 'lugger') vignette(cx, drawLugger, d.x, d.y - 8, 80, 58, f);
     }
-    TM('doodles');
     // ---- shipping lanes (dotted), drawn under the ships that ride them
     for (const ln of LANES) {
       for (let i = 0; i < ln.length - 1; i++) line(cx, P.faint, ln[i][0], ln[i][1], ln[i + 1][0], ln[i + 1][1], 1, 5, i * 3);
@@ -2049,7 +2069,6 @@
       }
     }
 
-    TM('names+folds');
     // ---- furniture on top
     drawRose(cx, ROSE.x, ROSE.y, ROSE.r);
     drawCartouche(cx, 14, 12, 190, 108);
@@ -2057,12 +2076,10 @@
 
     // ---- everything that only exists close up, inked at bake resolution so
     // it stays fine print however far the chart is enlarged
-    TM('furniture');
     nat();
-    nearDetail(cx, mask, dOut, dIn, keepOut);
+    nearDetail(cx, mask, dOut, keepOut);
     up();
 
-    TM('nearDetail');
     // ---- tear the sheet out of its rectangle
     for (let x = 0; x < MAP_W; x++) {
       const t = PAPER.y0 + tearTop(x), b = PAPER.y1 - tearBot(x);
@@ -2105,20 +2122,9 @@
     drawTack(cx, PAPER.x1 - 9, PAPER.y1 - 8);
     nat();
 
-    TM('tear+tacks');
-    // ---- the fit-the-whole-sheet plate and the thumbnail, both exact
-    // integer reductions of the bake, resampled point-for-point
-    const far = can(MAP_W, SH_H), fx2 = far.getContext('2d');
-    fx2.imageSmoothingEnabled = false;
-    fx2.drawImage(chart, 0, 0, MAP_W * SC, SH_H * SC, 0, 0, MAP_W, SH_H);
-    const mini = can(MAP_W >> 2, SH_H >> 2), mx2 = mini.getContext('2d');
-    mx2.imageSmoothingEnabled = false;
-    mx2.drawImage(chart, 0, 0, MAP_W * SC, SH_H * SC, 0, 0, MAP_W >> 2, SH_H >> 2);
-
-    TM('downscale');
     self.mask = mask; self.dOut = dOut; self.ocean = oc;
     self.nav = navGrid(mask, dOut);
-    self.table = out; self.sheet = chart; self.sheetFar = far; self.mini = mini;
+    self.table = out; self.sheet = chart; self.sheetFar = null; self.mini = null;
     return out;
   }
 
@@ -2218,14 +2224,14 @@
     { x: 610, y: 60, w: 18, h: 18, k: 'out' },
     { x: 610, y: 82, w: 18, h: 18, k: 'fit' },
   ];
-  const MINI = { x: 7, y: 194, w: MAP_W >> 2, h: SH_H >> 2 };
+  const MINI = { x: 640 - (MAP_W >> 2) - 7, y: 194, w: MAP_W >> 2, h: SH_H >> 2 };
 
   const WorldMap = {
     ready: false, action: null, selected: 0, destinations: DEST,
     T: 0, routeT: 0, travel: 0, hover: -1, denyT: 0, chart: null,
     mask: null, dOut: null, shimmer: [], ships: [], unlockedCount: 1,
     // ---- the camera over the sheet
-    zi: 1, cam: { x: 320, y: 138 }, camT: { x: 320, y: 138 }, ox: 0, oy: 0,
+    zi: 1, ziLast: 1, cam: { x: 320, y: 138 }, camT: { x: 320, y: 138 }, ox: 0, oy: 0,
     dragging: false, overZoom: -1, overMini: false, lastUpdate: 0,
     ptrOn: false, taps: [], hintT: 0, labs: [], table: null, sheet: null, sheetFar: null, mini: null,
 
@@ -2291,6 +2297,18 @@
     consume() { this.action = null; },
 
     // ----------------------------------------------------------- the camera
+    // The fit and thumbnail plates are exact integer reductions of the bake,
+    // resampled point for point; they are only cut when a zoom first asks.
+    reduced(div) {
+      const key = div === 2 ? 'sheetFar' : 'mini';
+      if (this[key]) return this[key];
+      const w = Math.round(MAP_W * SC / div), h = Math.round(SH_H * SC / div);
+      const c = can(w, h), x = c.getContext('2d');
+      x.imageSmoothingEnabled = false;
+      x.drawImage(this.sheet, 0, 0, MAP_W * SC, SH_H * SC, 0, 0, w, h);
+      this[key] = c;
+      return c;
+    },
     zoom() { return ZOOMS[clamp(this.zi, 0, ZOOMS.length - 1)]; },
     // keep the visible rectangle on the sheet, or centre it if it will not fill
     clampCam(c) {
@@ -2300,11 +2318,13 @@
       c.y = (y1 - y0 <= hh * 2) ? (y0 + y1) / 2 : clamp(c.y, y0 + hh, y1 - hh);
       return c;
     },
+    // The target is kept as the place the chart WANTS centred, unclamped, so
+    // that a port held off the edge at one zoom is still remembered at the
+    // next: only the camera itself is ever pinned to the sheet.
     lookAt(d, now) {
       // the label hangs below the mark, so sit the mark a little high
       this.camT.x = d.x; this.camT.y = d.y + 3;
-      this.clampCam(this.camT);
-      if (now) { this.cam.x = this.camT.x; this.cam.y = this.camT.y; }
+      if (now) { this.cam.x = this.camT.x; this.cam.y = this.camT.y; this.clampCam(this.cam); }
     },
     setZoom(zi, ax, ay) {
       const z0 = this.zoom();
@@ -2319,9 +2339,15 @@
         cy = wy - (ay - VIEW.y - VIEW.h / 2) / z1;
       }
       this.zi = nz;
-      this.cam.x = cx; this.cam.y = cy;
-      this.clampCam(this.cam);
-      this.camT.x = this.cam.x; this.camT.y = this.cam.y;
+      if (ax !== undefined) {
+        // wheel and pinch hold a point still, so the camera lands where it is
+        this.cam.x = cx; this.cam.y = cy;
+        this.clampCam(this.cam);
+        this.camT.x = this.cam.x; this.camT.y = this.cam.y;
+      } else {
+        // a key or a button keeps whatever the camera was already making for
+        this.clampCam(this.cam);
+      }
       if (typeof Audio_ !== 'undefined' && Audio_.tone) Audio_.tone(nz > this.ziLast ? 700 : 480, 0.04, 'square', 0.05);
       this.ziLast = nz;
     },
@@ -2365,7 +2391,7 @@
           return;
         }
         if (t.moved < 4) return;
-        if (self.overMini && t.y0 >= MINI.y - 4) { self.miniDrag(p.x, p.y); return; }
+        if (self.overMini && t.y0 >= MINI.y - 4 && t.x0 >= MINI.x - 4) { self.miniDrag(p.x, p.y); return; }
         if (t.y0 > VIEW.y + VIEW.h) return;         // the card does not pan
         self.dragging = true;
         const Z = self.zoom();
@@ -2424,7 +2450,10 @@
         if (!hitR({ x: mx, y: my }, b.x, b.y, b.w, b.h)) continue;
         if (b.k === 'in') this.setZoom(this.zi + 1, VIEW.w / 2, VIEW.h / 2);
         else if (b.k === 'out') this.setZoom(this.zi - 1, VIEW.w / 2, VIEW.h / 2);
-        else { this.setZoom(1); this.lookAt(DEST[this.selected]); }
+        // the frame key throws the whole sheet up, and brings it back to the
+        // port it was showing
+        else if (this.zi === 0) { this.setZoom(1); this.lookAt(DEST[this.selected], true); }
+        else this.setZoom(0);
         return;
       }
       if (hitR({ x: mx, y: my }, MINI.x, MINI.y, MINI.w, MINI.h)) { this.miniDrag(mx, my); return; }
@@ -2453,9 +2482,10 @@
         if (r.y + r.h > BTN_ZOOM[0].y - 4 && r.y < BTN_ZOOM[2].y + BTN_ZOOM[2].h + 4 && r.x + r.w > BTN_ZOOM[0].x - 4) {
           r.x = BTN_ZOOM[0].x - 4 - r.w;
         }
-        if (this.zi > 0 && r.y + r.h > MINI.y - 14 && r.x < MINI.x + MINI.w + 4) {
-          r.x = Math.max(r.x, MINI.x + MINI.w + 6);
-          if (r.x + r.w > VIEW.x + VIEW.w - 3) { r.x = clamp(d.sx - (r.w >> 1), VIEW.x + 3, VIEW.x + VIEW.w - r.w - 3); r.y = MINI.y - 16 - r.h; }
+        if (this.zi > 0 && r.y + r.h > MINI.y - 14 && r.y < MINI.y + MINI.h + 3 &&
+            r.x < MINI.x + MINI.w + 3 && r.x + r.w > MINI.x - 3) {
+          if (MINI.x - 6 - r.w >= VIEW.x + 3) r.x = MINI.x - 6 - r.w;
+          else r.y = MINI.y - 16 - r.h;
         }
         d.prect = r;
         const x0 = Math.min(d.sx - 12, r.x), y0 = Math.min(d.sy - 14, r.y);
@@ -2575,7 +2605,7 @@
       // ---- the sheet, blitted at a whole-number scale out of the bake so no
       //      edge is ever resampled: the fit view is the exact half plate, the
       //      close view the plate itself, the magnified view a doubled plate
-      const img = (Z === 1) ? this.sheetFar : this.sheet;
+      const img = (Z === 1) ? this.reduced(2) : this.sheet;
       const ippu = (Z === 1) ? 1 : SC;            // image pixels to the unit
       const k = Z / ippu;                         // 1 or 2, never a fraction
       let sx0 = Math.max(0, Math.floor((VIEW.x - this.ox) / k));
@@ -2648,13 +2678,14 @@
       }
     },
     drawMini(ctx) {
-      if (this.zi === 0 || !this.mini) return;
+      if (this.zi === 0) return;
+      const thumb = this.reduced(8);
       const M = MINI;
       R(ctx, P.tableG, M.x - 2, M.y - 2, M.w + 5, M.h + 5);
       R(ctx, P.tableL, M.x - 2, M.y - 2, M.w + 4, M.h + 4);
       box(ctx, P.brassD, M.x - 2, M.y - 2, M.w + 4, M.h + 4);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(this.mini, M.x, M.y);
+      ctx.drawImage(thumb, M.x, M.y);
       // the window the chart is showing, and the ports inside it
       const Z = this.zoom();
       const vw = Math.max(6, Math.round(VIEW.w / Z / 4)), vh = Math.max(5, Math.round(VIEW.h / Z / 4));
@@ -2669,8 +2700,8 @@
         if (i === this.selected) { box(ctx, '#ffe9b4', px - 1, py - 1, 3, 3); }
       }
       if (this.hintT > 0) {
-        R(ctx, P.tableG, M.x - 2, M.y - 12, 150, 9);
-        pixelText(ctx, 'DRAG TO PAN  -  WHEEL TO ZOOM', M.x + 1, M.y - 11, 5, '#e6cd97', 'left', false);
+        R(ctx, P.tableG, M.x + M.w - 148, M.y - 12, 150, 9);
+        pixelText(ctx, 'DRAG TO PAN  -  WHEEL TO ZOOM', M.x + M.w - 146, M.y - 11, 5, '#e6cd97', 'left', false);
       }
     },
 
@@ -2713,7 +2744,6 @@
     // the tags that ride over the chart but are not drawn on it: the bearing
     // roundels along the course and the lagoon's own label
     drawTags(ctx) {
-      const live = DEST[this.selected].unlocked;
       const h = this.toScreen(HOME.x, HOME.y);
       const w = 8 + mText('THE LAGOON', 6);
       if (h.x > -w && h.x < VIEW.w && h.y > -20 && h.y < VIEW.h + 20) {
@@ -2728,6 +2758,8 @@
         const lab = (L.brg < 100 ? (L.brg < 10 ? '00' : '0') : '') + L.brg;
         const tw = mText(lab, 5), bw = tw + 12;
         const p = this.toScreen(L.x, L.y);
+        // a bearing belongs to its waypoint: if that has panned off, so has it
+        if (p.x < VIEW.x - 4 || p.x > VIEW.x + VIEW.w + 4 || p.y < VIEW.y - 4 || p.y > VIEW.y + VIEW.h + 4) continue;
         const lx = clamp(p.x - (bw >> 1), VIEW.x + 2, VIEW.x + VIEW.w - bw - 2);
         const ly = clamp(L.up ? p.y - 13 : p.y + 7, VIEW.y + 2, VIEW.y + VIEW.h - 11);
         R(ctx, P.shade, lx + 1, ly + 9, bw - 1, 1);
@@ -2736,7 +2768,6 @@
         txt(ctx, lab, lx + 3, ly + 2, 5, { color: col });
         box(ctx, col, lx + 4 + tw, ly + 2, 3, 3);
       }
-      void live;
     },
 
     drawRoute(ctx, T) {

@@ -2128,8 +2128,9 @@ class CrabBoss {
     // ---------------- telegraphs on the water, under everything
     for (const w of this.waves) {
       const a = clamp(w.life, 0, 1);
-      mbRing(ctx, Math.round(w.x - cam.x), Math.round(w.y - cam.y), Math.round(w.r), a > 0.5 ? '#eaf8ff' : '#8ac6ff', 46, 0.8, t * 0.6, 3);
-      mbRing(ctx, Math.round(w.x - cam.x), Math.round(w.y - cam.y), Math.round(w.r) - 3, '#c9a86a', 40, 0.8, -t * 0.4, 4);
+      const wn = clamp(Math.round(w.r * 1.1), 26, 150);
+      mbRing(ctx, Math.round(w.x - cam.x), Math.round(w.y - cam.y), Math.round(w.r), a > 0.5 ? '#eaf8ff' : '#8ac6ff', wn, 0.8, t * 0.6, 3);
+      mbRing(ctx, Math.round(w.x - cam.x), Math.round(w.y - cam.y), Math.round(w.r) - 3, '#c9a86a', Math.round(wn * 0.85), 0.8, -t * 0.4, 4);
     }
     for (const b of this.boulders) {
       const u = clamp(b.t / b.flight, 0, 1);
@@ -2144,8 +2145,13 @@ class CrabBoss {
     if (this.state === 'slamWind') {
       const k = clamp(this.stateT / this.windDur, 0, 1), hot = k > 0.72;
       const mx = Math.round(this.target.x - cam.x), my = Math.round(this.target.y - cam.y);
+      // the ground the claw is coming down on, filled in hard bands
+      const zr = 56;
+      bxDisc(ctx, mx, my, zr, hot ? 'rgba(255,60,50,0.30)' : 'rgba(255,60,50,0.16)', 0.8);
+      bxDisc(ctx, mx, my, Math.round(zr * k), hot ? 'rgba(255,140,90,0.38)' : 'rgba(255,140,90,0.22)', 0.8);
+      mbRing(ctx, mx, my, zr, hot && Math.sin(t * 40) > 0 ? '#ffffff' : '#ff6161', 62, 0.8, t * 0.5, 0);
       mbMark(ctx, mx, my, k, t, hot && Math.sin(t * 40) > 0 ? '#ffffff' : '#ff6161', '#ffd27a');
-      const rr = Math.round(56 * (0.4 + k * 0.6));
+      const rr = Math.round(zr * (0.4 + k * 0.6));
       mbRing(ctx, mx, my, rr, hot ? '#ffffff' : '#ffd27a', 44, 0.8, t * 1.4, 3);
       ctx.fillStyle = hot ? '#ffffff' : '#ffd27a';
       ctx.fillRect(mx - 6, my, 13, 1); ctx.fillRect(mx, my - 6, 1, 13);
@@ -2153,7 +2159,7 @@ class CrabBoss {
     if (this.state === 'scuttleWind') {
       const k = clamp(this.stateT / (p2 ? 0.55 : 0.8), 0, 1), hot = k > 0.7;
       const col = hot && Math.sin(t * 40) > 0 ? '#ffffff' : '#ff6161';
-      for (const off of [-26, 0, 26]) {
+      for (const off of [-44, 0, 44]) {
         const ox = Math.cos(this.moveAng + Math.PI / 2) * off, oy = Math.sin(this.moveAng + Math.PI / 2) * off;
         mbDashLine(ctx, sx + ox, sy + oy, sx + ox + Math.cos(this.moveAng) * 300, sy + oy + Math.sin(this.moveAng) * 300, t, col, '#ffd27a', 2);
       }
@@ -2525,7 +2531,9 @@ class AnglerBoss {
         break;
       }
       case 'lurk': case 'lurk2': {
-        // it holds off and lets the lure do the work
+        // it holds off and lets the lure do the work. Whatever an attack did
+        // to the dark, the resting level for the phase comes back here.
+        this.darkWant = p2 ? 0.45 : 0.94;
         const ring = p2 ? 150 : 215;
         if (d > ring + 70) { desired = toP; speed = p2 ? 110 : 74; }
         else if (d < ring - 60) { desired = toP + Math.PI; speed = p2 ? 96 : 62; }
@@ -2632,7 +2640,7 @@ class AnglerBoss {
         desired = toP; speed = 90;
         this.darkWant = 0.97;
         this.lureOut = 0.2;
-        if (this.stateT > 2.2) { this.darkWant = 0.45; this.lureOut = 0; this.windDur = 0.5; this.biteAng = toP; this.setState('biteWind'); }
+        if (this.stateT > 2.2) { this.lureOut = 0; this.windDur = 0.5; this.biteAng = toP; this.setState('biteWind'); }
         break;
       }
     }
@@ -3040,6 +3048,11 @@ function makeBoss(key, x, y, difficulty) {
   if (!c) return null;
   return c.make(x, y, difficulty === undefined ? 1 : difficulty);
 }
+
+// One extra, purely additive read for the interface: what this boss's current
+// phase is called. Nothing in the game reads it yet — ui.js still hard-codes
+// 'BLOOD FRENZY' for phase 2 — but it is here for whoever wires the bar up.
+Object.defineProperty(Boss.prototype, 'phaseName', { get() { return this.phase === 2 ? 'BLOOD FRENZY' : ''; }, configurable: true });
 
 globalThis.Boss = Boss;
 globalThis.CrabBoss = CrabBoss;

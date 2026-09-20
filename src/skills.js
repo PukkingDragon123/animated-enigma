@@ -10,6 +10,9 @@ function baseStats() {
     speed: 1, accel: 1, turn: 1, rollCd: 1, rollDist: 1, rollCharges: 1, rollDmg: 0, rollSplash: 0, slipstream: false, currentRider: false, dive: false, absorbBoost: false,
     absorbWindow: 0.55, absorbCd: 0.9, absorbReflect: false, absorbHeal: 0, absorbShock: 0, rampGain: 1, rampDur: 5, rampExplosive: false, rampFrenzy: false,
     magnet: 1, scrapBonus: 0, scrapMult: 1, decoy: false, tidal: false, cdMult: 1, rockSense: false, secondWind: false, sidearm: false,
+    // the manatee's own attack: two tonnes of animal. Locked until bought.
+    melee: false, meleeDmg: 40, meleeCd: 1.4, meleeArc: 2.0, meleeRange: 46,
+    meleeKnock: 1, meleeBleed: 0, meleeLifesteal: 0, meleeStun: 0, meleeWave: false,
     weapons: ['revolver'],
   };
 }
@@ -67,6 +70,10 @@ const SKILL_NODES = [
   { id: 'm_dive', branch: 'mobility', pos: [0, 4], name: 'Deep Dive', desc: 'NEW ABILITY [SHIFT]: dive underwater for 1.5s. Immune to projectiles, boats pass over you. 7s cooldown.', cost: { tech: 12, wood: 12 }, req: ['m_splash', 'm_slip'], reqAny: true, apply: s => s.dive = true },
   { id: 'm_blubber', branch: 'mobility', pos: [1, 4], name: 'Blubber Burst', desc: 'After a successful Parry, +60% speed for 2s.', cost: { tech: 6, fuel: 5 }, req: ['m_slip'], apply: s => s.absorbBoost = true },
   { id: 'm_fins3', branch: 'mobility', pos: [2, 4], name: 'Swift Fins III', desc: 'Swim speed +20% more.', cost: { wood: 16, fuel: 8 }, req: ['m_current'], apply: s => s.speed *= 1.2 },
+  { id: 'm_slam', branch: 'mobility', pos: [2, 0], name: 'Tail Slam', desc: 'The manatee fights back. [C] sweeps her tail through everything in front of her for 40 damage and a hard shove.', cost: { wood: 10, metal: 6 }, req: ['m_fins'], apply: s => s.melee = true },
+  { id: 'm_slam2', branch: 'mobility', pos: [2, 5], name: 'Broad Sweep', desc: 'Tail Slam reaches 40% further through a wider arc, and the wake swats enemy shots out of the air.', cost: { wood: 14, tech: 6 }, req: ['m_slam'], apply: s => { s.meleeArc += 0.7; s.meleeRange += 14; s.meleeWave = true; } },
+  { id: 'm_slam3', branch: 'mobility', pos: [2, 6], name: 'Bone Breaker', desc: 'Tail Slam hits for 90, shoves three times as hard and leaves the hull wallowing.', cost: { metal: 18, powder: 10 }, req: ['m_slam2'], apply: s => { s.meleeDmg = 90; s.meleeKnock = 3; s.meleeStun += 0.8; } },
+  { id: 'm_slam4', branch: 'mobility', pos: [0, 6], name: 'Old Wounds', desc: 'Everything the tail hits bleeds 12 a second for 3s, and each hull she catches gives back 6 HP.', cost: { wood: 20, tech: 12 }, req: ['m_slam3'], apply: s => { s.meleeBleed += 12; s.meleeLifesteal += 6; s.meleeCd *= 0.75; } },
   { id: 'm_triple', branch: 'mobility', pos: [1, 5], name: 'Triple Roll', desc: 'Store 3 roll charges and rolls are 20% faster.', cost: { wood: 22, tech: 8 }, req: ['m_dive', 'm_blubber', 'm_fins3'], reqAny: true, apply: s => { s.rollCharges += 1; s.rollDist *= 1.2; } },
 
   // ================= GENERAL STATS =================

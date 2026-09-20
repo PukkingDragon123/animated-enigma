@@ -39,6 +39,7 @@ class Game {
     if (typeof Wildlife !== 'undefined') { Wildlife.init(); Wildlife.keyLabel = 'G'; }
     if (typeof DeathScene !== 'undefined') DeathScene.init();
     if (typeof BossCut !== 'undefined' && BossCut.init) BossCut.init();
+    if (typeof StoryCut !== 'undefined' && StoryCut.init) StoryCut.init();
     if (typeof Upgrades !== 'undefined') Upgrades.init();
     if (typeof MainMenu !== 'undefined') MainMenu.init();
     this.tree = new SkillTree();
@@ -63,7 +64,7 @@ class Game {
     this.ocean = new Ocean(WORLD_W, WORLD_H, SHORE_Y);
     this.particles = new Particles(this.ocean);
     this.enemies = []; this.projectiles = []; this.pickups = []; this.wrecks = []; this.rocks = [];
-    this.boss = null; this.buoy = null; this.holdFire = false; this.cutReturn = null; this.pendingVictory = false; this.miniBosses = [];
+    this.boss = null; this.bossKey = null; this.buoy = null; this.holdFire = false; this.cutReturn = null; this.cutMod = null; this.pendingVictory = false; this.pendingStory = null; this.miniBosses = [];
     this.stats = { kills: 0, shots: 0, absorbs: 0, damageDealt: 0, damageTaken: 0, scrapCollected: 0, bossCrashes: 0 };
     this.cam = { x: 0, y: 0 }; this.shakeAmt = 0; this.time = 0; this.endT = 0;
     this.pier = { x: WORLD_W / 2, y0: SHORE_Y - 24, y1: SHORE_Y + 130, w: 44 };
@@ -167,22 +168,42 @@ class Game {
   }
   // Boss and mini-boss cinematics. They are short, so the world keeps running
   // underneath unless the cutscene says otherwise.
-  playCut(kind, opts) {
-    if (typeof BossCut === 'undefined' || !BossCut.start) return false;
-    BossCut.start(kind, opts || {});
-    if (BossCut.done || !BossCut.active) return false;
+  playCut(kind, opts) { return this.runCut(typeof BossCut !== 'undefined' ? BossCut : null, kind, opts); }
+  // The brother thread. Chapter beats punctuate the map, so they use the same
+  // path as a boss cinematic and the same hold-to-skip.
+  playStory(id, opts) {
+    if (typeof StoryCut === 'undefined' || !id) return false;
+    if (this.storySeen && this.storySeen[id]) return false;
+    if (!this.storySeen) this.storySeen = {};
+    this.storySeen[id] = true;
+    return this.runCut(StoryCut, id, opts);
+  }
+  storyForChapter(n) {
+    if (typeof StoryCut === 'undefined' || !StoryCut.forChapter) return false;
+    return this.playStory(StoryCut.forChapter(n));
+  }
+  runCut(mod, kind, opts) {
+    if (!mod || !mod.start) return false;
+    mod.start(kind, opts || {});
+    if (mod.done || !mod.active) return false;
+    this.cutMod = mod;
     this.cutReturn = this.state === 'cut' ? (this.cutReturn || 'play') : this.state;
     this.skipArm();
     this.state = 'cut';
     return true;
   }
-  spawnBoss() {
+  spawnBoss(key) {
     const p = this.player; let a = rand(0, TAU), x, y;
     for (let i = 0; i < 20; i++) { x = p.x + Math.cos(a) * 420; y = p.y + Math.sin(a) * 420; if (x > 60 && x < WORLD_W - 60 && y > SHORE_Y + 60 && y < WORLD_H - 60) break; a += 0.7; }
-    this.boss = new Boss(clamp(x, 60, WORLD_W - 60), clamp(y, SHORE_Y + 60, WORLD_H - 60));
+    const bx = clamp(x, 60, WORLD_W - 60), by = clamp(y, SHORE_Y + 60, WORLD_H - 60);
+    const k = key || (this.director && this.director.currentWave().bossKey) || 'chief';
+    this.bossKey = k;
+    this.boss = (typeof makeBoss === 'function' ? makeBoss(k, bx, by, this.director.difficulty) : null) || new Boss(bx, by);
     Audio_.roar(); this.shake(10);
     for (let i = 0; i < 6; i++) this.particles.splash(this.boss.x + rand(-40, 40), this.boss.y + rand(-20, 20), 2);
-    this.playCut('chief_intro');
+    // the Chief has his own cinematic; the animals get the mini-boss card
+    if (k === 'chief') this.playCut('chief_intro');
+    else this.playCut('mini_intro', { name: this.boss.name || 'SOMETHING BIG' });
   }
   nearestEnemy(x, y, range, exclude = null, includeBoss = false) {
     let best = null, bd = range * range;
@@ -221,13 +242,16 @@ class Game {
   }
   onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() {
-    this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0;
+    const nm = (this.boss && this.boss.name) || 'THE CHIEF';
+    this.banner(nm + ' IS DOWN', '#ffe48f', 3); this.endT = 0;
     this.bossBeaten = true;
     this.persist(true);
     this.state = 'victory_wait';
     // the chapter's payoff plays before the victory screen
     this.pendingVictory = true;
-    this.playCut('chief_defeat');
+    const chapter = Math.max(1, (typeof Save !== 'undefined' && Save.data && Save.data.unlockedDests) || 1);
+    this.pendingStory = (typeof StoryCut !== 'undefined' && StoryCut.forChapter) ? StoryCut.forChapter(chapter) : null;
+    this.playCut(this.bossKey === 'chief' || !this.bossKey ? 'chief_defeat' : 'mini_defeat', { name: nm });
   }
   onMiniBossKilled(m) {
     this.banner((m && (m.displayName || m.name) || 'IT') + ' IS DOWN', '#ffe48f', 2);
@@ -275,6 +299,7 @@ class Game {
         if (this.updateSkip(dt)) { if (Intro.skip) Intro.skip(); Intro.done = true; }
         if (Intro.done) {
           this.seenIntro = true;
+          if (this.storyForChapter(0)) break;
           if (typeof WorldMap !== 'undefined') {
             WorldMap.init();
             WorldMap.open(Math.max(1, (typeof Save !== 'undefined' && Save.data && Save.data.unlockedDests) || 1));
@@ -338,19 +363,24 @@ class Game {
       case 'paused':
         if (typeof MainMenu !== 'undefined' && Input.hit('Backspace')) { this.runActive = true; this.state = 'menu'; break; }
         if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'play'; if (Input.hit('Tab') && this.upgradesOpen()) this.openTree('play'); break;
-      case 'cut':
-        if (typeof BossCut === 'undefined') { this.state = this.cutReturn || 'play'; break; }
-        if (BossCut.worldActive) this.updateWorld(dt * 0.6, true);
-        BossCut.update(dt, this.time);
-        if (this.updateSkip(dt)) BossCut.skip();
-        if (BossCut.done) {
+      case 'cut': {
+        const cm = this.cutMod;
+        if (!cm) { this.state = this.cutReturn || 'play'; break; }
+        if (cm.worldActive) this.updateWorld(dt * 0.6, true);
+        cm.update(dt, this.time);
+        if (this.updateSkip(dt)) cm.skip();
+        if (cm.done) {
           const back = this.cutReturn || 'play'; this.cutReturn = null;
           this.state = back === 'cut' ? 'play' : back;
           // the defeat cinematic IS the pause after the kill, so the victory
           // screen comes up the moment it ends rather than after another wait
+          this.cutMod = null;
+          // the chapter's story beat plays out of the defeat cinematic
+          if (this.pendingStory) { const id = this.pendingStory; this.pendingStory = null; if (this.playStory(id)) break; }
           if (this.pendingVictory) { this.pendingVictory = false; this.endT = 0; this.state = 'victory'; }
         }
         break;
+      }
       case 'death':
         // the sinking half still plays out in the world; the shore half does not
         if (DeathScene.worldActive) this.updateWorld(dt * 0.35, true);
@@ -487,7 +517,7 @@ class Game {
     if (typeof Village !== 'undefined') Village.render(W, cam, t); else this.renderVillage(W, cam, t);
     // underwater shadows
     for (const e of this.enemies) this.ocean.shadow(W, cam, e.x, e.y, e.radius * 2.6, e.radius * 1.5, t, 1.15);
-    if (this.boss && !this.boss.dead) this.ocean.shadow(W, cam, this.boss.x, this.boss.y, 92, 40, t, 1.4);
+    if (this.boss && !this.boss.dead) this.ocean.shadow(W, cam, this.boss.x, this.boss.y, this.boss.radius * 2.4, this.boss.radius * 1.1, t, 1.4);
     if (!this.player.dead) this.ocean.shadow(W, cam, this.player.x, this.player.y, 48, 24, t, this.player.diving ? 1.7 : 1.25);
     for (const w of this.wrecks) this.ocean.shadow(W, cam, w.x, w.y, w.radius * 2, w.radius, t, 0.6);
     if (typeof Wildlife !== 'undefined') Wildlife.renderUnder(W, cam, t);
@@ -511,7 +541,7 @@ class Game {
     if (typeof Hazards !== 'undefined') Hazards.renderOver(W, cam, t);
     if (typeof Wildlife !== 'undefined') Wildlife.renderHint(W, cam, t);
     if (this.state === 'death' && DeathScene.renderWorld) DeathScene.renderWorld(W, cam, t);
-    if (this.state === 'cut' && typeof BossCut !== 'undefined' && BossCut.renderWorld) BossCut.renderWorld(W, cam, t);
+    if (this.state === 'cut' && this.cutMod && this.cutMod.renderWorld) this.cutMod.renderWorld(W, cam, t);
     Toon.render(W, cam);
     this.ocean.renderRipples(W, cam);
     // sun sheen and swell ribbons pass OVER the entities so they read as submerged
@@ -539,7 +569,7 @@ class Game {
     if (this.state === 'victory') drawEndScreen(ctx, t, true);
     if (this.state === 'dead_wait') { ctx.fillStyle = `rgba(120,10,20,${Math.min(0.7, this.endT * 0.4).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
     if (this.state === 'death') DeathScene.renderScreen(ctx, this.time);
-    if (this.state === 'cut' && typeof BossCut !== 'undefined') BossCut.renderScreen(ctx, this.time);
+    if (this.state === 'cut' && this.cutMod) this.cutMod.renderScreen(ctx, this.time);
     if (this.state === 'death' || this.state === 'cut') this.drawSkip(ctx);
     if (this.state === 'dialogue' && !this.director.started) { /* controls hint in dialogue */ }
     if (typeof MobileUI !== 'undefined' && MobileUI.enabled && (this.state === 'play' || this.state === 'dialogue' || this.state === 'dead_wait' || this.state === 'victory_wait')) MobileUI.render(ctx, t);

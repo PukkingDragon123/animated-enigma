@@ -1987,7 +1987,7 @@ function paperSheet(w, h, seed, tear) {
       if (q > 1) continue;
       const f = 1 - Math.sqrt(q);
       P(x, f > 0.55 ? SPAL.page[4] : SPAL.page[5], bx + dx, by + y, 1, 1);
-      if (f < 0.26 && bay(bx + dx, by + y) > 0.5) P(x, SPAL.page[7], bx + dx, by + y, 1, 1);
+      if (f < 0.30 && bay(bx + dx, by + y) > 0.62) P(x, SPAL.page[6], bx + dx, by + y, 1, 1);
     }
   }
   // one hard crease down the middle
@@ -2172,10 +2172,10 @@ function buildYardNight() {
     const img = x.getImageData(0, 70, 640, 194), d = img.data;
     const CO = SPAL.sodium.map(hexToRgb);
     for (let y = 0; y < 194; y++) {
-      const u = y / 194, half = 24 + u * 118;
+      const u = y / 194, half = 30 + u * 160;
       for (let dx = -half; dx <= half; dx++) {
         const px = R(133 + dx); if (px < 0 || px > 639) continue;
-        const f = Math.pow(1 - Math.abs(dx) / half, 1.4) * (1 - u * 0.8) * 0.46;
+        const f = Math.pow(1 - Math.abs(dx) / half, 1.8) * (1 - u * 0.86) * 0.26;
         if (f <= 0 || bay(px, y + 70) > f) continue;
         const i = Math.min(5, Math.floor(f * 8) + 1), C = CO[i], q = (y * 640 + px) * 4;
         d[q] = C[0]; d[q + 1] = C[1]; d[q + 2] = C[2]; d[q + 3] = 255;
@@ -2207,8 +2207,8 @@ function buildCrate() {
     P(x, '#000000', hx + 1, hy + 1, 4, 4);
     P(x, SPAL.wood[6], hx, hy + 6, 6, 1);
   }
-  pixelText(x, BOAT, 63, 20, 17, '#c8bda0', 'center', false);
-  pixelText(x, 'LOT 9 - LIVE - 1', 63, 40, 7, '#9c9179', 'center', false);
+  pixelText(x, BOAT, 57, 20, 17, '#c8bda0', 'center', false);
+  pixelText(x, 'LOT 9 - LIVE - 1', 57, 40, 7, '#9c9179', 'center', false);
   {
     const img = x.getImageData(0, 16, W, 32), d = img.data;
     for (let i = 0; i < d.length; i += 4) {
@@ -2235,7 +2235,7 @@ function buildCrate() {
   outlineIt(c, '#08060a');
   return spr(rimLight(rimLight(bounceLight(tintCanvas(c, '#0d1520', 0.30), '#2c4a44', 3, 0.7),
                                1, 0, '#ffd884', '#b8762a', 2),
-                      -1, 0, '#3cb878', null, 1), W / 2, H);
+                      -1, 0, '#1f7a52', null, 1), W / 2, H);
 }
 
 // ---- 4. the deck tank ---------------------------------------------------
@@ -2434,14 +2434,19 @@ function buildChartBg() {
   const c = can(640, 360), x = cx2(c);
   skyBand(x, 0, 116, SPAL.night, { pow: 1.5, stars: 130 });
   seaBand(x, 116, 244, SPAL.night, BP.chopNight, { pow: 0.7 });
-  // her back, filling the bottom of the frame: she is the table
+  // her back, filling the bottom of the frame: she is the table.  tail off
+  // to the left, the broad of her back under the chart, her head at the right.
   const top = new Int16Array(640);
   for (let px = 0; px < 640; px++) {
     const u = px / 639;
-    top[px] = 320 - R(Math.pow(Math.sin(Math.pow(clamp((u + 0.10) / 1.12, 0, 1), 0.70) * Math.PI), 0.50) * 136);
+    let y;
+    if (u < 0.70) y = 318 - Math.pow(Math.sin(Math.pow(clamp(u / 0.78, 0, 1), 0.55) * Math.PI), 0.45) * 132;
+    else if (u < 0.79) y = 190 + (u - 0.70) / 0.09 * 34;                  // the neck
+    else y = 224 - Math.sin(clamp((u - 0.79) / 0.21, 0, 1) * Math.PI) * 40;  // the head
+    top[px] = R(y + Math.sin(px * 0.09) * 0.9);
   }
   {
-    const ramp = ['#0e0d13', '#17161e', '#232129', '#2f2d37', '#3d3a45', '#4c4954'].map(hexToRgb);
+    const ramp = ['#08080c', '#0f0e14', '#18171f', '#22202a', '#2d2b36', '#3a3743'].map(hexToRgb);
     const img = x.getImageData(0, 150, 640, 210), d = img.data;
     for (let px = 0; px < 640; px++) {
       const ty = top[px];
@@ -2450,22 +2455,30 @@ function buildChartBg() {
         const v = 0.74 - dv * 0.64 + (hash2(px >> 2, y >> 1) - 0.5) * 0.18;
         let i = Math.floor(clamp(v, 0, 0.999) * ramp.length);
         if (bay(px, y) < 0.4) i = Math.max(0, i - 1);
-        const C = y === ty ? [88, 84, 99] : ramp[i], q = ((y - 150) * 640 + px) * 4;
+        const C = y === ty ? [134, 128, 148] : y === ty + 1 ? [96, 92, 108] : ramp[i], q = ((y - 150) * 640 + px) * 4;
         d[q] = C[0]; d[q + 1] = C[1]; d[q + 2] = C[2]; d[q + 3] = 255;
       }
     }
     x.putImageData(img, 0, 150);
   }
+  // her tail, off to the left, where the back runs out
+  tri(x, '#14131a', 0, 262, 58, 314, 0, 348);
+  P(x, '#3a3743', 0, 262, 4, 86);
+  for (let i = 0; i < 26; i++) P(x, '#2d2b36', 4 + i, 264 + i * 2, 1, 2);
   // propeller scars, on the part of her the chart does not cover
-  for (let i = 0; i < 5; i++) LN(x, '#7d7788', 20 + i * 15, top[20 + i * 15] + 10 + i * 4, 58 + i * 15, top[58 + i * 15] + 28 + i * 4, 2);
-  for (let i = 0; i < 3; i++) LN(x, '#6f6a7a', 560 + i * 19, top[560 + i * 19] + 14 + i * 4, 596 + i * 19, top[596 + i * 19] + 32 + i * 4, 2);
-  // the plate bolted across her shoulder, off at the right
-  P(x, BP.ink, 468, 236, 116, 26); P(x, '#2e374a', 470, 238, 112, 22);
-  P(x, '#55627c', 470, 238, 112, 5); P(x, '#1e2634', 470, 254, 112, 6);
-  for (let i = 0; i < 5; i++) { P(x, BP.ink, 480 + i * 24, 244, 6, 6); P(x, '#8b9ab2', 481 + i * 24, 245, 4, 4); }
+  for (let i = 0; i < 5; i++) LN(x, '#7d7788', 26 + i * 15, top[26 + i * 15] + 12 + i * 5, 64 + i * 15, top[64 + i * 15] + 32 + i * 5, 2);
+  // her eye, and the whiskers on her: she is watching him work
+  P(x, '#04040a', 592, 200, 9, 9); P(x, '#251f2c', 593, 201, 7, 7);
+  P(x, '#e4dfec', 594, 202, 3, 3);
+  P(x, '#04040a', 606, 226, 30, 4); P(x, '#4c4954', 606, 224, 30, 2);
+  for (let i = 0; i < 5; i++) P(x, '#c9c4d0', 618 + (i & 1) * 4, 210 + i * 4, 4, 1);
+  // the plate bolted across her shoulder
+  P(x, BP.ink, 438, 218, 110, 26); P(x, '#2e374a', 440, 220, 106, 22);
+  P(x, '#55627c', 440, 220, 106, 5); P(x, '#1e2634', 440, 236, 106, 6);
+  for (let i = 0; i < 5; i++) { P(x, BP.ink, 450 + i * 22, 226, 6, 6); P(x, '#8b9ab2', 451 + i * 22, 227, 4, 4); }
   // the lamp, hooked on the plate, is the only warm thing in the frame
-  glowPool(x, 520, 222, 126, 92, SPAL.lamp, 0.24);
-  glowPool(x, 520, 220, 48, 32, SPAL.lamp, 0.52);
+  glowPool(x, 512, 202, 132, 96, SPAL.lamp, 0.24);
+  glowPool(x, 512, 200, 50, 34, SPAL.lamp, 0.52);
   vigBake(x, 640, 360, '#01030a', 0.66);
   return c;
 }
@@ -2731,17 +2744,18 @@ const StoryCut = {
       const NIGHT = ['#0b1226', 0.58], DIM = ['#101828', 0.40], WET = ['#08131c', 0.52];
       S.manEmber = lit(A.man, [[1, 0, '#ff9a42', '#a8481a'], [-1, 1, '#6a80b8', null, 1]], NIGHT);
       S.ottEmber = lit(A.ott, [[1, 0, '#ff9a42', '#a8481a'], [-1, 1, '#6a80b8', null, 1]], NIGHT);
-      S.manSod = lit(A.man, [[1, 0, '#ffd47a', '#a86c18'], [-1, 0, '#3cb878', null, 1]], NIGHT);
-      S.ottSod = lit(A.ott, [[1, 0, '#ffd47a', '#a86c18'], [-1, 0, '#3cb878', null, 1]], NIGHT);
-      S.manDawn = lit(A.man, [[-1, 0, '#ffc888', '#b8623a'], [1, 1, '#7a6ab0', null, 1]], DIM);
-      S.ottDawn = lit(A.ott, [[-1, 0, '#ffc888', '#b8623a']], DIM);
-      S.manMerc = lit(A.man, [[-1, 0, '#7ce4cc', '#1d5f64'], [1, 0, '#c07a2e', null, 1]], WET);
-      S.ottMerc = lit(A.ott, [[-1, 0, '#7ce4cc', '#1d5f64'], [1, 0, '#c07a2e', null, 1]], WET);
-      S.bullLit = spr(tintCanvas(cloneSpr(S.bull), '#06141a', 0.50), S.bull.ax, S.bull.ay);
+      S.manSod = lit(A.man, [[1, 0, '#ffd47a', '#a86c18'], [-1, 0, '#1f7a52', null, 1]], NIGHT);
+      // the otter on the deck is drawn mirrored, so his light is baked mirrored
+      S.ottSod = lit(A.ott, [[-1, 0, '#ffd47a', '#a86c18'], [1, 0, '#1f7a52', null, 1]], NIGHT);
+      S.manDawn = lit(A.man, [[1, 0, '#ffc888', '#b8623a'], [-1, 1, '#7a6ab0', null, 1]], DIM);
+      S.ottDawn = lit(A.ott, [[1, 0, '#ffc888', '#b8623a']], DIM);
+      S.manMerc = lit(A.man, [[1, 0, '#7ce4cc', '#1d5f64'], [-1, 0, '#c07a2e', null, 1]], WET);
+      S.ottMerc = lit(A.ott, [[1, 0, '#7ce4cc', '#1d5f64'], [-1, 0, '#c07a2e', null, 1]], WET);
+      S.bullLit = spr(tintCanvas(cloneSpr(S.bull), '#05121a', 0.66), S.bull.ax, S.bull.ay);
       S.bullLit = spr(rimLight(rimLight(S.bullLit.c, -1, 0, '#7ce4cc', '#1d5f64', 2), 0, 1, '#4ea89c', null, 1), S.bull.ax, S.bull.ay);
-      S.ottLamp = lit(A.ott, [[-1, 0, '#ffd67a', '#a8701c']], NIGHT);
-      S.manDeep = lit(A.man, [[0, 1, '#5c9ad0', '#1d4868'], [-1, 0, '#ffb44a', '#8c5418', 2]], ['#061020', 0.62]);
-      S.ottDeep = lit(A.ott, [[0, 1, '#5c9ad0', '#1d4868'], [-1, 0, '#ffc060', '#a86c20', 2]], ['#061020', 0.55]);
+      S.ottLamp = lit(A.ott, [[1, 0, '#ffd67a', '#a8701c']], NIGHT);
+      S.manDeep = lit(A.man, [[0, 1, '#5c9ad0', '#1d4868'], [1, 0, '#ffb44a', '#8c5418', 2]], ['#061020', 0.62]);
+      S.ottDeep = lit(A.ott, [[0, 1, '#5c9ad0', '#1d4868'], [1, 0, '#ffc060', '#a86c20', 2]], ['#061020', 0.55]);
       S.kidLit = spr(rimLight(rimLight(tintCanvas(cloneSpr(S.kid), '#071628', 0.50), 0, 1, '#9cd4ff', '#2d6490', 2),
                               -1, 0, '#5c9ad0', null, 1), S.kid.ax, S.kid.ay);
       S.buf = can(640, 360); S.bufCtx = cx2(S.buf);
@@ -2824,8 +2838,10 @@ const StoryCut = {
         this.cue('gull', 3.6, function () { Audio_.tone(880, 0.16, 'triangle', 0.05, -200); });
         break;
       case 'bro_witness':
-        o.a = 1;
-        if (Math.random() < 7 * dt) FX.bub(rand(60, 240), rand(280, 330), 1);
+        // he talks in bubbles, because he is mostly under
+        o.a = (T > 1.9 && T < 3.5) || (T > 3.5 && T < 5.2) || (T > 5.2 && T < 6.7) ? 1 : 0;
+        if (o.a && Math.random() < 26 * dt) FX.bub(228 + rand(-4, 8), 292 + rand(-3, 3), 1);
+        if (Math.random() < 5 * dt) FX.bub(rand(60, 210), rand(300, 330), 1);
         this.cue('bull', 1.9, function () { Audio_.tone(74, 1.2, 'sine', 0.16, -8); });
         this.cue('bull2', 3.5, function () { Audio_.tone(66, 1.4, 'sine', 0.14, -6); });
         this.cue('bull3', 5.2, function () { Audio_.tone(58, 1.6, 'sine', 0.13, -5); });
@@ -2961,20 +2977,28 @@ const StoryCut = {
     }
     ctx.restore();
     // his paws, curled over the side edges: somebody is holding this up
-    const hy = py + 14;
+    const hy = py + 12;
     for (let sgn = -1; sgn <= 1; sgn += 2) {
-      const hx = px + sgn * 150;
+      const hx = px + sgn * 152;
       const warm = sgn < 0;                            // the torch is off to the left
-      P(ctx, BP.ink, hx - 15, hy - 20, 31, 42);
-      P(ctx, warm ? '#9c4d24' : '#5e2c13', hx - 14, hy - 19, 29, 40);
-      P(ctx, warm ? '#c8703c' : '#7a3a19', hx - 14, hy - 19, 29, 7);
-      if (warm) P(ctx, '#ffb45a', hx - 14, hy - 19, 3, 40);
+      const PAD = warm ? '#9c4d24' : '#4e250f', LIP = warm ? '#c8703c' : '#68320f';
+      const FIN = warm ? '#c8703c' : '#5e2c13', FTP = warm ? '#e89050' : '#783a18';
+      // the back of the paw, behind the page edge
+      P(ctx, BP.ink, hx - 17, hy - 26, 34, 54);
+      P(ctx, PAD, hx - 16, hy - 25, 32, 52);
+      P(ctx, LIP, hx - 16, hy - 25, 32, 8);
+      if (warm) P(ctx, '#ffb45a', hx - 16, hy - 25, 3, 52);
+      // four fingers, over the front of the paper, longest in the middle
       for (let i = 0; i < 4; i++) {
-        const fy = hy - 15 + i * 10;
-        P(ctx, BP.ink, hx - 14 - sgn * 13, fy - 1, 28, 9);
-        P(ctx, warm ? '#d88a4e' : '#6d3316', hx - 13 - sgn * 13, fy, 26, 7);
-        P(ctx, warm ? '#ffc878' : '#8a4a20', hx - 13 - sgn * 13, fy, 26, 2);
-        P(ctx, '#e8d3ae', hx - 13 - sgn * 13 + (sgn < 0 ? 24 : 0), fy + 1, 3, 4);
+        const len = 16 + [4, 12, 11, 2][i], fy = hy - 20 + i * 13;
+        const x0 = sgn < 0 ? hx - 4 : hx + 4 - len;
+        P(ctx, BP.ink, x0 - 1, fy - 1, len + 2, 11);
+        P(ctx, FIN, x0, fy, len, 9);
+        P(ctx, FTP, x0, fy, len, 3);
+        P(ctx, BP.ink, sgn < 0 ? x0 + len - 1 : x0, fy, 1, 9);          // the rounded tip
+        P(ctx, FIN, sgn < 0 ? x0 + len : x0 - 1, fy + 3, 1, 3);
+        P(ctx, '#e8d3ae', sgn < 0 ? x0 + len : x0 - 2, fy + 3, 2, 3);   // a claw on it
+        P(ctx, BP.ink, sgn < 0 ? x0 + len + 2 : x0 - 3, fy + 3, 1, 3);
       }
     }
     FX.render(ctx, 0, 0);
@@ -3028,11 +3052,11 @@ const StoryCut = {
     const tk = S.tank, ty = 258;
     ctx.drawImage(tk.c, 232 - tk.ax, ty - tk.h);
     // the film of water left in the bottom of it, still moving
-    const iy = ty - tk.h + 36;
+    const iy = ty - tk.h + 33;
     for (let px = 0; px < 94; px++) {
       const h = 1 + R(Math.abs(Math.sin((px + T * 44) * 0.10)) * 2 + Math.sin(T * 5 + px * 0.2) * 1.2);
-      P(ctx, px & 1 ? '#1d4868' : '#0e2438', 185 + px, iy - h, 1, h + 2);
-      if (h > 2) P(ctx, '#5c96c0', 185 + px, iy - h, 1, 1);
+      P(ctx, px & 1 ? '#3a5878' : '#22384f', 185 + px, iy - h, 1, h + 2);
+      if (h > 2) P(ctx, bay(px, iy) < 0.5 ? '#d8a878' : '#8fb0cc', 185 + px, iy - h, 1, 1);
     }
     // and some of it going over the side, because nothing is holding it in
     if (T > 1.9) for (let i = 0; i < 4; i++) {
@@ -3059,24 +3083,26 @@ const StoryCut = {
     ctx.drawImage(S.pens, 0, 0);
     this.pool(ctx, S.lampPool, 105, 74, t, 0.14, 0.58);
     // the old bull, in the next pen, most of him under
-    const by = 306 + R(Math.sin(T * 0.7) * 3);
+    const by = 300 + R(Math.sin(T * 0.7) * 3);
     ctx.drawImage(S.bullLit.c, 146 - S.bullLit.ax, by - S.bullLit.ay);
     // the water closing over his back
     for (let px = 0; px < 230; px++) {
-      const gx = 32 + px, wy = 296 + R(Math.sin((gx + T * 22) * 0.07) * 2);
+      const gx = 32 + px, wy = 292 + R(Math.sin((gx + T * 22) * 0.07) * 2);
       if (bay(gx, wy) > 0.62) continue;
       P(ctx, bay(gx, wy) < 0.26 ? '#5aa89a' : '#1d4a48', gx, wy, 2, 1);
     }
     for (let px = 0; px < 230; px++) {                 // and what is left of him in it
       const gx = 32 + px;
-      for (let y = 298; y < 316; y++) {
+      for (let y = 294; y < 318; y++) {
         if (hash2(gx * 3 + y, y) > 0.10) continue;
         P(ctx, '#243840', gx, y, 1, 1);
       }
     }
+    // his eye comes up a little every time he says something
+    if (this._o.a) { P(ctx, '#9ceccf', 222, by - 10, 4, 4); P(ctx, '#e4fff4', 223, by - 9, 2, 2); }
     ctx.drawImage(S.bars.c, 268 - S.bars.ax, 40);
     // her, on the far side of the bars
-    const my = 302 + R(Math.sin(T * 1.0) * 2);
+    const my = 296 + R(Math.sin(T * 1.0) * 2);
     this.pair(ctx, 474, my, S.manMerc, S.ottMerc, t, true, 21);
     FX.render(ctx, 0, 0);
   },
@@ -3084,7 +3110,7 @@ const StoryCut = {
   // ---- 6. the chart -------------------------------------------------------
   drawChart(ctx, T, t) {
     ctx.drawImage(S.chartBg, 0, 0);
-    const s = S.chart, cx0 = 228, cy0 = 236;
+    const s = S.chart, cx0 = 222, cy0 = 244;
     ctx.save();
     ctx.translate(cx0, cy0);
     ctx.rotate(-0.03);
@@ -3104,7 +3130,7 @@ const StoryCut = {
           P(ctx, j & 1 ? '#e8d3ae' : '#b8262c', R(qx + (ex - qx) * j / n), R(qy + (ey - qy) * j / n), 2, 2);
         }
       }
-      if (i === M.length - 1 && seg < M.length - 1.001) continue;
+      if (i > 0 && seg < i - 0.02) continue;          // a pin goes in when the string gets there
       ctx.drawImage(S.pin.c, R(mx) - S.pin.ax, R(my) - S.pin.ay);
     }
     ctx.restore();
@@ -3119,17 +3145,17 @@ const StoryCut = {
       if (g > 0.55) pixelTextOutlined(ctx, '?', R(x0 + n * 3) + 6, R(y0 - n * 1.7) - 4, 12, '#ffd67a', '#2a1404', 'left');
     }
     // him, hunched over it, with the lamp hooked on her plate beside him
-    const oy = 238 + R(Math.sin(t * 1.7));
-    ctx.save(); ctx.translate(432, oy); ctx.scale(-1, 1);
+    const oy = 220 + R(Math.sin(t * 1.7));
+    ctx.save(); ctx.translate(416, oy); ctx.scale(-1, 1);
     ctx.drawImage(S.ottLamp.c, -S.ottLamp.ax, -S.ottLamp.ay);
     ctx.restore();
-    P(ctx, BP.ink, 508, 208, 18, 26);
-    P(ctx, '#3a2a18', 509, 209, 16, 24);
-    P(ctx, '#ffe8a8', 511, 213, 12, 15);
-    P(ctx, '#fff8dc', 515, 217, 4, 8);
-    P(ctx, '#6d5a3a', 509, 209, 16, 3); P(ctx, '#6d5a3a', 509, 230, 16, 3);
-    P(ctx, BP.ink, 515, 202, 2, 7);
-    this.pool(ctx, S.lampPool, 518, 220, t, 0.05, 0.56);
+    P(ctx, BP.ink, 500, 188, 18, 26);
+    P(ctx, '#3a2a18', 501, 189, 16, 24);
+    P(ctx, '#ffe8a8', 503, 193, 12, 15);
+    P(ctx, '#fff8dc', 507, 197, 4, 8);
+    P(ctx, '#6d5a3a', 501, 189, 16, 3); P(ctx, '#6d5a3a', 501, 210, 16, 3);
+    P(ctx, BP.ink, 507, 182, 2, 7);
+    this.pool(ctx, S.lampPool, 510, 200, t, 0.05, 0.56);
     FX.render(ctx, 0, 0);
   },
 

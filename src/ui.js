@@ -118,7 +118,7 @@ const UI = {
       UIKit.panel(ctx, 150, 28, 340, 22, 'dark');
       UIKit.bar(ctx, 156, 40, 328, 7, clamp(b.hp / b.maxHp, 0, 1), b.phase === 2 ? '#ff6161' : '#c8302e', '#1b2028');
       ctx.fillStyle = '#ffe48f'; ctx.fillRect(156 + 164, 39, 1, 9);
-      const nm = `${b.name}${b.phase === 2 ? ' - BLOOD FRENZY' : ''}${b.stunned ? '  [STUNNED]' : ''}`;
+      const nm = `${b.name}${b.phaseName ? ' - ' + b.phaseName : ''}${b.stunned ? '  [STUNNED]' : ''}`;
       pixelTextOutlined(ctx, nm, 320, 30, 7, b.stunned ? '#ffe48f' : '#ffffff', '#14141c', 'center');
       const bp = G.worldToScreen(b.x, b.y), sx = bp.x, sy = bp.y;
       if (sx < 0 || sy < 0 || sx > 640 || sy > 360) {
