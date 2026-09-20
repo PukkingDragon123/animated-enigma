@@ -854,6 +854,15 @@ function buildCharacters() {
   CH.manateeArmor = buildManateeBody(true);
   CH.manateeHurt  = tintHi(CH.manateeArmor, '#ffffff', 0.85);
   CH.manateeHurtP = tintHi(CH.manatee, '#ffffff', 0.85);
+  // the same bodies, cut at the peduncle so the rig can let the fluke lag
+  CH.manPFluke = sliceHi(CH.manatee, 0, MAN_CUT_T);
+  CH.manPFore  = sliceHi(CH.manatee, MAN_CUT_F, MAN_W);
+  CH.manAFluke = sliceHi(CH.manateeArmor, 0, MAN_CUT_T);
+  CH.manAFore  = sliceHi(CH.manateeArmor, MAN_CUT_F, MAN_W);
+  CH.manPFlukeH = tintHi(CH.manPFluke, '#ffffff', 0.85);
+  CH.manPForeH  = tintHi(CH.manPFore, '#ffffff', 0.85);
+  CH.manAFlukeH = tintHi(CH.manAFluke, '#ffffff', 0.85);
+  CH.manAForeH  = tintHi(CH.manAFore, '#ffffff', 0.85);
   CH.flipper      = buildFlipper();
   CH.saddle       = buildSaddle();
   CH.flags        = []; for (let i = 0; i < 8; i++) CH.flags.push(buildFlag(i));
@@ -882,101 +891,377 @@ function otterHeadWithFace(exp, blink, t, rage) {
 }
 
 // ===========================================================================
+//  MOTION PRIMITIVES
+//  Everything the rig is posed from arrives raw each frame — a tilt that was
+//  lerped once, an aim straight off the mouse, a facing that flips in a
+//  single step. These turn those into something a body could have done:
+//  springs that overshoot and settle, low-passes that make one part trail
+//  another, and a stroke curve with a fast power beat and a slow recovery.
+// ===========================================================================
+
+// Damped spring on {x,v}. zeta < 1 overshoots and settles, which is what
+// gives a limb its follow-through. Sub-stepped so a long frame cannot blow it
+// up, and allocation-free — the state objects live on the Rig.
+function _spr(o, target, freq, zeta, dt) {
+  if (!(dt > 0)) return o.x;
+  const w = TAU * freq;
+  const n = dt > 1 / 120 ? Math.min(16, Math.ceil(dt * 120)) : 1;
+  const h = dt / n;
+  for (let i = 0; i < n; i++) {
+    o.v += (-w * w * (o.x - target) - 2 * zeta * w * o.v) * h;
+    o.x += o.v * h;
+  }
+  return o.x;
+}
+// Exponential low-pass with a time constant in seconds (frame-rate independent).
+function _lp(cur, target, tau, dt) {
+  if (!(dt > 0)) return cur;
+  return cur + (target - cur) * (1 - Math.exp(-dt / (tau > 1e-4 ? tau : 1e-4)));
+}
+// The same for an angle, taking the short way round.
+function _lpA(cur, target, tau, dt) {
+  if (!(dt > 0)) return cur;
+  return cur + angleDiff(cur, target) * (1 - Math.exp(-dt / (tau > 1e-4 ? tau : 1e-4)));
+}
+// A manatee's fluke beat is not a sine. The down-stroke is quick and hard and
+// the recovery is slow, so the phase is warped before the sine: k>0 spends
+// less of the cycle in the power stroke and more of it in the glide.
+function _stroke(ph, k) { return Math.sin(ph + k * Math.sin(ph)); }
+// Ease-out, for the tail of a scripted beat (a facing flip, a roll exit).
+function _eo(u) { const v = 1 - u; return 1 - v * v * v; }
+
+// Place a point on the LAYER's pixel grid rather than on whole world units.
+// The rig is drawn through a translate+scale, so the live transform says
+// exactly where the origin lands in layer pixels; rounding there and solving
+// back keeps every sub-unit of motion the maths produced and quantises it
+// only at the resolution the screen actually has.
+const _snapOut = [0, 0];
+function _snapXY(ctx, x, y) {
+  let m = null;
+  if (ctx.getTransform) { try { m = ctx.getTransform(); } catch (e) { m = null; } }
+  if (m && !m.b && !m.c && m.a && m.d) {
+    _snapOut[0] = (Math.round(m.a * x + m.e) - m.e) / m.a;
+    _snapOut[1] = (Math.round(m.d * y + m.f) - m.f) / m.d;
+  } else {
+    _snapOut[0] = Math.round(x * AS) / AS;
+    _snapOut[1] = Math.round(y * AS) / AS;
+  }
+  return _snapOut;
+}
+
+// ---- body slices ----------------------------------------------------------
+// The fluke is cut off the body at the peduncle so it can trail the shoulders
+// instead of being welded to them. The two cuts overlap, and the forebody is
+// drawn OVER the fluke, so the join stays closed at every angle the fluke
+// reaches. No pixel is redrawn — these are the same rasters, split.
+const MAN_PIVX = 44;                    // peduncle pivot, art pixels
+const MAN_CUT_F = 40;                   // forebody keeps art x >= this
+const MAN_CUT_T = 48;                   // fluke keeps art x < this
+const MAN_PIV = MAN_PIVX / AS - MAN_CX / AS;   // pivot in world units, sprite-local
+// The slice is cropped to its own ink, so the two halves together cost the
+// same to blit as the one body they came from.
+function sliceHi(src, x0, x1) {
+  const W = src.c.width, H = src.c.height;
+  const tmp = newCan(W, H), tg = tmp.getContext('2d');
+  drawRaw(tg, src.c, 0, 0);
+  const d = tg.getImageData(0, 0, W, H).data;
+  let bx0 = x1, bx1 = x0, by0 = H, by1 = 0;
+  for (let y = 0; y < H; y++) for (let x = x0; x < x1; x++) {
+    if (!d[(y * W + x) * 4 + 3]) continue;
+    if (x < bx0) bx0 = x; if (x >= bx1) bx1 = x + 1;
+    if (y < by0) by0 = y; if (y >= by1) by1 = y + 1;
+  }
+  if (bx1 <= bx0) { bx0 = x0; bx1 = x0 + 1; by0 = 0; by1 = 1; }
+  const c = newCan(bx1 - bx0, by1 - by0), g = c.getContext('2d');
+  drawRaw(g, tmp, -bx0, -by0);
+  return spriteFromHi(c, MAN_CX - bx0, MAN_CY - by0);
+}
+
+// ===========================================================================
 //  RIG — draws the manatee + otter as one animated creature
 //  state: {aim, facing, tilt, swimPhase, rollPhase|null, hurt, exp, rage,
 //          recoil, flash, speed, armored, t}
+//  Nothing in that state is used raw: `_advance` eases every channel first,
+//  so a step input becomes a move with a beginning, a middle and an end.
 // ===========================================================================
 const Rig = {
   blinkT: 0, blink: false, cigarSmoke: 0,
+
+  // ---- smoothed motion state ---------------------------------------------
+  _t: -1,
+  _tilt: { x: 0, v: 0 },      // body yaw, under-damped so a turn settles
+  _tiltSlow: 0,               // heavy lag of the above — the fluke's reference
+  _aim: { x: 0, v: 0 },       // the otter's aim
+  _headAim: 0, _gunAim: 0,    // head leads it, gun trails it (overlap)
+  _spd: 0, _acc: 0,
+  _face: 1, _flip: 1,         // _flip: 0 at the instant of a facing change -> 1
+  _oface: 1, _oflip: 1,       // the same for the otter's own left/right flip
+  _rollPh: 0, _rolling: 0, _rollSeen: 0, _rollAge: 0,
+  _lean: { x: 0, v: 0 },      // otter thrown fore/aft by her acceleration
+  _sway: { x: 0, v: 0 },      // otter rolled into her turns
+  _fluke: { x: 0, v: 0 },     // fluke angle about the peduncle
+  _kick: { x: 0, v: 0 },      // whole-body impulse (a hit, a roll entry)
+  _hurtHot: 0, _hurtCd: 0,
+  _recoil: 0, _flagPh: 0, _init: 0,
+  _tPrev: 0, _tRate: 0, _tRateSlow: 0,   // incoming yaw rate and its lag -> anticipation
+
   updateBlink(dt) {
     this.blinkT -= dt;
     if (this.blinkT <= 0) { this.blink = !this.blink; this.blinkT = this.blink ? 0.09 : rand(1.8, 5.0); }
   },
+
+  // Snap every channel onto its target. A clock that jumps is a scene change
+  // seen from in here, and a scene change should not launch the springs.
+  _reset(s) {
+    this._tilt.x = s.tilt || 0; this._tilt.v = 0; this._tiltSlow = this._tilt.x;
+    this._aim.x = s.aim || 0; this._aim.v = 0;
+    this._headAim = this._gunAim = this._aim.x;
+    this._spd = s.speed || 0; this._acc = 0;
+    this._face = s.facing || 1; this._flip = 1; this._oface = 1; this._oflip = 1;
+    this._lean.x = this._lean.v = 0; this._sway.x = this._sway.v = 0;
+    this._fluke.x = this._fluke.v = 0; this._kick.x = this._kick.v = 0;
+    this._hurtHot = 0; this._hurtCd = 0; this._recoil = s.recoil || 0;
+    this._rollPh = 0; this._rolling = 0; this._rollSeen = 0; this._rollAge = 0;
+    this._tPrev = this._tilt.x; this._tRate = 0; this._tRateSlow = 0;
+  },
+
+  // ---- one step of every damper --------------------------------------------
+  _advance(s) {
+    const t = s.t || 0;
+    let dt = this._t >= 0 ? t - this._t : 0;
+    const first = !this._init; this._init = 1; this._t = t;
+    // the first frame has nowhere to ease from, so it starts already posed
+    if (first) { this._reset(s); return 0; }
+    // the same frame drawn twice must not advance anything
+    if (!(dt > 0)) return 0;
+    if (dt > 0.25) { this._reset(s); return 0; }
+    if (dt > 1 / 20) dt = 1 / 20;
+    const facing = s.facing || 1;
+
+    // ---- speed, and the acceleration read off it -----------------------------
+    const prev = this._spd;
+    this._spd = _lp(this._spd, s.speed || 0, 0.075, dt);
+    this._acc = _lp(this._acc, clamp((this._spd - prev) / dt, -2600, 2600), 0.055, dt);
+
+    // ---- facing: eased, so the mirror is a pivot and not a teleport ----------
+    if (facing !== this._face) { this._face = facing; this._flip = 0; this._kick.v += 7; }
+    this._flip = Math.min(1, this._flip + dt / 0.17);
+
+    // ---- anticipation. The incoming tilt leads the body, so the jerk in it —
+    //      how fast the turn rate itself is changing — is a signal that a turn
+    //      has just STARTED, and only then. Leaning a little the wrong way on
+    //      that signal gives the counter-move before the swing, and it dies
+    //      away on its own the moment the turn settles into a steady rate.
+    const tIn = s.tilt || 0;
+    this._tRate = _lp(this._tRate, clamp((tIn - this._tPrev) / dt, -14, 14), 0.030, dt);
+    this._tPrev = tIn;
+    this._tRateSlow = _lp(this._tRateSlow, this._tRate, 0.13, dt);
+
+    // ---- body yaw: a spring, so a hard turn arrives with a little overshoot
+    _spr(this._tilt, tIn, 3.1, 0.58, dt);
+    this._tiltSlow = _lp(this._tiltSlow, this._tilt.x, 0.10, dt);
+
+    // ---- the aim chain. Head first, torso next, gun last: they must not all
+    //      reach the new angle on the same frame or the pose has no weight.
+    _spr(this._aim, this._aim.x + angleDiff(this._aim.x, s.aim || 0), 4.6, 0.82, dt);
+    this._headAim = _lpA(this._headAim, s.aim || 0, 0.022, dt);
+    // firing snaps the muzzle onto the true line — the lag is a pose, not a lie
+    this._gunAim = _lpA(this._gunAim, this._aim.x, s.flash > 0 ? 0.004 : 0.05, dt);
+    // which way the otter faces, eased the same way she is
+    const aimL = facing === 1 ? this._aim.x : Math.PI - this._aim.x;
+    const wr = Math.cos(aimL) >= 0 ? 1 : -1;
+    if (wr !== this._oface) { this._oface = wr; this._oflip = 0; }
+    this._oflip = Math.min(1, this._oflip + dt / 0.13);
+
+    // ---- roll: our own continuous phase, so a roll cut short by a rock still
+    //      finishes its revolution instead of snapping upright mid-spin
+    const rp = s.rollPhase;
+    if (rp !== null && rp !== undefined) {
+      this._rollPh = rp * TAU;
+      this._rollAge = rp;
+      if (!this._rollSeen) { this._rollSeen = 1; this._kick.v += 26; }   // the gather
+      this._rolling = 1;
+    } else {
+      this._rollSeen = 0;
+      if (this._rolling) {
+        const rem = TAU - (this._rollPh % TAU);
+        if (rem > 0.05 && rem < TAU - 0.05) { this._rollPh += Math.min(rem, dt * 15); this._rollAge = 1; }
+        else { this._rolling = 0; this._rollPh = 0; this._kick.v += 11; }
+      }
+    }
+
+    // ---- hurt: keep the strobe, but let it decay out instead of cutting ------
+    if (s.hurt) {
+      this._hurtHot = 1;
+      if (this._hurtCd <= 0) { this._hurtCd = 0.45; this._kick.v += 40; }
+    } else this._hurtHot = Math.max(0, this._hurtHot - dt * 5.5);
+    this._hurtCd -= dt;
+
+    // ---- recoil: instant attack, eased release -------------------------------
+    this._recoil = Math.max(s.recoil || 0, this._recoil - dt * 7.5);
+
+    // ---- the whole-body impulse settles back to nothing ----------------------
+    _spr(this._kick, 0, 3.2, 0.40, dt);
+
+    // ---- the otter is luggage. Her acceleration throws him fore and aft, her
+    //      yaw rate rolls him into the turn, the gun shoves him back.
+    _spr(this._lean, clamp(-this._acc / 1250, -0.42, 0.42) - this._recoil * 0.13, 2.5, 0.44, dt);
+    _spr(this._sway, clamp(this._tilt.v * 0.06, -0.26, 0.26), 3.0, 0.50, dt);
+
+    // ---- fluke: trails the body's yaw and catches up a beat later ------------
+    const ph = s.swimPhase || 0;
+    const beat = _stroke(ph - 0.8, 0.5) * (0.09 + Math.min(0.20, this._spd / 640));
+    const trail = -clamp((this._tilt.x - this._tiltSlow) * 2.6, -0.32, 0.32);
+    _spr(this._fluke, beat + trail, 3.8, 0.55, dt);
+
+    // ---- the flag reads the water she is actually moving through ------------
+    this._flagPh += dt * (6.5 + Math.min(11, this._spd / 17));
+    return dt;
+  },
+
   draw(ctx, x, y, s) {
-    const t = s.t, facing = s.facing;
+    this._advance(s);
+    const t = s.t, facing = s.facing || 1;
+    const ph = s.swimPhase || 0;
+    const spd = this._spd;
+
+    // ---- the beat. She rises on the power stroke and sinks through the
+    //      recovery, and every part hanging off her is offset in phase so
+    //      nothing reaches its extreme on the same frame.
+    const drive = 0.30 + Math.min(0.62, spd / 190);
+    const heave = -Math.cos(ph + 0.55) * drive + this._kick.x * 0.30;
+    const surge = _stroke(ph - 0.25, 0.5) * drive * 0.55 - this._kick.x * 0.45;
+
     ctx.save();
-    ctx.translate(Math.round(x), Math.round(y));
+    const a0 = ctx.globalAlpha;
+    const p = _snapXY(ctx, x, y + heave);
+    ctx.translate(p[0], p[1]);
 
     // ---- barrel roll: spin about the long axis (squash Y, show the belly)
-    let scaleY = 1, belly = false, rollRot = 0, stretch = 1;
-    if (s.rollPhase !== null && s.rollPhase !== undefined) {
-      const ph = s.rollPhase * TAU;
-      scaleY = Math.cos(ph);
-      if (Math.abs(scaleY) < 0.22) scaleY = 0.22 * (scaleY < 0 ? -1 : 1);
-      belly = Math.cos(ph) < 0;
-      rollRot = Math.sin(ph) * 0.18;
-      stretch = 1 + Math.abs(Math.sin(ph)) * 0.16;   // stretch along travel
+    let scaleY = 1, belly = false, rollRot = 0, stretch = 1, riderFade = 1;
+    if (this._rolling) {
+      const rph = this._rollPh;
+      // the first beat is a gather, not a spin — the kick impulse does the
+      // crouching, and the spin itself fades in behind it
+      const ease = this._rollAge < 0.13 ? this._rollAge / 0.13 : 1;
+      scaleY = Math.cos(rph);
+      if (Math.abs(scaleY) < 0.14) scaleY = 0.14 * (scaleY < 0 ? -1 : 1);
+      scaleY = 1 + (scaleY - 1) * ease;
+      belly = Math.cos(rph) < 0;
+      rollRot = Math.sin(rph) * 0.18 * ease;
+      stretch = 1 + Math.abs(Math.sin(rph)) * 0.16 * ease;
+      // edge-on is where the rider would pop in or out; fade him through it
+      riderFade = clamp((Math.abs(Math.cos(rph)) - 0.04) / 0.15, 0, 1);
     }
-    // squash & stretch from speed
-    const sp = Math.min(1, (s.speed || 0) / 240);
-    stretch *= 1 + sp * 0.10;
-    const squash = 1 - sp * 0.06;
+    // squash & stretch from speed, from what the speed is doing, and from the
+    // impulse — volume is roughly conserved, so a flatten is also a widen
+    const sp = Math.min(1, spd / 240);
+    stretch *= 1 + sp * 0.10 + clamp(this._acc / 2600, -0.05, 0.09) + this._kick.x * 0.05;
+    const squash = (1 - sp * 0.06) * (1 - this._kick.x * 0.055);
 
-    const hurt = s.hurt;
-    const swim = s.swimPhase || 0;
-    // manatees scull with the whole body: a gentle yaw around the shoulders
-    const wag = Math.sin(swim) * (0.05 + Math.min(0.08, (s.speed || 0) / 2600));
+    const wag = _stroke(ph, 0.45) * (0.032 + Math.min(0.05, spd / 3400));
 
-    ctx.scale(facing, 1);
-    ctx.rotate((s.tilt || 0) * facing + rollRot + wag);
+    // The facing flip is the one place a 2D rig always snaps. Pinch her to a
+    // sliver on the frame it happens and let her widen back out: the mirror
+    // becomes a pivot through edge-on, with a yaw that unwinds behind it.
+    const fu = this._flip;
+    const pinch = 0.50 + 0.50 * _eo(fu);
+    const flipYaw = Math.sin(Math.PI * fu) * 0.16 * facing;
+    // the counter-move at the head of a turn (see _advance)
+    const antic = -clamp((this._tRate - this._tRateSlow) * 0.050, -0.12, 0.12);
+
+    ctx.scale(facing * pinch, 1);
+    ctx.rotate((this._tilt.x + wag + antic) * facing + rollRot + flipYaw);
     ctx.scale(stretch, scaleY * squash);
+    ctx.translate(surge, 0);
 
-    // ---- flippers paddle
-    const fl = Math.sin(swim + 0.7) * 0.5;
+    // ---- flippers paddle. Near and far are half a beat apart and both lead
+    //      the fluke, so the stroke travels down the body instead of snapping.
+    const fAmp = 0.30 + Math.min(0.30, spd / 470);
     for (const side of [-1, 1]) {
+      const a = _stroke(ph + 0.7 - (side > 0 ? 0.5 : 0), 0.42);
       ctx.save();
       ctx.translate(9, side * 12); ctx.scale(1, side);
-      ctx.rotate(2.25 + fl * 0.45);
+      ctx.rotate(2.25 + a * fAmp - this._fluke.x * 0.35 * side);
       ctx.drawImage(CH.flipper.c, -CH.flipper.ax, -CH.flipper.ay);
       ctx.restore();
     }
 
-    // ---- body
-    const body = hurt ? (s.armored ? CH.manateeHurt : CH.manateeHurtP)
-                      : (s.armored ? CH.manateeArmor : CH.manatee);
-    ctx.drawImage(body.c, -body.ax, -body.ay);
+    // ---- body, in two pieces so the fluke can lag behind the shoulders -----
+    const arm = !!s.armored;
+    const fluke = arm ? CH.manAFluke : CH.manPFluke;
+    const fore = arm ? CH.manAFore : CH.manPFore;
+    const hurtA = s.hurt ? 1 : Math.min(1, this._hurtHot) * 0.5;
+    if (fluke && fore) {
+      ctx.save();
+      ctx.translate(MAN_PIV, 0); ctx.rotate(clamp(this._fluke.x, -0.40, 0.40)); ctx.translate(-MAN_PIV, 0);
+      ctx.drawImage(fluke.c, -fluke.ax, -fluke.ay);
+      if (hurtA > 0.01) {
+        const hf = arm ? CH.manAFlukeH : CH.manPFlukeH;
+        ctx.globalAlpha = a0 * hurtA; ctx.drawImage(hf.c, -hf.ax, -hf.ay); ctx.globalAlpha = a0;
+      }
+      ctx.restore();
+      ctx.drawImage(fore.c, -fore.ax, -fore.ay);
+      if (hurtA > 0.01) {
+        const hb = arm ? CH.manAForeH : CH.manPForeH;
+        ctx.globalAlpha = a0 * hurtA; ctx.drawImage(hb.c, -hb.ax, -hb.ay); ctx.globalAlpha = a0;
+      }
+    } else {
+      // slices missing (an odd build order) — fall back to the whole body
+      const body = s.hurt ? (arm ? CH.manateeHurt : CH.manateeHurtP) : (arm ? CH.manateeArmor : CH.manatee);
+      ctx.drawImage(body.c, -body.ax, -body.ay);
+    }
 
     // ---- rider (hidden while belly-up mid-roll, or before he boards)
-    if (!belly && !s.riderHidden) {
+    if (!belly && !s.riderHidden && riderFade > 0.01) {
+      if (riderFade < 1) ctx.globalAlpha = a0 * riderFade;
       // saddle
       ctx.save(); ctx.translate(7, 0); ctx.scale(0.72, 0.72);
       ctx.drawImage(CH.saddle.c, -CH.saddle.ax, -CH.saddle.ay); ctx.restore();
-      // flag whipping behind
-      const fr = Math.floor(t * 9) & 7;
-      const flag = CH.flags[fr];
-      ctx.save(); ctx.translate(-16, 2); ctx.rotate(-0.13); ctx.scale(0.5, 0.5);
+      // flag whipping behind — the pole lags her yaw, so it cracks on a turn
+      const flag = CH.flags[Math.floor(this._flagPh) & 7];
+      const poleLag = clamp((this._tilt.x - this._tiltSlow) * 2.2, -0.34, 0.34);
+      ctx.save(); ctx.translate(-16, 2); ctx.rotate(-0.13 + poleLag + this._fluke.x * 0.18); ctx.scale(0.5, 0.5);
       px(ctx, CPAL.woodD, -1, -20, 2, 22); px(ctx, CPAL.wood, -1, -20, 1, 22);
       ctx.drawImage(flag.c, -flag.ax, -flag.ay - 12);
       ctx.restore();
 
-      // the otter rides over the shoulders, sized like a passenger
-      const bob = Math.sin(t * 4.5) * 0.7;
+      // The otter rides over the shoulders, sized like a passenger, and he is
+      // always a beat behind her: his bob trails her heave and he pitches
+      // fore and aft with whatever she just did to him.
+      const bob = -Math.cos(ph + 0.55 - 0.85) * drive * 0.9;
       ctx.save();
-      ctx.translate(7, -2 + bob);
+      ctx.translate(7, -2 + bob + this._kick.x * 0.5);
       ctx.scale(0.66, 0.66);
+      ctx.rotate(this._lean.x + this._sway.x * 0.5);
 
-      // aim in the manatee's flipped local space
-      const aimL = facing === 1 ? s.aim : Math.PI - s.aim;
+      // aim in the manatee's flipped local space, one flavour per body part
+      const aimL = facing === 1 ? this._aim.x : Math.PI - this._aim.x;
+      const aimH = facing === 1 ? this._headAim : Math.PI - this._headAim;
+      const aimG = facing === 1 ? this._gunAim : Math.PI - this._gunAim;
       // the otter twists his whole upper body toward the aim
       const twist = clamp(angleDiff(0, aimL), -1.1, 1.1) * 0.30;
-      const faceRight = Math.cos(aimL) >= 0 ? 1 : -1;
+      const faceRight = this._oface;
+      const oPinch = 0.45 + 0.55 * _eo(this._oflip);
 
-      // tail curls out behind him
-      ctx.save(); ctx.translate(-9, 4); ctx.rotate(2.5 + Math.sin(t * 3) * 0.12);
+      // tail curls out behind him, trailing the lean and the sway
+      ctx.save(); ctx.translate(-9, 4);
+      ctx.rotate(2.5 + _stroke(ph - 1.4, 0.4) * 0.16 - this._lean.x * 0.7 - this._sway.x);
       ctx.drawImage(CH.otterTail.c, -CH.otterTail.ax, -CH.otterTail.ay);
       ctx.restore();
 
       ctx.rotate(twist);
       // torso
       const torso = s.rage ? CH.otterRage : CH.otterTorso;
+      ctx.save(); ctx.scale(oPinch, 1);
       ctx.drawImage(torso.c, -torso.ax, -torso.ay);
+      ctx.restore();
 
       // ---- far arm (behind the torso) -> drawn before head
-      const recoil = s.recoil || 0;
-      const armLen = 9 - recoil * 3;
+      const recoil = this._recoil;
       ctx.save();
-      ctx.scale(faceRight, 1);
-      const localAim = faceRight === 1 ? aimL - twist : Math.PI - (aimL - twist);
+      ctx.scale(faceRight * oPinch, 1);
+      const localAim = faceRight === 1 ? aimG - twist : Math.PI - (aimG - twist);
       ctx.rotate(localAim);
       ctx.translate(-recoil * 3, 0);
       // the gun, drawn from the game's weapon sprites
@@ -993,19 +1278,21 @@ const Rig = {
       ctx.drawImage(CH.otterArm.c, -1, -CH.otterArm.ay + 2);
       ctx.restore();
 
-      // ---- head (with live expression) on top
-      const headBob = Math.sin(t * 4.5 + 1) * 0.5;
+      // ---- head (with live expression) on top. It leads the aim and counters
+      //      the torso lean, so he keeps his eyes on the line he is shooting.
+      const headBob = -Math.cos(ph + 0.55 - 1.35) * drive * 0.55;
       ctx.save();
       ctx.translate(0, -9 + headBob);
-      ctx.scale(faceRight, 1);
-      // head leans into the aim a little
-      ctx.rotate(clamp(angleDiff(0, faceRight === 1 ? aimL : Math.PI - aimL), -0.8, 0.8) * 0.22);
+      ctx.scale(faceRight * oPinch, 1);
+      ctx.rotate(clamp(angleDiff(0, faceRight === 1 ? aimH : Math.PI - aimH), -0.8, 0.8) * 0.22
+                 - this._lean.x * 0.45 - this._sway.x * 0.30);
       const head = otterHeadWithFace(s.exp || 'idle', this.blink, t, s.rage);
       ctx.drawImage(head, -CH.otterHead.ax, -CH.otterHead.ay);
       // cigar clamped in the corner of the muzzle
       ctx.drawImage(CH.cigar.c, 6, -1);
       ctx.restore();
       ctx.restore();
+      ctx.globalAlpha = a0;
     }
     ctx.restore();
   },
