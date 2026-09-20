@@ -48,7 +48,7 @@ const UI = {
       p.rampage.active ? (Math.floor(t * 10) % 2 ? '#ff6161' : '#ffe48f') : full ? (Math.floor(t * 4) % 2 ? '#ff6161' : '#ff9a3c') : '#c8302e', '#1b2028');
     pixelTextOutlined(ctx, p.rampage.active ? 'RAMPAGE!' : full ? 'RAMPAGE READY' : 'OTTER RAMPAGE', 101, 24, 5, '#ffffff', '#14141c', 'center');
 
-    // roll charges + shield, keyboard prompts only on desktop
+    // roll charges + parry, keyboard prompts only on desktop
     drawSprite(ctx, GLYPH_SP.roll, 16, 41);
     for (let i = 0; i < st.rollCharges; i++) {
       const on = i < p.roll.charges;
@@ -66,8 +66,8 @@ const UI = {
     UIKit.bar(ctx, shx + 12, 37, 48, 8, clamp(acd, 0, 1), p.absorb.active ? '#ffffff' : acd >= 1 ? '#8ac6ff' : '#3f6f9f', '#1b2028');
 
     if (!touch) {
-      pixelText(ctx, 'SPACE', 26, 49, 5, '#8fa6b8');
-      pixelText(ctx, 'E / RMB', shx + 12, 49, 5, '#8fa6b8');
+      pixelText(ctx, 'SPACE ROLL', 26, 49, 5, '#8fa6b8');
+      pixelText(ctx, 'E / RMB PARRY', shx + 12, 49, 5, p.absorb.active ? '#ffffff' : '#8fa6b8');
       let ax = 2, ay = PH + 6;
       const ab = [];
       if (st.dive) ab.push(['DIVE', 'SHIFT', p.dive.cd, p.cd(7), '#8ac6ff']);
@@ -346,7 +346,7 @@ const UI = {
       pixelText(ctx, 'Hover a bubble to inspect it.', 8, 310, 6, '#9fd8ee');
       pixelText(ctx, 'Scrap: dinghies=wood  harpooners/gunboats=metal  speedboats/jetskis=fuel', 8, 320, 5, '#7fb8cf');
       pixelText(ctx, 'skiffs=powder  netters/trawlers=electronics', 8, 328, 5, '#7fb8cf');
-      pixelText(ctx, `Sunk ${G.stats.kills}   Absorbs ${G.stats.absorbs}   Scrap ${G.stats.scrapCollected}   Taken ${tree.unlocked.size}/${SKILL_NODES.length}   (paused)`, 380, 328, 5, '#9fd8ee');
+      pixelText(ctx, `Sunk ${G.stats.kills}   Parries ${G.stats.absorbs}   Scrap ${G.stats.scrapCollected}   Taken ${tree.unlocked.size}/${SKILL_NODES.length}   (paused)`, 380, 328, 5, '#9fd8ee');
     }
   },
 };

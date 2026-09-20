@@ -66,6 +66,7 @@ const Input = {
       case 'decoy':   return this.down('KeyF');
       case 'tidal':   return this.down('KeyR');
       case 'interact': return this.down('KeyG') || this.down('KeyX');
+      case 'melee':   return this.down('KeyC');
     }
     return false;
   },
@@ -80,6 +81,7 @@ const Input = {
       case 'decoy':   return this.hit('KeyF');
       case 'tidal':   return this.hit('KeyR');
       case 'interact': return this.hit('KeyG') || this.hit('KeyX');
+      case 'melee':   return this.hit('KeyC');
     }
     return false;
   },

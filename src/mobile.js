@@ -363,17 +363,25 @@ const MB_ICONS = {
 
 // ============================ the buttons ==================================
 const MB_BUTTONS = [
-  { name: 'fire', x: 584, y: 288, r: 33, label: 'FIRE', ramp: MB_R_BRASS, icon: 'gun', tint: '#ffe48f' },
-  { name: 'shield', x: 512, y: 306, r: 24, label: 'SHIELD', ramp: MB_R_STEEL, icon: 'shield', tint: '#8ac6ff' },
-  { name: 'roll', x: 508, y: 248, r: 24, label: 'ROLL', ramp: MB_R_GREEN, icon: 'roll', tint: '#6fd88e' },
-  { name: 'rampage', x: 566, y: 216, r: 26, label: 'RAMPAGE', ramp: MB_R_RED, icon: 'rampage', tint: '#ff9a3c' },
-  { name: 'dive', x: 452, y: 308, r: 21, label: 'DIVE', ramp: MB_R_BLUE, icon: 'dive', tint: '#8ac6ff', req: 'dive' },
-  { name: 'decoy', x: 438, y: 259, r: 21, label: 'DECOY', ramp: MB_R_GOLD, icon: 'decoy', tint: '#ffe48f', req: 'decoy' },
-  { name: 'tidal', x: 452, y: 211, r: 21, label: 'TIDAL', ramp: MB_R_TEAL, icon: 'tidal', tint: '#6fd88e', req: 'tidal' },
+  // no FIRE button any more: the gun is aimed and fired with the right stick,
+  // so the ability buttons move left to clear its zone
+  { name: 'shield', x: 470, y: 300, r: 23, label: 'PARRY', ramp: MB_R_STEEL, icon: 'shield', tint: '#8ac6ff' },
+  { name: 'roll', x: 470, y: 240, r: 23, label: 'ROLL', ramp: MB_R_GREEN, icon: 'roll', tint: '#6fd88e' },
+  { name: 'melee', x: 416, y: 276, r: 23, label: 'SLAM', ramp: MB_R_RED, icon: 'roll', tint: '#ff9a3c', req: 'melee' },
+  { name: 'rampage', x: 422, y: 206, r: 25, label: 'RAMPAGE', ramp: MB_R_RED, icon: 'rampage', tint: '#ff9a3c' },
+  { name: 'dive', x: 364, y: 306, r: 20, label: 'DIVE', ramp: MB_R_BLUE, icon: 'dive', tint: '#8ac6ff', req: 'dive' },
+  { name: 'decoy', x: 358, y: 244, r: 20, label: 'DECOY', ramp: MB_R_GOLD, icon: 'decoy', tint: '#ffe48f', req: 'decoy' },
+  { name: 'tidal', x: 370, y: 192, r: 20, label: 'TIDAL', ramp: MB_R_TEAL, icon: 'tidal', tint: '#6fd88e', req: 'tidal' },
 ];
 
 const MB_WX = 58, MB_WY = 282;      // helm centre on the 640x360 canvas
 const MB_WGRAB = 58;                // radius of the "grab the helm" zone
+// the aiming stick: the right thumb aims the otter's gun and firing is simply
+// holding it off centre, so aiming and shooting are one gesture
+const MB_SX = 562, MB_SY = 270;     // stick centre: clear of the right edge and of the tally panel
+const MB_SGRAB = 52;                // radius of the "grab the stick" zone
+const MB_SMAX = 32;                 // how far the knob travels
+const MB_SDEAD = 8;                 // below this it is a rest, not an aim
 const MB_WMAX = 40;                 // drag distance that means full throttle
 const MB_WDEAD = 5;                 // dead zone
 
@@ -382,6 +390,7 @@ const MobileUI = {
   canvas: null, art: null,
   touches: new Map(),
   wheel: { ang: 0, vel: 0, active: false, id: null, dx: 0, dy: 0, mag: 0, dragAng: 0, grabT: 0, kick: 0 },
+  stick: { active: false, id: null, dx: 0, dy: 0, mag: 0, latch: false, wasLive: false, kick: 0 },
   buttons: {}, order: [],
   _axis: { x: 0, y: 0 },
   t: 0,
@@ -528,6 +537,12 @@ const MobileUI = {
       this.dragWheel(p.x, p.y);
     } else if (inHelm) {
       owner = 'helm-busy';            // swallowed: the helm already has a finger on it
+    } else if (dist(p.x, p.y, MB_SX, MB_SY) <= MB_SGRAB && this.stick.id === null) {
+      owner = 'stick'; const k = this.stick;
+      k.id = id; k.active = true; k.kick = 1;
+      this.dragStick(p.x, p.y);
+    } else if (dist(p.x, p.y, MB_SX, MB_SY) <= MB_SGRAB) {
+      owner = 'stick-busy';
     } else {
       const b = this.pickButton(p.x, p.y);
       if (b && b.id === null) {
@@ -550,6 +565,7 @@ const MobileUI = {
     const p = this.toCanvas(cx, cy);
     t.x = p.x; t.y = p.y;
     if (t.owner === 'wheel') { this.dragWheel(p.x, p.y); if (e && e.cancelable) e.preventDefault(); }
+    else if (t.owner === 'stick') { this.dragStick(p.x, p.y); if (e && e.cancelable) e.preventDefault(); }
     else if (t.owner) {
       const b = this.buttons[t.owner];
       if (b) {
@@ -564,6 +580,7 @@ const MobileUI = {
     const t = this.touches.get(id); if (!t) return;
     this.touches.delete(id);
     if (t.owner === 'wheel') { const w = this.wheel; w.active = false; w.id = null; w.dx = 0; w.dy = 0; w.mag = 0; }
+    else if (t.owner === 'stick') { const k = this.stick; k.active = false; k.id = null; k.dx = 0; k.dy = 0; k.mag = 0; }
     else if (t.owner) { const b = this.buttons[t.owner]; if (b) { b.down = false; b.id = null; b.dragLen = 0; } }
     try { if (this.canvas && this.canvas.releasePointerCapture) this.canvas.releasePointerCapture(id); } catch (err) { }
     if (t.owner !== null && e && e.cancelable) e.preventDefault();
@@ -572,8 +589,22 @@ const MobileUI = {
   releaseAll() {
     this.touches.clear();
     const w = this.wheel; w.active = false; w.id = null; w.dx = 0; w.dy = 0; w.mag = 0;
+    const k = this.stick; k.active = false; k.id = null; k.dx = 0; k.dy = 0; k.mag = 0;
     for (const b of this.order) { b.down = false; b.id = null; b.dragLen = 0; }
   },
+
+  dragStick(x, y) {
+    const k = this.stick;
+    let dx = x - MB_SX, dy = y - MB_SY;
+    const m = Math.hypot(dx, dy);
+    if (m > MB_SMAX) { dx = dx / m * MB_SMAX; dy = dy / m * MB_SMAX; }
+    k.dx = dx; k.dy = dy; k.mag = Math.min(m, MB_SMAX);
+    const live = k.mag > MB_SDEAD;
+    if (live && !k.wasLive) k.latch = true;   // crossing the deadzone is a press
+    k.wasLive = live;
+  },
+  // the gun is live whenever the stick is off centre
+  stickLive() { return this.enabled && this.stick.active && this.stick.mag > MB_SDEAD; },
 
   pickButton(x, y) {
     let best = null, bd = 1e9;
@@ -709,23 +740,33 @@ const MobileUI = {
 
   // ----------------------------------------------------------------- API
   axis() { return { x: this._axis.x, y: this._axis.y }; },
-  held(name) { const b = this.buttons[name]; return !!(this.enabled && b && b.visible && (b.down || b.latch)); },
-  pressed(name) { const b = this.buttons[name]; return !!(this.enabled && b && b.visible && b.latch); },
-  endFrame() { for (const b of this.order) b.latch = false; },
+  held(name) {
+    if (name === 'fire') return this.stickLive();
+    const b = this.buttons[name]; return !!(this.enabled && b && b.visible && (b.down || b.latch));
+  },
+  pressed(name) {
+    if (name === 'fire') return !!(this.enabled && this.stick.latch);
+    const b = this.buttons[name]; return !!(this.enabled && b && b.visible && b.latch);
+  },
+  endFrame() { for (const b of this.order) b.latch = false; this.stick.latch = false; },
 
   aimAt() {
     if (!this.enabled) return null;
-    for (const t of this.touches.values()) if (t.owner === null) return { x: t.x, y: t.y };
-    const f = this.buttons.fire;
-    if (f && f.down && f.dragLen > 11) {
-      return { x: clamp(320 + f.dragX / f.dragLen * 240, 0, 640), y: clamp(180 + f.dragY / f.dragLen * 240, 0, 360) };
+    // the stick owns the aim: a point out along its deflection from the player
+    const k = this.stick;
+    if (k.active && k.mag > MB_SDEAD) {
+      const m = Math.hypot(k.dx, k.dy) || 1;
+      return { x: clamp(320 + k.dx / m * 240, 0, 640), y: clamp(180 + k.dy / m * 240, 0, 360) };
     }
+    // a bare tap on open water still aims there
+    for (const t of this.touches.values()) if (t.owner === null) return { x: t.x, y: t.y };
     return null;
   },
 
   consumedTouch(x, y) {
     if (!this.enabled) return false;
     if (dist(x, y, MB_WX, MB_WY) <= MB_WGRAB) return true;
+    if (dist(x, y, MB_SX, MB_SY) <= MB_SGRAB) return true;
     for (const b of this.order) { if (!b.visible) continue; if (Math.hypot(x - b.x, y - b.y) <= b.r + 5) return true; }
     return false;
   },
@@ -739,9 +780,59 @@ const MobileUI = {
     ctx.imageSmoothingEnabled = false;
     ctx.save();
     this.drawWheel(ctx, art, t);
+    this.drawStick(ctx, t);
     for (const b of this.order) if (b.visible) this.drawButton(ctx, art, b, t);
     ctx.restore();
     ctx.imageSmoothingEnabled = sm;
+  },
+
+  // The aiming stick. A brass gun ring with a knob you push toward whatever
+  // you want shot; pushing it off centre IS the trigger.
+  drawStick(ctx, t) {
+    const k = this.stick;
+    const live = k.mag > MB_SDEAD;
+    const ring = MB_SMAX + 12;
+    // base ring: a dashed brass collar, hard pixels, no strokes
+    for (let i = 0; i < 40; i++) {
+      const a = (i / 40) * TAU;
+      if ((i & 3) === 3 && !live) continue;
+      const cx = Math.round(MB_SX + Math.cos(a) * ring), cy = Math.round(MB_SY + Math.sin(a) * ring);
+      ctx.fillStyle = live ? '#ffe48f' : 'rgba(210,178,110,0.55)';
+      ctx.fillRect(cx - 1, cy - 1, 3, 3);
+      ctx.fillStyle = live ? '#7a5512' : 'rgba(60,46,20,0.5)';
+      ctx.fillRect(cx - 1, cy + 2, 3, 1);
+    }
+    // the well the knob sits in
+    ctx.fillStyle = 'rgba(12,18,28,0.42)';
+    const w = MB_SMAX + 4;
+    ctx.fillRect(MB_SX - w, MB_SY - w + 3, w * 2, w * 2 - 6);
+    ctx.fillRect(MB_SX - w + 3, MB_SY - w, w * 2 - 6, w * 2);
+    // the aim line, so it is obvious the stick points the gun
+    if (live) {
+      const m = Math.hypot(k.dx, k.dy) || 1, ux = k.dx / m, uy = k.dy / m;
+      for (let d = ring + 4; d < ring + 26; d += 4) {
+        ctx.fillStyle = 'rgba(255,228,143,0.55)';
+        ctx.fillRect(Math.round(MB_SX + ux * d) - 1, Math.round(MB_SY + uy * d) - 1, 2, 2);
+      }
+    }
+    // the knob
+    const kx = Math.round(MB_SX + k.dx), ky = Math.round(MB_SY + k.dy), r = 15;
+    ctx.fillStyle = '#14141c';
+    ctx.fillRect(kx - r, ky - r + 3, r * 2, r * 2 - 6);
+    ctx.fillRect(kx - r + 3, ky - r, r * 2 - 6, r * 2);
+    const face = live ? '#ffe48f' : '#c2a45e', lip = live ? '#fff6d8' : '#e0c98e';
+    ctx.fillStyle = face;
+    ctx.fillRect(kx - r + 2, ky - r + 4, r * 2 - 4, r * 2 - 8);
+    ctx.fillRect(kx - r + 4, ky - r + 2, r * 2 - 8, r * 2 - 4);
+    ctx.fillStyle = lip;
+    ctx.fillRect(kx - r + 4, ky - r + 3, r * 2 - 8, 2);
+    ctx.fillStyle = '#7a5512';
+    ctx.fillRect(kx - r + 4, ky + r - 5, r * 2 - 8, 2);
+    // crosshair on the cap
+    ctx.fillStyle = '#2a1d08';
+    ctx.fillRect(kx - 6, ky - 1, 12, 2);
+    ctx.fillRect(kx - 1, ky - 6, 2, 12);
+    if (!live) pixelTextOutlined(ctx, 'AIM + FIRE', MB_SX, MB_SY + ring + 6, 5, 'rgba(226,214,180,0.8)', '#14141c', 'center');
   },
 
   drawWheel(ctx, art, t) {

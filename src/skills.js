@@ -36,12 +36,12 @@ const SKILL_NODES = [
   { id: 'w_hollow2', branch: 'weapons', pos: [1, 6], name: 'Armor Piercing', desc: '+35% damage and +1 pierce for all weapons.', cost: { metal: 22, powder: 12, tech: 8 }, req: ['w_incend', 'w_sidearm', 'w_barrel'], reqAny: true, apply: s => { s.dmg *= 1.35; s.pierce += 1; } },
 
   // ================= UTILITY =================
-  { id: 'u_window', branch: 'utility', pos: [0, 0], name: 'Wide Absorb', desc: 'Absorb window 0.55s -> 0.85s. Hold the shield almost twice as long.', cost: { tech: 3 }, req: [], apply: s => s.absorbWindow = 0.85 },
-  { id: 'u_reflex', branch: 'utility', pos: [0, 1], name: 'Absorb Reflex', desc: 'Absorb cooldown -40%.', cost: { tech: 6 }, req: ['u_window'], apply: s => s.absorbCd *= 0.6 },
-  { id: 'u_heal', branch: 'utility', pos: [1, 1], name: 'Absorb & Mend', desc: 'Each absorbed attack heals 5 HP.', cost: { wood: 8, tech: 4 }, req: ['u_window'], apply: s => s.absorbHeal += 5 },
+  { id: 'u_window', branch: 'utility', pos: [0, 0], name: 'Wide Parry', desc: 'Parry window 0.55s -> 0.85s. Hold it almost twice as long.', cost: { tech: 3 }, req: [], apply: s => s.absorbWindow = 0.85 },
+  { id: 'u_reflex', branch: 'utility', pos: [0, 1], name: 'Parry Reflex', desc: 'Parry cooldown -40%.', cost: { tech: 6 }, req: ['u_window'], apply: s => s.absorbCd *= 0.6 },
+  { id: 'u_heal', branch: 'utility', pos: [1, 1], name: 'Parry & Mend', desc: 'Each parried attack heals 5 HP.', cost: { wood: 8, tech: 4 }, req: ['u_window'], apply: s => s.absorbHeal += 5 },
   { id: 'u_magnet', branch: 'utility', pos: [2, 1], name: 'Scrap Magnet', desc: 'Pickup radius +70%.', cost: { metal: 5 }, req: ['u_window'], apply: s => s.magnet *= 1.7 },
-  { id: 'u_reflect', branch: 'utility', pos: [0, 2], name: 'Reflective Absorb', desc: 'Absorbed projectiles are flung back at enemies for 3x damage.', cost: { tech: 10, metal: 6 }, req: ['u_reflex'], apply: s => s.absorbReflect = true },
-  { id: 'u_shock', branch: 'utility', pos: [1, 2], name: 'Absorb Shockwave', desc: 'A successful absorb blasts nearby boats: 25 dmg + knockback.', cost: { powder: 8, tech: 8 }, req: ['u_heal'], apply: s => s.absorbShock += 25 },
+  { id: 'u_reflect', branch: 'utility', pos: [0, 2], name: 'Reflective Parry', desc: 'Parried projectiles are flung back at enemies for 3x damage.', cost: { tech: 10, metal: 6 }, req: ['u_reflex'], apply: s => s.absorbReflect = true },
+  { id: 'u_shock', branch: 'utility', pos: [1, 2], name: 'Parry Shockwave', desc: 'A successful parry blasts nearby boats: 25 dmg + knockback.', cost: { powder: 8, tech: 8 }, req: ['u_heal'], apply: s => s.absorbShock += 25 },
   { id: 'u_salvage', branch: 'utility', pos: [2, 2], name: 'Salvager', desc: 'Every scrap drop gives +1 extra piece.', cost: { wood: 10, metal: 10 }, req: ['u_magnet'], apply: s => s.scrapBonus += 1 },
   { id: 'u_rgain', branch: 'utility', pos: [0, 3], name: 'Rampage Charge', desc: 'Otter Rampage meter fills 50% faster.', cost: { tech: 7 }, req: ['u_reflect', 'u_shock'], reqAny: true, apply: s => s.rampGain *= 1.5 },
   { id: 'u_rdur', branch: 'utility', pos: [1, 3], name: 'Longer Rampage', desc: 'Rampage lasts 5s -> 8s.', cost: { tech: 10, powder: 6 }, req: ['u_shock'], apply: s => s.rampDur += 3 },
@@ -51,7 +51,7 @@ const SKILL_NODES = [
   { id: 'u_lucky', branch: 'utility', pos: [2, 4], name: 'Lucky Salvage', desc: 'Boats drop 40% more scrap.', cost: { wood: 14, tech: 8 }, req: ['u_magnet2'], apply: s => s.scrapMult *= 1.4 },
   { id: 'u_decoy', branch: 'utility', pos: [0, 5], name: 'Decoy Buoy', desc: 'NEW ABILITY [F]: drop a buoy that boats target for 6s. 14s cooldown.', cost: { wood: 16, tech: 8 }, req: ['u_rfury', 'u_rfrenzy'], reqAny: true, apply: s => s.decoy = true },
   { id: 'u_tidal', branch: 'utility', pos: [2, 5], name: 'Tidal Slam', desc: 'NEW ABILITY [R]: the manatee slaps the water, a wave shoves every nearby boat and deals 40 dmg. 12s cooldown.', cost: { tech: 16, powder: 8 }, req: ['u_lucky', 'u_rfrenzy'], reqAny: true, apply: s => s.tidal = true },
-  { id: 'u_master', branch: 'utility', pos: [1, 6], name: 'Perfect Parry', desc: 'Absorbing at the very last 0.1s counts double and refunds the cooldown.', cost: { tech: 20, metal: 10 }, req: ['u_decoy', 'u_tidal'], reqAny: true, apply: s => s.perfectParry = true },
+  { id: 'u_master', branch: 'utility', pos: [1, 6], name: 'Perfect Parry', desc: 'Parrying at the very last 0.1s counts double and refunds the cooldown.', cost: { tech: 20, metal: 10 }, req: ['u_decoy', 'u_tidal'], reqAny: true, apply: s => s.perfectParry = true },
 
   // ================= MOBILITY =================
   { id: 'm_fins', branch: 'mobility', pos: [0, 0], name: 'Swift Fins', desc: 'Manatee swim speed +15%.', cost: { wood: 4 }, req: [], apply: s => s.speed *= 1.15 },
@@ -65,7 +65,7 @@ const SKILL_NODES = [
   { id: 'm_slip', branch: 'mobility', pos: [1, 3], name: 'Slipstream', desc: 'Rolling leaves a current behind you. Swimming in it is 60% faster.', cost: { fuel: 8, wood: 6 }, req: ['m_double', 'm_fins2'], reqAny: true, apply: s => s.slipstream = true },
   { id: 'm_current', branch: 'mobility', pos: [2, 3], name: 'Current Rider', desc: 'Ocean currents always push you forward instead of around.', cost: { tech: 6, wood: 6 }, req: ['m_fins2'], apply: s => s.currentRider = true },
   { id: 'm_dive', branch: 'mobility', pos: [0, 4], name: 'Deep Dive', desc: 'NEW ABILITY [SHIFT]: dive underwater for 1.5s. Immune to projectiles, boats pass over you. 7s cooldown.', cost: { tech: 12, wood: 12 }, req: ['m_splash', 'm_slip'], reqAny: true, apply: s => s.dive = true },
-  { id: 'm_blubber', branch: 'mobility', pos: [1, 4], name: 'Blubber Burst', desc: 'After a successful Absorb, +60% speed for 2s.', cost: { tech: 6, fuel: 5 }, req: ['m_slip'], apply: s => s.absorbBoost = true },
+  { id: 'm_blubber', branch: 'mobility', pos: [1, 4], name: 'Blubber Burst', desc: 'After a successful Parry, +60% speed for 2s.', cost: { tech: 6, fuel: 5 }, req: ['m_slip'], apply: s => s.absorbBoost = true },
   { id: 'm_fins3', branch: 'mobility', pos: [2, 4], name: 'Swift Fins III', desc: 'Swim speed +20% more.', cost: { wood: 16, fuel: 8 }, req: ['m_current'], apply: s => s.speed *= 1.2 },
   { id: 'm_triple', branch: 'mobility', pos: [1, 5], name: 'Triple Roll', desc: 'Store 3 roll charges and rolls are 20% faster.', cost: { wood: 22, tech: 8 }, req: ['m_dive', 'm_blubber', 'm_fins3'], reqAny: true, apply: s => { s.rollCharges += 1; s.rollDist *= 1.2; } },
 
@@ -89,7 +89,7 @@ const SKILL_NODES = [
 const SKILL_BY_ID = {}; for (const n of SKILL_NODES) SKILL_BY_ID[n.id] = n;
 const BRANCHES = [
   { id: 'weapons', name: 'WEAPONS', color: '#ffb347', icon: 'iconWeapon', blurb: 'Guns, firing styles, ammo' },
-  { id: 'utility', name: 'UTILITY', color: '#8ac6ff', icon: 'iconUtil', blurb: 'Absorb, Rampage, abilities' },
+  { id: 'utility', name: 'UTILITY', color: '#8ac6ff', icon: 'iconUtil', blurb: 'Parry, Rampage, abilities' },
   { id: 'mobility', name: 'MOBILITY', color: '#6fd88e', icon: 'iconMob', blurb: 'Roll, speed, movement' },
   { id: 'general', name: 'GENERAL', color: '#ff6161', icon: 'iconStat', blurb: 'HP, armor, damage, cooldowns' },
 ];

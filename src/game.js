@@ -550,7 +550,7 @@ class Game {
     const lines = [
       'WASD or arrows       swim',
       'SPACE                Manatee Roll, invulnerable dash',
-      'E / right-click      raise the SHIELD and absorb a hit',
+      'E / right-click      PARRY: catch a shot and turn it into rampage',
       'Q                    unleash OTTER RAMPAGE when full',
       'Left mouse           aim by hand (the otter auto-aims)',
       '1-7 or wheel         switch weapon',

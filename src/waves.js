@@ -7,16 +7,16 @@
 // come back with salvage. The objective is what the wave is really about and
 // it is on screen the whole time.
 const WAVES = [
-  { sub: 'Two dinghies leave the pier. Hold the mouse to shoot',
-    obj: { kind: 'clear', text: 'Hold left mouse. Sink the two dinghies' },
+  { sub: 'Two dinghies leave the pier. Hold to shoot',
+    obj: { kind: 'clear', text: 'Hold to shoot. Sink the two dinghies' },
     pool: { dinghy: 1 }, count: 4, interval: 3.0, max: 2, burst: [['dinghy', 2]] },
 
-  { sub: 'A few more. Try SPACE to roll out of the way',
-    obj: { kind: 'clear', text: 'Sink them. SPACE rolls you clear' },
+  { sub: 'A few more. Roll out of the way',
+    obj: { kind: 'clear', text: 'Sink them. Roll to get clear' },
     pool: { dinghy: 1 }, count: 6, interval: 2.6, max: 3, burst: [['dinghy', 2]] },
 
-  { sub: 'Net boats. Hold E or right-click to raise the shield',
-    obj: { kind: 'clear', text: 'Shield the nets [E / right-click], then sink them' },
+  { sub: 'Net boats. Raise the parry to catch one',
+    obj: { kind: 'clear', text: 'Parry the nets, then sink them' },
     pool: { dinghy: 1.6, netter: 1.2 }, count: 8, interval: 2.4, max: 4, burst: [['netter', 2]] },
 
   { sub: 'Harpooners keep their distance',
@@ -44,7 +44,7 @@ const WAVES = [
     obj: { kind: 'clear', text: 'Clear the hooks and the pots out of the bay' },
     pool: { netter: 1, harpooner: 1, longliner: 1.6, crabber: 1.5, jetski: 0.8 }, count: 16, interval: 1.5, max: 8, burst: [['longliner', 2], ['crabber', 2]] },
 
-  { sub: 'Dynamite skiffs. Shield the sticks',
+  { sub: 'Dynamite skiffs. Parry the sticks',
     obj: { kind: 'salvage', amount: 30, text: 'Strip 30 pieces of salvage out of them' },
     pool: { netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1.8, tug: 0.7 }, count: 17, interval: 1.45, max: 8, burst: [['dynaboat', 3]] },
 
