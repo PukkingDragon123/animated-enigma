@@ -1156,9 +1156,9 @@
     limb(bx, sx, sy, a1, a2) {
       bx.save(); bx.translate(sx, sy); bx.rotate(a1);
       bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
-      bx.translate(8, 0); bx.rotate(a2);
+      bx.translate(9, 0); bx.rotate(a2);
       bx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
-      bx.translate(10, 0);
+      bx.translate(9, 0);
       bx.fillStyle = '#1a1220'; bx.fillRect(-2, -3, 5, 6);
       bx.fillStyle = '#c8703c'; bx.fillRect(-1, -2, 3, 4);
       bx.fillStyle = '#f0b87e'; bx.fillRect(-1, -2, 2, 2);
@@ -1198,7 +1198,7 @@
       bx.restore();
 
       // far arm, clawing at water that will not hold him
-      this.limb(bx, 8, -4, -0.42 + Math.sin(fast + 1.1) * (0.3 + panic * 0.24), -0.88 + Math.sin(fast * 1.3) * 0.36);
+      this.limb(bx, 5, -3, -0.42 + Math.sin(fast + 1.1) * (0.3 + panic * 0.24), -0.88 + Math.sin(fast * 1.3) * 0.36);
 
       // torso
       bx.save(); bx.scale(1, heave);
@@ -1206,7 +1206,7 @@
       bx.restore();
 
       // near arm — the one that grabs (hidden while the real reach is drawn)
-      if (reach < 0.15) this.limb(bx, -8, -4, -2.72 + Math.sin(fast * 0.9) * (0.3 + panic * 0.24), 0.9 + Math.sin(fast * 1.15) * 0.36);
+      if (reach < 0.15) this.limb(bx, -5, -3, -2.72 + Math.sin(fast * 0.9) * (0.3 + panic * 0.24), 0.9 + Math.sin(fast * 1.15) * 0.36);
 
       // head, screwed up in pain — or gasping with relief
       bx.save();

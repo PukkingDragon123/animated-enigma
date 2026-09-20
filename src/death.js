@@ -190,8 +190,18 @@ function cutBareHead() {
     }
   }
   // his ears, back on a skull that has nothing on it
-  P(x, CPAL.out, R(cxp - rw), cut - rh + 1, 2, 3); P(x, CPAL.furDD, R(cxp - rw), cut - rh + 2, 1, 1);
-  P(x, CPAL.out, R(cxp + rw - 1), cut - rh + 1, 2, 3); P(x, CPAL.furDD, R(cxp + rw), cut - rh + 2, 1, 1);
+  P(x, CPAL.out, R(cxp - rw - 1), cut - rh + 1, 2, 3); P(x, CPAL.furDD, R(cxp - rw), cut - rh + 2, 1, 1);
+  P(x, CPAL.out, R(cxp + rw), cut - rh + 1, 2, 3); P(x, CPAL.furDD, R(cxp + rw), cut - rh + 2, 1, 1);
+  // and an outline all the way round, so a bare head still reads as a head
+  {
+    const d2 = x.getImageData(0, 0, W, H).data;
+    const on = (px2, py) => px2 >= 0 && py >= 0 && px2 < W && py < H && d2[(py * W + px2) * 4 + 3] > 40;
+    for (let y = 0; y < H; y++) for (let px2 = 0; px2 < W; px2++) {
+      if (!on(px2, y)) continue;
+      if (on(px2 - 1, y) && on(px2 + 1, y) && on(px2, y - 1) && on(px2, y + 1)) continue;
+      P(x, CPAL.out, px2, y);
+    }
+  }
   return spr(o.c, src.ax, src.ay);
 }
 
@@ -201,6 +211,12 @@ function buildTopArt() {
   for (let i = 0; i < 15; i++) {
     const r = 4 + i * 4;
     A.bloodDisc.push(bakeDisc(r, r * 0.74, [DP.blood[2], DP.blood[1], DP.blood[1], DP.blood[0], DP.blood[0]]));
+  }
+  // blood on sand: flat, soaked in, not a puddle she is floating in
+  A.soakDisc = [];
+  for (let i = 0; i < 10; i++) {
+    const r = 10 + i * 7;
+    A.soakDisc.push(bakeDisc(r, Math.max(3, r * 0.26), ['#3a060c', '#2a050a', '#1e0409', '#150307']));
   }
   A.darkDisc = [];
   for (let i = 0; i < 10; i++) { const r = 8 + i * 8; A.darkDisc.push(bakeDisc(r, r * 0.60, [DP.deep[0], DP.bruise[0], DP.deep[1], DP.deep[2]])); }
@@ -314,8 +330,8 @@ function drawOtterTop(ctx, o, t) {
 //  The scene needs a few anchors on her flank that the cast does not name.
 //  They are in HER units, facing right, and turn into screen pixels below.
 const MU = {
-  wound: [13, -7],      // where the steel went in, high on the shoulder
-  plate: [-2, -9],      // where the torn plate is hammered back on
+  wound: [13, -5],      // where the steel went in, high on the shoulder
+  plate: [-2, -6],      // where the torn plate is hammered back on
   strap: [-13, 0],      // the harness strap, bolted back down
   band:  [-27, 0],      // the bandage, round the tail stock
   chest: [20, 2],       // where he puts his weight to pump her out
@@ -1740,12 +1756,12 @@ const DeathScene = {
     // ---- what has come out of her, soaked into the sand under her
     if (this.soak > 0.01 && goK < 0.5) {
       const sk = this.soak;
-      ctx.globalAlpha = qa(0.9 * (1 - goK * 2));
-      const bd = A.bloodDisc[clamp(Math.round((20 + sk * 38 - 4) / 4), 0, A.bloodDisc.length - 1)];
-      ctx.drawImage(bd.c, MA.wound[0] - bd.ax, rib(MA.wound[0]) - 2 - bd.ay);
-      ctx.globalAlpha = qa(0.6 * sk);
-      const bd2 = A.bloodDisc[clamp(Math.round((10 + sk * 20 - 4) / 4), 0, A.bloodDisc.length - 1)];
-      ctx.drawImage(bd2.c, MA.wound[0] - 30 - bd2.ax, rib(MA.wound[0] - 30) + 4 - bd2.ay);
+      ctx.globalAlpha = qa(0.92 * (1 - goK * 2));
+      const bd = A.soakDisc[clamp(Math.round((16 + sk * 30 - 10) / 7), 0, A.soakDisc.length - 1)];
+      ctx.drawImage(bd.c, MA.wound[0] - bd.ax, rib(MA.wound[0]) + 2 - bd.ay);
+      ctx.globalAlpha = qa(0.7 * sk);
+      const bd2 = A.soakDisc[clamp(Math.round((10 + sk * 16 - 10) / 7), 0, A.soakDisc.length - 1)];
+      ctx.drawImage(bd2.c, MA.wound[0] - 34 - bd2.ax, rib(MA.wound[0] - 34) + 6 - bd2.ay);
       ctx.globalAlpha = 1;
     }
     // cast shadow on the sand
@@ -1777,9 +1793,9 @@ const DeathScene = {
     const covered = Math.min(9, this.stitches);
     const closed = clamp(covered / 9, 0, 1);
     // ---- the cut the wire opened, running down off her shoulder
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 21; i++) {
       const x = wx + R(i * 0.5), y = wy + i;
-      const done = i < closed * 30;
+      const done = i < closed * 21;
       const w = 3 + (hash2(i, 5) > 0.6 ? 1 : 0);
       P(ctx, DP.blood[0], x - 1, y, w + 2, 1);
       if (!done) {
@@ -1792,13 +1808,13 @@ const DeathScene = {
     if (T > K2.pull) {
       const open = clamp(1 - closed * 1.1, 0, 1);
       if (open > 0.02) {
-        const rw = R(5 + open * 5), rh = R(3 + open * 4);
+        const rw = R(4 + open * 4), rh = R(3 + open * 3);
         for (let y = -rh; y <= rh; y++) {
           const k = 1 - (y / (rh + 0.5)) * (y / (rh + 0.5)); if (k <= 0) continue;
-          const hw = R(rw * Math.sqrt(k));
+          const hw = R(rw * Math.sqrt(k) * (0.78 + hash2(y, 3) * 0.44));
           for (let x = -hw; x <= hw; x++) {
-            const d2 = Math.hypot(x / rw, y / rh);
-            P(ctx, d2 > 0.86 ? DP.blood[3] : d2 > 0.60 ? DP.blood[1] : '#140104', wx + x, wy - 3 + y);
+            const d2 = Math.hypot(x / (hw + 0.5), y / rh);
+            P(ctx, d2 > 0.80 ? DP.blood[3] : d2 > 0.52 ? DP.blood[1] : '#140104', wx + x, wy - 3 + y);
           }
         }
         P(ctx, DP.blood[4], wx - 1, wy - 3 - rh, 3, 1);
@@ -1808,17 +1824,19 @@ const DeathScene = {
     // ---- blood running down her flank and off her into the sand
     if (this.soak > 0.02 && closed < 0.98) {
       const run = rib(wx) - wy;
-      for (let i = 0; i < 5; i++) {
-        const rx = wx - 4 + i * 3, len = R(run * (0.5 + hash2(i, 7) * 0.5) * (1 - closed * 0.7));
+      for (let i = 0; i < 6; i++) {
+        const len = R(run * (0.25 + hash2(i, 7) * 0.75) * (1 - closed * 0.7));
+        let rx = wx - 5 + i * 3;
         for (let y = 0; y < len; y++) {
-          if (bay(rx, wy + y) > 0.80) continue;
-          P(ctx, y > len - 4 ? DP.blood[0] : hash2(i, y) > 0.7 ? DP.blood[3] : DP.blood[2], rx + R(Math.sin(y * 0.2 + i) * 1.4), wy + y);
+          if (hash2(i * 13, y) > 0.86) rx += hash2(i, y) > 0.5 ? 1 : -1;
+          const w = y > len - 5 ? 2 : 1;
+          P(ctx, y > len - 5 ? DP.blood[0] : hash2(i, y) > 0.78 ? DP.blood[3] : DP.blood[1], rx, wy + y, w, 1);
         }
       }
     }
     // ---- the stitches: heavy, spaced, pulled tight through the hide
     for (let i = 0; i < covered; i++) {
-      const x = wx + R(i * 1.4), y = wy + R(i * 3.2);
+      const x = wx + R(i * 1.1), y = wy + R(i * 2.2);
       LN(ctx, DP.bone, x - 4, y - 2, x + 4, y + 2);
       LN(ctx, DP.bone, x + 4, y - 2, x - 4, y + 2);
       P(ctx, DP.ink, x, y, 1, 1);
@@ -1827,7 +1845,7 @@ const DeathScene = {
     // ---- the steel plate, hammered back down over the lot of it
     {
       const px = MA.plate[0], py = MA.plate[1], k = this.plateOn;
-      for (let i = 0; i < 4; i++) { P(ctx, DP.ink, px - 11 + i * 7, py - 9, 3, 3); P(ctx, DP.ink, px - 11 + i * 7, py + 7, 3, 3); }
+      for (let i = 0; i < 4; i++) { P(ctx, DP.ink, px - 11 + i * 7, py - 7, 3, 2); P(ctx, DP.ink, px - 11 + i * 7, py + 6, 3, 2); }
       if (k > 0) {
         ctx.save();
         ctx.translate(px, R(py - (1 - k) * 14));
@@ -1900,12 +1918,12 @@ const DeathScene = {
     const FEET = HER.feet;
     const HL = MA.len / 2, HH = MA.hgt / 2;
     const backY = lx => herTop(lx);
-    const o = { flip: true, exp: 'focus', hat: true, gore: this.gore || 0 };
+    const o = { flip: true, exp: 'focus', hat: true, gore: this.gore || 0, tail: 0.30 };
     let x = hx, y = FEET, rot = 0;
     // kneeling on her back, a little behind whatever he is working on
     const onBack = (anchor, dx, dy) => {
       const lx = anchor[0] + dx;
-      x = R(hx + lx); y = R(hy + backY(lx) - 18 + (dy || 0));
+      x = R(hx + lx); y = R(hy + backY(lx) - 8 + (dy || 0));
     };
     const RAISED = -1.15, STRUCK = 1.05;
 
@@ -1929,7 +1947,7 @@ const DeathScene = {
       const k = (T - K2.pull) / (K2.press - K2.pull);
       const yank = this.harpFree ? 1 : Math.abs(Math.sin(k * 10));
       x = R(hx + MA.wound[0] + 40 + yank * 10);
-      y = R(hy + backY(MA.wound[0] + 40) - 18);
+      y = R(hy + backY(MA.wound[0] + 40) - 10);
       rot = -0.26 - yank * 0.16;
       o.armNear = -0.95 + yank * 0.45; o.armFar = -0.80 + yank * 0.45;
       o.exp = 'strain'; o.headR = -0.18;

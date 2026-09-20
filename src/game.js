@@ -3,7 +3,10 @@ const WORLD_W = 6400, WORLD_H = 3000, SHORE_Y = 300;
 // the village stands out over the water down to about SHORE_Y+150, so nothing
 // that swims is allowed above this line
 const WATER_TOP = SHORE_Y + 152;
-const RIG_SCALE = 0.80;   // drawn larger than at the old tighter zoom so the hero still reads
+// The hero is authored at one art pixel per world unit while everything else
+// is at two, so at 1.0 each of her pixels lands on exactly a 2x2 block of
+// screen pixels. Anything else and the chunk comes out uneven.
+const RIG_SCALE = 1.0;
 // The presentation canvas is 1280x720. The world is authored at one pixel per
 // world unit into an offscreen 640x360 layer and the WHOLE layer is magnified
 // by exactly 2 onto the canvas, so every world pixel lands on a square 2x2
