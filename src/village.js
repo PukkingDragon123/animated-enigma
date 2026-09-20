@@ -356,21 +356,33 @@
     wdt = wdt || uw(2.5);
     x = Math.round(x); yTop = Math.round(yTop); yBot = Math.round(yBot);
     const h = yBot - yTop; if (h <= 0) return null;
-    const lean = style === 3 ? 0 : (rng.next() - 0.5) * U * 1.5;
-    for (let i = 0; i < h; i++) {
-      const yy = yTop + i, off = Math.round(lean * (i / h));
-      R(c, x + off, yy, wdt, 1, W.post1);
-      R(c, x + off, yy, 1, 1, W.post2);
-      R(c, x + off + 1, yy, 1, 1, W.post3);
-      R(c, x + off + wdt - 1, yy, 1, 1, W.post0);
-      R(c, x + off + wdt - 2, yy, 1, 1, shade(W.post1, 0.8));
-      if (rng.next() < 0.10) R(c, x + off + 1 + Math.floor(rng.next() * (wdt - 2)), yy, 1, 1, W.post0);
-      if (rng.next() < 0.06) R(c, x + off + 1 + Math.floor(rng.next() * (wdt - 2)), yy, 1, 1, W.post3);
-    }
-    for (let i = 0; i < h; i++) {
-      const off = Math.round(lean * (i / h));
-      R(c, x + off - 1, yTop + i, 1, 1, W.ink);
-      R(c, x + off + wdt, yTop + i, 1, 1, W.ink);
+    let lean = style === 3 ? 0 : (rng.next() - 0.5) * U * 1.5;
+    if (Math.abs(lean) < 0.6) lean = 0;
+    if (lean === 0) {
+      // a straight pile is a handful of column fills, not a fill per row
+      R(c, x - 1, yTop, 1, h, W.ink); R(c, x + wdt, yTop, 1, h, W.ink);
+      R(c, x, yTop, wdt, h, W.post1);
+      R(c, x, yTop, 1, h, W.post2);
+      R(c, x + 1, yTop, 1, h, W.post3);
+      R(c, x + wdt - 1, yTop, 1, h, W.post0);
+      R(c, x + wdt - 2, yTop, 1, h, shade(W.post1, 0.8));
+      const grain = Math.round(h * 0.16);
+      for (let i = 0; i < grain; i++) {
+        const yy = yTop + Math.floor(rng.next() * h);
+        R(c, x + 1 + Math.floor(rng.next() * (wdt - 2)), yy, 1, 1 + Math.floor(rng.next() * U), rng.next() < 0.6 ? W.post0 : W.post3);
+      }
+    } else {
+      for (let i = 0; i < h; i++) {
+        const yy = yTop + i, off = Math.round(lean * (i / h));
+        R(c, x + off, yy, wdt, 1, W.post1);
+        R(c, x + off, yy, 1, 1, W.post2);
+        R(c, x + off + 1, yy, 1, 1, W.post3);
+        R(c, x + off + wdt - 1, yy, 1, 1, W.post0);
+        R(c, x + off + wdt - 2, yy, 1, 1, shade(W.post1, 0.8));
+        if (rng.next() < 0.10) R(c, x + off + 1 + Math.floor(rng.next() * (wdt - 2)), yy, 1, 1, W.post0);
+        R(c, x + off - 1, yy, 1, 1, W.ink);
+        R(c, x + off + wdt, yy, 1, 1, W.ink);
+      }
     }
     // iron bolt plates
     const bolts = Math.max(1, Math.floor(h / uw(14)));
@@ -529,15 +541,33 @@
       R(c, x - uw(1), by, w + uw(2), uw(1), W.deck2);
       R(c, x - uw(1), by + uw(1), w + uw(2), 1, W.ink);
     }
-    for (let i = uw(1.5); i < w - uw(1.5); i += uw(3)) {
-      const ln = uw(1.5) + Math.floor(rng.next() * uw(1.5));
+    for (let i = uw(1.5); i < w - uw(1.5); i += uw(2.5)) {
+      const ln = uw(1) + Math.floor(rng.next() * uw(1));
       const top = rng.next() < 0.5 ? y - h : y - Math.round(h * 0.58);
       R(c, x + i, top + uw(1), 1, ln, W.rope0);
-      const f = rng.next() < 0.4 ? P.fishFat : P.fish;
-      // hung by the tail: rotate by drawing the sprite column-flipped-ish
-      c.save(); c.translate(x + i + 1, top + uw(1) + ln); c.rotate(Math.PI / 2); c.drawImage(f.c, -Math.round(f.h / 2), -f.w); c.restore();
+      Kit.hangFish(c, x + i, top + uw(1) + ln, uw(3) + Math.floor(rng.next() * uw(2)), rng);
     }
     Kit.brace(c, x + 1, y - 2, x + w - 2, y - h + uw(3), uw(1));
+  };
+
+  // -- a fish hung head-down on a drying line -------------------------------
+  Kit.hangFish = function (c, x, y, len, rng) {
+    const w = uw(1.5) + (rng.next() < 0.4 ? 1 : 0);
+    // tail, tied to the line
+    R(c, x, y, 1, uw(1), W.ink);
+    R(c, x - 1, y + uw(0.5), uw(1.5) + 1, uw(1), W.met1);
+    for (let i = 0; i < len; i++) {
+      const k = i / len;
+      const ww = Math.max(1, Math.round(w * Math.sin(Math.min(1, 0.25 + k) * Math.PI * 0.85)));
+      const xx = x - (ww >> 1);
+      R(c, xx - 1, y + uw(1) + i, ww + 2, 1, W.ink);
+      R(c, xx, y + uw(1) + i, ww, 1, k < 0.55 ? W.met2 : W.met1);
+      R(c, xx, y + uw(1) + i, 1, 1, k < 0.7 ? W.met3 : W.met2);
+      if (rng.next() < 0.18) R(c, xx + Math.floor(rng.next() * ww), y + uw(1) + i, 1, 1, '#e8f4fb');
+    }
+    // split belly + head
+    R(c, x, y + uw(2), 1, len - uw(2), '#b46a63');
+    R(c, x - 1, y + uw(1) + len - 1, uw(1.5) + 1, 1, W.ink);
   };
 
   // -- mooring bollard (post with a rope turn) ------------------------------
@@ -782,9 +812,25 @@
       // a big open mouth: dark interior, a boat or a counter inside
       const ow = Math.round(w * (kind === 'boathouse' ? 0.62 : 0.72));
       const ox2 = x + Math.round((w - ow) / 2);
-      const oh = wallH - uw(3);
+      const oh = Math.round(wallH * (kind === 'boathouse' ? 0.72 : 0.6));
       R(c, ox2 - 1, y - oh - 1, ow + 2, oh + 1, W.ink);
       R(c, ox2, y - oh, ow, oh, '#150f14');
+      // the inside is not a void: a back wall catching the lamp light, with
+      // boards, a shelf and stock hanging from the roof beams
+      for (let i = 0; i < oh; i++) {
+        const k = i / oh;
+        R(c, ox2, y - oh + i, ow, 1, mix('#241a20', '#3b2a2a', Math.pow(k, 1.4)));
+      }
+      for (let q = uw(1); q < ow; q += uw(2)) R(c, ox2 + q, y - oh, 1, oh, 'rgba(10,6,10,0.5)');
+      R(c, ox2, y - oh, ow, uw(1), '#1a1218');
+      for (let q = uw(2); q < ow - uw(2); q += uw(4)) {
+        if (kind === 'market') Kit.hangFish(c, ox2 + q, y - oh + uw(1), uw(3), rng);
+        else { R(c, ox2 + q, y - oh + uw(1), 1, uw(2), W.rope0); R(c, ox2 + q - 1, y - oh + uw(3), uw(2), uw(1), W.net1); }
+      }
+      // shelf along the back
+      R(c, ox2 + uw(1), y - Math.round(oh * 0.45), ow - uw(2), uw(1), '#3a2a24');
+      R(c, ox2 + uw(1), y - Math.round(oh * 0.45), ow - uw(2), 1, '#5a4438');
+      for (let q = uw(2); q < ow - uw(4); q += uw(3)) if (rng.next() < 0.6) c.drawImage(P.pot.c, ox2 + q, y - Math.round(oh * 0.45) - P.pot.h);
       // header beam
       R(c, ox2 - uw(1), y - oh - uw(1), ow + uw(2), uw(1), W.post1);
       R(c, ox2 - uw(1), y - oh - uw(1), ow + uw(2), 1, W.post2);
@@ -2222,9 +2268,10 @@
         h1x = 4.6 + q * 1.6; h1y = shY - 3.2 + Math.cos(this.workPh * 1.6) * 1.1;
         h2x = 3.4; h2y = shY - 4.4;
       } else if (this.state === 'gut') {
+        // working down onto a bench, not waving a fish in the air
         const q = Math.sin(this.workPh * 2.4);
-        h1x = 4.4 + q * 1.2; h1y = shY - 4.2 - q * 0.6;
-        h2x = 3.4 - q * 0.5; h2y = shY - 4.0;
+        h1x = 4.6 + q * 1.1; h1y = hipY + torsoH * 0.45 - q * 0.4;
+        h2x = 3.4 - q * 0.4; h2y = hipY + torsoH * 0.52;
       } else if (this.state === 'notice') {
         h1x = arm * 0.98; h1y = shY + 1.5 + Math.sin(this.t * 9) * 0.6; h2x = -1.5; h2y = shY - 5;
       } else if (this.state === 'panic' || swim) {
@@ -2253,6 +2300,15 @@
         ctx.fillRect((this._ax - uw(bw * 0.3)) / K, (this._ay - uw(1)) / K, uw(bw * 0.6) / K, 1 / K);
       }
       const A1 = Math.round(U * this.scaleB);
+      // the gutting bench, drawn behind them so they lean over it
+      if (this.state === 'gut') {
+        const ty = hipY + this.torso * 0.36, x0 = 2.0, x1 = 8.0;
+        seg(ctx, this, x0, ty, x1, ty, Math.round(1.6 * U), W.deck2, ink);
+        seg(ctx, this, x0, ty + 0.4, x1, ty + 0.4, 1, W.deck4);
+        seg(ctx, this, x0 + 0.6, ty - 0.8, x0 + 0.6, 0, Math.round(1.2 * U), W.post1, ink);
+        seg(ctx, this, x1 - 0.6, ty - 0.8, x1 - 0.6, 0, Math.round(1.2 * U), W.post1, ink);
+        dot(ctx, this, x1 - 1.2, ty + 1.0, Math.round(1.6 * U), '#8a3a34');
+      }
       // far leg
       seg(ctx, this, -1.2, hipY, k2x, k2y, legThick, this.pantsDk);
       seg(ctx, this, k2x, k2y, f2x, f2y, legThick - A1, this.pantsDk, ink);
@@ -2447,10 +2503,10 @@
         T(this, h1x + 2, h1y - 1);
         ctx.drawImage(P.fish.c, (Math.round(_tx) - (P.fish.w >> 1)) / K, (Math.round(_ty) - (P.fish.h >> 1)) / K, P.fish.w / K, P.fish.h / K);
       } else if (this.item === 'knife') {
-        // gutting: a short blade and a fish held down on the board
-        seg(ctx, this, h1x, h1y, h1x + 1.6, h1y - 1.4, th(1.4), ink);
-        seg(ctx, this, h1x, h1y, h1x + 1.5, h1y - 1.3, 1, W.met3);
-        T(this, h1x + 1.2, h1y - 3.4);
+        // gutting: a short blade, and the fish held down on the bench
+        seg(ctx, this, h1x, h1y, h1x + 1.4, h1y - 1.2, th(1.4), ink);
+        seg(ctx, this, h1x, h1y, h1x + 1.3, h1y - 1.1, 1, W.met3);
+        T(this, h1x - 0.6, h1y - 0.6);
         ctx.drawImage(P.fish.c, (Math.round(_tx) - (P.fish.w >> 1)) / K, (Math.round(_ty) - (P.fish.h >> 1)) / K, P.fish.w / K, P.fish.h / K);
       } else if (this.item === 'net') {
         // a lap full of net, mended stitch by stitch
@@ -2492,7 +2548,7 @@
   // ---- bake: a working deck on driven piles -------------------------------
   // o.x,o.w,o.deckY,o.waterY in world units. o.job picks what stands on it.
   function makePlatform(o) {
-    const pad = 20, topPad = 46;                 // world units of canvas margin
+    const pad = 12, topPad = 30;                 // world units of canvas margin
     const drop = o.waterY - o.deckY;
     const ch = topPad + drop + 24;
     const lights = [];
@@ -2504,7 +2560,7 @@
       R(c, L - uw(1.5), waterL + uw(2.5), wb + uw(3), uw(1.5), 'rgba(6,20,52,0.20)');
       // ---- piles
       const px = [];
-      const step = uw(12) + Math.floor(rng.next() * uw(5));
+      const step = uw(15) + Math.floor(rng.next() * uw(6));
       for (let x = uw(2.5); x < wb - uw(2); x += step) px.push(x);
       if (px.length < 2) px.push(wb - uw(3.5));
       for (let i = 0; i < px.length; i++) {
@@ -2570,7 +2626,8 @@
       while (room() > uw(5)) {
         const r = rng.next();
         if (job === 'dry' && r < 0.55 && room() > uw(16)) { Kit.fishRack(c, L + cx2, D, uw(14), rng); cx2 += uw(17); continue; }
-        if (job === 'pots' && r < 0.6 && room() > uw(7)) { Kit.crabPots(c, L + cx2, D, 2 + Math.floor(rng.next() * 3), rng); cx2 += uw(7); continue; }
+        if (job === 'pots' && r < 0.34 && room() > uw(7)) { Kit.crabPots(c, L + cx2, D, 2 + Math.floor(rng.next() * 3), rng); cx2 += uw(8); continue; }
+        if (job === 'pots' && r < 0.55 && room() > uw(8)) { put(P.fishBox, cx2); put(P.crate, cx2 + uw(5)); cx2 += uw(10); continue; }
         if (job === 'repair' && r < 0.4 && room() > uw(9)) { Kit.winch(c, L + cx2, D, rng); cx2 += uw(8); continue; }
         if (job === 'market' && r < 0.45 && room() > uw(8)) { put(P.fishBox, cx2); put(P.fishBox, cx2 + uw(1), -P.fishBox.h + uw(1)); cx2 += uw(7); continue; }
         if (job === 'store' && r < 0.5 && room() > uw(8)) { put(P.barrel, cx2); put(P.keg, cx2 + uw(5)); cx2 += uw(9); continue; }
@@ -2583,7 +2640,7 @@
         else if (r < 0.47) { put(P.anchor, cx2); cx2 += uw(6); }
         else if (r < 0.53) { Kit.bollard(c, L + cx2, D, rng); cx2 += uw(5); }
         else if (r < 0.58 && room() > uw(16)) { Kit.fishRack(c, L + cx2, D, uw(14), rng); cx2 += uw(17); }
-        else if (r < 0.63 && room() > uw(8)) { Kit.crabPots(c, L + cx2, D, 2 + Math.floor(rng.next() * 2), rng); cx2 += uw(7); }
+        else if (r < 0.60 && room() > uw(8)) { Kit.crabPots(c, L + cx2, D, 1 + Math.floor(rng.next() * 2), rng); cx2 += uw(8); }
         else if (r < 0.68 && room() > uw(9)) { Kit.winch(c, L + cx2, D, rng); cx2 += uw(8); }
         else if (r < 0.74) { // lamp post
           const ph2 = L + cx2, top = D - uw(11);
@@ -2612,10 +2669,10 @@
 
   // ---- bake: a building, optionally on stilts over the water --------------
   function makeHouse(o) {
-    const pad = 18, wallH = o.wallH, w = o.w;
+    const pad = 12, wallH = o.wallH, w = o.w;
     const kind = o.kind || 'cottage';
     const roofH = Math.round(w * 0.30) + 3;
-    const topPad = wallH + roofH + 22;
+    const topPad = wallH + roofH + 16;
     const drop = o.stilts ? (o.waterY - o.y) : 0;
     const ch = topPad + drop + 26;
     const draw = (c, rng) => {

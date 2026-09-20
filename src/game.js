@@ -378,7 +378,10 @@ class Game {
     // camera
     const p = this.player;
     // bias the camera toward the shore when close to it, so the village stays in view
-    const shoreBias = Math.max(0, (SHORE_Y + 220 - p.y)) * 0.6;
+    // Pulling the camera up near the shore pushes the village DOWN the frame,
+    // out from behind the top interface panels. The village is the most
+    // detailed art in the game and it was sitting under the HUD.
+    const shoreBias = Math.max(0, (SHORE_Y + 260 - p.y)) * 0.95;
     const tx = p.x - (CROP_X + VIEW_W / 2) + p.vx * 0.12, ty = p.y - (CROP_Y + VIEW_H / 2) + p.vy * 0.12 - shoreBias;
     const k = 1 - Math.pow(0.002, dt);
     // the visible window is cam + CROP .. cam + CROP + VIEW, so clamp to that
