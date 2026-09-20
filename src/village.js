@@ -202,20 +202,30 @@
   });
 
   // --- floats / buoys -----------------------------------------------------
+  function roundFloat(c, w, h, r0, body, hi, band) {
+    const cx = (w - 1) / 2, cy = (h - 1) / 2;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const d = Math.hypot(x - cx, (y - cy) * (w / h));
+      if (d > r0) continue;
+      R(c, x, y, 1, 1, d > r0 - 1 ? W.ink : (y < cy - r0 * 0.2 ? hi : body));
+    }
+    R(c, 1, Math.round(cy), w - 2, Math.max(1, Math.round(h * 0.16)), band);
+  }
   P.buoyProp = prop(6, 8, (c, rng, w, h) => {
-    R(c, Math.round(w / 2) - 1, 0, 2, 3, W.ink);
-    R(c, Math.round(w / 2) - 1, 1, 1, 2, W.rope1);
-    R(c, 0, 3, w, h - 3, W.ink);
-    R(c, 1, 4, w - 2, h - 5, W.float0);
-    R(c, 1, 4, w - 2, 2, W.float1);
-    R(c, 2, 4, w - 4, 1, W.float2);
-    R(c, 1, Math.round(h * 0.72), w - 2, 1, W.ink);
-    fleck(c, rng, 1, 5, w - 2, h - 7, 3, [W.barn, W.alg]);
+    // a marker float: ring body, a stave and a flag on top
+    R(c, Math.round(w / 2) - 1, 0, uw(1), uw(2.5), W.ink);
+    R(c, Math.round(w / 2) - 1, 0, 1, uw(2.5), W.met2);
+    R(c, Math.round(w / 2), 0, uw(1.5), uw(1), W.float0);
+    roundFloat(c, w, h - uw(2), Math.min(w, h - uw(2)) / 2 - 0.5, W.float0, W.float1, W.float2);
+    c.drawImage(c.canvas, 0, 0, w, h - uw(2), 0, uw(2), w, h - uw(2));
+    R(c, 0, 0, w, uw(2), 'rgba(0,0,0,0)');
+    R(c, Math.round(w / 2) - 1, 0, uw(1), uw(2.5), W.ink);
+    R(c, Math.round(w / 2) - 1, 0, 1, uw(2.5), W.met2);
+    fleck(c, rng, 1, uw(3), w - 2, h - uw(4), 2, [W.barn, W.alg]);
   });
   P.buoyBall = prop(5, 5, (c, rng, w, h) => {
-    R(c, 1, 0, w - 2, h, W.ink); R(c, 0, 1, w, h - 2, W.ink);
-    R(c, 1, 1, w - 2, h - 2, W.float0);
-    R(c, 1, 1, w - 2, 1, W.float1); R(c, 2, 1, 1, 1, W.float2);
+    roundFloat(c, w, h, Math.min(w, h) / 2 - 0.5, W.float0, W.float1, W.float2);
+    void rng;
   });
 
   // --- fish ---------------------------------------------------------------
@@ -597,18 +607,34 @@
 
   // -- slipway: timber rails running down into the water --------------------
   Kit.slipway = function (c, x, y, w, len, rng) {
+    const dry = '#8e8578', mid = '#6e6a60', wetc = '#42513c';
     for (let i = 0; i < len; i++) {
       const t = i / len;
-      R(c, x, y + i, w, 1, mix(W.deck1, W.wet, Math.min(1, t * 1.25)));
-      if (i % uw(3) === 0) R(c, x, y + i, w, 1, W.deck0);
-      if (rng.next() < 0.25) R(c, x + Math.floor(rng.next() * w), y + i, 1, 1, t > 0.5 ? W.alg : W.deck2);
+      const base = t < 0.45 ? mix(dry, mid, t / 0.45) : mix(mid, wetc, (t - 0.45) / 0.55);
+      R(c, x, y + i, w, 1, base);
     }
+    // cobbled courses, weed creeping up from the waterline
+    for (let i = 0; i < len; i += uw(2)) {
+      const t = i / len;
+      R(c, x, y + i, w, 1, shade(t < 0.5 ? mid : wetc, 0.85));
+      for (let q = (i / uw(2)) % 2 ? 0 : uw(1.5); q < w; q += uw(3)) R(c, x + q, y + i, 1, uw(2), 'rgba(20,18,16,0.35)');
+    }
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      for (let q = 0; q < w; q += 1) {
+        const r = rng.next();
+        if (r < 0.03) R(c, x + q, y + i, 1, 1, t > 0.5 ? W.alg : shade(dry, 1.12));
+        else if (r < 0.05 && t > 0.35) R(c, x + q, y + i, 1, 1, W.alg2);
+      }
+    }
+    R(c, x - 1, y, 1, len, W.ink); R(c, x + w, y, 1, len, W.ink);
     for (const rx of [x + uw(2), x + w - uw(3)]) {
       for (let i = 0; i < len; i++) {
         const t = i / len;
-        R(c, rx - 1, y + i, uw(1) + 2, 1, W.ink);
-        R(c, rx, y + i, uw(1), 1, t > 0.62 ? mix(W.post1, W.wet, 0.7) : W.post1);
-        if (i % uw(4) === 0) R(c, rx, y + i, uw(1), 1, W.post2);
+        R(c, rx - 1, y + i, uw(1.5) + 2, 1, W.ink);
+        R(c, rx, y + i, uw(1.5), 1, t > 0.62 ? mix(W.post1, W.wet, 0.7) : W.post1);
+        R(c, rx, y + i, 1, 1, t > 0.62 ? W.wet : W.post3);
+        if (i % uw(4) === 0) R(c, rx, y + i, uw(1.5), 1, W.post2);
       }
     }
     // sleepers
