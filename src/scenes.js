@@ -175,6 +175,81 @@ function outlineIt(c, ink) {
   x.putImageData(img, 0, 0);
   return c;
 }
+function cloneSpr(o) {
+  const src = o.c || o, c = can(src.width, src.height);
+  cx2(c).drawImage(src, 0, 0);
+  return c;
+}
+// posterized tint: pull every pixel a fixed fraction toward a colour and
+// snap the result onto a coarse level set, so it stays a flat palette
+function tintCanvas(c, col, amt) {
+  const x = cx2(c), w = c.width, h = c.height;
+  const img = x.getImageData(0, 0, w, h), d = img.data, C = hexToRgb(col);
+  for (let i = 0; i < w * h; i++) {
+    const p = i * 4; if (d[p + 3] < 9) continue;
+    for (let k = 0; k < 3; k++) {
+      const v = d[p + k] + (C[k] - d[p + k]) * amt;
+      d[p + k] = Math.round(v / 17) * 17;
+    }
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+
+// Paint a lit edge onto a finished sprite: every outermost opaque pixel on
+// the side the light comes from is recoloured, one band hot, one band warm.
+// Colouring the light instead of the object is what stops these figures
+// reading as flat cut-outs against a coloured sky.
+function rimLight(c, lx, ly, hot, warm, depth) {
+  const x = cx2(c), w = c.width, h = c.height;
+  const img = x.getImageData(0, 0, w, h), d = img.data;
+  const op = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) op[i] = d[i * 4 + 3] > 8 ? 1 : 0;
+  const HOT = hexToRgb(hot), WRM = warm ? hexToRgb(warm) : null;
+  depth = depth || 1;
+  for (let y = 0; y < h; y++) for (let px = 0; px < w; px++) {
+    const i = y * w + px;
+    if (!op[i]) continue;
+    const qx = px - lx, qy = y - ly;
+    const out = qx < 0 || qy < 0 || qx >= w || qy >= h || !op[qy * w + qx];
+    if (!out) continue;
+    for (let k = 0; k < depth; k++) {
+      const rx = px + lx * k, ry = y + ly * k;
+      if (rx < 0 || ry < 0 || rx >= w || ry >= h) break;
+      const j = ry * w + rx;
+      if (!op[j]) break;
+      const col = k === 0 ? HOT : WRM;
+      if (!col) break;
+      if (k > 0 && bay(rx, ry) > 0.55) break;
+      const q = j * 4;
+      d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; d[q + 3] = 255;
+    }
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+// coloured bounce light on the underside: the water throws colour back up
+function bounceLight(c, col, rows, bias) {
+  const x = cx2(c), w = c.width, h = c.height;
+  const img = x.getImageData(0, 0, w, h), d = img.data;
+  const op = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) op[i] = d[i * 4 + 3] > 8 ? 1 : 0;
+  const C = hexToRgb(col);
+  for (let px = 0; px < w; px++) {
+    let hit = -1;
+    for (let y = h - 1; y >= 0; y--) if (op[y * w + px]) { hit = y; break; }
+    if (hit < 0) continue;
+    for (let k = 0; k < rows; k++) {
+      const y = hit - k; if (y < 0 || !op[y * w + px]) break;
+      if (bay(px, y) > (1 - k / rows) * (bias || 0.8)) continue;
+      const q = (y * w + px) * 4;
+      d[q] = C[0]; d[q + 1] = C[1]; d[q + 2] = C[2]; d[q + 3] = 255;
+    }
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+
 // Bake-time pixel buffer.  Speckly sprites (foam rings, spray, flame) are
 // tens of thousands of single pixels each; as fillRect calls the whole bake
 // cost most of half a second, so they are written straight into bytes.
@@ -216,17 +291,44 @@ function disc(ctx, cx, cy, r, col, rim) {
 // ----------------------------------------------------------------- palette
 const BP = {
   ink: '#07060d', ink2: '#12101c',
-  skyDusk:  ['#150f26', '#231636', '#3c1e3c', '#602b40', '#914044', '#c66a48', '#e9a061'],
-  skyNight: ['#04050c', '#080a14', '#0f1020', '#181a2c', '#23213a', '#2f2a44', '#3b3450'],
-  skyDim:   ['#060812', '#0c101f', '#151a2e', '#20233c', '#2d2c4a', '#3e3554', '#553f5a'],
-  skyDawn:  ['#0a0e20', '#141c34', '#242c46', '#3a3656', '#5c4462', '#8a5e64', '#c48c6c'],
-  sea:      ['#03060d', '#061019', '#091827', '#0d2036', '#122a47', '#173459'],
-  seaDusk:  ['#050810', '#0a121d', '#101c2c', '#16273e', '#1f3352', '#2b4168'],
+  // DUSK — indigo zenith, through violet and rose, into ember and gold at the
+  // waterline.  Fifteen bands so the dither has something to ramp between.
+  skyDusk:  ['#140b2e', '#1c1039', '#271345', '#37174c', '#4b1c4e', '#642349', '#802c44',
+             '#9c3a3e', '#b84a37', '#ce5f31', '#df7a31', '#ed993c', '#f6b755', '#fbd27e', '#ffeab4'],
+  // NIGHT — cold indigo above, with the fire in the village bleeding a dirty
+  // ember bruise into the bottom bands.
+  skyNight: ['#03040e', '#050816', '#080c20', '#0c112b', '#111636', '#171c41', '#1f224c',
+             '#2a2652', '#372855', '#472953', '#59294b', '#6b2b40'],
+  skyDim:   ['#05070f', '#080c1c', '#0d1329', '#131b36', '#1a2444', '#232c51', '#2f335e',
+             '#3e386a', '#523a6a', '#683c62', '#7e3f54', '#933f47'],
+  // DAWN — the whole spectacle: night blue, violet, magenta, coral, amber, gold.
+  skyDawn:  ['#080c24', '#0d1531', '#131e41', '#1a2951', '#243461', '#33396e', '#463c76',
+             '#5c3f74', '#75416c', '#8d4762', '#a45259', '#b86153', '#ca7353', '#d98a57',
+             '#e6a462', '#f0bf78', '#f8da9e'],
+  // SEA — index 0 is the near water at our feet, the last is right at the
+  // horizon, where it has to carry the sky's colour or nothing joins up.
+  sea:      ['#02040c', '#040815', '#060b1e', '#090f28', '#0b1533', '#0e1b3f', '#12224b',
+             '#172956', '#1d305f', '#243766'],
+  seaDusk:  ['#060616', '#080a20', '#0b0f2a', '#0e1637', '#121e44', '#172852', '#1f3260',
+             '#2c3b68', '#42406c', '#5c456a', '#794a63', '#94525a', '#a95d4e'],
+  seaDawn:  ['#05081a', '#070c26', '#0a1233', '#0d1941', '#12224f', '#182c5d', '#22356a',
+             '#333b73', '#4a3f75', '#65456f', '#824b66', '#9d545c', '#b56152', '#c87055'],
+  // chop, from the near water out to the horizon — it is not one grey
+  chopDusk: ['#2a3358', '#3c4470', '#5a5078', '#7d5a74', '#a06a6a', '#c07f62'],
+  chopNight:['#16244a', '#1d2f58', '#263a64', '#35416b', '#48446a', '#5c4560'],
+  chopDawn: ['#1d2c58', '#27396a', '#354578', '#4a4d7c', '#66507a', '#875672'],
   foam:     ['#33566b', '#5d8298', '#8fb4c8', '#c8e2ef', '#f2fbff'],
+  foamWarm: ['#5c3a4a', '#95576a', '#c47d6e', '#e8c08a', '#fff0cf'],
   vill:     '#090810', villR: '#1e1a28', villL: '#322b3e',
   fire:     ['#5c1b10', '#9c3115', '#d4661c', '#ffab34', '#ffe6a2'],
+  // the pools of light a torch throws, darkest ring out to the white core
+  torchGlow:['#2a1410', '#4a2012', '#6e3315', '#9c4e1a', '#c87024', '#eda03e'],
+  emberGlow:['#33110e', '#571a10', '#7f2a13', '#ab4317', '#d4661c', '#ffab34'],
   gold: '#ffe48f', goldD: '#e0a838', red: '#c4202c', redL: '#e8515a',
   bone: '#e8e4d8', white: '#f2f6fa', steel: '#8a9ab5',
+  // signature colours for the two mini cards
+  miniCyan: ['#071a20', '#0d2d38', '#145060', '#1d7d92', '#34b4c4', '#8ef0f6'],
+  miniRed:  ['#1a0508', '#360a0e', '#5c1014', '#8c1a1c', '#c4202c', '#ff8a6a'],
 };
 
 const HZ = 190;                     // horizon / waterline in the side-on shots
@@ -287,7 +389,10 @@ function drawFarBoat(x, bx, by, col, rim, broke) {
 const SEA_CACHE = {};
 function seaLayer(seaRamp, opt) {
   const chop = opt.chop || BP.foam[0], sun = opt.sun ? opt.sun[0] : -1;
-  const key = seaRamp.join('') + chop + sun + (opt.road || '');
+  const chopR = Array.isArray(chop) ? chop : [chop];
+  const glows = opt.glows || [];
+  const key = seaRamp.join('') + chopR.join('') + sun + (opt.road || '') +
+              glows.map(g => g[0] + g[1].join('') + g[2]).join('|');
   if (SEA_CACHE[key]) return SEA_CACHE[key];
   const H = 360 - HZ, b = pixBuf(640, H);
   const cols = seaRamp.map(hexToRgb), n = cols.length;
@@ -303,19 +408,27 @@ function seaLayer(seaRamp, opt) {
       pset(b, cols[i], px, y);
     }
   }
-  // chop: flat dashes, longer and sparser as the water comes towards us
-  const CH_ = hexToRgb(chop);
+  // chop: flat dashes, longer and sparser as the water comes towards us, and
+  // cooling as it does — the crests near the horizon still hold the sky.
+  const CH_ = chopR.map(hexToRgb);
   for (let y = 2; y < H; y++) {
     const u = y / H, step = 3 + R(u * 5), len = 1 + R(u * 5);
+    let ci = Math.round((1 - Math.pow(u, 0.5)) * (CH_.length - 1));
+    if (ci < 0) ci = 0; else if (ci > CH_.length - 1) ci = CH_.length - 1;
+    const C0 = CH_[ci], C1 = CH_[Math.max(0, ci - 1)];
     let sx = R(hash2(y, 91) * 40);
     while (sx < 640) {
-      if (hash2(sx * 3 + y, y * 7 + 11) < 0.42) for (let d = 0; d < len; d++) pset(b, CH_, sx + d, y);
+      if (hash2(sx * 3 + y, y * 7 + 11) < 0.42) {
+        const C = bay(sx, y + HZ) < 0.5 ? C0 : C1;
+        for (let d = 0; d < len; d++) pset(b, C, sx + d, y);
+      }
       sx += step + R(hash2(sx, y) * 9);
     }
   }
   // the light on the water under the sun, a hard dithered road
   if (sun >= 0) {
     const RD = hexToRgb(opt.road || opt.sun[3]);
+    const RD2 = hexToRgb(opt.road2 || opt.sun[4] || opt.road || opt.sun[3]);
     for (let y = 0; y < H; y++) {
       const u = y / H, sp = 6 + u * 62, len = 1 + R(u * 2);
       for (let dx = -sp; dx <= sp; dx += 1) {
@@ -323,11 +436,46 @@ function seaLayer(seaRamp, opt) {
         if (px < 0 || px > 639) continue;
         const fall = 1 - Math.abs(dx) / sp;
         if (bay(px, y + HZ) > fall * (0.72 - u * 0.45)) continue;
-        for (let d = 0; d < len; d++) pset(b, RD, px + d, y);
+        const C = fall > 0.62 && u < 0.5 ? RD2 : RD;
+        for (let d = 0; d < len; d++) pset(b, C, px + d, y);
+      }
+    }
+  }
+  // every other light on the shore also lands on the water: a torch line, a
+  // burning hut.  Same posterized road, narrower and banded by its own ramp.
+  for (const g of glows) {
+    const gx = g[0], ramp = g[1].map(hexToRgb), reach = g[2] || 0.55, wid = g[3] || 26;
+    for (let y = 0; y < H; y++) {
+      const u = y / H;
+      if (u > reach) break;
+      const sp = 3 + u * wid, len = 1 + R(u * 2);
+      const depth = 1 - u / reach;
+      for (let dx = -sp; dx <= sp; dx += 1) {
+        const px = R(gx + dx);
+        if (px < 0 || px > 639) continue;
+        const fall = (1 - Math.abs(dx) / sp) * depth;
+        if (fall <= 0) continue;
+        if (bay(px, y + HZ) > fall * 0.92) continue;
+        let i = Math.floor(fall * ramp.length);
+        if (i < 0) i = 0; else if (i > ramp.length - 1) i = ramp.length - 1;
+        for (let d = 0; d < len; d++) pset(b, ramp[i], px + d, y);
       }
     }
   }
   return SEA_CACHE[key] = pixTo(b);
+}
+// a dithered pool of warm light thrown onto whatever is already there
+function glowPool(x, cx0, cy0, rx, ry, ramp, bias) {
+  bias = bias === undefined ? 0.9 : bias;
+  for (let y = -ry; y <= ry; y++) for (let dx = -rx; dx <= rx; dx++) {
+    const q = (dx / rx) * (dx / rx) + (y / ry) * (y / ry);
+    if (q > 1) continue;
+    const f = 1 - Math.sqrt(q);
+    if (bay(cx0 + dx, cy0 + y) > f * bias) continue;
+    let i = Math.floor(f * ramp.length);
+    if (i < 0) i = 0; else if (i > ramp.length - 1) i = ramp.length - 1;
+    P(x, ramp[i], cx0 + dx, cy0 + y, 1, 1);
+  }
 }
 function buildBay(skyRamp, seaRamp, opt) {
   const c = can(640, 360), x = cx2(c);
@@ -336,7 +484,7 @@ function buildBay(skyRamp, seaRamp, opt) {
   {
     const b = pixBuf(640, HZ), cols = skyRamp.map(hexToRgb), n = cols.length;
     for (let y = 0; y < HZ; y++) {
-      const base = Math.pow(y / (HZ - 1), 0.72) * (n - 1);
+      const base = Math.pow(y / (HZ - 1), opt.skyPow || 0.72) * (n - 1);
       for (let px = 0; px < 640; px++) {
         let fi = base + (hash2(px >> 3, y >> 1) - 0.5) * 0.09 * (n - 1);
         if (fi < 0) fi = 0; else if (fi > n - 1) fi = n - 1;
@@ -348,14 +496,38 @@ function buildBay(skyRamp, seaRamp, opt) {
     }
     x.drawImage(pixTo(b), 0, 0);
   }
-  // cloud slabs, flat and hard-edged
-  for (let i = 0; i < 7; i++) {
-    const cy = 34 + i * 19 + (i & 1) * 5, cw = 70 + ((i * 53) % 150);
-    const cx0 = ((i * 137) % 700) - 40;
-    const col = mixHex(skyRamp[Math.max(0, 1 + (i & 1))], skyRamp[skyRamp.length - 1], 0.18 + i * 0.06);
-    for (let r = 0; r < 3 + (i & 2); r++) {
-      const w = R(cw * (1 - r * 0.18)), sx = cx0 + R(r * 6 + (hash2(i, r) - 0.5) * 20);
-      P(x, col, sx, cy - r * 2, w, 2);
+  // stars, punched in before the clouds so cloud slabs occlude them
+  if (opt.stars) {
+    for (let i = 0; i < opt.stars; i++) {
+      const sx = R(hash2(i, 3) * 640), sy = R(hash2(i, 11) * (HZ - 64));
+      const b = hash2(i, 19);
+      P(x, b > 0.88 ? '#e8f0ff' : b > 0.62 ? '#9fb6e0' : '#6a7fb0', sx, sy, 1, 1);
+      if (b > 0.94) { P(x, '#7a90c0', sx - 1, sy, 1, 1); P(x, '#7a90c0', sx + 1, sy, 1, 1); }
+    }
+  }
+  // cloud slabs, flat and hard-edged.  Each one is lit underneath by whatever
+  // is burning on the horizon and cold on top, in three posterized steps.
+  const n_ = skyRamp.length;
+  for (let i = 0; i < 8; i++) {
+    const cy = 30 + i * 18 + (i & 1) * 6, cw = 46 + ((i * 53) % 110);
+    const cx0 = ((i * 151) % 660) - 30;
+    const deep = Math.min(n_ - 1, Math.round(Math.pow(cy / HZ, opt.skyPow || 0.72) * (n_ - 1)));
+    const lit = mixHex(skyRamp[Math.min(n_ - 1, deep + 2)], opt.cloudLit || skyRamp[n_ - 1], 0.4);
+    const mid = mixHex(skyRamp[Math.max(0, deep - 2)], BP.ink, 0.10);
+    const dark = mixHex(skyRamp[Math.max(0, deep - 4)], BP.ink, 0.28);
+    const rows = 3 + (i & 1);
+    let w0 = 0, sx0 = 0;
+    for (let r = 0; r < rows; r++) {
+      const w = R(cw * (1 - r * 0.20)), sx = cx0 + R(r * 7 + (hash2(i, r) - 0.5) * 16);
+      if (r === 0) { w0 = w; sx0 = sx; }
+      P(x, r === 0 ? mid : r === rows - 1 ? dark : mixHex(mid, dark, 0.5), sx, cy - r * 2, w, 2);
+    }
+    // the hot lip underneath, where the low sun is still reaching it
+    for (let px = 0; px < w0; px++) {
+      const f = Math.sin((px / w0) * Math.PI);
+      if (bay(sx0 + px, cy) > f * 0.7) continue;
+      P(x, opt.cloudLip || lit, sx0 + px, cy + 2, 1, 1);
+      if (bay(sx0 + px, cy + 1) < f * 0.3) P(x, lit, sx0 + px, cy + 1, 1, 1);
     }
   }
   if (opt.sun) {
@@ -369,6 +541,23 @@ function buildBay(skyRamp, seaRamp, opt) {
   drawVillage(x, HZ - 16, BP.vill, opt.rim || BP.villR, opt.wrecked);
   drawFarBoat(x, 300, HZ - 4, BP.vill, opt.rim || BP.villR, opt.wrecked);
   drawFarBoat(x, 470, HZ - 2, BP.vill, opt.rim || BP.villR, opt.wrecked);
+  // ---- the light the village makes.  Baked: the flicker on top of it is a
+  // handful of pixels per frame, this is the part that costs anything.
+  if (opt.torchPools) {
+    for (let i = 0; i < TORCH.length; i++) {
+      const tx = TORCH[i][0], ty = TORCH[i][1] - 4;
+      glowPool(x, tx, ty, 12, 9, BP.torchGlow, 0.55);
+      glowPool(x, tx, ty, 5, 4, BP.fire, 0.95);
+    }
+    // the deck underside catches it, and the stilts stand in a warm haze
+    for (let px = -2; px < 212; px++) {
+      if (bay(px, HZ - 11) > 0.40) continue;
+      P(x, BP.torchGlow[3], px, HZ - 12, 1, 1);
+    }
+  }
+  if (opt.emberPools) {
+    for (const g of opt.emberPools) glowPool(x, g[0], g[1], g[2], g[3], BP.emberGlow, 0.85);
+  }
   return c;
 }
 // scrolling swell: 640x1 strips of dashes, wrapped each frame
@@ -546,15 +735,15 @@ function buildManateeSide(ghost) {
     { x: 138, y: 32, rx: 8, ry: 8 },     // blunt snout
   ]);
   const ramp = ghost
-    ? ['#2a3a4a', '#3d5164', '#55697e', '#6f8398', '#8fa3b6']
+    ? ['#0e2f38', '#19525f', '#277f8d', '#45aeb9', '#83dfe6']
     : ['#2a2730', '#3d3947', '#585462', '#726e7c', '#8f8b98'];
-  const body = shadeBlob(W, H, f, ramp, { outline: ghost ? '#17222e' : BP.ink, smooth: 3, lift: 0.18 });
+  const body = shadeBlob(W, H, f, ramp, { outline: ghost ? '#07202a' : BP.ink, smooth: 3, lift: 0.18 });
   const c = can(W, H), x = cx2(c);
   x.drawImage(body.c, 0, 0);
   // pale belly
   for (let y = 34; y < H - 1; y++) for (let px = 20; px < 146; px++) {
     const i = y * W + px; if (f[i] <= 0.04) continue;
-    if (f[i + W] <= 0.04 || bay(px, y) < (y - 34) / 18) P(x, ghost ? '#a9bccb' : '#9fadbd', px, y, 1, 1);
+    if (f[i + W] <= 0.04 || bay(px, y) < (y - 34) / 18) P(x, ghost ? '#b6f2f4' : '#9fadbd', px, y, 1, 1);
   }
   if (!ghost) {
     // the plate bolted over her shoulder, and the harness strap
@@ -570,7 +759,7 @@ function buildManateeSide(ghost) {
   cap(x, ramp[1], 108, 40, 96, 52, 7);
   P(x, ramp[0], 94, 48, 8, 5);
   // face
-  P(x, BP.ink, 132, 24, 4, 4); P(x, ghost ? '#0d1620' : '#241a12', 133, 25, 2, 2);
+  P(x, ghost ? '#07202a' : BP.ink, 132, 24, 4, 4); P(x, ghost ? '#0d3038' : '#241a12', 133, 25, 2, 2);
   if (!ghost) P(x, BP.white, 133, 25, 1, 1);
   P(x, ramp[0], 134, 34, 10, 2);                       // mouth line
   for (let i = 0; i < 4; i++) P(x, '#c9c4d0', 142 + (i & 1) * 2, 30 + i * 2, 2, 1);   // whiskers
@@ -693,11 +882,26 @@ function buildFlame(seed) {
 // the dark, near-black frame the Chief is held in for his close-up
 function buildCloseBg() {
   const c = can(640, 360), x = cx2(c);
-  paintRamp(x, 0, 0, 640, 360, ['#05040a', '#0a070f', '#100a14', '#180d16', '#22101a'],
+  // cold indigo at the top, the village fire coming up from under the frame
+  paintRamp(x, 0, 0, 640, 360,
+    ['#06081a', '#0b0c22', '#11102a', '#1a1130', '#271334', '#361634', '#481a30',
+     '#5d2029', '#742820', '#8c331c'],
     (u, px, py) => {
-      const dx = (px - 320) / 330, dy = (py - 175) / 210;
-      return 1 - Math.sqrt(dx * dx + dy * dy) * 1.05;
+      const dx = (px - 320) / 360, dy = (py - 300) / 300;
+      return 1 - Math.sqrt(dx * dx * 0.7 + dy * dy) * 1.05;
     });
+  // embers riding up out of the burning village behind him, baked flat
+  for (let i = 0; i < 180; i++) {
+    const ex = R(hash2(i, 7) * 640), ey = R(120 + Math.pow(hash2(i, 23), 1.6) * 240);
+    const b = hash2(i, 41);
+    P(x, b > 0.8 ? BP.fire[4] : b > 0.5 ? BP.fire[3] : BP.fire[2], ex, ey, 1, 1);
+  }
+  // a hot band low down, where the water is throwing the fire back at him
+  for (let y = 300; y < 360; y++) for (let px = 0; px < 640; px++) {
+    const f = (y - 300) / 60;
+    if (bay(px, y) > f * 0.5) continue;
+    P(x, f > 0.75 ? '#a5411d' : '#6d2a18', px, y, 1, 1);
+  }
   return c;
 }
 
@@ -748,7 +952,7 @@ const FX = {
   shard(x, y, n) {
     for (let i = 0; i < n; i++) {
       const a = rand(0, TAU), sp = rand(70, 260);
-      this.add({ k: 's', x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6, life: rand(0.3, 0.8), m: 0.8, s: randi(2, 5), c: '#05070c' });
+      this.add({ k: 's', x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6, life: rand(0.3, 0.8), m: 0.8, s: randi(2, 5), c: rand() > 0.55 ? '#05070c' : BP.fire[randi(1, 3)] });
     }
   },
   update(dt) {
@@ -811,14 +1015,35 @@ const BossCut = {
     if (typeof triOutlined !== 'function' || typeof CPAL === 'undefined') return;
     if (typeof CH === 'undefined' || !CH.manatee) return;
     try {
-      A.bayDusk = buildBay(BP.skyDusk, BP.seaDusk, { sun: [462, 168, 22, '#e9a061', '#ffd7a0'], road: '#c88257', chop: '#4a6272' });
+      // the torch line, thrown onto the water under each anchor on the pier
+      const TGL = [[10, BP.torchGlow, 0.5, 20], [62, BP.torchGlow, 0.5, 20],
+                   [104, BP.torchGlow, 0.44, 18], [128, BP.torchGlow, 0.40, 16],
+                   [172, BP.torchGlow, 0.44, 18], [202, BP.torchGlow, 0.5, 20]];
+      A.bayDusk = buildBay(BP.skyDusk, BP.seaDusk, {
+        skyPow: 1.55, sun: [462, 168, 22, '#ffb765', '#fff0c4'], road: '#c8704a', road2: '#f0a765',
+        chop: BP.chopDusk, cloudLit: '#ffbe6e', cloudLip: '#ffd58c',
+        rim: '#4a2418', torchPools: true, glows: TGL,
+      });
+      // the fire in the wreck is the only light in the first two, so it gets
+      // its own pool on the huts and its own road on the water
+      const EMB = [[128, HZ - 22, 30, 22], [150, HZ - 14, 20, 15], [104, HZ - 30, 18, 14]];
+      const EGL = [[128, BP.emberGlow, 0.62, 30], [150, BP.emberGlow, 0.46, 18]];
       A.bayNight = [
-        buildBay(BP.skyNight, BP.sea, { chop: '#26405a', wrecked: true, rim: '#1a1626' }),
-        buildBay(BP.skyDim, BP.sea, { chop: '#26405a', wrecked: true, rim: '#241f32' }),
-        buildBay(BP.skyDawn, BP.seaDusk, { sun: [112, 182, 17, '#c48c6c', '#f0c39a'], road: '#8a6a60', chop: '#3a5a78', wrecked: true, rim: '#2c2438' }),
+        buildBay(BP.skyNight, BP.sea, { skyPow: 1.6, chop: BP.chopNight, wrecked: true, rim: '#5a1f14',
+          stars: 170, cloudLit: '#5c2a30', cloudLip: '#8a3a2c', emberPools: EMB, glows: EGL }),
+        buildBay(BP.skyDim, BP.sea, { skyPow: 1.5, chop: BP.chopNight, wrecked: true, rim: '#5a2418',
+          stars: 120, cloudLit: '#7e4050', cloudLip: '#a8504a', emberPools: EMB, glows: EGL }),
+        buildBay(BP.skyDawn, BP.seaDawn, {
+          skyPow: 1.45, sun: [112, 182, 19, '#ffc07a', '#fff0cc'], road: '#a85a4e', road2: '#e09a6a',
+          chop: BP.chopDawn, cloudLit: '#ffa878', cloudLip: '#ffcb94',
+          wrecked: true, rim: '#7a3a28', stars: 40, emberPools: EMB, glows: EGL }),
       ];
       A.closeBg = buildCloseBg();
       A.swell = []; for (let i = 0; i < 7; i++) A.swell.push(buildSwellRow(i, i < 4 ? BP.foam[0] : BP.foam[1]));
+      // the swell is lit by whatever is in the sky, so it gets a set each
+      A.swellDusk = []; for (let i = 0; i < 7; i++) A.swellDusk.push(buildSwellRow(i, i < 3 ? '#6a4a6a' : i < 5 ? '#a06a66' : '#d08a5e'));
+      A.swellNight = []; for (let i = 0; i < 7; i++) A.swellNight.push(buildSwellRow(i, i < 4 ? '#24365e' : '#3c4a74'));
+      A.swellDawn = []; for (let i = 0; i < 7; i++) A.swellDawn.push(buildSwellRow(i, i < 3 ? '#3c4a7c' : i < 5 ? '#7a5278' : '#b86c60'));
       A.shark = buildSharkSide();
       A.sharkWhite = tintSprite(A.shark, '#ffffff', 0.9);
       A.sharkBack = buildSharkBack();
@@ -830,20 +1055,55 @@ const BossCut = {
       A.ott = buildOtterSide();
       A.hat = buildOtterHat();
       A.rifle = buildRifle();
+      // ---- lit copies.  Every figure that stands in front of a coloured sky
+      // gets that sky's colour on its edge, baked in, so nothing is a flat
+      // black cut-out.  Two sets: the sun behind him at dusk, the burning
+      // village off to the left at night.
+      A.sharkDusk = spr(rimLight(bounceLight(cloneSpr(A.shark), '#7a4a3c', 3, 0.7),
+                                 1, -1, '#ffbe72', '#c06a36', 2), A.shark.ax, A.shark.ay);
+      A.chiefDusk = spr(rimLight(cloneSpr(A.chief), 1, -1, '#ffd08a', '#c4763a', 2), A.chief.ax, A.chief.ay);
+      A.spearDusk = spr(rimLight(cloneSpr(A.spear), 1, -1, '#ffd08a', '#c4763a', 1), A.spear.ax, A.spear.ay);
+      A.finDusk = null;                        // filled below, once A.fin exists
+      A.sharkBackLit = spr(rimLight(cloneSpr(A.sharkBack), 0, -1, '#ff9a4a', '#a8471f', 2),
+                           A.sharkBack.ax, A.sharkBack.ay);
+      A.chiefClose = spr(rimLight(rimLight(cloneSpr(A.chief), -1, 0, '#ff8a3a', '#a84a1e', 2),
+                                  1, 0, '#5d7bc4', '#2b3a6a', 1), A.chief.ax, A.chief.ay);
+      A.spearClose = spr(rimLight(cloneSpr(A.spear), -1, 0, '#ff8a3a', '#a84a1e', 1), A.spear.ax, A.spear.ay);
+      // night: the fire is off to the left, the dawn sky is cold on the right
+      A.sharkNight = spr(rimLight(rimLight(cloneSpr(A.shark), -1, 0, '#e8622a', '#8c3316', 2),
+                                  1, -1, '#4a6aa8', null, 1), A.shark.ax, A.shark.ay);
+      A.chiefNight = spr(rimLight(cloneSpr(A.chief), -1, 0, '#e8622a', '#8c3316', 2), A.chief.ax, A.chief.ay);
+      A.manNight = spr(rimLight(rimLight(bounceLight(cloneSpr(A.man), '#3a5a7a', 3, 0.7),
+                                         -1, 0, '#ff8a3a', '#a84a1e', 2),
+                                1, -1, '#6a86c8', null, 1), A.man.ax, A.man.ay);
+      A.ottNight = spr(rimLight(cloneSpr(A.ott), -1, 0, '#ffa84a', '#b05a20', 2), A.ott.ax, A.ott.ay);
+      A.hatNight = spr(rimLight(cloneSpr(A.hat), -1, 0, '#ffa84a', null, 1), A.hat.ax, A.hat.ay);
+      A.rifleNight = spr(rimLight(cloneSpr(A.rifle), -1, 0, '#ffa84a', null, 1), A.rifle.ax, A.rifle.ay);
       A.fin = (function () {
         const c = can(26, 22), x = cx2(c);
         triOutlined(x, '#253448', BP.ink, [24, 21], [2, 21], [8, 0]);
         P(x, '#516787', 8, 2, 2, 12);
         return spr(outlineIt(c, BP.ink), 13, 21);
       })();
+      A.spearNight = spr(rimLight(cloneSpr(A.spear), -1, 0, '#e8622a', '#8c3316', 1), A.spear.ax, A.spear.ay);
+      A.finDusk = spr(rimLight(cloneSpr(A.fin), 1, -1, '#ffbe72', '#c06a36', 2), A.fin.ax, A.fin.ay);
       A.shadow = discSprite(104, 22, '#020509', 1.5);
       A.ring = []; for (let i = 0; i < 8; i++) A.ring.push(ringSprite(26 + i * 20, 7 + i * 5, 3 + i, BP.foam[Math.min(3, 3 - (i >> 2))]));
       A.mRing = []; for (let i = 0; i < 8; i++) A.mRing.push(ringSprite(26 + i * 18, 12 + i * 8, 4 + i * 2, BP.foam[Math.min(4, 4 - (i >> 1))]));
       A.spray = []; for (let i = 0; i < 4; i++) A.spray.push(buildSpray(300, 170, i + 1));
       A.sprayS = []; for (let i = 0; i < 4; i++) A.sprayS.push(buildSpray(120, 70, i + 5));
+      // water thrown up in front of a sunset is not white
+      A.sprayDusk = A.spray.map(o => spr(tintCanvas(cloneSpr(o), '#ffb877', 0.30), o.ax, o.ay));
+      A.spraySDusk = A.sprayS.map(o => spr(tintCanvas(cloneSpr(o), '#ffb877', 0.26), o.ax, o.ay));
+      A.sprayNight = A.spray.map(o => spr(tintCanvas(cloneSpr(o), '#5d7bc4', 0.34), o.ax, o.ay));
+      A.ringWarm = null;
       A.flame = []; for (let i = 0; i < 4; i++) A.flame.push(buildFlame(i));
       A.mini = buildMiniShade();
       A.miniWhite = tintSprite(A.mini, '#ffffff', 1);
+      A.miniCyan = spr(rimLight(cloneSpr(A.mini), 1, -1, '#34b4c4', '#145060', 2), A.mini.ax, A.mini.ay);
+      A.miniHot = spr(rimLight(cloneSpr(A.mini), 1, -1, '#ff8a6a', '#8c1a1c', 2), A.mini.ax, A.mini.ay);
+      A.ringCyan = A.mRing.map(o => spr(tintCanvas(cloneSpr(o), '#34b4c4', 0.8), o.ax, o.ay));
+      A.ringRed = A.mRing.map(o => spr(tintCanvas(cloneSpr(o), '#ff5a3a', 0.75), o.ax, o.ay));
       A.buf = can(640, 360); A.bufCtx = cx2(A.buf);
       // the half-tone the minis darken the bay with, baked once: doing this
       // as 57k fillRects per frame cost 30ms a frame before it was baked
@@ -852,6 +1112,31 @@ const BossCut = {
         dx.fillStyle = '#04080f'; dx.fillRect(0, 0, 640, 360);
         dx.fillStyle = '#000205';
         for (let y = 0; y < 360; y += 2) for (let x = (y >> 1) & 1; x < 640; x += 2) dx.fillRect(x, y, 1, 1); }
+      // the two minis each get their own colour of dark to sit in
+      A.ditherCyan = can(640, 360);
+      { const dx = cx2(A.ditherCyan);
+        dx.fillStyle = '#04141a'; dx.fillRect(0, 0, 640, 360);
+        dx.fillStyle = '#01080c';
+        for (let y = 0; y < 360; y += 2) for (let x = (y >> 1) & 1; x < 640; x += 2) dx.fillRect(x, y, 1, 1);
+        for (let y = 0; y < 360; y++) for (let x = 0; x < 640; x++) {
+          const f = 1 - Math.sqrt(Math.pow((x - 320) / 400, 2) + Math.pow((y - 200) / 260, 2));
+          if (f > 0 && bay(x, y) < f * 0.30) dx.fillRect(x, y, 1, 1);
+        } }
+      { const dx = cx2(A.ditherCyan); dx.fillStyle = '#0a2e38';
+        for (let y = 0; y < 360; y++) for (let x = 0; x < 640; x++) {
+          const f = 1 - Math.sqrt(Math.pow((x - 320) / 300, 2) + Math.pow((y - 210) / 190, 2));
+          if (f > 0 && bay(x + 1, y + 2) < f * 0.42) dx.fillRect(x, y, 1, 1);
+        } }
+      A.ditherRed = can(640, 360);
+      { const dx = cx2(A.ditherRed);
+        dx.fillStyle = '#1a0608'; dx.fillRect(0, 0, 640, 360);
+        dx.fillStyle = '#070103';
+        for (let y = 0; y < 360; y += 2) for (let x = (y >> 1) & 1; x < 640; x += 2) dx.fillRect(x, y, 1, 1);
+        dx.fillStyle = '#3d0d10';
+        for (let y = 0; y < 360; y++) for (let x = 0; x < 640; x++) {
+          const f = 1 - Math.sqrt(Math.pow((x - 320) / 320, 2) + Math.pow((y - 200) / 200, 2));
+          if (f > 0 && bay(x + 2, y + 1) < f * 0.40) dx.fillRect(x, y, 1, 1);
+        } }
       // warm every baked canvas once so the first frame never pays to upload
       const wc = cx2(can(8, 8));
       const warm = o => { if (!o) return; const c = o.c || o; if (c && c.width) wc.drawImage(c, 0, 0, c.width, c.height, 0, 0, 8, 8); };
@@ -1087,13 +1372,14 @@ const BossCut = {
       ctx.globalAlpha = 1;
     }
   },
-  swell(ctx, T) {
+  swell(ctx, T, set) {
+    set = set || A.swell;
     for (let i = 0; i < 7; i++) {
       const u = i / 6;
       const y = R(HZ + 4 + Math.pow(u, 1.7) * (360 - HZ - 22) + Math.sin(T * 0.7 + i * 1.6) * 1.5);
       const off = R(T * (7 + u * 26)) % 640;
-      ctx.drawImage(A.swell[i], -off, y);
-      ctx.drawImage(A.swell[i], 640 - off, y);
+      ctx.drawImage(set[i], -off, y);
+      ctx.drawImage(set[i], 640 - off, y);
     }
   },
   vignette(ctx) {
@@ -1118,7 +1404,7 @@ const BossCut = {
   drawIntro(ctx, T, t) {
     if (T >= KI.close && T < KI.down) { this.drawIntroClose(ctx, T, t); return; }
     ctx.drawImage(A.bayDusk, 0, 0);
-    this.swell(ctx, T);
+    this.swell(ctx, T, A.swellDusk);
     const s = this._shk;
     if (T < KI.breach) {
       // the water goes wrong: a shadow, then the fin, then the hump — all of
@@ -1129,20 +1415,20 @@ const BossCut = {
       ctx.globalAlpha = 1;
       if (T > KI.alarm) {
         const fk = clamp((T - KI.alarm) / (KI.breach - KI.alarm), 0, 1);
-        const fy = R(s.y - 14 - fk * 6), fn = A.fin;
+        const fy = R(s.y - 14 - fk * 6), fn = A.finDusk;
         // the wake dragging behind it
         for (let i = 0; i < 24; i++) {
           if (hash2(i, 5) < 0.3) continue;
           const dx = 44 + i * 10, a = 1 - i / 24;
-          P(ctx, BP.foam[a > 0.5 ? 3 : 1], s.x + dx, fy + 10 + R(i * 0.8), 4, 1);
-          P(ctx, BP.foam[a > 0.5 ? 2 : 0], s.x + dx, fy + 10 - R(i * 0.8), 4, 1);
+          P(ctx, a > 0.5 ? '#ffd7a0' : '#8a5a5e', s.x + dx, fy + 10 + R(i * 0.8), 4, 1);
+          P(ctx, a > 0.5 ? '#e0a070' : '#5a4258', s.x + dx, fy + 10 - R(i * 0.8), 4, 1);
         }
         // the surface humps up over his back
         for (let dx = -86; dx <= 86; dx++) {
           const hgt = R(Math.cos(dx / 86 * 1.5) * 12 * fk);
           if (hgt <= 0) continue;
-          P(ctx, BP.foam[0], s.x + dx, s.y - 6 - hgt, 1, hgt);
-          if (bay(s.x + dx, s.y) < 0.34) P(ctx, BP.foam[2], s.x + dx, s.y - 7 - hgt, 1, 2);
+          P(ctx, '#33395e', s.x + dx, s.y - 6 - hgt, 1, hgt);
+          if (bay(s.x + dx, s.y) < 0.34) P(ctx, '#a2707a', s.x + dx, s.y - 7 - hgt, 1, 2);
         }
         ctx.drawImage(fn.c, 0, 0, fn.w, fn.h, R(s.x + 18) - fn.ax * 2, fy - fn.ay * 2, fn.w * 2, fn.h * 2);
       }
@@ -1158,17 +1444,17 @@ const BossCut = {
         ctx.drawImage(rg.c, 292 - rg.ax, 326 - rg.ay);
       }
       if (bk < 1) {
-        const fr = A.spray[Math.min(3, Math.floor(bk * 4))];
+        const fr = A.sprayDusk[Math.min(3, Math.floor(bk * 4))];
         ctx.drawImage(fr.c, 292 - fr.ax, 332 - fr.h + R(bk * 40));
       }
       // the animal itself, and the man on its back, at twice the size
-      this.drawRider(ctx, s, 2);
+      this.drawRider(ctx, s, 2, true);
       if (T >= KI.down) {
         const dk = clamp((T - KI.down - 0.30) / 0.55, 0, 1);
         if (dk > 0) {
-          const fr = A.spray[Math.min(3, Math.floor(dk * 4))];
+          const fr = A.sprayDusk[Math.min(3, Math.floor(dk * 4))];
           ctx.drawImage(fr.c, 398 - fr.ax, 336 - fr.h);
-          const fr2 = A.spray[Math.min(3, 3 - Math.floor(dk * 3))];
+          const fr2 = A.sprayDusk[Math.min(3, 3 - Math.floor(dk * 3))];
           ctx.save(); ctx.scale(-1, 1);
           ctx.drawImage(fr2.c, -(398 + fr2.ax), 340 - fr2.h);
           ctx.restore();
@@ -1181,7 +1467,7 @@ const BossCut = {
     this.caption(ctx, LINES_I, T);
     if (T < 1.5) {
       ctx.globalAlpha = qa(clamp((T - 0.55) / 0.5, 0, 1) * clamp((1.5 - T) / 0.35, 0, 1));
-      pixelTextOutlined(ctx, 'FISHER VILLAGE', 320, 34, 7, '#9fb3c4', '#000000', 'center');
+      pixelTextOutlined(ctx, 'FISHER VILLAGE', 320, 34, 7, '#ffc78c', '#2a0e12', 'center');
       ctx.globalAlpha = 1;
     }
   },
@@ -1218,20 +1504,21 @@ const BossCut = {
       } else if (run >= 1) P(ctx, '#47372c', fx + 3, fy - 12, 3, 1);   // an arm, pointing
     }
   },
-  drawRider(ctx, s, sc) {
+  drawRider(ctx, s, sc, lit) {
     sc = sc || 1;
+    const SH = lit ? A.sharkDusk : A.shark, CF = lit ? A.chiefDusk : A.chief, SP = lit ? A.spearDusk : A.spear;
     ctx.save();
     ctx.translate(R(s.x), R(s.y));
     ctx.rotate(s.rot);
     ctx.scale(sc, sc);                       // integer scale: still pixel-exact
-    ctx.drawImage(A.shark.c, -A.shark.ax, -A.shark.ay);
+    ctx.drawImage(SH.c, -SH.ax, -SH.ay);
     // he sits just behind the dorsal, standing up against the arc
     ctx.translate(-14, -14);
     ctx.rotate(-s.rot * 0.8);
-    ctx.drawImage(A.chief.c, -A.chief.ax, -A.chief.ay);
+    ctx.drawImage(CF.c, -CF.ax, -CF.ay);
     ctx.save();
     ctx.translate(11, -34); ctx.rotate(-1.0);
-    ctx.drawImage(A.spear.c, -A.spear.ax, -A.spear.ay);
+    ctx.drawImage(SP.c, -SP.ax, -SP.ay);
     ctx.restore();
     ctx.restore();
   },
@@ -1241,22 +1528,22 @@ const BossCut = {
     const k = clamp((T - KI.close) / 0.35, 0, 1);
     const bob = R(Math.sin(t * 2.2) * 2);
     // the animal's back under him, at 3x, running off both sides of the frame
-    const sb = A.sharkBack;
+    const sb = A.sharkBackLit;
     ctx.drawImage(sb.c, 0, 0, sb.w, sb.h, 320 - sb.ax * 3, 366 + bob - sb.ay * 3, sb.w * 3, sb.h * 3);
     // water still sheeting off them
     const sk = clamp((T - KI.close) / 0.7, 0, 1);
     if (sk < 1) {
-      const fr = A.sprayS[Math.min(3, Math.floor(sk * 4))];
+      const fr = A.spraySDusk[Math.min(3, Math.floor(sk * 4))];
       ctx.drawImage(fr.c, 0, 0, fr.w, fr.h, 320 - fr.ax * 2, 340 + R(sk * 52) - fr.h * 2, fr.w * 2, fr.h * 2);
     }
     // him: a warm rim behind, then the man
-    const ch = A.chief, cy = 268 + bob;
+    const ch = A.chiefClose, cy = 268 + bob;
     ctx.globalAlpha = qa(0.5 + Math.sin(t * 3) * 0.1);
     ctx.drawImage(A.chiefRim.c, 0, 0, ch.w, ch.h, 320 - ch.ax * 3 - 4, cy - ch.ay * 3 - 3, ch.w * 3, ch.h * 3);
     ctx.globalAlpha = 1;
     ctx.drawImage(ch.c, 0, 0, ch.w, ch.h, 320 - ch.ax * 3, cy - ch.ay * 3, ch.w * 3, ch.h * 3);
     // the spear, well clear of his face, coming up as he rises
-    const sp = A.spear, lift = clamp((T - KI.close - 0.2) / 0.55, 0, 1);
+    const sp = A.spearClose, lift = clamp((T - KI.close - 0.2) / 0.55, 0, 1);
     ctx.save();
     ctx.translate(320 + 33, cy - 141 - R(lift * 8) + bob);
     ctx.rotate(lerp(-0.5, -1.15, lift));
@@ -1272,9 +1559,10 @@ const BossCut = {
       ctx.globalAlpha = qa(fadeCard);
       const ox = this.slab(ctx, 34, 28, ck, -1, '#000000');
       P(ctx, BP.red, ox, 33, 640, 2);
+      P(ctx, '#ff6a3a', ox, 35, 640, 1);
       P(ctx, BP.red, ox, 62, 640, 1);
       pixelTextOutlined(ctx, 'THE VILLAGE CHIEF', 320 + ox, 39, 17, BP.gold, '#14141c', 'center');
-      if (ck >= 1) pixelText(ctx, 'HE RIDES THE THING THAT TOOK HER', 320, 68, 7, '#c88a8a', 'center');
+      if (ck >= 1) pixelText(ctx, 'HE RIDES THE THING THAT TOOK HER', 320, 68, 7, '#ff9a72', 'center');
       ctx.globalAlpha = 1;
     }
     // and his line
@@ -1292,7 +1580,7 @@ const BossCut = {
     const bi = T < KD.mother ? 0 : T < KD.mother + 0.9 ? 1 : 2;
     const bg = A.bayNight[bi];
     ctx.drawImage(bg, 0, 0);
-    this.swell(ctx, T);
+    this.swell(ctx, T, bi === 2 ? A.swellDawn : A.swellNight);
     // the wreck of his village, burning down to the waterline
     const fl = A.flame[Math.floor(t * 12) % 4];
     ctx.drawImage(fl.c, 128 - fl.ax, HZ - 2 - fl.ay);
@@ -1305,28 +1593,28 @@ const BossCut = {
     //      going under actually looks like going under.
     ctx.save();
     ctx.translate(R(s.x), R(s.y)); ctx.rotate(s.rot); ctx.scale(1, -1);
-    ctx.drawImage(A.shark.c, -A.shark.ax, -A.shark.ay);
+    ctx.drawImage(A.sharkNight.c, -A.sharkNight.ax, -A.sharkNight.ay);
     ctx.restore();
     ctx.save();
     ctx.translate(R(c.x), R(c.y)); ctx.rotate(c.rot);
-    ctx.drawImage(A.chief.c, -A.chief.ax, -A.chief.ay);
+    ctx.drawImage(A.chiefNight.c, -A.chiefNight.ax, -A.chiefNight.ay);
     ctx.restore();
     if (T > KD.slip && T < KD.rise + 0.8) {
       const k = (T - KD.slip);
       ctx.save();
       ctx.translate(R(344 + k * 18), R(196 + k * k * 78)); ctx.rotate(k * 3.4);
-      ctx.drawImage(A.spear.c, -A.spear.ax, -A.spear.ay);
+      ctx.drawImage(A.spearNight.c, -A.spearNight.ax, -A.spearNight.ay);
       ctx.restore();
     }
     ctx.drawImage(bg, 0, WLY, 640, 360 - WLY, 0, WLY, 640, 360 - WLY);
-    this.swell(ctx, T);
+    this.swell(ctx, T, bi === 2 ? A.swellDawn : A.swellNight);
     // froth along the cut, so the waterline reads as water and not as a crop
     if (s.y < WLY + 40) {
       const half = R(78 * clamp((WLY + 40 - s.y) / 60, 0, 1));
       for (let dx = -half; dx <= half; dx++) {
         const px = R(s.x) + dx, wob = R(Math.sin((px + T * 26) * 0.3) * 1.5);
-        if (bay(px, T * 8) < 0.62) P(ctx, BP.foam[2], px, WLY - 2 + wob, 1, 2);
-        if (bay(px + 2, T * 8 + 1) < 0.34) P(ctx, BP.foam[3], px, WLY - 3 + wob, 1, 1);
+        if (bay(px, T * 8) < 0.62) P(ctx, '#4a6a92', px, WLY - 2 + wob, 1, 2);
+        if (bay(px + 2, T * 8 + 1) < 0.34) P(ctx, bi === 2 ? '#e8a878' : '#9fc2dc', px, WLY - 3 + wob, 1, 1);
       }
     }
     // the foam still boiling where he went down
@@ -1358,27 +1646,27 @@ const BossCut = {
       ctx.save();
       ctx.translate(R(m.x), R(m.y));
       ctx.scale(-1, 1);                                    // she faces the village
-      ctx.drawImage(A.man.c, -A.man.ax, -A.man.ay);
+      ctx.drawImage(A.manNight.c, -A.manNight.ax, -A.manNight.ay);
       ctx.restore();
       if (k < 1) for (let i = 0; i < 14; i++) {
         const dx = -66 + i * 10, hgt = R((1 - k) * 14 * (0.4 + hash2(i, 3)));
         if (hgt <= 0) continue;
-        P(ctx, BP.foam[3], m.x + dx, m.y - 20 - hgt, 1, hgt);
+        P(ctx, i & 1 ? '#c8e2ef' : '#e8b088', m.x + dx, m.y - 20 - hgt, 1, hgt);
       }
       const oy = R(o.y - Math.sin(t * 2));
       ctx.save();
       ctx.translate(R(o.x), oy);
       ctx.scale(-1, 1);
-      ctx.drawImage(A.ott.c, -A.ott.ax, -A.ott.ay);
-      const rf = A.rifle;                                  // the rifle, at his side
+      ctx.drawImage(A.ottNight.c, -A.ottNight.ax, -A.ottNight.ay);
+      const rf = A.rifleNight;                                  // the rifle, at his side
       ctx.save(); ctx.translate(-11, -7); ctx.rotate(lerp(0.9, 1.5, o.arm));
       ctx.drawImage(rf.c, -rf.ax, -rf.ay); ctx.restore();
       ctx.restore();
       // the hat: on his head, then off it, held against his chest
-      const h = A.hat;
+      const h = A.hatNight;
       if (o.hat <= 0) ctx.drawImage(h.c, o.x - h.ax, oy - 26 - h.ay);
       else {
-        P(ctx, '#c8703c', o.x - 9, oy - 21, 3, 9);
+        P(ctx, '#e8904c', o.x - 9, oy - 21, 3, 9);
         P(ctx, BP.ink, o.x - 10, oy - 21, 1, 9);
         const hx = R(lerp(o.x, o.x - 10, o.hat)), hy = R(lerp(oy - 26, oy - 13, o.hat));
         ctx.save(); ctx.translate(hx, hy); ctx.rotate(lerp(0, -1.0, o.hat));
@@ -1395,7 +1683,7 @@ const BossCut = {
       P(ctx, BP.goldD, ox, 40, 640, 1);
       P(ctx, BP.goldD, ox, 67, 640, 1);
       pixelTextOutlined(ctx, 'THE VILLAGE CHIEF IS DEAD', 320 + ox, 46, 14, BP.gold, '#14141c', 'center');
-      if (ck >= 1) pixelText(ctx, 'THE BOATS WILL NOT FISH HERE AGAIN', 320, 74, 7, '#9fb3c4', 'center');
+      if (ck >= 1) pixelText(ctx, 'THE BOATS WILL NOT FISH HERE AGAIN', 320, 74, 7, '#e8b078', 'center');
     }
   },
 
@@ -1403,7 +1691,7 @@ const BossCut = {
   drawMiniIntro(ctx, T) {
     // one baked half-tone plate, blitted once: the bay goes properly black
     const dark = clamp(T / 0.16, 0, 1) * (T > KM.out ? clamp(1 - (T - KM.out) / 0.3, 0, 1) : 1);
-    ctx.globalAlpha = qa(dark * 0.86); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1;
+    ctx.globalAlpha = qa(dark * 0.86); ctx.drawImage(A.ditherCyan, 0, 0); ctx.globalAlpha = 1;
     if (!this.anchored) { this.drawMini(ctx, 320, 214, T); FX.render(ctx, 0, 0); }
     const lb = clamp(T / 0.12, 0, 1) * (T > KM.out ? clamp(1 - (T - KM.out) / 0.28, 0, 1) : 1);
     this.letterbox(ctx, lb * 0.6);
@@ -1412,12 +1700,15 @@ const BossCut = {
     const out = T > KM.out ? clamp((T - KM.out) / 0.34, 0, 1) : 0;
     const fly = out * out * 760;
     const nameSize = this.fitSize(this.name, 560, 22);
-    const topOx = this.slab(ctx, 54, 20, ck, -1, '#0a0910', -fly);
-    P(ctx, BP.red, topOx, 72, 640, 2);
-    pixelText(ctx, 'THE WATER MOVES WRONG', 320 + topOx, 59, 8, '#c86a6a', 'center');
-    const botOx = this.slab(ctx, 74, 36, ck, 1, '#0a0910', fly);
-    pixelTextOutlined(ctx, this.name, 320 + botOx, 82, nameSize, BP.gold, '#14141c', 'center');
-    P(ctx, BP.red, botOx, 109, 640, 1);
+    const topOx = this.slab(ctx, 54, 20, ck, -1, '#051820', -fly);
+    P(ctx, BP.miniCyan[2], topOx, 53, 640, 1);
+    P(ctx, BP.miniCyan[4], topOx, 72, 640, 2);
+    P(ctx, BP.miniCyan[1], topOx, 74, 640, 1);
+    pixelText(ctx, 'THE WATER MOVES WRONG', 320 + topOx, 59, 8, BP.miniCyan[5], 'center');
+    const botOx = this.slab(ctx, 74, 36, ck, 1, '#071f28', fly);
+    pixelTextOutlined(ctx, this.name, 320 + botOx, 82, nameSize, BP.gold, '#062028', 'center');
+    P(ctx, BP.miniCyan[4], botOx, 109, 640, 1);
+    P(ctx, BP.miniCyan[2], botOx, 110, 640, 1);
   },
   fitSize(s, maxW, start) {
     for (let sz = start; sz > 8; sz -= 2) if (textWidth(s, sz) <= maxW) return sz;
@@ -1431,17 +1722,17 @@ const BossCut = {
     // the shock the water takes when it comes up
     const sk = clamp(T / 0.42, 0, 1);
     if (sk < 1) {
-      const fr = A.mRing[Math.min(7, Math.floor(sk * 8))];
+      const fr = A.ringCyan[Math.min(7, Math.floor(sk * 8))];
       ctx.globalAlpha = qa(1 - sk * 0.7);
       ctx.drawImage(fr.c, R(cx) - fr.ax, R(cy) - fr.ay);
       ctx.globalAlpha = 1;
     }
     const ri = Math.min(7, Math.floor(clamp((T - 0.2) / 0.9, 0, 1) * 8));
-    const rg = A.mRing[ri];
+    const rg = A.ringCyan[ri];
     ctx.globalAlpha = qa(clamp(1 - T / 1.2, 0.12, 1));
     ctx.drawImage(rg.c, R(cx) - rg.ax, R(cy) - rg.ay);
     ctx.globalAlpha = qa(0.4 + e * 0.6);
-    ctx.drawImage(A.mini.c, R(cx) - A.mini.ax, y - A.mini.ay);
+    ctx.drawImage(A.miniCyan.c, R(cx) - A.miniCyan.ax, y - A.miniCyan.ay);
     ctx.globalAlpha = 1;
     // the eyes come on last
     if (T > 0.34) {
@@ -1456,7 +1747,7 @@ const BossCut = {
   // ---- MINI: the sting ----------------------------------------------------
   drawMiniDefeat(ctx, T) {
     const dark = clamp(T / 0.1, 0, 1) * (T > KX.out ? clamp(1 - (T - KX.out) / 0.3, 0, 1) : 1);
-    ctx.globalAlpha = qa(dark * 0.80); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1;
+    ctx.globalAlpha = qa(dark * 0.80); ctx.drawImage(A.ditherRed, 0, 0); ctx.globalAlpha = 1;
     if (!this.anchored) { this.drawMiniBreak(ctx, 320, 214, T); FX.render(ctx, 0, 0); }
     const lb = clamp(T / 0.1, 0, 1) * (T > KX.out ? clamp(1 - (T - KX.out) / 0.26, 0, 1) : 1);
     this.letterbox(ctx, lb * 0.55);
@@ -1465,10 +1756,12 @@ const BossCut = {
     const out = T > KX.out ? clamp((T - KX.out) / 0.34, 0, 1) : 0;
     const drop = R(out * out * 300);
     const nameSize = this.fitSize(this.name, 520, 18);
-    const ox = this.slab(ctx, 58 + drop, 58, ck, -1, '#0a0910');
-    P(ctx, '#3a3040', ox, 58 + drop, 640, 1);
-    P(ctx, '#3a3040', ox, 115 + drop, 640, 1);
-    pixelTextOutlined(ctx, this.name, 320 + ox, 64 + drop, nameSize, '#8e9aa8', '#14141c', 'center');
+    const ox = this.slab(ctx, 58 + drop, 58, ck, -1, '#16070a');
+    P(ctx, BP.miniRed[3], ox, 58 + drop, 640, 1);
+    P(ctx, BP.miniRed[1], ox, 59 + drop, 640, 1);
+    P(ctx, BP.miniRed[1], ox, 114 + drop, 640, 1);
+    P(ctx, BP.miniRed[3], ox, 115 + drop, 640, 1);
+    pixelTextOutlined(ctx, this.name, 320 + ox, 64 + drop, nameSize, '#d8b0a0', '#1a0508', 'center');
     if (T >= KX.stamp) {
       // struck through, and stamped
       const w = Math.min(600, textWidth(this.name, nameSize) + 40);
@@ -1477,7 +1770,7 @@ const BossCut = {
       }
       const sk = clamp((T - KX.stamp) / 0.1, 0, 1);
       ctx.globalAlpha = qa(sk);
-      pixelTextOutlined(ctx, 'DOWN', 320, 88 + drop - R((1 - sk) * 6), R(lerp(30, 24, sk)), '#ff6161', '#14141c', 'center');
+      pixelTextOutlined(ctx, 'DOWN', 320, 88 + drop - R((1 - sk) * 6), R(lerp(30, 24, sk)), '#ffb04a', '#5c1010', 'center');
       ctx.globalAlpha = 1;
     }
   },
@@ -1486,18 +1779,18 @@ const BossCut = {
     if (T < KX.crack + 0.5) {
       const gone = clamp((T - KX.crack) / 0.5, 0, 1);
       ctx.globalAlpha = qa((1 - gone) * 0.95);
-      const s = T < KX.crack ? A.miniWhite : A.mini;
+      const s = T < KX.crack ? A.miniWhite : A.miniHot;
       const jitter = T < KX.crack ? R(rand(-2, 2)) : 0;
       ctx.drawImage(s.c, R(cx) - s.ax + jitter, R(cy) - s.ay, s.w, s.h);
       ctx.globalAlpha = 1;
     }
     if (T >= KX.crack) {
-      const rg = A.mRing[Math.min(7, Math.floor(clamp((T - KX.crack) / 0.7, 0, 1) * 8))];
+      const rg = A.ringRed[Math.min(7, Math.floor(clamp((T - KX.crack) / 0.7, 0, 1) * 8))];
       ctx.globalAlpha = qa(clamp(1 - (T - KX.crack) / 0.9, 0.1, 1));
       ctx.drawImage(rg.c, R(cx) - rg.ax, R(cy) - rg.ay);
       ctx.globalAlpha = 1;
     }
-    if (k < 1) P(ctx, rgbaq('#ffffff', (1 - k) * 0.5), R(cx) - 90, R(cy) - 48, 180, 96);
+    if (k < 1) P(ctx, rgbaq('#ffb04a', (1 - k) * 0.5), R(cx) - 90, R(cy) - 48, 180, 96);
   },
 };
 

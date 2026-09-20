@@ -94,15 +94,25 @@ function bakeDisc(r, ry, cols) {
 const DP = {
   ink: '#0b0912', ink2: '#171423',
   blood: ['#2e050b', '#4b0a12', '#7a0d16', '#a8151f', '#c4202c', '#e8515a'],
-  // night beach
-  skyN: ['#05070f', '#080c18', '#0d1322', '#121b2e', '#18243c', '#1f2d49'],
-  skyD: ['#0a0c18', '#141a30', '#26243f', '#442f4f', '#6e4152', '#a75b4e'],
-  seaN: ['#040810', '#07101e', '#0b182c', '#102240', '#173056'],
+  // the cold register of the sinking: deep sea, bruise, bioluminescence
+  deep: ['#03060e', '#061224', '#0a1e3e', '#10305e', '#1a4a84'],
+  bruise: ['#120b22', '#1e1038', '#2e1a4e', '#432663'],
+  biolum: ['#0e5a66', '#1c9aa4', '#48d8cf', '#b4fff2'],
+  // night beach — a blue-black night, not a grey one, with 10 sky bands so
+  // the dawn can be a real posterised ramp instead of a three-step wash
+  skyN: ['#03040c', '#050916', '#081024', '#0b1834', '#0e2146', '#122a58', '#17356a', '#1e4179', '#2a5088', '#3a6296'],
+  skyD: ['#1a0a2c', '#2e0f3e', '#4a1547', '#6c1d46','#901f3f', '#b83a38', '#dc632c', '#f2903a', '#ffc25c', '#ffe9a6'],
+  seaN: ['#02050e', '#05101f', '#08192f', '#0d2444', '#12325e', '#1a4278'],
+  seaD: ['#160a1e', '#2a1030', '#451a3c', '#6c2a40', '#a34a42', '#d98a58'],
   foam: ['#5d7d95', '#8fb0c4', '#c8dde9', '#f2fbff'],
-  sand: ['#1a1520', '#26202c', '#342c39', '#443949', '#584a59'],
+  foamW: ['#96605e', '#c68a70', '#efc396', '#fff2d2'],
+  sand: ['#100d1a', '#1a1626', '#272034', '#362c42', '#483a52'],
+  sandD: ['#2a1522', '#43202c', '#603037', '#7d4842', '#9c6552'],
   sandW: ['#241a1c', '#35262a', '#493438', '#5d4446'],
   wood: ['#1c1520', '#2e2430', '#453546', '#5b4757'],
-  fire: ['#5c1b10', '#9c3115', '#d4651c', '#ffab34', '#ffe6a2'],
+  fire: ['#4a0f12', '#8c2410', '#c44f12', '#ef8a1c', '#ffb83e', '#ffe08c', '#fff6dc'],
+  // the colours firelight throws onto whatever it touches
+  warm: ['#2e1208', '#5a2410', '#a4501c', '#e08c30', '#ffc866'],
   man: ['#201c26', '#2f2a35', '#403a47', '#524b59', '#665e6e'],
   belly: ['#3a4450', '#4c5763', '#606b78'],
   fur: ['#4b230f', '#6d3316', '#9c4d24', '#c8703c', '#e0975c'],
@@ -483,6 +493,20 @@ function otterSideFace(ctx, exp, blink, t) {
   P(ctx, '#f0e0bd', nx + 2, ny - 2, 5, 1); P(ctx, '#f0e0bd', nx + 2, ny + 1, 5, 1);
 }
 
+// blit a baked rim-light sprite over the part just drawn
+function rimBlit(ctx, key, lit, mirror) {
+  if (!lit || !A.rim || !A.rim[key]) return;
+  const m = mirror ? 1 : 0;
+  for (const which of ['fire', 'cold', 'dawn']) {
+    const a = lit[which];
+    if (!a || a < 0.03) continue;
+    const s = A.rim[key][which][which === 'fire' ? m : 1 - m];
+    ctx.globalAlpha = qa(a);
+    ctx.drawImage(s.c, -s.ax, -s.ay);
+  }
+  ctx.globalAlpha = 1;
+}
+
 // o: {x,y,flip,rot,s,armNear,armFar,headR,headX,headY,exp,blink,hat,crouch}
 function drawOtterSide(ctx, o, t) {
   ctx.save();
@@ -491,17 +515,20 @@ function drawOtterSide(ctx, o, t) {
   ctx.rotate(o.rot || 0);
   const s = o.s || 1; ctx.scale(s, s);
   const ph = o.phase || 0;
+  const lit = o.lit, mir = !!o.flip;
   ctx.save(); ctx.translate(-8, 11); ctx.rotate(3.3 + Math.sin(ph) * 0.18);
-  ctx.drawImage(A.oTail.c, -A.oTail.ax, -A.oTail.ay); ctx.restore();
+  ctx.drawImage(A.oTail.c, -A.oTail.ax, -A.oTail.ay); rimBlit(ctx, 'tail', lit, mir); ctx.restore();
   // far arm
   ctx.save(); ctx.translate(3, -1); ctx.rotate(o.armFar === undefined ? 0.7 : o.armFar);
   ctx.drawImage(A.oArmFar.c, -A.oArmFar.ax, -A.oArmFar.ay);
   if (o.toolFar) o.toolFar(ctx);
   ctx.restore();
   ctx.drawImage(A.oBody.c, -A.oBody.ax, -A.oBody.ay);
+  rimBlit(ctx, 'body', lit, mir);
   // near arm (holds the tool)
   ctx.save(); ctx.translate(8, -2); ctx.rotate(o.armNear === undefined ? 0.35 : o.armNear);
   ctx.drawImage(A.oArm.c, -A.oArm.ax, -A.oArm.ay);
+  rimBlit(ctx, 'arm', lit, mir);
   if (o.tool) o.tool(ctx);
   ctx.restore();
   // head
@@ -509,6 +536,7 @@ function drawOtterSide(ctx, o, t) {
   ctx.rotate(o.headR || 0);
   const H = o.hat === false ? A.oHeadBare : A.oHead;
   ctx.drawImage(H.c, -H.ax, -H.ay);
+  rimBlit(ctx, o.hat === false ? 'headBare' : 'head', lit, mir);
   otterSideFace(ctx, o.exp || 'idle', o.blink, t);
   ctx.restore();
   ctx.restore();
@@ -554,7 +582,7 @@ function buildTools() {
 }
 
 // -------------------------------------------------------- beach backdrop
-const BG_N = 9;                                    // night -> dawn frames
+const BG_N = 13;                                   // night -> dawn frames
 function buildBeach() {
   A.bg = [];
   const HORIZON = 140, SANDY = 196;
@@ -563,32 +591,59 @@ function buildBeach() {
     const c = can(640, 360), x = cx2(c);
     // ---- sky, sea and sand, written straight into one ImageData.  Doing
     //      this with fillRect cost a second of load time per frame.
+    // Ten sky bands, ten sea bands: the dawn is a posterised ramp of many
+    // discrete colours, not a wash.  Every band crossfades night -> dawn.
     const sky = DP.skyN.map((h, i) => hexToRgb(mixHex(h, DP.skyD[i], k)));
-    const sea = DP.seaN.map((h, i) => hexToRgb(mixHex(h, ['#0a0e1c', '#141b32', '#22263f', '#37304d', '#553c52'][i], k)));
-    const sand = DP.sand.map((h, i) => hexToRgb(mixHex(h, ['#221a1e', '#33272a', '#463539', '#5a4548', '#6e5652'][i], k)));
-    const wet = DP.sandW.map(h => hexToRgb(mixHex(h, '#3a2b30', k * 0.5)));
-    const warmC = hexToRgb('#e2a06a');
+    const sea = DP.seaN.map((h, i) => hexToRgb(mixHex(h, DP.seaD[i], Math.min(1, k * 1.05))));
+    const sand = DP.sand.map((h, i) => hexToRgb(mixHex(h, DP.sandD[i], k)));
+    const wet = DP.sandW.map((h, i) => hexToRgb(mixHex(h, ['#3a1c26', '#582a2e', '#7a4238', '#9a6048'][i], k)));
+    // how high the dawn has climbed, and where its heart sits
+    const SUNX = 516, sunUp = clamp((k - 0.26) / 0.74, 0, 1);
+    const SUNY = R(HORIZON + 26 - sunUp * 44), SUNR = 34;
     const img = x.createImageData(640, 360), d = img.data;
     for (let y = 0; y < 360; y++) for (let px = 0; px < 640; px++) {
       let col;
       if (y < HORIZON) {
         const u = y / (HORIZON - 1);
-        const fb = Math.pow(u, 0.72) * (sky.length - 1);
+        const fb = Math.pow(u, 0.80) * (sky.length - 1);
         let bi2 = Math.floor(fb); const fr = fb - bi2;
-        const warm = Math.max(0, 1 - Math.hypot((px - 520) / 300, (y - HORIZON) / 150)) * k;
         let idx = bi2 + (fr > bay(px, y) ? 1 : 0);
-        idx = Math.min(sky.length - 1, idx + (warm > 0.55 ? 1 : 0));
+        // the glow around the sun lifts the band index by up to four steps,
+        // so the ramp bulges into a real dawn instead of tinting flat
+        const glow = Math.max(0, 1 - Math.hypot((px - SUNX) / 340, (y - SUNY) / 210)) * k;
+        const lift = glow * 5.4 + (k > 0.5 ? (1 - u) * 0 : 0);
+        let li = Math.floor(lift); if (lift - li > bay(px + 2, y + 1)) li++;
+        idx = Math.min(sky.length - 1, idx + li);
         col = sky[idx];
-        if (warm > 0.70) {
-          const w2 = Math.min(1, (warm - 0.70) * 2.2);
-          col = [col[0] + (warmC[0] - col[0]) * w2, col[1] + (warmC[1] - col[1]) * w2, col[2] + (warmC[2] - col[2]) * w2];
+        // the sun itself: a hard disc in three posterised rings
+        if (k > 0.30) {
+          const dd = Math.hypot((px - SUNX) * 0.92, (y - SUNY));
+          if (dd < SUNR) {
+            const ring = dd / SUNR;
+            const sc = ring < 0.52 ? '#fff6dc' : ring < 0.80 ? '#ffe09a' : '#ffb863';
+            const sa = clamp((k - 0.30) / 0.30, 0, 1);
+            const sr = hexToRgb(sc);
+            col = [col[0] + (sr[0] - col[0]) * sa, col[1] + (sr[1] - col[1]) * sa, col[2] + (sr[2] - col[2]) * sa];
+          } else if (dd < SUNR + 9 && bay(px, y) < (1 - (dd - SUNR) / 9) * 0.8 * clamp((k - 0.30) / 0.3, 0, 1)) {
+            col = hexToRgb('#ffb863');
+          }
         }
       } else if (y < SANDY) {
         const u = (y - HORIZON) / (SANDY + 16 - HORIZON);
         const fb = (1 - Math.pow(u, 0.8)) * (sea.length - 1);
         let bi2 = Math.floor(fb); const fr = fb - bi2;
         const n = vnoise(px * 0.04, y * 0.12);
-        col = sea[Math.min(sea.length - 1, Math.max(0, bi2 + ((fr + (n - 0.5) * 0.5) > bay(px, y) ? 1 : 0)))];
+        // the sea takes the sky's colour back: a broad band of reflected
+        // dawn under the sun, dashed and dithered so it stays pixel art
+        let idx = Math.min(sea.length - 1, Math.max(0, bi2 + ((fr + (n - 0.5) * 0.5) > bay(px, y) ? 1 : 0)));
+        const refl = Math.max(0, 1 - Math.abs(px - SUNX) / 220) * k;
+        if (refl > 0.04) {
+          const dash = vnoise(px * 0.09, y * 0.55);
+          const amt = refl * (0.45 + dash * 0.85) * (1 - u * 0.45);
+          let ri = Math.floor(amt * 4.2); if (amt * 4.2 - ri > bay(px, y + 2)) ri++;
+          idx = Math.min(sea.length - 1, idx + ri);
+        }
+        col = sea[idx];
       } else {
         const u = (y - SANDY) / (360 - SANDY);
         const n = vnoise(px * 0.05, y * 0.11) * 0.8 + vnoise(px * 0.2, y * 0.4) * 0.3;
@@ -624,34 +679,41 @@ function buildBeach() {
       for (const [cxp, cyp, cr] of [[-5, -4, 3], [4, 3, 4], [6, -6, 2], [-2, 6, 2]]) ditherDisc(x, mx + cxp, my + cyp, cr, cr, [rgbaq('#c9c4ae', ma * 0.8)]);
     }
         // a glitter path under the moon / the dawn
-    const gx = k < 0.5 ? 118 : 520;
-    for (let i = 0; i < 260; i++) {
-      const yy = R(HORIZON + Math.pow(hash2(i, 7), 1.6) * 54);
-      const spread = 8 + (yy - HORIZON) * 2.6;
-      const xx = R(gx + (hash2(i, 13) - 0.5) * spread * 2);
-      if (xx < 0 || xx > 639) continue;
-      P(x, rgbaq(k < 0.5 ? '#9fb6c8' : '#c08a6a', 0.25 + hash2(i, 19) * 0.45), xx, yy, 1 + (hash2(i, 23) > 0.7 ? 1 : 0), 1);
+    for (const pass of [0, 1]) {
+      const gx = pass ? 516 : 118;
+      const ga = pass ? k : (1 - k * 1.15);
+      if (ga <= 0.02) continue;
+      const GC = pass ? ['#ffeec0', '#ffc774', '#e08a46'] : ['#cfe4f2', '#8fb0c4', '#5d7d95'];
+      for (let i = 0; i < 300; i++) {
+        const yy = R(HORIZON + Math.pow(hash2(i, 7 + pass * 3), 1.6) * 54);
+        const spread = 8 + (yy - HORIZON) * 2.6;
+        const xx = R(gx + (hash2(i, 13 + pass) - 0.5) * spread * 2);
+        if (xx < 0 || xx > 639) continue;
+        const b = hash2(i, 19 + pass);
+        P(x, rgbaq(GC[b > 0.72 ? 0 : b > 0.36 ? 1 : 2], (0.25 + b * 0.55) * ga), xx, yy, 1 + (hash2(i, 23) > 0.7 ? 1 : 0), 1);
+      }
     }
-    // distant headland, left
-    const hl = mixHex('#080b14', '#141426', k);
+    // distant headland, left — a silhouette that picks up the dawn on its rim
+    const hl = mixHex('#080b14', '#20132c', k);
     for (let px = 0; px < 232; px++) {
       const taper = clamp((232 - px) / 70, 0, 1);
       const h = R((10 + vnoise(px * 0.02, 3) * 18 + Math.max(0, 70 - px) * 0.30) * taper);
       if (h < 1) continue;
       P(x, hl, px, HORIZON - h, 1, h + 1);
-      P(x, mixHex(hl, '#2a2c42', 0.5), px, HORIZON - h, 1, 1);
+      P(x, mixHex('#2a2c42', '#7a3a4a', k), px, HORIZON - h, 1, 1);
+      if (k > 0.45) P(x, rgbaq('#e08a46', (k - 0.45) * 0.9), px, HORIZON - h, 1, 1);
     }
     // a low dune and marram grass along the top of the beach, right
     for (let px = 430; px < 640; px++) {
       const h = R(6 + vnoise(px * 0.03, 8) * 12 + (px - 430) * 0.05);
-      P(x, mixHex('#191423', '#2b2334', k), px, SANDY - h, 1, h);
-      P(x, mixHex('#241d2e', '#3a2f3c', k), px, SANDY - h, 1, 1);
+      P(x, mixHex('#141024', '#3a2032', k), px, SANDY - h, 1, h);
+      P(x, mixHex('#241d2e', '#8a5044', k), px, SANDY - h, 1, 1);
     }
     const grng = new SeededRandom(551);
     for (let i = 0; i < 90; i++) {
       const gx2 = R(grng.range(436, 638)), gh = R(grng.range(5, 13));
       const gy2 = SANDY - R(6 + vnoise(gx2 * 0.03, 8) * 12 + (gx2 - 430) * 0.05);
-      for (let j = 0; j < gh; j++) P(x, j > gh - 3 ? '#3b4436' : '#232b24', gx2 + R(j * j * 0.05 * (grng.next() > 0.5 ? 1 : -1)), gy2 - j);
+      for (let j = 0; j < gh; j++) P(x, j > gh - 3 ? mixHex('#3b4436', '#c88a52', k) : mixHex('#1b2420', '#4a3030', k), gx2 + R(j * j * 0.05 * (grng.next() > 0.5 ? 1 : -1)), gy2 - j);
     }
         // pebbles, shells and weed
     const prng = new SeededRandom(3311);
@@ -659,12 +721,15 @@ function buildBeach() {
       const px = R(prng.range(0, 640)), py = R(prng.range(SANDY + 6, 360));
       const r = prng.range(0.8, 2.6);
       const dark = prng.next() > 0.5;
-      ditherDisc(x, px, py, r, r * 0.7, dark ? ['#4b3f4c', '#332a36', '#1c1620'] : ['#6c5c63', '#4a3f49', '#2b2430']);
+      const pc = dark ? ['#4b3f4c', '#332a36', '#1c1620'] : ['#6c5c63', '#4a3f49', '#2b2430'];
+      ditherDisc(x, px, py, r, r * 0.7, pc.map(h => mixHex(h, mixHex(h, '#c07a52', 0.5), k)));
       P(x, rgbaq('#000000', 0.35), px + 1, py + 2, Math.max(1, R(r)), 1);
+      // dawn catches the seaward edge of each stone
+      if (k > 0.4 && r > 1.4) P(x, rgbaq('#ffc27a', (k - 0.4) * 0.8), px + R(r * 0.5), py - R(r * 0.4), 1, 1);
     }
     for (let i = 0; i < 26; i++) {
       const px = R(prng.range(0, 640)), py = R(prng.range(SANDY + 4, 356));
-      for (let j = 0; j < 7; j++) P(x, prng.next() > 0.5 ? '#2c3a2c' : '#1d2a22', px + j, py + R(Math.sin(j * 0.9 + i) * 2));
+      for (let j = 0; j < 7; j++) P(x, prng.next() > 0.5 ? mixHex('#2c3a2c', '#6a4838', k) : mixHex('#161f1c', '#3a2424', k), px + j, py + R(Math.sin(j * 0.9 + i) * 2));
     }
     A.bg.push(c);
   }
@@ -690,28 +755,40 @@ function buildBeach() {
 
   // ---- fire: six posterized flame frames
   A.flame = [];
+  const FH = 46, FW = 40, FC = 20;
   for (let fr = 0; fr < 6; fr++) {
-    const c = can(30, 40), x = cx2(c);
+    const c = can(FW, FH + 12), x = cx2(c);
     const seed = 100 + fr * 37;
-    for (let y = 0; y < 34; y++) {
-      const u = 1 - y / 34;
-      const wob = Math.sin(y * 0.30 + fr * 1.05) * (1 - u) * 4.2 + Math.sin(y * 0.12 + fr * 2.1) * 2;
-      const w = Math.max(0, R((2 + Math.pow(u, 0.85) * 10) * (0.72 + vnoise(seed + y * 0.3, fr) * 0.55)));
+    for (let y = 0; y < FH; y++) {
+      const u = 1 - y / FH;
+      const wob = Math.sin(y * 0.24 + fr * 1.05) * (1 - u) * 4.6 + Math.sin(y * 0.10 + fr * 2.1) * 2.4;
+      const w = Math.max(0, R((2 + Math.pow(u, 0.85) * 13) * (0.72 + vnoise(seed + y * 0.26, fr) * 0.55)));
       if (w < 1) continue;
-      const cxp = 15 + R(wob * (1 - u) * 1.2);
+      const cxp = FC + R(wob * (1 - u) * 1.2);
       for (let dx = -w; dx <= w; dx++) {
         const q = Math.abs(dx) / w;
-        let bi = 4 - Math.floor(q * 3.2 + (1 - u) * 0.6);
-        if (q * 3.2 - Math.floor(q * 3.2) > bay(cxp + dx, y + fr)) bi--;
-        bi = Math.max(0, Math.min(4, bi));
-        P(x, DP.fire[bi], cxp + dx, 34 - y);
+        // six bands across the flame: dull red skin, orange, amber, white core
+        let bi = 6 - Math.floor(q * 5.0 + (1 - u) * 1.3);
+        if (q * 5.0 - Math.floor(q * 5.0) > bay(cxp + dx, y + fr)) bi--;
+        bi = Math.max(0, Math.min(6, bi));
+        P(x, DP.fire[bi], cxp + dx, FH - y);
       }
     }
-    // logs in the fire
-    for (let i = 0; i < 22; i++) P(x, i % 5 === 0 ? '#1a1218' : '#30222a', 3 + i, 35 + R(Math.sin(i * 0.4) * 1), 2, 3);
-    for (let i = 0; i < 16; i++) P(x, i % 4 === 0 ? '#2a1c20' : '#45313a', 7 + i, 33 + R(Math.cos(i * 0.5) * 1), 2, 3);
-    for (let i = 0; i < 6; i++) P(x, DP.fire[(fr + i) % 2 ? 2 : 1], 6 + i * 3, 36, 2, 1);
-    A.flame.push(spr(c, 15, 38));
+    // a few detached licks of flame above the crown
+    for (let i = 0; i < 5; i++) {
+      const lx = FC + R(Math.sin(i * 2.1 + fr) * 5), ly = R(4 + hash2(i, fr) * 8);
+      P(x, DP.fire[3 + (i & 1)], lx, ly, 1, 2);
+    }
+    // logs in the fire, lit from within
+    for (let i = 0; i < 28; i++) P(x, i % 5 === 0 ? '#1a1218' : '#332330', 3 + i, FH + 1 + R(Math.sin(i * 0.4)), 2, 4);
+    for (let i = 0; i < 20; i++) P(x, i % 4 === 0 ? '#2a1c20' : '#4a3340', 8 + i, FH - 1 + R(Math.cos(i * 0.5)), 2, 4);
+    // glowing coals between the logs
+    for (let i = 0; i < 9; i++) {
+      const gi = (fr + i) % 3;
+      P(x, DP.fire[gi === 0 ? 1 : gi === 1 ? 3 : 5], 6 + i * 3, FH + 2, 2, 1);
+      P(x, DP.fire[gi === 2 ? 2 : 0], 6 + i * 3, FH + 3, 2, 1);
+    }
+    A.flame.push(spr(c, FC, FH + 6));
   }
   // ---- shadows, baked once
   A.herShadow = bakeDisc(68, 11, ['#0e0a12', '#171120', '#211929']);
@@ -721,8 +798,10 @@ function buildBeach() {
   //      per frame cost more than everything else in the scene put together.
   const SURF_TOP = SANDY - 40, SURF_H = 86;
   A.surfTop = SURF_TOP; A.surfPer = 4.2;
-  A.surf = [];
-  const SN = 28;
+  A.surf = []; A.surfW = [];
+  const SN = 22;
+  for (let pass = 0; pass < 2; pass++) {
+  const FOAM = pass ? DP.foamW : DP.foam;
   for (let fr = 0; fr < SN; fr++) {
     const T = fr / SN * A.surfPer;
     const c = can(640, SURF_H), x = cx2(c);
@@ -748,44 +827,98 @@ function buildBeach() {
         const wob = Math.sin(px * 0.031 + T * (1.2 + w * 0.35) + w * 2) * 3.0 + (n - 0.5) * 7;
         const y = R(y0 + wob);
         const thick = 1 + (n > 0.58 ? 1 : 0) + (n > 0.78 ? 1 : 0);
-        for (let q = 0; q < thick; q++) put(px, y + q, DP.foam[3], bright);
-        put(px, y + thick, DP.foam[2], bright * 0.8);
+        for (let q = 0; q < thick; q++) put(px, y + q, FOAM[3], bright);
+        put(px, y + thick, FOAM[2], bright * 0.8);
         const run = R(reach * (12 + w * 5));
         for (let q = 1; q < run; q++) {
           const a = (1 - q / run) * 0.55 * bright;
-          if (bay(px, y + q) < a) put(px, y + thick + q, DP.foam[q > run * 0.6 ? 0 : 1], a + 0.25);
+          if (bay(px, y + q) < a) put(px, y + thick + q, FOAM[q > run * 0.6 ? 0 : 1], a + 0.25);
         }
-        if (n > 0.45) put(px, y - 1, '#0a1522', 0.45);
+        if (n > 0.45) put(px, y - 1, pass ? '#2a1020' : '#0a1522', 0.45);
       }
     }
     x.putImageData(img, 0, 0);
-    A.surf.push(c);
+    (pass ? A.surfW : A.surf).push(c);
+  }
   }
   // ---- swell lines out on the water, as scrolling 640-wide strips
-  A.swell = [];
-  for (let i = 0; i < 7; i++) {
-    const c = can(640, 2), x = cx2(c);
-    const u = i / 6;
-    for (let px = 0; px < 640; px++) {
-      const n = vnoise(px * 0.022, i * 4.1);
-      if (n > 0.70 - u * 0.10) P(x, rgbaq(DP.foam[u > 0.6 ? 2 : 1], 0.35 + u * 0.35), px, 0, 1 + (n > 0.84 ? 2 : 0), 1);
+  A.swell = []; A.swellW = [];
+  for (let pass = 0; pass < 2; pass++) {
+    const FOAM = pass ? DP.foamW : DP.foam;
+    for (let i = 0; i < 7; i++) {
+      const c = can(640, 2), x = cx2(c);
+      const u = i / 6;
+      for (let px = 0; px < 640; px++) {
+        const n = vnoise(px * 0.022, i * 4.1);
+        // out under the dawn the swell lines run hotter still
+        const hot = pass ? Math.max(0, 1 - Math.abs(px - 516) / 240) : 0;
+        if (n > 0.70 - u * 0.10) P(x, rgbaq(FOAM[hot > 0.5 ? 3 : u > 0.6 ? 2 : 1], 0.35 + u * 0.35 + hot * 0.2), px, 0, 1 + (n > 0.84 ? 2 : 0), 1);
+      }
+      (pass ? A.swellW : A.swell).push(c);
     }
-    A.swell.push(c);
   }
 
-  // ---- firelight pool on the sand (three intensities)
+  // ---- firelight pool on the sand: four posterised rings of warm colour,
+  //      baked at four intensities and blitted
   A.pool = [];
-  for (let i = 0; i < 3; i++) {
-    const c = can(260, 90), x = cx2(c);
-    const a = 0.16 + i * 0.09;
-    for (let y = 0; y < 90; y++) for (let px = 0; px < 260; px++) {
-      const d = Math.hypot((px - 130) / 128, (y - 34) / 50);
+  const PW = 330, PH = 120, PCX = 165, PCY = 46;
+  for (let i = 0; i < 4; i++) {
+    const c = can(PW, PH), x = cx2(c);
+    const gain = 0.72 + i * 0.16;
+    for (let y = 0; y < PH; y++) for (let px = 0; px < PW; px++) {
+      const d = Math.hypot((px - PCX) / 162, (y - PCY) / 66);
       if (d >= 1) continue;
-      const v = (1 - d) * (1 - d);
-      if (v * 3.4 > bay(px, y) * 2.0) P(x, rgbaq(v > 0.55 ? '#ffb23c' : '#d4651c', qa(a + v * 0.30)), px, y);
+      const v = Math.pow(1 - d, 1.7) * gain;
+      // four hard bands, dithered where they meet
+      let b = v * 4.0;
+      let bi2 = Math.floor(b); if (b - bi2 > bay(px, y)) bi2++;
+      if (bi2 <= 0) continue;
+      const col = ['#6a2a10', '#a8521a', '#e08a2c', '#ffc35a'][Math.min(3, bi2 - 1)];
+      P(x, rgbaq(col, qa(0.16 + Math.min(3, bi2 - 1) * 0.13)), px, y);
     }
     A.pool.push(c);
   }
+  A.poolAx = PCX; A.poolAy = PCY;
+}
+
+// ---------------------------------------------------- rim lighting
+// A rim sprite is the lit edge of a form: every opaque pixel whose neighbour
+// in the direction of the light is empty, painted in the light's colour.
+// Baked once, then blitted over the sprite at whatever alpha the moment wants.
+function rimOf(s, dx, dy, cols) {
+  const w = s.w, h = s.h;
+  const src = cx2(can(w, h)); src.drawImage(s.c, 0, 0);
+  const sd = src.getImageData(0, 0, w, h).data;
+  const c = can(w, h), x = cx2(c);
+  const al = (px, py) => (px < 0 || py < 0 || px >= w || py >= h) ? 0 : sd[(py * w + px) * 4 + 3];
+  for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
+    if (al(px, py) < 96) continue;
+    const d1 = al(px + dx, py + dy) < 96, d2 = al(px + dx * 2, py + dy * 2) < 96;
+    if (!d2) continue;
+    P(x, d1 ? cols[1] : cols[0], px, py);
+  }
+  return spr(c, s.ax, s.ay);
+}
+function buildRims() {
+  // the fire is down-left of everything on the beach; the sky is up-right
+  const FIRE = [-1, 1], SKY = [1, -1];
+  const WARM = ['#8c4a1c', '#ffbe5c'];
+  const COLD = ['#1c3458', '#5f8fc4'];
+  const DAWN = ['#7a3450', '#ffab7a'];
+  A.rim = {};
+  // index 0 = the lit edge on the art's -x side, 1 = on its +x side, so a
+  // mirrored draw can pick the variant that still faces the right way.
+  const mk = (key, s) => {
+    if (!s) return;
+    A.rim[key] = {
+      fire: [rimOf(s, FIRE[0], FIRE[1], WARM), rimOf(s, -FIRE[0], FIRE[1], WARM)],
+      cold: [rimOf(s, -SKY[0], SKY[1], COLD), rimOf(s, SKY[0], SKY[1], COLD)],
+      dawn: [rimOf(s, -SKY[0], SKY[1], DAWN), rimOf(s, SKY[0], SKY[1], DAWN)],
+    };
+  };
+  mk('man', A.man); mk('fluke', A.fluke); mk('flip', A.flip);
+  mk('body', A.oBody); mk('head', A.oHead); mk('headBare', A.oHeadBare);
+  mk('arm', A.oArm); mk('tail', A.oTail); mk('log', A.log);
 }
 
 // ======================================================= scene particles
@@ -876,6 +1009,7 @@ const DeathScene = {
     buildOtterSide();
     buildTools();
     buildBeach();
+    buildRims();
     // Warm every baked canvas by drawing it once now, at build time, so the
     // first frame of the shore does not pay for uploading them all at once.
     {
@@ -883,7 +1017,9 @@ const DeathScene = {
       const warm = o => { if (!o) return; const c = o.c || o; if (c && c.width) wc.drawImage(c, 0, 0, c.width, c.height, 0, 0, 8, 8); };
       for (const k in A) {
         const v = A[k];
-        if (Array.isArray(v)) v.forEach(warm); else warm(v);
+        if (Array.isArray(v)) v.forEach(warm);
+        else if (k === 'rim') { for (const j in v) for (const q in v[j]) warm(v[j][q]); }
+        else warm(v);
       }
       if (typeof CH !== 'undefined') { warm(CH.manateeArmor); warm(CH.manateeHurt); warm(CH.flipper); warm(CH.otterTorso); warm(CH.otterHead); warm(CH.otterArm); warm(CH.otterTail); }
     }
@@ -1043,7 +1179,8 @@ const DeathScene = {
   updateShore(dt, t) {
     const T0 = this.st; this.st += dt; const T = this.st;
     // fire embers
-    if (Math.random() < 0.55) FX.ember(120, 306, 1);
+    if (Math.random() < 0.9) FX.ember(120, 308, 1);
+    if (Math.random() < 0.10) FX.spark(118 + rand(-8, 8), 300, 2);
     this.flare = Math.max(0, this.flare - dt * 1.6);
     this.fade = T < 1.0 ? qa(1 - T / 1.0) : (T > K2.fade ? clamp((T - K2.fade) / (K2.end - K2.fade), 0, 1) : 0);
 
@@ -1224,8 +1361,27 @@ const DeathScene = {
         ctx.fillStyle = rgbaq('#2a2e36', this.drain * 0.55);
         for (let y = 0; y < 360; y += 2) for (let x = (y >> 1) & 1; x < 640; x += 2) ctx.fillRect(x, y, 1, 1);
       }
-      // a cold blue cast over the drained image
-      P(ctx, rgbaq('#0a1424', this.drain * 0.30), 0, 0, 640, 360);
+      // The colour does not drain to grey — it drains DOWN, into cold deep
+      // water.  Multiply pushes everything toward abyssal blue; screen then
+      // lifts the shadows into a bruised violet, so the frame is still full
+      // of colour, just a colour with no warmth left in it.
+      const dr = this.drain;
+      try {
+        ctx.globalCompositeOperation = 'multiply';
+        if (ctx.globalCompositeOperation === 'multiply') {
+          ctx.globalAlpha = qa(dr * 0.80);
+          ctx.fillStyle = '#3a63b4'; ctx.fillRect(0, 0, 640, 360);
+        }
+        ctx.globalCompositeOperation = 'screen';
+        if (ctx.globalCompositeOperation === 'screen') {
+          ctx.globalAlpha = qa(dr * 0.42);
+          ctx.fillStyle = '#2a1848'; ctx.fillRect(0, 0, 640, 360);
+        }
+      } catch (e) { /* fall through to the flat cast below */ }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      // and a last flat cast of deep-sea blue over the whole plate
+      P(ctx, rgbaq(DP.deep[1], dr * 0.26), 0, 0, 640, 360);
       // ...but the blood stays red.  The world layer and this logical screen
       // share one 1:1 grid in this game, so the positions recorded by
       // renderWorld land in the right place; if it was never called we skip.
@@ -1281,6 +1437,19 @@ const DeathScene = {
     P(ctx, '#000000', 0, 360 - h, 640, h);
   },
 
+  // How much coloured light falls on something standing at screen x: warm
+  // from the fire on the left, cold night sky or hot dawn on the right.
+  litAt(x) {
+    const f = this._fire === undefined ? 0.7 : this._fire;
+    const d = this._dawn === undefined ? 0 : this._dawn;
+    const near = clamp(1 - Math.abs(x - 120) / 330, 0, 1);
+    return {
+      fire: clamp(f * (0.30 + near * 0.72), 0, 1),
+      cold: 0.42 * (1 - d),
+      dawn: 0.62 * d,
+    };
+  },
+
   // ---- part 2: the beach
   renderShore(ctx, t) {
     const T = this.st;
@@ -1292,26 +1461,39 @@ const DeathScene = {
     const dawn = clamp((T - K2.pump) / (K2.end - K2.pump), 0, 1);
     const bi = Math.min(BG_N - 1, Math.floor(dawn * BG_N * 0.999));
     ctx.drawImage(A.bg[bi], 0, 0);
+    this._dawn = dawn;
+
+    // The fire's strength for this frame: it is the only warm thing in the
+    // first half of the scene, so everything warm is scaled from it.
+    const fireUp = 0.62 + (this.flare * 0.5) + (T > K2.listen && T < K2.cough ? -0.26 : 0)
+      + Math.sin(T * 7.3) * 0.06 + Math.sin(T * 19.7) * 0.035 + Math.sin(T * 3.1) * 0.05;
+    this._fire = fireUp;
 
     // ---------------------------------------------------------- the surf
     this.drawSurf(ctx, T);
 
     // -------------------------------------------------------- driftwood
     ctx.globalAlpha = 0.45; ctx.drawImage(A.logShadow.c, 232 - A.logShadow.ax, 328 - A.logShadow.ay); ctx.globalAlpha = 1;
-    ctx.drawImage(A.log.c, 230 - A.log.ax, 322 - A.log.ay);
+    ctx.save(); ctx.translate(230, 322);
+    ctx.drawImage(A.log.c, -A.log.ax, -A.log.ay);
+    rimBlit(ctx, 'log', this.litAt(230), false);
+    ctx.restore();
     ctx.drawImage(A.bucket.c, 188 - A.bucket.ax, 336 - A.bucket.ay);
 
     // ------------------------------------------------------------- fire
-    const fireUp = 0.62 + (this.flare * 0.5) + (T > K2.listen && T < K2.cough ? -0.26 : 0) + Math.sin(T * 7.3) * 0.06;
-    const pi = clamp(Math.floor(fireUp * 3), 0, 2);
+    const pi = clamp(Math.floor(fireUp * 3.4), 0, 3);
     const pool = A.pool[pi];
-    ctx.globalAlpha = qa(clamp(fireUp, 0.2, 1));
-    ctx.drawImage(pool, 120 - 130, 312 - 34);
+    ctx.globalAlpha = qa(clamp(fireUp * 1.15, 0.25, 1));
+    ctx.drawImage(pool, 120 - A.poolAx, 314 - A.poolAy);
+    ctx.globalAlpha = 1;
+    // a tight, hotter core of light right under the logs
+    ctx.globalAlpha = qa(clamp(fireUp * 0.75, 0.2, 0.8));
+    ctx.drawImage(A.pool[3], 120 - A.poolAx + 82, 316 - A.poolAy + 18, 166, 60);
     ctx.globalAlpha = 1;
     const fl = A.flame[Math.floor(T * 14) % A.flame.length];
     ctx.save();
     const fs = clamp(fireUp * 1.25, 0.45, 1.45);
-    ctx.translate(120, 314); ctx.scale(1, fs);
+    ctx.translate(120, 316); ctx.scale(1, fs);
     ctx.drawImage(fl.c, -fl.ax, -fl.ay);
     ctx.restore();
 
@@ -1324,11 +1506,12 @@ const DeathScene = {
     // ----------------------------------------------------------- sparks
     FX.render(ctx, 0, 0);
 
-    // a night vignette so the fire is the only warm thing in the frame
+    // a vignette that starts as blue-black night and warms to a plum dawn
+    const vg = mixHex('#04060e', '#2a0c1c', dawn);
     for (let i = 0; i < 14; i++) {
       const inset = i * 6, a = qa(0.10 - i * 0.006);
       if (a <= 0) break;
-      ctx.fillStyle = rgbaq('#04060e', a);
+      ctx.fillStyle = rgbaq(vg, a);
       ctx.fillRect(0, inset, 640, 1); ctx.fillRect(0, 359 - inset, 640, 1);
       ctx.fillRect(inset, 0, 1, 360); ctx.fillRect(639 - inset, 0, 1, 360);
     }
@@ -1343,8 +1526,9 @@ const DeathScene = {
       const shown = line.slice(0, n);
       const a = T > at + dur ? qa(1 - (T - at - dur) / 0.7) : 1;
       ctx.globalAlpha = a;
-      pixelTextOutlined(ctx, shown, 320, 344, 8, '#e8eef4', '#000000', 'center');
-      if (n < line.length && (Math.floor(prog * 8) & 1)) P(ctx, '#e8eef4', 320 + R(textWidth(shown, 8) / 2) + 2, 345, 4, 7);
+      const tc = mixHex('#cfdcea', '#ffd9a6', dawn);
+      pixelTextOutlined(ctx, shown, 320, 344, 8, tc, '#000000', 'center');
+      if (n < line.length && (Math.floor(prog * 8) & 1)) P(ctx, tc, 320 + R(textWidth(shown, 8) / 2) + 2, 345, 4, 7);
       ctx.globalAlpha = 1;
     }
     if (T < 1.4) {
@@ -1358,18 +1542,23 @@ const DeathScene = {
   // ---- rolling surf on the sand (baked frames, blitted) ------------------
   drawSurf(ctx, T) {
     const SY = A.SANDY, HZ = A.HORIZON;
+    // the water picks up the sky: a cold foam set and a warm one, crossfaded
+    const d = this._dawn === undefined ? 0 : this._dawn;
+    const w = qa(clamp((d - 0.12) / 0.7, 0, 1));
     // swell out on the water: scrolling strips, wrapped
     for (let i = 0; i < 7; i++) {
       const u = i / 6;
       const y = R(HZ + 3 + Math.pow(u, 1.6) * (SY - HZ - 16) + Math.sin(T * 0.6 + i * 1.7) * 1.4);
       const off = R(T * (6 + u * 22)) % 640;
-      const c = A.swell[i];
-      ctx.drawImage(c, -off, y);
-      ctx.drawImage(c, 640 - off, y);
+      if (w < 1) { const c = A.swell[i]; ctx.globalAlpha = qa(1 - w); ctx.drawImage(c, -off, y); ctx.drawImage(c, 640 - off, y); }
+      if (w > 0) { const c = A.swellW[i]; ctx.globalAlpha = w; ctx.drawImage(c, -off, y); ctx.drawImage(c, 640 - off, y); }
+      ctx.globalAlpha = 1;
     }
     // the shorebreak
     const fr = Math.floor(((T % A.surfPer) / A.surfPer) * A.surf.length) % A.surf.length;
-    ctx.drawImage(A.surf[fr], 0, A.surfTop);
+    if (w < 1) { ctx.globalAlpha = qa(1 - w); ctx.drawImage(A.surf[fr], 0, A.surfTop); }
+    if (w > 0) { ctx.globalAlpha = w; ctx.drawImage(A.surfW[fr], 0, A.surfTop); }
+    ctx.globalAlpha = 1;
   },
 
   // ---- the manatee on the sand ------------------------------------------
@@ -1411,17 +1600,20 @@ const DeathScene = {
     ctx.drawImage(A.herShadow.c, 6 - A.herShadow.ax, 38 - A.herShadow.ay);
     ctx.globalAlpha = 1;
 
+    const lit = this.litAt(mx);
     // far flipper, under the body
     ctx.save(); ctx.translate(MA.shoX[0] + 14, MA.shoX[1] - 9); ctx.rotate(2.75 + (T > K2.rise ? Math.sin(T * 9) * 0.25 : 0));
     ctx.drawImage(A.flipFar.c, -A.flipFar.ax, -A.flipFar.ay); ctx.restore();
     // fluke
     ctx.save(); ctx.translate(MA.tailX[0] + 18, 2);
     ctx.rotate(T > K2.rise ? Math.sin(T * 7) * 0.26 : -0.05);
-    ctx.drawImage(A.fluke.c, -A.fluke.ax, -A.fluke.ay); ctx.restore();
-    // body
+    ctx.drawImage(A.fluke.c, -A.fluke.ax, -A.fluke.ay);
+    rimBlit(ctx, 'fluke', lit, false); ctx.restore();
+    // body — with the fire on one flank and the sky on the other
     ctx.save();
     if (breathe) ctx.translate(0, R(breathe * -1));
     ctx.drawImage(A.man.c, -A.man.ax, -A.man.ay);
+    rimBlit(ctx, 'man', lit, false);
     ctx.restore();
 
     // ---- the wound, and the stitches closing it
@@ -1488,7 +1680,8 @@ const DeathScene = {
     // ---- near flipper, over the body
     ctx.save(); ctx.translate(MA.shoX[0], MA.shoX[1]);
     ctx.rotate(2.55 + (T > K2.cough ? Math.sin(T * 8) * 0.30 : -0.05));
-    ctx.drawImage(A.flip.c, -A.flip.ax, -A.flip.ay); ctx.restore();
+    ctx.drawImage(A.flip.c, -A.flip.ax, -A.flip.ay);
+    rimBlit(ctx, 'flip', lit, false); ctx.restore();
 
     // ---- her face
     const ex = MA.eye[0], ey = MA.eye[1], mox = MA.mouth[0], moy = MA.mouth[1];
@@ -1629,6 +1822,8 @@ const DeathScene = {
       if (k > 0.1 && Math.random() < 0.35) FX.drop(x, y + 12, 1, DP.foam[2], 0.5);
     }
     o.x = x; o.y = y; o.rot = rot;
+    // his fur warms as he comes near the fire, and cools as he goes back up
+    o.lit = this.litAt(x);
     o.blink = (t % 3.1) < 0.1;
     drawOtterSide(ctx, o, t);
   },

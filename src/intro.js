@@ -64,17 +64,31 @@ const IP = {
   tank:    ['#7d9a4c', '#63803d', '#4c6632', '#3a5028', '#2b3c1f', '#1f2c17', '#16200f'],
   sky:     ['#3f86bc', '#58a0cf', '#7bbcde', '#a4d6e8', '#cfe9ee', '#eef0da'],
   // vegetation
-  kelp: ['#0f3a24', '#1b5c35', '#2c7f45', '#46a05a', '#6fc077'],
-  grass: ['#14402a', '#245e35', '#3a8244', '#5aa457'],
-  coralA: ['#7a2438', '#a8374a', '#d4566a', '#f08a94'],
-  coralB: ['#7a4a18', '#b06f22', '#dd9a33', '#f5c464'],
-  coralC: ['#3d2a5c', '#5b3f84', '#7f5cae', '#a98cd0'],
+  kelp: ['#0d3f22', '#1a6b35', '#2d9a4a', '#4bc45f', '#7ee87f'],
+  grass: ['#13472a', '#237038', '#3aa04a', '#5fca5e'],
+  coralA: ['#8a1d3c', '#c22f53', '#f0546f', '#ff94a4'],
+  coralB: ['#8a4a0e', '#cc7a14', '#f5a82a', '#ffd977'],
+  coralC: ['#432a78', '#6a3fae', '#9160dc', '#c096f2'],
   sand: ['#4b4a38', '#6d6a4c', '#8f8a62', '#b2ab7d', '#d0c79a'],
   rock: ['#1b2230', '#2b3444', '#3d4859', '#535f72', '#6e7b8e'],
   // blood
   blood: ['#4b0a12', '#7a0d16', '#a8151f', '#c4202c', '#e8515a'],
   foam: ['#cfe8f2', '#e9f6fb', '#ffffff'],
   bone: '#e8e4d8',
+  // ---- per-beat water ramps: each act of the story gets its own hour ------
+  // sunlit lagoon: turquoise over warm gold-green sand light
+  lagoon:  ['#86e6c0', '#46c6ab', '#25a293', '#177e7c', '#0e5f64', '#0a4750', '#07353c'],
+  // the boat arrives: the same sea, drained cold and steely
+  cold:    ['#63aec6', '#3f89a9', '#2b6a8e', '#1e5175', '#153c5c', '#0f2b46', '#0a1d32'],
+  // the harpooning: teal water bruising down into maroon and black
+  bruise:  ['#52a09c', '#3a7e84', '#2b5c68', '#39404a', '#4a2833', '#33131d', '#1c080e'],
+  // the money water around the yacht: deep ink-navy, hard cyan skim on top
+  money:   ['#2e88b0', '#1f6a95', '#154f77', '#0e3a5d', '#0a2946', '#061c33', '#041222'],
+  // the run for open water at the end: bright, hopeful, sunlit blue
+  dawn:    ['#7fe2ec', '#4cbcd8', '#3195bf', '#2375a4', '#195b88', '#124369', '#0c2f4d'],
+  // ---- coloured light -----------------------------------------------------
+  sunGold: '#ffdf96', sunAmber: '#ffb45a', sunCold: '#cfefff', sunRed: '#ff7a5e',
+  lampHot: '#ffe6a8', lampCore: '#fff6d2', steelBlue: '#5f9fd4',
 };
 const MOOD = ['shallow', 'open', 'deep', 'night', 'tank'];
 
@@ -122,6 +136,84 @@ function buildShafts(w, h, tint) {
   }
   return c;
 }
+
+// ============================================================ COLOUR GRADE ==
+// A baked, posterised, dithered wash.  `stops` are [yFraction, hex, alpha]
+// read top to bottom; the vertical position is quantised into hard bands and
+// bayer-dithered at the seams, and the alpha is quantised to 1/16ths, so the
+// result stays pixel art rather than a canvas gradient.  Built once, blitted.
+function buildGrade(stops, bands) {
+  bands = bands || 22;
+  const c = can(640, 360), x = cx2(c), img = x.createImageData(640, 360), d = img.data;
+  const cols = stops.map(s => hexToRgb(s[1]));
+  for (let y = 0; y < 360; y++) {
+    const f = y / 359 * bands;
+    const i0 = Math.floor(f), fr = f - i0;
+    for (let px = 0; px < 640; px++) {
+      const b = clamp((fr > bay(px, y) ? i0 + 1 : i0) / bands, 0, 1);
+      // locate the segment this banded position falls in
+      let s = 0;
+      while (s < stops.length - 2 && b > stops[s + 1][0]) s++;
+      const a0 = stops[s], a1 = stops[s + 1];
+      const span = Math.max(1e-6, a1[0] - a0[0]);
+      const k = clamp((b - a0[0]) / span, 0, 1);
+      const c0 = cols[s], c1 = cols[s + 1];
+      const r = a0[2] + (a1[2] - a0[2]) * k;
+      if (r <= 0.002) continue;
+      const aq = r * 16, ai = Math.floor(aq), af = aq - ai;
+      const A = clamp((af > bay(px + 2, y + 1) ? ai + 1 : ai) / 16, 0, 1);
+      if (A <= 0) continue;
+      const p = (y * 640 + px) * 4;
+      d[p] = R(c0[0] + (c1[0] - c0[0]) * k);
+      d[p + 1] = R(c0[1] + (c1[1] - c0[1]) * k);
+      d[p + 2] = R(c0[2] + (c1[2] - c0[2]) * k);
+      d[p + 3] = R(A * 255);
+    }
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+// Each entry: [scenery grade (under the actors), light grade (over everything)]
+// plus the colour of the sun shafts and the caustics for that beat.
+const GRADE = {}, GLOW = {};
+const GRADE_SPEC = {
+  // warm sunlit lagoon: gold light pouring in on top, cool green-blue floor
+  lagoon: {
+    bg: [[0, '#ffe58e', 0.34], [0.18, '#ffcf72', 0.13], [0.46, '#4fd8a8', 0.03], [0.72, '#2f9e7e', 0.08], [1, '#ffc055', 0.20]],
+    fg: [[0, '#ffe7a4', 0.20], [0.30, '#ffd27e', 0.09], [0.66, '#7fe0c0', 0.02], [1, '#0e5468', 0.10]],
+    shaft: 'warm', caustic: '#ffeaa8', bedCaustic: '#ffe09a', mote: '#ffeec2',
+  },
+  // the boat: the warmth drains out, steel and cyan
+  cold: {
+    bg: [[0, '#cfeaff', 0.20], [0.26, '#8fc4e4', 0.11], [0.56, '#2f6f94', 0.10], [1, '#07243c', 0.32]],
+    fg: [[0, '#dff1ff', 0.14], [0.34, '#9fcde8', 0.05], [1, '#062036', 0.14]],
+    shaft: 'cold', caustic: '#d8f2ff', bedCaustic: '#bfe4ff', mote: '#cfe8f8',
+  },
+  // the harpooning: bruised, red at the edges, black below
+  bruise: {
+    bg: [[0, '#ffb07a', 0.26], [0.16, '#e07a5e', 0.14], [0.40, '#6a4258', 0.10], [0.72, '#5a1c2c', 0.22], [1, '#1a0508', 0.44]],
+    fg: [[0, '#ff9e6e', 0.16], [0.26, '#b05a52', 0.09], [0.62, '#4a1c2a', 0.10], [1, '#14060a', 0.26]],
+    shaft: 'red', caustic: '#ffb59a', bedCaustic: '#c9645c', mote: '#e8a89a',
+  },
+  // running into the dark
+  night: {
+    bg: [[0, '#4e86b8', 0.16], [0.30, '#1b3f66', 0.18], [1, '#01060f', 0.48]],
+    fg: [[0, '#5e96c8', 0.10], [0.40, '#132c4a', 0.14], [1, '#01050c', 0.30]],
+    shaft: 'cold', caustic: '#8fc0e0', bedCaustic: '#5d86a8', mote: '#9cc4e0',
+  },
+  // the yacht: glossy chrome, money-blue, a hard white skim on the surface
+  money: {
+    bg: [[0, '#eafaff', 0.26], [0.14, '#8fd8f4', 0.16], [0.38, '#1a6d9e', 0.10], [0.72, '#0a2f52', 0.24], [1, '#030f22', 0.42]],
+    fg: [[0, '#f2ffff', 0.18], [0.20, '#9ee2f8', 0.07], [0.60, '#0d3459', 0.10], [1, '#03101f', 0.24]],
+    shaft: 'cold', caustic: '#dffaff', bedCaustic: '#7fb6d8', mote: '#cfeeff',
+  },
+  // out, and into open sun
+  dawn: {
+    bg: [[0, '#fff0b4', 0.34], [0.18, '#ffe08a', 0.17], [0.44, '#9fe8ec', 0.07], [0.74, '#2f9fc8', 0.10], [1, '#0b3358', 0.26]],
+    fg: [[0, '#fff4c8', 0.18], [0.30, '#a8ecef', 0.06], [1, '#0c3a60', 0.12]],
+    shaft: 'warm', caustic: '#fff0c0', bedCaustic: '#ffe4a8', mote: '#e8fbff',
+  },
+};
 
 function drawChurn(ctx, px, py, t, inten) {
   for (let i = 0; i < 24; i++) {
@@ -352,10 +444,10 @@ function buildSurfaceUnder(seed, foamCol, waterCol) {
 
 // ================================================================ MANATEES ==
 const MAN_RAMP = {
-  dad: ['#2a2630', '#403c47', '#57525e', '#6f6a78', '#8a8593'],
-  mom: ['#372f3a', '#4f4854', '#6b6372', '#877e8d', '#a298a8'],
-  you: ['#332f39', '#4b4851', '#67646d', '#827e88', '#9d99a3'],
-  bro: ['#3b333e', '#564d5b', '#756c7a', '#928897', '#ada3b1'],
+  dad: ['#2b2327', '#443939', '#5b4e4c', '#776864', '#93837c'],
+  mom: ['#352b2b', '#4f4342', '#6a5a57', '#877470', '#a28e88'],
+  you: ['#312a29', '#494040', '#645755', '#80706c', '#9a8a84'],
+  bro: ['#3a302b', '#544740', '#706057', '#8c7a6f', '#a79489'],
 };
 function buildManateeBodyCan(L, ramp, opt) {
   opt = opt || {};
@@ -1241,7 +1333,15 @@ function buildIntroArt() {
   WATER.open = buildWater(IP.open, 640, 360, { pow: 1.0 });
   WATER.deep = buildWater(IP.deep, 640, 360, { pow: 0.9 });
   WATER.night = buildWater(IP.night, 640, 360, { pow: 0.85 });
+  WATER.lagoon = buildWater(IP.lagoon, 640, 360, { pow: 1.15, wob: 0.85 });
+  WATER.cold = buildWater(IP.cold, 640, 360, { pow: 1.0 });
+  WATER.bruise = buildWater(IP.bruise, 640, 360, { pow: 1.15, wob: 0.9 });
+  WATER.money = buildWater(IP.money, 640, 360, { pow: 0.95 });
+  WATER.dawn = buildWater(IP.dawn, 640, 360, { pow: 1.05, wob: 0.8 });
+  for (const k in GRADE_SPEC) { GRADE[k] = buildGrade(GRADE_SPEC[k].bg); GLOW[k] = buildGrade(GRADE_SPEC[k].fg, 16); }
   LAY.shafts = buildShafts(LW, 300, '#d4f8ff');
+  LAY.shaftsWarm = buildShafts(LW, 300, '#ffe2a0');
+  LAY.shaftsRed = buildShafts(LW, 300, '#ff9a72');
   LAY.bed = buildBed();
   LAY.grassNear = buildGrass(44, IP.grass, 150, 42, 771);
   LAY.grassFar = tintLayer(buildGrass(28, IP.grass, 120, 26, 991), '#144a58', 0.55);
@@ -1420,31 +1520,40 @@ function caustics(ctx, y0, t, rows, a, col) {
 }
 function backdrop(ctx, o) {
   const s = o.scroll || 0, t = o.t || 0;
+  const G = GRADE_SPEC[o.grade] || null;
   ctx.drawImage(WATER[o.mood] || WATER.open, 0, 0);
-  if (o.shafts) { ctx.save(); ctx.globalAlpha = qa(o.shafts); tile(ctx, LAY.shafts, s * 0.16, (o.surfY === undefined || o.surfY === null ? -40 : o.surfY)); ctx.restore(); }
+  if (o.shafts) {
+    const sh = !G || G.shaft === 'cold' ? LAY.shafts : G.shaft === 'red' ? LAY.shaftsRed : LAY.shaftsWarm;
+    ctx.save(); ctx.globalAlpha = qa(o.shafts); tile(ctx, sh, s * 0.16, (o.surfY === undefined || o.surfY === null ? -40 : o.surfY)); ctx.restore();
+  }
   const set = o.set === 'D' ? 'D' : 'S';
   if (o.bedY !== undefined && o.bedY !== null) {
     tile(ctx, LAY['far' + set], s * 0.26, o.bedY - LAY['far' + set].height + 6);
     tile(ctx, LAY.grassFar, s * 0.40, o.bedY - LAY.grassFar.height + 10);
     tile(ctx, LAY['mid' + set], s * 0.58, o.bedY - LAY['mid' + set].height + 4);
     tile(ctx, LAY.bed, s * 0.78, o.bedY);
-    if (o.causticBed) caustics(ctx, o.bedY + 4, t, 4, 0.16, '#ffeec0');
+    if (o.causticBed) caustics(ctx, o.bedY + 4, t, 4, 0.20, G ? G.bedCaustic : '#ffeec0');
   }
   if (o.surfY !== undefined && o.surfY !== null) {
     tile(ctx, set === 'D' ? LAY.surfD : LAY.surfS, s * 0.34, o.surfY - 6);
-    caustics(ctx, o.surfY + 14, t, 5, 0.20);
+    caustics(ctx, o.surfY + 14, t, 5, 0.22, G ? G.caustic : undefined);
   }
+  // one baked, dithered wash gives the whole beat its hour of the day
+  if (GRADE[o.grade]) ctx.drawImage(GRADE[o.grade], 0, 0);
   if (o.fog) { ctx.fillStyle = rgbaq(o.fog[0], o.fog[1]); ctx.fillRect(0, 0, 640, 360); }
-  motes(ctx, s, t, 60, '#bcdfe8', 0.24);
+  motes(ctx, s, t, 60, G ? G.mote : '#bcdfe8', 0.26);
 }
 function foreground(ctx, o) {
   const s = o.scroll || 0, t = o.t || 0;
   const set = o.set === 'D' ? 'D' : 'S';
+  const G = GRADE_SPEC[o.grade] || null;
   if (o.bedY !== undefined && o.bedY !== null) {
     tile(ctx, LAY['near' + set], s * 1.35, o.bedY - LAY['near' + set].height + 34);
     tile(ctx, LAY.grassNear, s * 1.7, o.bedY - 6);
   }
-  motes(ctx, s * 2, t, 26, '#e6f6ff', 0.34);
+  // the coloured light itself, laid over the actors so they sit in the scene
+  if (GLOW[o.grade]) ctx.drawImage(GLOW[o.grade], 0, 0);
+  motes(ctx, s * 2, t, 26, G ? G.mote : '#e6f6ff', 0.36);
 }
 // ---- drifting fish school --------------------------------------------------
 function makeSchool(n, x, y, spread, sz, kind, spd) {
@@ -1523,8 +1632,9 @@ function titleCard(ctx, k, t) {
 }
 
 // ================================================================== SKY =====
-function buildSky() {
-  const H = 96, c = can(LW, H), x = cx2(c), cols = IP.sky;
+function buildSky(cols, cloudPal) {
+  cols = cols || IP.sky; cloudPal = cloudPal || ['#f6f8ee', '#ffffff', '#cfd6d0'];
+  const H = 96, c = can(LW, H), x = cx2(c);
   for (let y = 0; y < H; y++) {
     const k = Math.pow(y / (H - 1), 0.8) * (cols.length - 1);
     let i0 = Math.floor(k), fr = k - i0; i0 = clamp(i0, 0, cols.length - 1);
@@ -1535,9 +1645,9 @@ function buildSky() {
     const cxx = R(rng.range(0, LW)), cyy = R(rng.range(6, 52)), w = R(rng.range(30, 90)), h = R(rng.range(6, 14));
     for (let j = 0; j < 5; j++) {
       const ox = R(rng.range(-w * 0.4, w * 0.4)), oy = R(rng.range(-h * 0.3, h * 0.3));
-      P(x, '#f6f8ee', cxx + ox, cyy + oy, R(w * rng.range(0.3, 0.6)), h);
-      P(x, '#ffffff', cxx + ox, cyy + oy, R(w * rng.range(0.2, 0.4)), Math.max(1, h >> 1));
-      P(x, '#cfd6d0', cxx + ox, cyy + oy + h - 1, R(w * rng.range(0.25, 0.5)), 1);
+      P(x, cloudPal[0], cxx + ox, cyy + oy, R(w * rng.range(0.3, 0.6)), h);
+      P(x, cloudPal[1], cxx + ox, cyy + oy, R(w * rng.range(0.2, 0.4)), Math.max(1, h >> 1));
+      P(x, cloudPal[2], cxx + ox, cyy + oy + h - 1, R(w * rng.range(0.25, 0.5)), 1);
     }
   }
   for (let i = 0; i < 7; i++) {
@@ -1546,31 +1656,53 @@ function buildSky() {
   }
   return c;
 }
-function drawAir(ctx, surfY, scroll, t) {
-  if (!LAY.sky) LAY.sky = buildSky();
+// Each sky is its own hour: ramp, cloud palette, far-sea bands, whitecap and
+// the colour of the waterline.  All four are baked once into LAY.
+const SKYMODE = {
+  day:    { key: 'sky',       sea: ['#2a6f9c', '#1d5580'], glint: '#bcdcec', chop: '#2d6f86', cap: '#eaf8ff', line: '#0d2a33', lip: '#cfeaf2' },
+  gold:   { key: 'skyGold',   sea: ['#2f6f92', '#1f5070'], glint: '#ffe3a2', chop: '#2b6478', cap: '#fff0c4', line: '#241a22', lip: '#ffdfa0' },
+  dusk:   { key: 'skyDusk',   sea: ['#4a3a58', '#33243c'], glint: '#ff9e63', chop: '#402a38', cap: '#ffb782', line: '#1a0a10', lip: '#ff9d6a' },
+  chrome: { key: 'skyChrome', sea: ['#1f6a9e', '#134a78'], glint: '#f2fbff', chop: '#1b567a', cap: '#ffffff', line: '#061826', lip: '#dff6ff' },
+  dawnsky:{ key: 'skyDawn',   sea: ['#2b7fae', '#1b5e8c'], glint: '#ffeaae', chop: '#256f92', cap: '#fffbe6', line: '#0a2436', lip: '#ffeec0' },
+};
+const SKY_RAMP = {
+  sky: [IP.sky, ['#f6f8ee', '#ffffff', '#cfd6d0']],
+  skyGold: [['#2c68a8', '#4a92c4', '#7fbad4', '#bcd3c6', '#f2d89a', '#ffc472'], ['#ffdfa8', '#fff3d2', '#c98f6a']],
+  skyDusk: [['#241f4e', '#47305f', '#7c3f63', '#bb565a', '#ec8340', '#ffbb6e'], ['#7a3f5c', '#d06a52', '#341c38']],
+  skyChrome: [['#175c9c', '#3486bf', '#68abd4', '#a2d0e8', '#daf0f8', '#ffffff'], ['#ffffff', '#ffffff', '#b6cddc']],
+  skyDawn: [['#1d6ca8', '#3f9ac4', '#7ac8da', '#b2e5e6', '#ffe9b0', '#ffd07a'], ['#fff2cc', '#ffffff', '#c9a06e']],
+};
+function skyCan(mode) {
+  const m = SKYMODE[mode] || SKYMODE.day;
+  if (!LAY[m.key]) LAY[m.key] = buildSky(SKY_RAMP[m.key][0], SKY_RAMP[m.key][1]);
+  return LAY[m.key];
+}
+function drawAir(ctx, surfY, scroll, t, mode) {
+  const m = SKYMODE[mode] || SKYMODE.day;
+  const sc = skyCan(mode);
   const sy = R(surfY);
   if (sy <= 0) return;
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 640, sy); ctx.clip();
-  P(ctx, IP.sky[0], 0, 0, 640, sy);
-  tile(ctx, LAY.sky, scroll * 0.10, sy - LAY.sky.height - 10);
+  P(ctx, SKY_RAMP[m.key][0][0], 0, 0, 640, sy);
+  tile(ctx, sc, scroll * 0.10, sy - sc.height - 10);
   // far sea, sitting on the horizon
   const hz = sy - 12;
   for (let x = 0; x < 640; x += 2) {
     const w2 = Math.sin(x * 0.035 + t * 0.4) * 1.4;
-    P(ctx, '#2a6f9c', x, hz + R(w2), 2, 12);
-    P(ctx, '#1d5580', x, hz + 4 + R(w2), 2, 8);
-    if (hash2(x, 17) > 0.90) P(ctx, '#bcdcec', x, hz + 1 + R(w2), 3, 1);
+    P(ctx, m.sea[0], x, hz + R(w2), 2, 12);
+    P(ctx, m.sea[1], x, hz + 4 + R(w2), 2, 8);
+    if (hash2(x, 17) > 0.90) P(ctx, m.glint, x, hz + 1 + R(w2), 3, 1);
   }
   // chop + whitecaps at the waterline
   for (let x = 0; x < 640; x += 2) {
     const w = Math.sin(x * 0.07 + t * 2.2) * 2 + Math.sin(x * 0.021 - t * 1.3) * 1.6;
     const yy = sy - 3 + R(w);
-    P(ctx, '#2d6f86', x, yy, 2, sy - yy);
-    if (hash2(x, Math.floor(t * 3)) > 0.86) P(ctx, '#eaf8ff', x, yy - 1, 2, 2);
+    P(ctx, m.chop, x, yy, 2, sy - yy);
+    if (hash2(x, Math.floor(t * 3)) > 0.86) P(ctx, m.cap, x, yy - 1, 2, 2);
   }
   ctx.restore();
-  P(ctx, '#0d2a33', 0, sy - 1, 640, 1);
-  for (let x = 0; x < 640; x += 3) if (hash2(x, Math.floor(t * 5)) > 0.7) P(ctx, '#cfeaf2', x, sy + R(Math.sin(x * 0.07 + t * 2.2) * 2), 3, 1);
+  P(ctx, m.line, 0, sy - 1, 640, 1);
+  for (let x = 0; x < 640; x += 3) if (hash2(x, Math.floor(t * 5)) > 0.7) P(ctx, m.lip, x, sy + R(Math.sin(x * 0.07 + t * 2.2) * 2), 3, 1);
 }
 function speedLines(ctx, x, y, n, len, dir, col, seed) {
   ctx.fillStyle = col || 'rgba(225,244,255,0.5)';
@@ -1641,7 +1773,7 @@ BEATS.push({
     if (Math.random() < 0.4 * dt) FX.bubble(A.you.x + 22, A.you.y - 8, 1, 0.5);
   },
   render(ctx, bt) {
-    backdrop(ctx, { mood: 'shallow', scroll: Intro.scroll, t: Intro.t, surfY: 34, bedY: 296, set: 'S', shafts: 1, causticBed: true });
+    backdrop(ctx, { mood: 'lagoon', grade: 'lagoon', scroll: Intro.scroll, t: Intro.t, surfY: 34, bedY: 296, set: 'S', shafts: 1, causticBed: true });
     drawSchool(ctx, SC.sch1, Intro.t, Intro.dt);
     drawSchool(ctx, SC.sch3, Intro.t, Intro.dt);
     drawManatee(ctx, A.mom, Intro.t);
@@ -1650,7 +1782,7 @@ BEATS.push({
     drawManatee(ctx, A.you, Intro.t);
     drawManatee(ctx, A.bro, Intro.t);
     FX.render(ctx);
-    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 296, set: 'S' });
+    foreground(ctx, { grade: 'lagoon', scroll: Intro.scroll, t: Intro.t, bedY: 296, set: 'S' });
     titleCard(ctx, clamp((bt - 0.5) / 7.0, 0, 1), bt);
   },
 });
@@ -1696,8 +1828,8 @@ BEATS.push({
     if (panic > 0.2 && Math.random() < 14 * dt) { FX.bubble(A.you.x + 20, A.you.y - 6, 1, 1.4); FX.bubble(A.bro.x + 14, A.bro.y - 4, 1, 1.4); }
   },
   render(ctx, bt) {
-    backdrop(ctx, { mood: 'shallow', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 336, set: 'S', shafts: 0.85, causticBed: true });
-    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+    backdrop(ctx, { mood: 'cold', grade: 'cold', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 336, set: 'S', shafts: 0.85, causticBed: true });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t, 'gold');
     drawSchool(ctx, SC.sch1, Intro.t, Intro.dt);
     // boat + churn
     ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY)); ctx.rotate(SC.boatRot);
@@ -1712,7 +1844,7 @@ BEATS.push({
     drawManatee(ctx, A.you, Intro.t);
     drawManatee(ctx, A.bro, Intro.t);
     FX.render(ctx);
-    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 336, set: 'S' });
+    foreground(ctx, { grade: 'cold', scroll: Intro.scroll, t: Intro.t, bedY: 336, set: 'S' });
   },
 });
 
@@ -1764,8 +1896,8 @@ BEATS.push({
     if (bt > 4.6) { A.dad.x = lerp(-160, -50, clamp((bt - 4.6) / 2.4, 0, 1)); A.dad.y = 240; }
   },
   render(ctx, bt) {
-    backdrop(ctx, { mood: 'shallow', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 340, set: 'S', shafts: 0.8 });
-    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+    backdrop(ctx, { mood: 'cold', grade: 'cold', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 340, set: 'S', shafts: 0.8 });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t, 'gold');
     ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY)); ctx.rotate(Math.sin(bt * 2) * 0.02);
     ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay);
     drawProp(ctx, BOAT.prop[0], BOAT.prop[1], 15, SC.propA, 1);
@@ -1776,7 +1908,7 @@ BEATS.push({
     drawManatee(ctx, A.bro, Intro.t);
     FX.render(ctx);
     if (SC.hit && bt - 2.35 < 0.16) { ctx.fillStyle = rgbaq('#ffffff', 0.55 - (bt - 2.35) * 3); ctx.fillRect(0, 0, 640, 360); }
-    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 340, set: 'S' });
+    foreground(ctx, { grade: 'cold', scroll: Intro.scroll, t: Intro.t, bedY: 340, set: 'S' });
   },
 });
 
@@ -1826,8 +1958,8 @@ BEATS.push({
     if (Math.random() < 4 * dt) FX.blood(A.mom.x + rand(-4, 12), A.mom.y - 6, 1, 0.5);
   },
   render(ctx, bt) {
-    backdrop(ctx, { mood: 'shallow', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 344, set: 'S', shafts: 0.8 });
-    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+    backdrop(ctx, { mood: 'cold', grade: 'cold', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 344, set: 'S', shafts: 0.8 });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t, 'gold');
     // deck hands, drawn before the hull so the bulwark covers their legs
     const feet = SC.boatY - 25;
     const st = SC.rammed ? clamp(1 - (bt - 2.7) * 0.9, 0, 1) : 0;
@@ -1850,7 +1982,7 @@ BEATS.push({
     if (!SC.rammed && bt > 1.2) speedLines(ctx, A.dad.x - 70, A.dad.y, 9, 34, -1, 'rgba(225,244,255,0.45)', 3);
     FX.render(ctx);
     if (SC.rammed && bt - 2.7 < 0.12) { ctx.fillStyle = rgbaq('#ffffff', 0.6 - (bt - 2.7) * 4); ctx.fillRect(0, 0, 640, 360); }
-    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 344, set: 'S' });
+    foreground(ctx, { grade: 'cold', scroll: Intro.scroll, t: Intro.t, bedY: 344, set: 'S' });
   },
 });
 
@@ -1920,8 +2052,8 @@ BEATS.push({
     if (bt > 8.0) { A.you.exp = 'sad'; A.bro.exp = 'sad'; }
   },
   render(ctx, bt) {
-    backdrop(ctx, { mood: 'shallow', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 348, set: 'S', shafts: 0.7, fog: ['#0a2a38', 0.12] });
-    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+    backdrop(ctx, { mood: 'bruise', grade: 'bruise', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 348, set: 'S', shafts: 0.7, fog: ['#2a0c14', 0.14] });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t, 'dusk');
     const feet = SC.boatY - 25;
     SC.men.forEach((ox, i) => {
       const fired = SC.harps.some(h => h.gun === i);
@@ -1958,7 +2090,7 @@ BEATS.push({
     drawManatee(ctx, A.bro, Intro.t);
     for (const h of SC.harps) { ctx.save(); ctx.translate(R(h.x), R(h.y)); ctx.rotate(h.a); ctx.drawImage(HARP.c, -HARP.ax, -HARP.ay); ctx.restore(); }
     FX.render(ctx);
-    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 348, set: 'S' });
+    foreground(ctx, { grade: 'bruise', scroll: Intro.scroll, t: Intro.t, bedY: 348, set: 'S' });
   },
 });
 
@@ -1984,7 +2116,7 @@ BEATS.push({
   },
   render(ctx, bt) {
     const dk = clamp(bt / 4.5, 0, 1);
-    backdrop(ctx, { mood: bt > 2.6 ? 'night' : 'deep', scroll: Intro.scroll, t: Intro.t, surfY: 30 - dk * 60, bedY: 350, set: 'D', shafts: 0.5 * (1 - dk), fog: ['#020a14', dk * 0.30] });
+    backdrop(ctx, { mood: bt > 2.6 ? 'night' : 'deep', grade: 'night', scroll: Intro.scroll, t: Intro.t, surfY: 30 - dk * 60, bedY: 350, set: 'D', shafts: 0.5 * (1 - dk), fog: ['#020a14', dk * 0.30] });
     // the boat shrinking behind
     ctx.save(); ctx.translate(R(SC.boatX), 44 + bt * 4); ctx.scale(SC.boatS, SC.boatS); ctx.globalAlpha = qa(0.9 - dk * 0.75);
     ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay); ctx.restore();
@@ -1993,7 +2125,7 @@ BEATS.push({
     speedLines(ctx, A.you.x - 74, A.you.y, 14, 54, -1, 'rgba(190,225,245,0.34)', 7);
     speedLines(ctx, A.bro.x - 58, A.bro.y, 11, 42, -1, 'rgba(190,225,245,0.26)', 13);
     FX.render(ctx);
-    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 350, set: 'D' });
+    foreground(ctx, { grade: 'night', scroll: Intro.scroll, t: Intro.t, bedY: 350, set: 'D' });
   },
 });
 
@@ -2020,8 +2152,8 @@ BEATS.push({
     if (Math.random() < 3 * dt) { FX.bubble(A.you.x + 22, A.you.y - 6, 1, 0.8); FX.bubble(A.bro.x + 16, A.bro.y - 4, 1, 0.8); }
   },
   render(ctx, bt) {
-    backdrop(ctx, { mood: 'deep', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 352, set: 'D', shafts: 0.45 });
-    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+    backdrop(ctx, { mood: 'money', grade: 'money', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 352, set: 'D', shafts: 0.45 });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t, 'chrome');
     // hull wake under the waterline
     ctx.save(); ctx.translate(R(SC.yX), R(SC.yY));
     ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
@@ -2056,7 +2188,7 @@ BEATS.push({
     drawManatee(ctx, A.bro, Intro.t);
     drawManatee(ctx, A.you, Intro.t);
     FX.render(ctx);
-    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 352, set: 'D' });
+    foreground(ctx, { grade: 'money', scroll: Intro.scroll, t: Intro.t, bedY: 352, set: 'D' });
   },
 });
 
@@ -2120,8 +2252,8 @@ BEATS.push({
     }
   },
   render(ctx, bt) {
-    backdrop(ctx, { mood: 'deep', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 354, set: 'D', shafts: 0.45 });
-    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+    backdrop(ctx, { mood: 'money', grade: 'money', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 354, set: 'D', shafts: 0.45 });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t, 'chrome');
     ctx.save(); ctx.translate(R(SC.yX), R(SC.yY)); ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
     // davit rope down to the net
     drawRope(ctx, SC.yX + 178, SC.yY - 78, SC.netX, SC.netY + 2, 14, '#d8cfae', '#7a6a44');
@@ -2140,7 +2272,7 @@ BEATS.push({
     }
     drawNet(ctx, { x: SC.netX, y: SC.netY, w: 206, h: 150, cinch: SC.cinch, t: Intro.t, sway: 7, hole: { j: 7, i: 0, w: 4, h: 4 } });
     FX.render(ctx);
-    foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 354, set: 'D' });
+    foreground(ctx, { grade: 'money', scroll: Intro.scroll, t: Intro.t, bedY: 354, set: 'D' });
   },
 });
 
@@ -2211,8 +2343,8 @@ BEATS.push({
   },
   render(ctx, bt) {
     if (bt < 4.3) {
-      backdrop(ctx, { mood: 'deep', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY > 0 ? SC.surfY : null, bedY: 356, set: 'D', shafts: 0.4 });
-      if (SC.surfY > 0) drawAir(ctx, SC.surfY, Intro.scroll, Intro.t);
+      backdrop(ctx, { mood: 'money', grade: 'money', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY > 0 ? SC.surfY : null, bedY: 356, set: 'D', shafts: 0.4 });
+      if (SC.surfY > 0) drawAir(ctx, SC.surfY, Intro.scroll, Intro.t, 'chrome');
       if (SC.surfY < 40) { ctx.save(); ctx.translate(180, SC.surfY - 4); ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore(); }
       drawManatee(ctx, A.you, Intro.t);
       drawCrane(ctx, { x: SC.pvx, y: SC.pvy, a1: SC.a1, a2: SC.a2, a3: -SC.a1 - SC.a2, hook: 1, open: SC.clamped ? 0.12 : 0.85 });
@@ -2735,6 +2867,48 @@ function buildBulb() {
   P(x, '#ff9a3c', 5, 13, 1, 3); P(x, '#ff9a3c', 7, 13, 1, 3); P(x, '#fff6cc', 6, 12, 1, 2);
   return spr(c, 6, 0);
 }
+// One baked lighting pass for the hold: a single warm lamp burning a pool out
+// of a cold blue-steel dark.  Posterised into hard bands, dithered at the
+// seams, blitted once per frame.
+function buildHoldLight() {
+  const c = can(640, 360), x = cx2(c), img = x.createImageData(640, 360), d = img.data;
+  const WARM = ['#fff4d2', '#ffe2a0', '#ffbe63', '#e8853a', '#b4552a'];
+  const COLD = ['#4d82b8', '#356a9c', '#23507e', '#143560', '#0a1e3e'];
+  const W = WARM.map(hexToRgb), C = COLD.map(hexToRgb);
+  const LX = 168, LY = 152, RX = 430, RY = 360;
+  for (let y = 0; y < 360; y++) {
+    for (let px = 0; px < 640; px++) {
+      // distance from the lamp, banded into hard steps and dithered
+      const raw = Math.sqrt(Math.pow((px - LX) / RX, 2) + Math.pow((y - LY) / RY, 2));
+      const f = clamp(raw, 0, 1.6) * 9;
+      const i0 = Math.floor(f), fr = f - i0;
+      const band = clamp((fr > bay(px, y) ? i0 + 1 : i0) / 9, 0, 1.6);
+      let col, a;
+      if (band < 0.62) {                       // inside the lamp's reach
+        const k = band / 0.62 * (W.length - 1);
+        const j = clamp(Math.floor(k), 0, W.length - 2), kf = k - j;
+        const c0 = W[j], c1 = W[j + 1];
+        col = [R(c0[0] + (c1[0] - c0[0]) * kf), R(c0[1] + (c1[1] - c0[1]) * kf), R(c0[2] + (c1[2] - c0[2]) * kf)];
+        a = 0.40 * Math.pow(1 - band / 0.62, 1.15);
+      } else {                                  // the cold dark beyond it
+        const k = clamp((band - 0.62) / 0.78, 0, 1) * (C.length - 1);
+        const j = clamp(Math.floor(k), 0, C.length - 2), kf = k - j;
+        const c0 = C[j], c1 = C[j + 1];
+        col = [R(c0[0] + (c1[0] - c0[0]) * kf), R(c0[1] + (c1[1] - c0[1]) * kf), R(c0[2] + (c1[2] - c0[2]) * kf)];
+        a = 0.12 + 0.46 * clamp((band - 0.62) / 0.78, 0, 1);
+      }
+      // the bilge at the bottom stays coldest of all
+      if (y > 320) a += (y - 320) / 40 * 0.10;
+      const aq = clamp(a, 0, 1) * 16, ai = Math.floor(aq), af = aq - ai;
+      const A = clamp((af > bay(px + 1, y + 2) ? ai + 1 : ai) / 16, 0, 1);
+      if (A <= 0) continue;
+      const q = (y * 640 + px) * 4;
+      d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; d[q + 3] = R(A * 255);
+    }
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
 function buildBackPlate() {
   const c = can(40, 26), x = cx2(c);
   P(x, IP.ink, 2, 4, 36, 18);
@@ -2772,6 +2946,7 @@ function holdArt() {
   HOLD.pileFront = buildPileLayer(pileFrontTop, 228, 136, 9292, 760, { big: 6 });
   HOLD.pileThin = buildPileLayer(pileThinTop, 310, 54, 3131, 220, { big: 3 });
   HOLD.bulb = buildBulb();
+  HOLD.light = buildHoldLight();
   HOLD.plate = buildBackPlate();
   HOLD.tool = buildTool();
   return HOLD;
@@ -2946,6 +3121,9 @@ function crateScene(ctx, t, o) {
   // the catch: a heap you are half buried in
   ctx.drawImage(o.thin ? H.pileThin : H.pileBack, 0, o.thin ? 310 : 180);
 }
+// the hold's lamp, laid over everything in the crate so the manatee, the
+// otter and the heap all sit in the same pool of light
+function holdLight(ctx) { ctx.drawImage(holdArt().light, 0, 0); }
 function cratePileFront(ctx, thin) {
   if (thin) return;
   ctx.drawImage(holdArt().pileFront, 0, 228);
@@ -2988,7 +3166,8 @@ BEATS.push({
     looseRender(ctx, SC.loose);
     FX.render(ctx);
     // a little grime on the lens: floating scales caught in the light
-    motes(ctx, Intro.t * 6, Intro.t, 30, '#d8e0b0', 0.22);
+    holdLight(ctx);
+    motes(ctx, Intro.t * 6, Intro.t, 30, '#ffe0a0', 0.26);
     eyelids(ctx, SC.open);
     void bt;
   },
@@ -3057,7 +3236,8 @@ BEATS.push({
     }
     FX.render(ctx);
     if (SC.clank > 0) { ctx.fillStyle = rgbaq('#ffe9b0', qa(SC.clank * 0.10)); ctx.fillRect(0, 0, 640, 360); }
-    motes(ctx, Intro.t * 6, Intro.t, 30, '#d8e0b0', 0.22);
+    holdLight(ctx);
+    motes(ctx, Intro.t * 6, Intro.t, 30, '#ffe0a0', 0.26);
   },
 });
 
@@ -3131,7 +3311,8 @@ BEATS.push({
     cratePileFront(ctx);
     looseRender(ctx, SC.loose);
     FX.render(ctx);
-    motes(ctx, Intro.t * 6, Intro.t, 30, '#d8e0b0', 0.22);
+    holdLight(ctx);
+    motes(ctx, Intro.t * 6, Intro.t, 30, '#ffe0a0', 0.26);
     if (SC.dim > 0) { ctx.fillStyle = rgbaq('#05070c', qa(SC.dim * 0.55)); ctx.fillRect(0, 0, 640, 360); }
     const cur = SC.talkI;
     if (cur >= 0) {
@@ -3250,15 +3431,16 @@ BEATS.push({
       looseRender(ctx, SC.loose);
       drawCapOtter(ctx, SC.ot, Intro.t);
       FX.render(ctx);
+      holdLight(ctx);
       if (SC.shout && bt > 3.4) {
         pixelTextOutlined(ctx, 'IT IS LOOSE!', 150, 70, 9, '#ffe48f', '#14141c', 'center');
         if (bt > 4.2) pixelTextOutlined(ctx, 'GET THE GAFF!', 470, 84, 9, '#ffe48f', '#14141c', 'center');
       }
     } else {
       // outside: the boat with a hole in her side
-      backdrop(ctx, { mood: 'open', scroll: Intro.scroll, t: Intro.t, surfY: bt < 7.6 ? 252 : 40, bedY: 356, set: 'D', shafts: 0.5 });
+      backdrop(ctx, { mood: 'dawn', grade: 'dawn', scroll: Intro.scroll, t: Intro.t, surfY: bt < 7.6 ? 252 : 40, bedY: 356, set: 'D', shafts: 0.5 });
       if (bt < 7.6) {
-        drawAir(ctx, 252, Intro.scroll, Intro.t);
+        drawAir(ctx, 252, Intro.scroll, Intro.t, 'dawnsky');
         ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY + 94)); ctx.rotate(0.04);
         ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay); ctx.restore();
         hullHole(ctx, R(SC.boatX + 108), R(SC.boatY + 88), 26, 31);
@@ -3280,7 +3462,7 @@ BEATS.push({
         speedLines(ctx, A.you.x - 90, A.you.y, 16, 64, -1, 'rgba(190,225,245,0.32)', 7);
       }
       FX.render(ctx);
-      if (bt >= 7.6) foreground(ctx, { scroll: Intro.scroll, t: Intro.t, bedY: 356, set: 'D' });
+      if (bt >= 7.6) foreground(ctx, { grade: 'dawn', scroll: Intro.scroll, t: Intro.t, bedY: 356, set: 'D' });
     }
     if (SC.flash > 0) { ctx.fillStyle = rgbaq('#ffffff', SC.flash * 0.8); ctx.fillRect(0, 0, 640, 360); }
   },
