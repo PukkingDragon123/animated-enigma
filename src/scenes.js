@@ -1194,16 +1194,26 @@ const BossCut = {
       P(ctx, BP.fire[3], tx, ty - 5 - f, 1, 4);
       P(ctx, BP.fire[4], tx, ty - 4, 1, 2);
     }
+    // villagers turning out along the pier.  the huts behind them are the
+    // same near-black, so they carry their own torchlight to read against it.
     const run = clamp((T - KI.alarm - 0.2) / 0.9, 0, 1);
     for (let i = 0; i < 5; i++) {
-      const fx = R(lerp(58 + i * 16, 152 + i * 13, run));
+      const fx = R(lerp(48 + i * 15, 138 + i * 15, run));
       const fy = HZ - 17;
       const bob = (Math.floor(t * 9 + i * 2) & 1) && run < 1 ? 1 : 0;
-      P(ctx, BP.ink, fx, fy - 10 - bob, 3, 4);            // head + shoulders
-      P(ctx, BP.ink, fx, fy - 6 - bob, 3, 4);             // body
-      P(ctx, BP.ink, fx, fy - 2, 1, 2);                   // legs
+      P(ctx, BP.ink, fx - 1, fy - 11 - bob, 5, 10);        // a dark gap around him
+      P(ctx, '#47372c', fx, fy - 10 - bob, 3, 4);          // head + shoulders
+      P(ctx, '#6b5136', fx, fy - 10 - bob, 3, 1);
+      P(ctx, '#3a2c24', fx, fy - 6 - bob, 3, 4);           // body
+      P(ctx, BP.ink, fx, fy - 2, 1, 2);
       P(ctx, BP.ink, fx + 2, fy - 2, 1, 2);
-      if (run >= 1 && (i & 1)) P(ctx, BP.ink, fx + 3, fy - 12, 3, 1);  // an arm, pointing
+      if (i & 1) {                                         // a torch, held up
+        const f = Math.floor(t * 13 + i) % 3;
+        P(ctx, '#3a2c24', fx + 4, fy - 12, 1, 5);
+        P(ctx, BP.fire[2], fx + 4, fy - 15, 1, 3);
+        P(ctx, BP.fire[3], fx + 4, fy - 16 - f, 1, 2);
+        P(ctx, BP.fire[4], fx + 4, fy - 15, 1, 1);
+      } else if (run >= 1) P(ctx, '#47372c', fx + 3, fy - 12, 3, 1);   // an arm, pointing
     }
   },
   drawRider(ctx, s, sc) {
