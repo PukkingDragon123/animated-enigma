@@ -3,21 +3,20 @@ const WORLD_W = 6400, WORLD_H = 3000, SHORE_Y = 300;
 // the village stands out over the water down to about SHORE_Y+150, so nothing
 // that swims is allowed above this line
 const WATER_TOP = SHORE_Y + 152;
-const RIG_SCALE = 0.64;   // the rig is drawn large for detail, scaled to play size
-// The world is drawn at 1:1 into an offscreen 640x360 canvas, then a centred
-// 320x180 crop of it is blown up to fill the screen. That is a clean 2x pixel
-// zoom: everything doubles in size and the pixels stay square.
-// The presentation canvas is 1280x720 so text, interface and the upscale to the
-// browser are all twice as sharp. Every interface coordinate stays in a 640x360
-// logical space, drawn through a 2x transform. The world is still authored at
-// one pixel per world unit in a 640x360 layer; a 426x240 window of it is blown
-// up to fill the screen, which is very close to a clean 3x magnification.
+const RIG_SCALE = 0.80;   // drawn larger than at the old tighter zoom so the hero still reads
+// The presentation canvas is 1280x720. The world is authored at one pixel per
+// world unit into an offscreen 640x360 layer and the WHOLE layer is magnified
+// by exactly 2 onto the canvas, so every world pixel lands on a square 2x2
+// block -- no resampling, no uneven pixel widths, and the ocean underneath is
+// now resolved at one sample per world unit instead of one per two.
+// Every interface coordinate stays in the same 640x360 logical space, drawn
+// through the same 2x transform, so world and interface share one grid.
 const OUT_W = 1280, OUT_H = 720;      // presentation resolution
 const HUD_W = 640, HUD_H = 360;       // logical interface space
 const HUD_SCALE = OUT_W / HUD_W;      // 2
-const VIEW_W = 426, VIEW_H = 240;     // world units visible
-const CROP_X = Math.floor((640 - VIEW_W) / 2), CROP_Y = Math.floor((360 - VIEW_H) / 2);
-const ZOOM = HUD_W / VIEW_W;          // world units -> logical interface units
+const VIEW_W = 640, VIEW_H = 360;     // world units visible
+const CROP_X = 0, CROP_Y = 0;
+const ZOOM = HUD_W / VIEW_W;          // world units -> logical interface units (1)
 
 class Game {
   constructor() {
@@ -109,7 +108,15 @@ class Game {
     this.banner('FISHER VILLAGE', '#ff6161', 2.6, 'The otter has spoken. FIGHT!');
     setTimeout(() => { if (this.director && !this.director.started) this.director.begin(); }, 1200);
     this.runActive = true;
+    this.autoTree = 0;
     this.state = 'play';
+  }
+  // one way in to the skill tree, so every caller gets the same setup
+  openTree(prev) {
+    this.autoTree = 0;
+    this.prevState = prev || 'play';
+    this.state = 'tree';
+    if (typeof Upgrades !== 'undefined') Upgrades.open();
   }
   // a wave is only over when every last boat is on the bottom
   onWaveCleared(idx) {
@@ -117,6 +124,8 @@ class Game {
     this.banner('WAVE CLEARED', '#6fd88e', 2.6, d.lastWave ? 'Nothing left but the Chief.' : 'Spend your salvage, then call the next one in.');
     Audio_.rampage();
     this.pickups.forEach(p => { p.life = Math.max(p.life, 30); });
+    // the tree comes up on its own once the banner has had its moment
+    this.autoTree = 2.4;
   }
   onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() { this.banner('THE CHIEF IS DOWN', '#ffe48f', 3); this.endT = 0; this.state = 'victory_wait'; }
@@ -142,7 +151,7 @@ class Game {
           MainMenu.consume();
           if (a === 'play') { this.firstRun = true; this.newRun(); this.runActive = false; Intro.reset(); this.state = 'intro'; }
           else if (a === 'continue' && this.runActive) this.state = 'play';
-          else if (a === 'deep') { this.prevState = 'menu'; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); }
+          else if (a === 'deep') this.openTree('menu');
           else if (a === 'controls') this.showControls = !this.showControls;
         }
         break;
@@ -174,12 +183,12 @@ class Game {
           this.projectiles.push(new Projectile({ x: p.x + Math.cos(a) * 10, y: p.y - 5 + Math.sin(a) * 10, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520, life: d / 520 + 0.5, dmg: 999, owner: 'player', sprite: SP.bulletBig, size: 4, trail: true }));
           this.particles.shell(p.x, p.y - 6, a);
         }
-        if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); }
+        if (Input.hit('Tab')) this.openTree(this.state);
         break;
       case 'play':
         this.updateWorld(dt);
         if (Input.hit('Tab')) {
-          if (this.upgradesOpen()) { this.prevState = 'play'; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); }
+          if (this.upgradesOpen()) this.openTree('play');
           else { this.banner('SINK THE WAVE FIRST', '#ff6161', 1.6, 'The Deep only opens between waves.'); Audio_.deny(); }
         }
         else if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'paused';
@@ -188,6 +197,10 @@ class Game {
           if (Input.hit('Enter') || Input.hit('NumpadEnter') || Input.hit('KeyN') || tap) this.director.next();
         }
         this.weaponKeys();
+        if (this.autoTree > 0) {
+          this.autoTree -= dt;
+          if (this.autoTree <= 0 && this.upgradesOpen()) this.openTree('play');
+        }
         break;
       case 'tree':
         this.time += dt;
@@ -203,15 +216,20 @@ class Game {
         break;
       case 'paused':
         if (typeof MainMenu !== 'undefined' && Input.hit('Backspace')) { this.runActive = true; this.state = 'menu'; break; }
-        if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'play'; if (Input.hit('Tab') && this.upgradesOpen()) { this.prevState = 'play'; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); } break;
-      case 'dead_wait': this.updateWorld(dt * 0.5, true); this.endT += dt; if (this.endT > 2) this.state = 'gameover'; break;
+        if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'play'; if (Input.hit('Tab') && this.upgradesOpen()) this.openTree('play'); break;
+      case 'dead_wait':
+        this.updateWorld(dt * 0.5, true); this.endT += dt;
+        // the otter patches her up on the shore, then the tree opens so the
+        // salvage she died with is not wasted
+        if (this.endT > 2) this.openTree('gameover');
+        break;
       case 'victory_wait': this.updateWorld(dt, false); this.endT += dt; if (this.endT > 3.5) this.state = 'victory'; break;
       case 'gameover': case 'victory':
         this.updateWorld(dt * 0.3, true);
         if (typeof MainMenu !== 'undefined' && (Input.hit('Escape') || Input.hit('Backspace'))) { this.state = 'menu'; break; }
         const tapRestart = typeof MobileUI !== 'undefined' && MobileUI.enabled && Input.mouse.clicked;
         if (Input.hit('KeyR') || tapRestart) { this.firstRun = false; this.newRun(); this.runActive = true; this.state = 'play'; }
-        if (Input.hit('Tab')) { this.prevState = this.state; this.state = 'tree'; if (typeof Upgrades !== 'undefined') Upgrades.open(); }
+        if (Input.hit('Tab')) this.openTree(this.state);
         break;
     }
   }
@@ -374,7 +392,7 @@ class Game {
       'Left mouse           aim by hand (the otter auto-aims)',
       '1-7 or wheel         switch weapon',
       'SHIFT / F / R        dive, decoy buoy, tidal slam',
-      'TAB                  THE DEEP, spend your salvage',
+      'TAB                  SKILL TREE, spend your salvage',
     ];
     lines.forEach((l, i) => pixelText(ctx, l, 150, y + i * 13, 6, '#cfe0ec', 'left'));
   }

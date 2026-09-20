@@ -68,7 +68,7 @@ function drawEndScreen(ctx, t, win) {
   });
   const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
   UIKit.panel(ctx, 100, 296, 440, 34, 'dark');
-  pixelTextOutlined(ctx, touch ? 'TAP TO FIGHT AGAIN' : '[R] FIGHT AGAIN        [TAB] THE DEEP',
+  pixelTextOutlined(ctx, touch ? 'TAP TO FIGHT AGAIN' : '[R] FIGHT AGAIN        [TAB] SKILL TREE',
     320, 302, 10, Math.floor(t * 2) % 2 ? '#ffffff' : '#ffe48f', '#14141c', 'center');
   pixelText(ctx, (win ? 'Your build carries over.' : 'Everything you unlocked carries over.') + '   [ESC] title screen', 320, 317, 6, '#9ab0c0', 'center');
 }

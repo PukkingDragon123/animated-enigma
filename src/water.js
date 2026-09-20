@@ -31,7 +31,10 @@ class Ocean {
     this.ripples = []; this.wakes = []; this.streaks = []; this.fish = [];
     this.frame = 0; this.cx2 = 0; this.cy2 = 0;
     // --- low-res target ---------------------------------------------------
-    this.lw = 322; this.lh = 182;
+    // world units per low-buffer pixel. 1 = the water is resolved at full
+    // world resolution (every world pixel gets its own wave/caustic sample).
+    this.ls = 2;
+    this.lw = Math.ceil(642 / this.ls); this.lh = Math.ceil(362 / this.ls);
     this.low = document.createElement('canvas'); this.low.width = this.lw; this.low.height = this.lh;
     this.lctx = this.low.getContext('2d'); this.lctx.imageSmoothingEnabled = false;
     this.img = this.lctx.createImageData(this.lw, this.lh);
@@ -768,7 +771,7 @@ class Ocean {
     const wLUT = this.waterLUT, visLUT = this.visLUT, shoal = this.shoalLUT;
     const absR = this.absR, absG = this.absG, absB = this.absB;
     const cR = this.cR, cG = this.cG, cB = this.cB;
-    const sb = this.sb, sbw = this.sbw, sbh = this.sbh, sbx0 = cx2 >> 1;
+    const sb = this.sb, sbw = this.sbw, sbh = this.sbh, LS = this.ls;
     const rD = this.rD, rJ = this.rJ, rGX = this.rGX, rGY = this.rGY, rB = this.rB, rF = this.rF, rO = this.rO;
     const jelOn = this.jelOn, bloodOn = this.bloodOn, foamOn = this.foamOn, oilOn = this.oilOn;
     const bloodC = this.bloodC, bloodB = this.bloodBright, foamC = this.foamC, oilC = this.oilC;
@@ -777,16 +780,16 @@ class Ocean {
     const REFR = 12.0, JW = 0.78;
     // wave term constants: [xFreq, yFreq, timeFreq, amp]
     const A1 = 0.46, A2 = 0.30, A3 = 0.20, A4 = 0.20;
-    const d1 = 0.020 * 2 * K, d2 = -0.012 * 2 * K, d3 = 0.060 * 2 * K, d4 = 0.033 * 2 * K;
+    const d1 = 0.020 * LS * K, d2 = -0.012 * LS * K, d3 = 0.060 * LS * K, d4 = 0.033 * LS * K;
     // caustic term constants
-    const e1 = 0.079 * 2 * K, e2 = -0.061 * 2 * K, e3 = 0.031 * 2 * K;
+    const e1 = 0.079 * LS * K, e2 = -0.061 * LS * K, e3 = 0.031 * LS * K;
     let p = 0;
     for (let py = 0; py < lh; py++) {
-      const wy = cy2 + py * 2;
+      const wy = cy2 + py * LS;
       // ------------------------------------------------ beach & village land
       if (wy < shore - 10) {
         let wx = cx2;
-        for (let px = 0; px < lw; px++, p += 4, wx += 2) {
+        for (let px = 0; px < lw; px++, p += 4, wx += LS) {
           const n = vnoise(wx * 0.05, wy * 0.05);
           const gl = shore - 120 + n * 60;
           let r, g, b;
@@ -811,11 +814,11 @@ class Ocean {
         continue;
       }
       // ------------------------------------------------------------- water
-      this.fillRow(rD, this.depth, wy, cx2, lw, 2);
-      if (jelOn) { this.fillRow(rJ, this.jh, wy, cx2, lw, 2); this.fillRow(rGX, this.jgx, wy, cx2, lw, 2); this.fillRow(rGY, this.jgy, wy, cx2, lw, 2); }
-      if (bloodOn) this.fillRow(rB, this.blood, wy, cx2, lw, 2);
-      if (foamOn) this.fillRow(rF, this.foam, wy, cx2, lw, 2);
-      if (oilOn) this.fillRow(rO, this.oil, wy, cx2, lw, 2);
+      this.fillRow(rD, this.depth, wy, cx2, lw, LS);
+      if (jelOn) { this.fillRow(rJ, this.jh, wy, cx2, lw, LS); this.fillRow(rGX, this.jgx, wy, cx2, lw, LS); this.fillRow(rGY, this.jgy, wy, cx2, lw, LS); }
+      if (bloodOn) this.fillRow(rB, this.blood, wy, cx2, lw, LS);
+      if (foamOn) this.fillRow(rF, this.foam, wy, cx2, lw, LS);
+      if (oilOn) this.fillRow(rO, this.oil, wy, cx2, lw, LS);
       let p1 = (wy * 0.075 + cx2 * 0.020 + t * 1.30) * K;
       let p2 = (wy * 0.031 - cx2 * 0.012 - t * 0.62) * K;
       let p3 = (cx2 * 0.060 + wy * 0.050 + t * 2.00) * K;
@@ -823,10 +826,10 @@ class Ocean {
       let q1 = (cx2 * 0.079 + wy * 0.048 + t * 1.15) * K;
       let q2 = (-cx2 * 0.061 + wy * 0.086 - t * 0.95) * K;
       let q3 = (cx2 * 0.031 - wy * 0.027 + t * 0.55) * K;
-      const sbyBase = wy >> 1;
+      const sbyBase = wy >> 1;   // the seabed buffer is half world resolution
       const nearShore = wy < shore + 70;
       let wx = cx2;
-      for (let px = 0; px < lw; px++, p += 4, wx += 2) {
+      for (let px = 0; px < lw; px++, p += 4, wx += LS) {
         let wv = A1 * S[(p1 | 0) & M] + A2 * S[(p2 | 0) & M] + A3 * S[(p3 | 0) & M] + A4 * S[(p4 | 0) & M];
         p1 += d1; p2 += d2; p3 += d3; p4 += d4;
         const dp = rD[px];
@@ -850,7 +853,7 @@ class Ocean {
           // --- seabed, refracted by the swell + the jelly field ------------
           let ox2 = wv * 2.4 + gx * REFR; if (ox2 > 6) ox2 = 6; else if (ox2 < -6) ox2 = -6;
           let oy2 = wv * 1.6 + gy * REFR; if (oy2 > 6) oy2 = 6; else if (oy2 < -6) oy2 = -6;
-          let sx = sbx0 + px + (ox2 | 0);
+          let sx = (wx >> 1) + (ox2 | 0);
           let sy = sbyBase + (oy2 | 0);
           if (sx < 0) sx = 0; else if (sx >= sbw) sx = sbw - 1;
           if (sy < 0) sy = 0; else if (sy >= sbh) sy = sbh - 1;
@@ -923,45 +926,49 @@ class Ocean {
     this.lctx.putImageData(this.img, 0, 0);
     this.renderLife(t);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.low, -ox, -oy, lw * 2, lh * 2);
+    ctx.drawImage(this.low, -ox, -oy, lw * LS, lh * LS);
   }
 
   // ---- seaweed / kelp / fish / flow streaks, drawn chunky on the low buffer
   renderLife(t) {
     const g = this.lctx, lw = this.lw, lh = this.lh, cx2 = this.cx2, cy2 = this.cy2;
+    const LS = this.ls;
+    // seabed flora were authored against a half-resolution buffer; F keeps their
+    // world size the same however finely the water is now resolved
+    const F = 2 / LS;
     const K = _OS_K, M = _OS_M, S = _OS;
     // seagrass turf
     const turf = this.turf;
     for (let i = 0; i < turf.length; i++) {
       const c = turf[i];
-      const lx = (c.x - cx2) >> 1, ly = (c.y - cy2) >> 1;
-      if (lx < -10 || lx > lw + 10 || ly < -2 || ly - c.h > lh) continue;
+      const lx = ((c.x - cx2) / LS) | 0, ly = ((c.y - cy2) / LS) | 0;
+      if (lx < -10 * F || lx > lw + 10 * F || ly < -2 || ly - c.h * F > lh) continue;
       g.fillStyle = c.c1;
       const base = t * c.sp + c.ph;
       // the whole clump leans with the passing swell
       const swell = S[(((c.y * 0.075 + c.x * 0.020 + t * 1.30) * K) | 0) & M] * 1.5;
       for (let k = 0; k < c.n; k++) {
-        const dx = (hash2(c.seed, k) * 2 - 1) * c.r * 0.5;
-        const hh = c.h * (0.55 + hash2(c.seed, k + 61) * 0.7);
+        const dx = (hash2(c.seed, k) * 2 - 1) * c.r * 0.5 * F;
+        const hh = c.h * (0.55 + hash2(c.seed, k + 61) * 0.7) * F;
         const ph = hash2(c.seed, k + 131) * 6.283;
         const amp = 1 + hash2(c.seed, k + 211) * 2;
         const segs = Math.max(3, hh / 2 | 0);
         for (let s = 1; s <= segs; s++) {
           const f = s / segs;
-          const off = S[(((base + ph + f * 1.9)) * K | 0) & M] * amp * f * f + swell * f * f;
-          g.fillRect(Math.round(lx + dx + off), Math.round(ly - f * hh), 1, 2);
+          const off = (S[(((base + ph + f * 1.9)) * K | 0) & M] * amp * f * f + swell * f * f) * F;
+          g.fillRect(Math.round(lx + dx + off), Math.round(ly - f * hh), F, 2 * F);
         }
       }
       g.fillStyle = c.c0;
-      g.fillRect(lx - 1, ly - 1, 2, 1);
+      g.fillRect(lx - F, ly - F, 2 * F, F);
     }
     // kelp stalks
     const kelp = this.kelp;
     for (let i = 0; i < kelp.length; i++) {
       const k = kelp[i];
-      const lx = (k.x - cx2) >> 1, ly = (k.y - cy2) >> 1;
-      if (lx < -14 || lx > lw + 14 || ly < 0 || ly - k.sh > lh) continue;
-      const segs = k.segs, hh = k.sh, base = t * k.sp + k.ph;
+      const lx = ((k.x - cx2) / LS) | 0, ly = ((k.y - cy2) / LS) | 0;
+      if (lx < -14 * F || lx > lw + 14 * F || ly < 0 || ly - k.sh * F > lh) continue;
+      const segs = k.segs, hh = k.sh * F, base = t * k.sp + k.ph, kw = Math.max(1, k.w * F);
       // swell drag + whatever is currently shoving the jelly field around
       const swell = S[(((k.y * 0.075 + k.x * 0.020 + t * 1.30) * K) | 0) & M] * 2.6
         + S[(((k.y * 0.031 - k.x * 0.012 - t * 0.62) * K) | 0) & M] * 1.6
@@ -970,25 +977,25 @@ class Ocean {
       let lastX = lx, lastY = ly;
       for (let s = 1; s <= segs; s++) {
         const f = s / segs, ff = f * f;
-        const off = S[(((base + f * 2.2)) * K | 0) & M] * k.amp * ff + (k.lean + swell) * ff;
+        const off = (S[(((base + f * 2.2)) * K | 0) & M] * k.amp * ff + (k.lean + swell) * ff) * F;
         const nx = Math.round(lx + off), ny = Math.round(ly - f * hh);
-        g.fillRect(nx, ny, k.w, 2);
+        g.fillRect(nx, ny, kw, 2 * F);
         if (k.leaf && (s % 3) === 0 && s < segs) {
           const dd = (s & 2) ? 1 : -1;
-          g.fillRect(nx + dd * 2, ny, 2, 1);
+          g.fillRect(nx + dd * 2 * F, ny, 2 * F, F);
         }
         lastX = nx; lastY = ny;
       }
       g.fillStyle = k.c0;
-      g.fillRect(lastX, lastY - 2, k.w, 2);
+      g.fillRect(lastX, lastY - 2 * F, kw, 2 * F);
       g.fillStyle = k.c2;
-      g.fillRect(lx - 1, ly, k.w + 2, 1);
+      g.fillRect(lx - F, ly, kw + 2 * F, F);
     }
     // fish schools
     const fish = this.fish;
     for (let i = 0; i < fish.length; i++) {
       const f = fish[i];
-      const lx = (f.x - cx2) >> 1, ly = (f.y - cy2) >> 1;
+      const lx = ((f.x - cx2) / LS) | 0, ly = ((f.y - cy2) / LS) | 0;
       if (lx < -6 || ly < -6 || lx > lw + 6 || ly > lh + 6) continue;
       const dp = this.sample(this.depth, f.x, f.y);
       let band = (dp * 15.999) | 0; band = band > 15 ? 15 : band;
@@ -996,28 +1003,28 @@ class Ocean {
       if (vis <= 0) continue;
       if (!f.css || f.cssB !== band) { f.css = this.fogCss(hexToRgb(f.col), dp, 1.0); f.cssD = this.fogCss(hexToRgb(f.col), dp, 0.55); f.cssB = band; }
       const cx = Math.cos(f.a), sy = Math.sin(f.a);
-      const L = Math.max(2, f.size * 0.4) | 0;
+      const L = Math.max(2, f.size * 0.4 * F) | 0;
       // shadow on the seabed
       g.fillStyle = 'rgba(8,22,44,0.28)';
-      g.fillRect(lx + 1, ly + 2, L + 1, 1);
+      g.fillRect(lx + F, ly + 2 * F, L + F, F);
       g.fillStyle = f.css;
-      for (let s = 0; s <= L; s++) g.fillRect(Math.round(lx - cx * s), Math.round(ly - sy * s), 1, s < L - 1 ? 2 : 1);
-      g.fillRect(Math.round(lx + cx), Math.round(ly + sy), 1, 1);
+      for (let s = 0; s <= L; s++) g.fillRect(Math.round(lx - cx * s), Math.round(ly - sy * s), F, s < L - 1 ? 2 * F : F);
+      g.fillRect(Math.round(lx + cx * F), Math.round(ly + sy * F), F, F);
       g.fillStyle = f.cssD;
-      const flick = Math.sin(f.ph) * 1.6;
-      g.fillRect(Math.round(lx - cx * (L + 1) - sy * flick), Math.round(ly - sy * (L + 1) + cx * flick), 1, 1);
+      const flick = Math.sin(f.ph) * 1.6 * F;
+      g.fillRect(Math.round(lx - cx * (L + F) - sy * flick), Math.round(ly - sy * (L + F) + cx * flick), F, F);
     }
     // current streaks: crisp 1px dashes riding the flow
     g.fillStyle = 'rgba(206,238,255,0.17)';
     for (let i = 0; i < this.streaks.length; i++) {
       const s = this.streaks[i];
-      const lx = (s.x - cx2) >> 1, ly = (s.y - cy2) >> 1;
+      const lx = ((s.x - cx2) / LS) | 0, ly = ((s.y - cy2) / LS) | 0;
       if (lx < 0 || ly < 0 || lx > lw || ly > lh) continue;
       const l = Math.hypot(s.vx || 0, s.vy || 0); if (l < 8) continue;
-      const k = Math.min(7, l * 0.1) / l;
+      const k = Math.min(7 * F, l * 0.1 * F) / l;
       const ex = Math.round(lx - s.vx * k), ey = Math.round(ly - s.vy * k);
       const dx = ex - lx, dy = ey - ly, n = Math.max(1, Math.max(Math.abs(dx), Math.abs(dy)));
-      for (let j = 0; j <= n; j++) g.fillRect(lx + Math.round(dx * j / n), ly + Math.round(dy * j / n), 1, 1);
+      for (let j = 0; j <= n; j++) g.fillRect(lx + Math.round(dx * j / n), ly + Math.round(dy * j / n), F, F);
     }
   }
 

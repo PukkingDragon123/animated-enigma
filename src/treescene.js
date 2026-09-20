@@ -1,5 +1,5 @@
 // ===========================================================================
-//  THE DEEP — the skill tree as an underwater scene.
+//  SKILL TREE — the skill tree as an underwater scene.
 //  The otter is sinking, drowning, out of air. Every upgrade is a bubble of
 //  air. When you buy one he lunges out, grabs it, and gets a gasp of life.
 // ===========================================================================

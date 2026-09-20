@@ -121,7 +121,7 @@ const UI = {
       pixelTextOutlined(ctx, G.tree.scrap[k] + '', x + 12, 11, 7, SCRAP_COLORS[k], '#14141c');
     });
     const canBuy = SKILL_NODES.some(n => !G.tree.has(n.id) && G.tree.available(n) && G.tree.canAfford(n));
-    if (!touch) pixelTextOutlined(ctx, canBuy ? '[TAB] WORKSHOP - upgrades ready' : '[TAB] WORKSHOP', 636, 33, 5,
+    if (!touch) pixelTextOutlined(ctx, canBuy ? '[TAB] SKILL TREE - points ready' : '[TAB] SKILL TREE', 636, 33, 5,
       canBuy && Math.floor(t * 2) % 2 ? '#6fd88e' : '#9ab0c0', '#14141c', 'right');
 
     // ---------- bottom-left: weapon ----------
@@ -168,9 +168,9 @@ const UI = {
         pulse ? '#ffffff' : '#ffe48f', '#14141c', 'center');
       if (d.lastWave) {
         pixelTextOutlined(ctx, 'Only the Chief is left. Take a breath.', 320, 273, 7, '#e8d9b4', '#14141c', 'center');
-        pixelTextOutlined(ctx, touch ? 'THE DEEP to spend salvage' : '[TAB] THE DEEP to spend salvage', 320, 283, 6, '#c9b890', '#14141c', 'center');
+        pixelTextOutlined(ctx, touch ? 'SKILL TREE to spend salvage' : '[TAB] SKILL TREE to spend salvage', 320, 283, 6, '#c9b890', '#14141c', 'center');
       } else {
-        pixelTextOutlined(ctx, touch ? 'Open THE DEEP to spend your salvage' : '[TAB] open THE DEEP and spend your salvage', 320, 272, 7, '#e8d9b4', '#14141c', 'center');
+        pixelTextOutlined(ctx, touch ? 'Open the SKILL TREE to spend your salvage' : '[TAB] open the SKILL TREE and spend your salvage', 320, 272, 7, '#e8d9b4', '#14141c', 'center');
         pixelTextOutlined(ctx, touch ? 'TAP HERE FOR THE NEXT WAVE' : '[ENTER] CALL IN THE NEXT WAVE', 320, 282, 8,
           pulse ? '#ffe48f' : '#ffffff', '#14141c', 'center');
       }
@@ -278,7 +278,7 @@ const UI = {
 
     // ---- header
     ctx.fillStyle = 'rgba(4,14,26,0.72)'; ctx.fillRect(0, 0, 640, 28);
-    pixelText(ctx, 'THE DEEP', 8, 4, 12, '#ffe48f');
+    pixelText(ctx, 'SKILL TREE', 8, 4, 12, '#ffe48f');
     pixelText(ctx, 'He is out of air. Every upgrade is a bubble of air. Reach out and take it.', 8, 18, 6, '#9fd8ee');
     SCRAP_TYPES.forEach((k, i) => {
       const x = 390 + i * 46;
