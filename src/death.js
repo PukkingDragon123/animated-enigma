@@ -331,7 +331,27 @@ function buildAnchors() {
   put('sho', S.shoX, S.shoY);
   MA.len = S.len * MSC;
   MA.hgt = S.body.c.height * MSC;
+  // Her actual profile, read off the cast's own sprite: the top of her back
+  // and the line where she meets the sand, per column.  Everything that has
+  // to sit ON her — him, the strap, the blood running off her — uses this,
+  // so it still fits when she is rebuilt.
+  const b = S.body, W = b.c.width, H = b.c.height;
+  const d = cx2(can(W, H));
+  d.drawImage(b.c, 0, 0);
+  const px2 = d.getImageData(0, 0, W, H).data;
+  A.topY = new Int16Array(W); A.botY = new Int16Array(W);
+  for (let x = 0; x < W; x++) {
+    let ya = -1, yb = -1;
+    for (let y = 0; y < H; y++) if (px2[(y * W + x) * 4 + 3] > 40) { if (ya < 0) ya = y; yb = y; }
+    A.topY[x] = ya < 0 ? 0 : ya - b.ay;
+    A.botY[x] = yb < 0 ? 0 : yb - b.ay;
+  }
+  A.colOf = dx => clamp(R(b.ax - dx / MSC), 0, W - 1);
 }
+// the top of her back, and the line where she meets the sand, in screen
+// pixels from her centre, for a body drawn facing LEFT
+function herTop(dx) { return A.topY[A.colOf(dx)] * MSC; }
+function herBot(dx) { return A.botY[A.colOf(dx)] * MSC; }
 function buildHim() {
   A.oHeadBare = cutBareHead();
   A.hatSide = cutHat();
@@ -1684,7 +1704,8 @@ const DeathScene = {
     const mx = R(lerp(HER.x + 92, HER.x, de) + goK * goK * 150);
     const my = R(lerp(HER.y - 20, HER.y, de) - goK * goK * 34);
     const HL = MA.len / 2, HH = MA.hgt / 2;
-    const rib = dx => R(HH * 0.84 * Math.sqrt(Math.max(0, 1 - (dx / (HL * 0.94)) * (dx / (HL * 0.94)))));
+    const rib = dx => herBot(dx);
+    const top = dx => herTop(dx);
 
     // ---- the track she has been dragged along: wet sand, and her blood
     //      down the middle of it
@@ -1721,15 +1742,15 @@ const DeathScene = {
       const sk = this.soak;
       ctx.globalAlpha = qa(0.9 * (1 - goK * 2));
       const bd = A.bloodDisc[clamp(Math.round((20 + sk * 38 - 4) / 4), 0, A.bloodDisc.length - 1)];
-      ctx.drawImage(bd.c, MA.wound[0] - bd.ax, HH - 4 - bd.ay);
+      ctx.drawImage(bd.c, MA.wound[0] - bd.ax, rib(MA.wound[0]) - 2 - bd.ay);
       ctx.globalAlpha = qa(0.6 * sk);
       const bd2 = A.bloodDisc[clamp(Math.round((10 + sk * 20 - 4) / 4), 0, A.bloodDisc.length - 1)];
-      ctx.drawImage(bd2.c, MA.wound[0] - 30 - bd2.ax, HH + 2 - bd2.ay);
+      ctx.drawImage(bd2.c, MA.wound[0] - 30 - bd2.ax, rib(MA.wound[0] - 30) + 4 - bd2.ay);
       ctx.globalAlpha = 1;
     }
     // cast shadow on the sand
     ctx.globalAlpha = qa(0.55 - goK * 0.45);
-    ctx.drawImage(A.herShadow.c, 4 - A.herShadow.ax, HH - 2 - A.herShadow.ay);
+    ctx.drawImage(A.herShadow.c, 4 - A.herShadow.ax, rib(0) - 3 - A.herShadow.ay);
     ctx.globalAlpha = 1;
 
     const lit = this.litAt(mx);
@@ -1819,27 +1840,27 @@ const DeathScene = {
     }
     // ---- the harness strap, bolted back down across her girth
     if (this.bolted > 0) {
-      const sx = MA.strap[0], hh = rib(sx), h = R(this.bolted * hh * 2);
+      const sx = MA.strap[0], ya = top(sx), yb = rib(sx), h = R(this.bolted * (yb - ya));
       for (let i = 0; i < h; i++) {
-        const y = -hh + i, xx = sx + R(Math.sin(y / 30) * 3);
+        const y = ya + i, xx = sx + R(Math.sin(y / 30) * 3);
         P(ctx, DP.ink, xx - 1, y, 6, 1);
         P(ctx, CPAL.leaD, xx, y, 4, 1);
         if ((i & 3) === 1) P(ctx, CPAL.lea, xx, y, 4, 1);
       }
-      if (this.bolted > 0.6) { P(ctx, DP.ink, sx - 1, -3, 6, 7); P(ctx, CPAL.goldD, sx, -2, 4, 5); P(ctx, CPAL.gold, sx, -2, 4, 1); }
+      if (this.bolted > 0.6) { const my2 = R((top(sx) + rib(sx)) / 2); P(ctx, DP.ink, sx - 1, my2 - 3, 6, 7); P(ctx, CPAL.goldD, sx, my2 - 2, 4, 5); P(ctx, CPAL.gold, sx, my2 - 2, 4, 1); }
     }
     // ---- the bandage round the tail stock, soaking through
     if (this.wraps > 0) {
       const bx = MA.band[0], n = R(this.wraps * 4);
       for (let i = 0; i < n; i++) {
-        const x = bx - 2 + i * 6, hh = rib(x);
-        for (let y = -hh; y <= hh; y++) {
-          const k = Math.abs(y) / (hh + 1), xx = x + R(Math.sin(k * 1.4) * 3);
+        const x = bx - 2 + i * 6, ya = top(x), yb = rib(x), mid = (ya + yb) / 2, hh = (yb - ya) / 2;
+        for (let y = ya; y <= yb; y++) {
+          const k = Math.abs(y - mid) / (hh + 1), xx = x + R(Math.sin(k * 1.4) * 3);
           P(ctx, DP.ink, xx - 1, y, 1, 1);
           P(ctx, DP.bandage[1], xx, y, 3, 1);
           if ((y & 3) === 0) P(ctx, DP.bandage[2], xx, y, 2, 1);
-          if (hash2(x, y) > 0.72) P(ctx, DP.blood[0], xx + 1, y, 2, 1);
-          if (hash2(x + 7, y) > 0.93) P(ctx, DP.blood[2], xx + 1, y, 1, 1);
+          if (hash2(x, y | 0) > 0.72) P(ctx, DP.blood[0], xx + 1, y, 2, 1);
+          if (hash2(x + 7, y | 0) > 0.93) P(ctx, DP.blood[2], xx + 1, y, 1, 1);
         }
       }
     }
@@ -1878,22 +1899,22 @@ const DeathScene = {
     const hy = this._herY === undefined ? HER.y : this._herY;
     const FEET = HER.feet;
     const HL = MA.len / 2, HH = MA.hgt / 2;
-    const backY = lx => -R(HH * 0.86 * Math.sqrt(Math.max(0, 1 - (lx / (HL * 0.94)) * (lx / (HL * 0.94)))));
+    const backY = lx => herTop(lx);
     const o = { flip: true, exp: 'focus', hat: true, gore: this.gore || 0 };
     let x = hx, y = FEET, rot = 0;
     // kneeling on her back, a little behind whatever he is working on
     const onBack = (anchor, dx, dy) => {
       const lx = anchor[0] + dx;
-      x = R(hx + lx); y = R(hy + backY(lx) - 16 + (dy || 0));
+      x = R(hx + lx); y = R(hy + backY(lx) - 18 + (dy || 0));
     };
-    const RAISED = -1.55, STRUCK = 0.55;
+    const RAISED = -1.15, STRUCK = 1.05;
 
     if (T < K2.pull) {
       // hauling her the last few feet, leaning into a rope over his shoulder
       const k = clamp(T / 1.15, 0, 1);
       x = R(lerp(HER.x - 118, HER.x - 152, k)); y = FEET;
-      rot = -0.30 + Math.sin(T * 6) * 0.05;
-      o.armNear = -1.20 + Math.sin(T * 6) * 0.22; o.armFar = -1.05;
+      rot = -0.24 + Math.sin(T * 6) * 0.05;
+      o.armNear = -1.05 + Math.sin(T * 6) * 0.20; o.armFar = -0.92;
       o.exp = 'strain'; o.headR = -0.14;
       const rx0 = x - 14, ry0 = y - 22;
       for (let i = 0; i <= 46; i++) {
@@ -1908,27 +1929,27 @@ const DeathScene = {
       const k = (T - K2.pull) / (K2.press - K2.pull);
       const yank = this.harpFree ? 1 : Math.abs(Math.sin(k * 10));
       x = R(hx + MA.wound[0] + 40 + yank * 10);
-      y = R(hy + backY(MA.wound[0] + 40) - 12);
-      rot = -0.40 - yank * 0.22;
-      o.armNear = -0.75 + yank * 0.5; o.armFar = -0.65 + yank * 0.5;
-      o.exp = 'strain'; o.headR = -0.22;
+      y = R(hy + backY(MA.wound[0] + 40) - 18);
+      rot = -0.26 - yank * 0.16;
+      o.armNear = -0.95 + yank * 0.45; o.armFar = -0.80 + yank * 0.45;
+      o.exp = 'strain'; o.headR = -0.18;
       if (!this.harpFree) {
         ctx.save(); ctx.translate(R(x - 14), R(y - 14)); ctx.rotate(-0.85); ctx.scale(MSC, MSC);
         ctx.drawImage(A.harp.c, -A.harp.ax, -A.harp.ay); ctx.restore();
       }
     } else if (T < K2.stitch) {
       // both paws in the hole, his whole weight on it, holding her in
-      onBack(MA.wound, 16, 8);
+      onBack(MA.wound, 18, 6);
       const push = 0.5 + Math.sin(T * 6) * 0.5;
-      rot = 0.30 + push * 0.10;
-      o.armNear = 0.95 + push * 0.18; o.armFar = 0.88 + push * 0.18;
-      o.exp = push > 0.7 ? 'strain' : 'focus'; o.headR = 0.40; o.headY = 2;
+      rot = 0.14 + push * 0.06;
+      o.armNear = 1.30 + push * 0.12; o.armFar = 1.18 + push * 0.12;
+      o.exp = push > 0.7 ? 'strain' : 'focus'; o.headR = 0.34; o.headY = 2;
     } else if (T < K2.hammer) {
       // sewing the hide shut, hunched right over it
-      onBack(MA.wound, 16, 4);
+      onBack(MA.wound, 18, 4);
       const ph = ((T - K2.stitch) % 0.16) / 0.16;
-      o.armNear = 0.95 - ph * 1.15; o.armFar = 0.65;
-      o.exp = 'focus'; o.headR = 0.30; rot = 0.16;
+      o.armNear = 1.25 - ph * 0.85; o.armFar = 1.05;
+      o.exp = 'focus'; o.headR = 0.34; rot = 0.12;
       o.hold = A.needle;
       const px2 = x - 14, py2 = y - 14 - R(ph * 14);
       LN(ctx, DP.bone, px2, py2, hx + MA.wound[0], hy + MA.wound[1] + 4);
@@ -1937,19 +1958,19 @@ const DeathScene = {
       onBack(MA.plate, 16, 0);
       const ph = ((T - K2.hammer) % 0.30) / 0.30;
       o.armNear = ph < 0.55 ? RAISED + ph / 0.55 * (STRUCK - RAISED) : STRUCK + (ph - 0.55) / 0.45 * (RAISED - STRUCK);
-      o.armFar = 0.35;
-      o.exp = 'strain'; o.headR = 0.14; rot = 0.06;
+      o.armFar = 0.95;
+      o.exp = 'strain'; o.headR = 0.18; rot = 0.06;
       o.hold = A.hammer;
     } else if (T < K2.band) {
       onBack(MA.strap, 15, 0);
-      o.armNear = 0.35 + Math.sin(T * 13) * 0.45; o.armFar = 0.4;
-      o.exp = 'focus'; o.headR = 0.2; rot = 0.08;
+      o.armNear = 1.05 + Math.sin(T * 13) * 0.35; o.armFar = 1.00;
+      o.exp = 'focus'; o.headR = 0.24; rot = 0.08;
       o.hold = A.wrench;
     } else if (T < K2.pump) {
       const k = (T - K2.band) / (K2.pump - K2.band);
       onBack(MA.band, 12 + k * 12, Math.sin(k * 9) * 2);
-      o.armNear = 0.45 + Math.sin(T * 9) * 0.55; o.armFar = 0.35 + Math.sin(T * 9 + 1.6) * 0.45;
-      o.exp = 'focus'; rot = 0.04; o.hold = A.roll;
+      o.armNear = 1.05 + Math.sin(T * 9) * 0.45; o.armFar = 0.95 + Math.sin(T * 9 + 1.6) * 0.40;
+      o.exp = 'focus'; rot = 0.04; o.headR = 0.22; o.hold = A.roll;
       LN(ctx, DP.bandage[2], x - 12, y - 16, hx + MA.band[0] + 6, hy - 14);
     } else if (T < K2.listen || (T >= K2.pump2 && T < K2.listen2)) {
       // both paws on her chest, throwing his whole weight down through them
@@ -1957,16 +1978,16 @@ const DeathScene = {
       const per = T < K2.listen ? 0.42 : 0.34;
       const ph = ((T - from) % per) / per;
       const push = ph < 0.35 ? ph / 0.35 : 1 - (ph - 0.35) / 0.65;
-      onBack(MA.chest, 8, -R(push * 5));
-      rot = 0.16 + push * 0.26;
-      o.armNear = 0.20 + push * 0.95; o.armFar = 0.25 + push * 0.95;
+      onBack(MA.chest, 10, 2 - R(push * 5));
+      rot = 0.08 + push * 0.14;
+      o.armNear = 0.95 + push * 0.45; o.armFar = 0.88 + push * 0.45;
       o.exp = push > 0.6 ? 'shout' : 'strain';
-      o.headR = 0.26;
+      o.headR = 0.30;
     } else if (T < K2.grieve) {
       // down at her muzzle, listening for a breath that does not come
-      onBack(MA.eye, 14, 14);
-      rot = 0.18; o.armNear = 0.70; o.armFar = 0.60;
-      o.exp = 'shut'; o.blink = true; o.headR = 0.70; o.headY = 4; o.headX = -2;
+      onBack(MA.eye, 22, 10);
+      rot = 0.10; o.armNear = 1.20; o.armFar = 1.10;
+      o.exp = 'shut'; o.blink = true; o.headR = 0.46; o.headY = 4; o.headX = -2;
       const from = T < K2.pump2 ? K2.listen : K2.listen2;
       if (T < from + 0.7 && (Math.floor(T * 5) & 1)) {
         pixelTextOutlined(ctx, '?', x - 24, y - 46, 8, '#8ea4b8', '#000000', 'center');
@@ -1974,14 +1995,14 @@ const DeathScene = {
     } else if (T < K2.cough) {
       // hat off, head down on her shoulder.  Nothing else happens here.
       const g = clamp((T - K2.grieve) / 0.9, 0, 1);
-      onBack(MA.chest, 26, 10);
-      rot = 0.10; o.armNear = 0.95; o.armFar = 0.85;
-      o.exp = 'shut'; o.blink = true; o.headR = 0.62; o.headY = 5; o.headX = -4;
+      onBack(MA.chest, 26, 8);
+      rot = 0.06; o.armNear = 1.15; o.armFar = 1.05;
+      o.exp = 'shut'; o.blink = true; o.headR = 0.40; o.headY = 4; o.headX = -3;
       o.hat = false; o.grief = g;
       // the hat, off, in the sand beside him
       const hk = clamp((T - K2.grieve) / 0.5, 0, 1);
       ctx.save();
-      ctx.translate(R(x + 26 + hk * 12), R(y + 20 + hk * 26));
+      ctx.translate(R(lerp(x + 20, hx + MA.chest[0] + 92, hk)), R(lerp(y + 4, FEET + 6, hk)));
       ctx.rotate(hk * 0.6); ctx.scale(MSC, MSC);
       ctx.drawImage(A.hatSide.c, -A.hatSide.ax, -A.hatSide.ay);
       ctx.restore();
@@ -1989,14 +2010,14 @@ const DeathScene = {
       // she heaves; he is thrown clear, then scrambles back up
       const k = clamp((T - K2.cough) / 0.8, 0, 1);
       const arc = Math.sin(k * Math.PI);
-      onBack(MA.chest, 10 + k * 30, 14 - arc * 30);
-      rot = 0.22 - k * 0.22 + Math.sin(k * 12) * 0.22;
-      o.armNear = 1.05 - k * 0.6; o.armFar = 0.95 - k * 0.55;
+      onBack(MA.chest, 10 + k * 30, 8 - arc * 30);
+      rot = 0.06 - k * 0.26 + Math.sin(k * 12) * 0.20;
+      o.armNear = 1.15 - k * 0.7; o.armFar = 1.05 - k * 0.65;
       o.exp = k < 0.4 ? 'surprised' : 'joy'; o.headR = 1.10 - k * 1.2;
       o.hat = k > 0.55;
       if (k <= 0.55) {
         ctx.save();
-        ctx.translate(R(x + 30 - k * 36), R(y + 18 - Math.sin(k * 5.7) * 30));
+        ctx.translate(R(hx + MA.chest[0] + 92 - k * 20), R(FEET + 6 - Math.sin(k * 5.7) * 40));
         ctx.rotate(0.5 - k * 2.2); ctx.scale(MSC, MSC);
         ctx.drawImage(A.hatSide.c, -A.hatSide.ax, -A.hatSide.ay);
         ctx.restore();
@@ -2008,7 +2029,7 @@ const DeathScene = {
       x = R(x + k * 30); y = R(y - k * 6);
       o.flip = false;
       rot = -0.12 + Math.sin(T * 9) * 0.08;
-      o.armNear = 0.5 + Math.sin(T * 9) * 0.45; o.armFar = 0.3 + Math.sin(T * 9 + 2) * 0.45;
+      o.armNear = 1.0 + Math.sin(T * 9) * 0.35; o.armFar = 0.85 + Math.sin(T * 9 + 2) * 0.35;
       o.exp = 'joy'; o.headR = -0.1;
       if (k > 0.1 && Math.random() < 0.35) FX.drop(x, y + 12, 1, DP.foam[2], 0.5);
     }

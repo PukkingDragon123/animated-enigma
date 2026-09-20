@@ -38,9 +38,11 @@ function spriteFrom(c, ax, ay) { return { c, w: c.width, h: c.height, ax: ax ?? 
 
 // ===========================================================================
 //  HI-RES ART  (DETAIL x)
-//  Every character/boat canvas in this file is rasterized at DETAIL art pixels
-//  per world unit, so one art pixel lands on (about) one screen pixel instead
-//  of being blown up. The sprite record still reports its size in WORLD units
+//  Every BOAT, shark, chief and shield canvas in this file is rasterized at
+//  DETAIL art pixels per world unit, so one art pixel lands on (about) one
+//  screen pixel instead of being blown up. The hero pair is the deliberate
+//  exception: she is authored at 1 art pixel per world unit (see CHUNKY
+//  CHARACTER ART below), is NOT registered here, and must never be. The sprite record still reports its size in WORLD units
 //  — w/h/ax/ay are unchanged from the old build — so every call site in the
 //  rest of the codebase keeps working with the offsets it already has.
 //
@@ -174,6 +176,9 @@ function stamp(ctx, rows, x, y, map) {
 }
 function px(ctx, col, x, y, w = 1, h = 1) { ctx.fillStyle = col; ctx.fillRect(x | 0, y | 0, w, h); }
 // ---- detail passes -------------------------------------------------------
+// For the 2x art only — the boats, the shark, the chief. The chunky 1x hero
+// pair below does its shading by hand, because a probabilistic grain at one
+// art pixel per world unit is not texture, it is damage.
 // These add the sub-pixel information an upscaled silhouette cannot carry:
 // a one-pixel lit rim along every top edge and a shadow along every bottom
 // edge, and a sparse, colour-keyed texture grain. Both work on the raster, so
@@ -259,20 +264,6 @@ function tintFlat(s, color, alpha) {
   ctx.fillStyle = color; ctx.fillRect(0, 0, c.width, c.height);
   return { c, w: s.w, h: s.h, ax: s.ax, ay: s.ay };
 }
-// Top/bottom edge lighting for a 1x form: the top two interior rows of every
-// column take the lit band, the bottom row takes the shadow. This is what
-// makes a coarse silhouette read as a rounded animal instead of a sticker.
-function rimShade(ctx, W, H, inside, lit, litHi, shade) {
-  for (let x = 0; x < W; x++) {
-    let y0 = -1, y1 = -1;
-    for (let y = 0; y < H; y++) if (inside(x, y)) { if (y0 < 0) y0 = y; y1 = y; }
-    if (y0 < 0 || y1 - y0 < 4) continue;
-    px(ctx, lit, x, y0 + 1);
-    if ((x & 3) !== 3) px(ctx, litHi, x, y0 + 1);
-    px(ctx, shade, x, y1 - 1);
-  }
-}
-
 // ===========================================================================
 //  WAR MANATEE  — top-down, facing RIGHT, one art pixel per world unit
 // ===========================================================================

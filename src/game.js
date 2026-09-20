@@ -272,7 +272,11 @@ class Game {
   }
   // ---------------------------------------------------------- loop
   frame(ts) {
-    let dt = (ts - this.last) / 1000; this.last = ts; if (dt > 1 / 20) dt = 1 / 20;
+    // rAF's timestamp is when the frame began, which can predate the
+    // performance.now() taken in the constructor, so the first dt can be
+    // negative. Anything integrating time then runs backwards.
+    let dt = (ts - this.last) / 1000; this.last = ts;
+    if (!(dt > 0)) dt = 0; else if (dt > 1 / 20) dt = 1 / 20;
     this.fps = lerp(this.fps, 1 / Math.max(dt, 1e-3), 0.05);
     this.update(dt);
     if (this.state !== this._lastState) { this.beginWipe(this._lastState, this.state); this._lastState = this.state; }
