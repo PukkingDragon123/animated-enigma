@@ -17189,11 +17189,6 @@ const UI = {
       ctx.fillRect(cx - w, cy + y, w * 2 + 1, 1);
     }
   }
-  // a short stroke at an angle — the nib strokes everything on this chart uses
-  function stroke(ctx, col, x, y, ang, len) {
-    const ca = Math.cos(ang), sa = Math.sin(ang);
-    for (let i = 0; i <= len; i++) D1(ctx, col, Math.round(x + ca * i), Math.round(y + sa * i));
-  }
   // the font's display face, on demand (pixelText picks a face by size alone)
   function txt(ctx, s, x, y, size, opts) { return PixelFont.drawText(ctx, s, x, y, size, opts); }
   function mText(s, size) { return textWidth(s, size); }
@@ -17224,8 +17219,6 @@ const UI = {
   const MAP_W = 640, MAP_H = 272;                    // the chart; card sits below
   const PAPER = { x0: 3, y0: 2, x1: 636, y1: 268 };  // the sheet itself
   const IN = { x0: 20, y0: 19, x1: 620, y1: 250 };   // interior (inside the neat line)
-
-  const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 
   // ------------------------------------------------------------- the land --
   // Each isle is a union of lobes; the coastline comes from a three-octave
@@ -18362,26 +18355,6 @@ const UI = {
     void sw;
   }
 
-  // a little scrolled note pinned anywhere on the sheet
-  function drawNote(ctx, cx, y, lines, sizes) {
-    let w = 0;
-    for (let i = 0; i < lines.length; i++) w = Math.max(w, mText(lines[i], sizes[i]));
-    w += 16;
-    const h = 8 + lines.reduce((a, _, i) => a + sizes[i] + 4, 0);
-    const x = Math.round(cx - w / 2);
-    R(ctx, P.sea0, x, y, w, h);
-    box(ctx, P.ink2, x, y, w, h);
-    R(ctx, P.ink2, x + 3, y + 1, w - 6, 1); R(ctx, P.ink2, x + 3, y + h - 2, w - 6, 1);
-    for (const [cxx, cyy, fx, fy] of [[x + 2, y + 2, 1, 1], [x + w - 3, y + 2, -1, 1], [x + 2, y + h - 3, 1, -1], [x + w - 3, y + h - 3, -1, -1]]) {
-      D1(ctx, P.ink, cxx, cyy); D1(ctx, P.ink, cxx + fx, cyy); D1(ctx, P.ink, cxx, cyy + fy);
-    }
-    let ty = y + 4;
-    for (let i = 0; i < lines.length; i++) {
-      txt(ctx, lines[i], cx, ty, sizes[i], { color: i === 0 ? P.ink : P.ink2, align: 'center', tracking: i === 0 ? 2 : 1 });
-      ty += sizes[i] + 4;
-    }
-  }
-
   // ships on the lanes -----------------------------------------------------
   const SHIP_ROWS = [
     '.....k.....',
@@ -18877,7 +18850,7 @@ const UI = {
     txt(ctx, d.name, r.x + 15, r.y + 4, 6, { color: tint });
     if (!on) {
       // a blob of red wax, pressed with a broken-net sigil
-      const wx = r.x + r.w - 8, wy = r.y + 6;
+      const wx = r.x + r.w - 9, wy = r.y + 6;
       disc(ctx, P.redD, wx, wy, 4);
       disc(ctx, P.wax, wx, wy, 3);
       D1(ctx, P.wax, wx - 4, wy); D1(ctx, P.wax, wx + 4, wy);
@@ -18966,6 +18939,8 @@ const UI = {
       for (const d of DEST) {
         const rt = buildRoute(this.mask, this.dOut, this.nav, HOME, d);
         d.route = rt.pts; d.routeLen = rt.len; d.book = rt.book;
+        const ang = Math.atan2(d.y - HOME.y, d.x - HOME.x) * 180 / Math.PI;
+        d.brg = ((Math.round(ang) + 90) % 360 + 360) % 360;
       }
       // water shimmer: fixed marks in open water that wink on and off
       const rng = new SeededRandom(5150);
@@ -19246,9 +19221,9 @@ const UI = {
         : 'CHAPTER ' + d.chapter + '   -   LOCKED';
       pixelText(ctx, st, X, 295, 6, d.unlocked ? '#6fd88e' : '#8ea6bc', 'left', false);
       // the leg, read straight off the plotted course
-      const brg = d.book.length ? d.book[0].brg : 0;
+      const brg = d.brg | 0;
       const legs = Math.max(1, Math.round(d.routeLen / 10));
-      const crs = 'CRS ' + ((brg < 100 ? (brg < 10 ? '00' : '0') : '') + brg) + '   ' + legs + ' LEAGUES';
+      const crs = 'BRG ' + ((brg < 100 ? (brg < 10 ? '00' : '0') : '') + brg) + '   ' + legs + ' LEAGUES';
       pixelText(ctx, crs, X + 178, 295, 6, '#c9a86a', 'left', false);
       UIKit.divider(ctx, X, 306, 288);
       let y = 312;
@@ -21050,7 +21025,9 @@ const BossCut = {
       // the half-tone the minis darken the bay with, baked once: doing this
       // as 57k fillRects per frame cost 30ms a frame before it was baked
       A.dither = can(640, 360);
-      { const dx = cx2(A.dither); dx.fillStyle = '#000308';
+      { const dx = cx2(A.dither);
+        dx.fillStyle = '#04080f'; dx.fillRect(0, 0, 640, 360);
+        dx.fillStyle = '#000205';
         for (let y = 0; y < 360; y += 2) for (let x = (y >> 1) & 1; x < 640; x += 2) dx.fillRect(x, y, 1, 1); }
       // warm every baked canvas once so the first frame never pays to upload
       const wc = cx2(can(8, 8));
@@ -21396,16 +21373,26 @@ const BossCut = {
       P(ctx, BP.fire[3], tx, ty - 5 - f, 1, 4);
       P(ctx, BP.fire[4], tx, ty - 4, 1, 2);
     }
+    // villagers turning out along the pier.  the huts behind them are the
+    // same near-black, so they carry their own torchlight to read against it.
     const run = clamp((T - KI.alarm - 0.2) / 0.9, 0, 1);
     for (let i = 0; i < 5; i++) {
-      const fx = R(lerp(58 + i * 16, 152 + i * 13, run));
+      const fx = R(lerp(48 + i * 15, 138 + i * 15, run));
       const fy = HZ - 17;
       const bob = (Math.floor(t * 9 + i * 2) & 1) && run < 1 ? 1 : 0;
-      P(ctx, BP.ink, fx, fy - 10 - bob, 3, 4);            // head + shoulders
-      P(ctx, BP.ink, fx, fy - 6 - bob, 3, 4);             // body
-      P(ctx, BP.ink, fx, fy - 2, 1, 2);                   // legs
+      P(ctx, BP.ink, fx - 1, fy - 11 - bob, 5, 10);        // a dark gap around him
+      P(ctx, '#47372c', fx, fy - 10 - bob, 3, 4);          // head + shoulders
+      P(ctx, '#6b5136', fx, fy - 10 - bob, 3, 1);
+      P(ctx, '#3a2c24', fx, fy - 6 - bob, 3, 4);           // body
+      P(ctx, BP.ink, fx, fy - 2, 1, 2);
       P(ctx, BP.ink, fx + 2, fy - 2, 1, 2);
-      if (run >= 1 && (i & 1)) P(ctx, BP.ink, fx + 3, fy - 12, 3, 1);  // an arm, pointing
+      if (i & 1) {                                         // a torch, held up
+        const f = Math.floor(t * 13 + i) % 3;
+        P(ctx, '#3a2c24', fx + 4, fy - 12, 1, 5);
+        P(ctx, BP.fire[2], fx + 4, fy - 15, 1, 3);
+        P(ctx, BP.fire[3], fx + 4, fy - 16 - f, 1, 2);
+        P(ctx, BP.fire[4], fx + 4, fy - 15, 1, 1);
+      } else if (run >= 1) P(ctx, '#47372c', fx + 3, fy - 12, 3, 1);   // an arm, pointing
     }
   },
   drawRider(ctx, s, sc) {
@@ -21591,10 +21578,9 @@ const BossCut = {
 
   // ---- MINI: the arrival --------------------------------------------------
   drawMiniIntro(ctx, T) {
+    // one baked half-tone plate, blitted once: the bay goes properly black
     const dark = clamp(T / 0.16, 0, 1) * (T > KM.out ? clamp(1 - (T - KM.out) / 0.3, 0, 1) : 1);
-    P(ctx, rgbaq('#03070e', dark * 0.78), 0, 0, 640, 360);
-    // a second, dithered pass: the water goes properly black around it
-    if (dark > 0.2) { ctx.globalAlpha = qa(dark * 0.5); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1; }
+    ctx.globalAlpha = qa(dark * 0.86); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1;
     if (!this.anchored) { this.drawMini(ctx, 320, 214, T); FX.render(ctx, 0, 0); }
     const lb = clamp(T / 0.12, 0, 1) * (T > KM.out ? clamp(1 - (T - KM.out) / 0.28, 0, 1) : 1);
     this.letterbox(ctx, lb * 0.6);
@@ -21647,8 +21633,7 @@ const BossCut = {
   // ---- MINI: the sting ----------------------------------------------------
   drawMiniDefeat(ctx, T) {
     const dark = clamp(T / 0.1, 0, 1) * (T > KX.out ? clamp(1 - (T - KX.out) / 0.3, 0, 1) : 1);
-    P(ctx, rgbaq('#03070e', dark * 0.72), 0, 0, 640, 360);
-    if (dark > 0.2) { ctx.globalAlpha = qa(dark * 0.45); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1; }
+    ctx.globalAlpha = qa(dark * 0.80); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1;
     if (!this.anchored) { this.drawMiniBreak(ctx, 320, 214, T); FX.render(ctx, 0, 0); }
     const lb = clamp(T / 0.1, 0, 1) * (T > KX.out ? clamp(1 - (T - KX.out) / 0.26, 0, 1) : 1);
     this.letterbox(ctx, lb * 0.55);

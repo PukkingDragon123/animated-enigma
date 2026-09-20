@@ -89,11 +89,6 @@
       ctx.fillRect(cx - w, cy + y, w * 2 + 1, 1);
     }
   }
-  // a short stroke at an angle — the nib strokes everything on this chart uses
-  function stroke(ctx, col, x, y, ang, len) {
-    const ca = Math.cos(ang), sa = Math.sin(ang);
-    for (let i = 0; i <= len; i++) D1(ctx, col, Math.round(x + ca * i), Math.round(y + sa * i));
-  }
   // the font's display face, on demand (pixelText picks a face by size alone)
   function txt(ctx, s, x, y, size, opts) { return PixelFont.drawText(ctx, s, x, y, size, opts); }
   function mText(s, size) { return textWidth(s, size); }
@@ -124,8 +119,6 @@
   const MAP_W = 640, MAP_H = 272;                    // the chart; card sits below
   const PAPER = { x0: 3, y0: 2, x1: 636, y1: 268 };  // the sheet itself
   const IN = { x0: 20, y0: 19, x1: 620, y1: 250 };   // interior (inside the neat line)
-
-  const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 
   // ------------------------------------------------------------- the land --
   // Each isle is a union of lobes; the coastline comes from a three-octave
@@ -1262,26 +1255,6 @@
     void sw;
   }
 
-  // a little scrolled note pinned anywhere on the sheet
-  function drawNote(ctx, cx, y, lines, sizes) {
-    let w = 0;
-    for (let i = 0; i < lines.length; i++) w = Math.max(w, mText(lines[i], sizes[i]));
-    w += 16;
-    const h = 8 + lines.reduce((a, _, i) => a + sizes[i] + 4, 0);
-    const x = Math.round(cx - w / 2);
-    R(ctx, P.sea0, x, y, w, h);
-    box(ctx, P.ink2, x, y, w, h);
-    R(ctx, P.ink2, x + 3, y + 1, w - 6, 1); R(ctx, P.ink2, x + 3, y + h - 2, w - 6, 1);
-    for (const [cxx, cyy, fx, fy] of [[x + 2, y + 2, 1, 1], [x + w - 3, y + 2, -1, 1], [x + 2, y + h - 3, 1, -1], [x + w - 3, y + h - 3, -1, -1]]) {
-      D1(ctx, P.ink, cxx, cyy); D1(ctx, P.ink, cxx + fx, cyy); D1(ctx, P.ink, cxx, cyy + fy);
-    }
-    let ty = y + 4;
-    for (let i = 0; i < lines.length; i++) {
-      txt(ctx, lines[i], cx, ty, sizes[i], { color: i === 0 ? P.ink : P.ink2, align: 'center', tracking: i === 0 ? 2 : 1 });
-      ty += sizes[i] + 4;
-    }
-  }
-
   // ships on the lanes -----------------------------------------------------
   const SHIP_ROWS = [
     '.....k.....',
@@ -1777,7 +1750,7 @@
     txt(ctx, d.name, r.x + 15, r.y + 4, 6, { color: tint });
     if (!on) {
       // a blob of red wax, pressed with a broken-net sigil
-      const wx = r.x + r.w - 8, wy = r.y + 6;
+      const wx = r.x + r.w - 9, wy = r.y + 6;
       disc(ctx, P.redD, wx, wy, 4);
       disc(ctx, P.wax, wx, wy, 3);
       D1(ctx, P.wax, wx - 4, wy); D1(ctx, P.wax, wx + 4, wy);
@@ -1866,6 +1839,8 @@
       for (const d of DEST) {
         const rt = buildRoute(this.mask, this.dOut, this.nav, HOME, d);
         d.route = rt.pts; d.routeLen = rt.len; d.book = rt.book;
+        const ang = Math.atan2(d.y - HOME.y, d.x - HOME.x) * 180 / Math.PI;
+        d.brg = ((Math.round(ang) + 90) % 360 + 360) % 360;
       }
       // water shimmer: fixed marks in open water that wink on and off
       const rng = new SeededRandom(5150);
@@ -2146,9 +2121,9 @@
         : 'CHAPTER ' + d.chapter + '   -   LOCKED';
       pixelText(ctx, st, X, 295, 6, d.unlocked ? '#6fd88e' : '#8ea6bc', 'left', false);
       // the leg, read straight off the plotted course
-      const brg = d.book.length ? d.book[0].brg : 0;
+      const brg = d.brg | 0;
       const legs = Math.max(1, Math.round(d.routeLen / 10));
-      const crs = 'CRS ' + ((brg < 100 ? (brg < 10 ? '00' : '0') : '') + brg) + '   ' + legs + ' LEAGUES';
+      const crs = 'BRG ' + ((brg < 100 ? (brg < 10 ? '00' : '0') : '') + brg) + '   ' + legs + ' LEAGUES';
       pixelText(ctx, crs, X + 178, 295, 6, '#c9a86a', 'left', false);
       UIKit.divider(ctx, X, 306, 288);
       let y = 312;

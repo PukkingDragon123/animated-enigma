@@ -848,7 +848,9 @@ const BossCut = {
       // the half-tone the minis darken the bay with, baked once: doing this
       // as 57k fillRects per frame cost 30ms a frame before it was baked
       A.dither = can(640, 360);
-      { const dx = cx2(A.dither); dx.fillStyle = '#000308';
+      { const dx = cx2(A.dither);
+        dx.fillStyle = '#04080f'; dx.fillRect(0, 0, 640, 360);
+        dx.fillStyle = '#000205';
         for (let y = 0; y < 360; y += 2) for (let x = (y >> 1) & 1; x < 640; x += 2) dx.fillRect(x, y, 1, 1); }
       // warm every baked canvas once so the first frame never pays to upload
       const wc = cx2(can(8, 8));
@@ -1399,10 +1401,9 @@ const BossCut = {
 
   // ---- MINI: the arrival --------------------------------------------------
   drawMiniIntro(ctx, T) {
+    // one baked half-tone plate, blitted once: the bay goes properly black
     const dark = clamp(T / 0.16, 0, 1) * (T > KM.out ? clamp(1 - (T - KM.out) / 0.3, 0, 1) : 1);
-    P(ctx, rgbaq('#03070e', dark * 0.78), 0, 0, 640, 360);
-    // a second, dithered pass: the water goes properly black around it
-    if (dark > 0.2) { ctx.globalAlpha = qa(dark * 0.5); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1; }
+    ctx.globalAlpha = qa(dark * 0.86); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1;
     if (!this.anchored) { this.drawMini(ctx, 320, 214, T); FX.render(ctx, 0, 0); }
     const lb = clamp(T / 0.12, 0, 1) * (T > KM.out ? clamp(1 - (T - KM.out) / 0.28, 0, 1) : 1);
     this.letterbox(ctx, lb * 0.6);
@@ -1455,8 +1456,7 @@ const BossCut = {
   // ---- MINI: the sting ----------------------------------------------------
   drawMiniDefeat(ctx, T) {
     const dark = clamp(T / 0.1, 0, 1) * (T > KX.out ? clamp(1 - (T - KX.out) / 0.3, 0, 1) : 1);
-    P(ctx, rgbaq('#03070e', dark * 0.72), 0, 0, 640, 360);
-    if (dark > 0.2) { ctx.globalAlpha = qa(dark * 0.45); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1; }
+    ctx.globalAlpha = qa(dark * 0.80); ctx.drawImage(A.dither, 0, 0); ctx.globalAlpha = 1;
     if (!this.anchored) { this.drawMiniBreak(ctx, 320, 214, T); FX.render(ctx, 0, 0); }
     const lb = clamp(T / 0.1, 0, 1) * (T > KX.out ? clamp(1 - (T - KX.out) / 0.26, 0, 1) : 1);
     this.letterbox(ctx, lb * 0.55);
