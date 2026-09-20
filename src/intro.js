@@ -60,7 +60,7 @@ const IP = {
   shallow: ['#6fd0b4', '#48ad9e', '#2f8a88', '#1f6a72', '#15505e', '#0e3a4a', '#0a2a38'],
   open:    ['#4aa0cf', '#3480b4', '#246394', '#1a4b78', '#12365c', '#0c2544', '#081a32'],
   deep:    ['#1d5c86', '#154668', '#0f3450', '#0a253c', '#07192c', '#05111f', '#030b16'],
-  night:   ['#12405e', '#0d3049', '#092338', '#061829', '#04101d', '#030b15', '#02070f'],
+  night:   ['#1a5478', '#12405e', '#0d3049', '#0a2440', '#08182f', '#060f22', '#040916'],
   tank:    ['#7d9a4c', '#63803d', '#4c6632', '#3a5028', '#2b3c1f', '#1f2c17', '#16200f'],
   sky:     ['#3f86bc', '#58a0cf', '#7bbcde', '#a4d6e8', '#cfe9ee', '#eef0da'],
   // vegetation
@@ -71,6 +71,8 @@ const IP = {
   coralC: ['#432a78', '#6a3fae', '#9160dc', '#c096f2'],
   sand: ['#4b4a38', '#6d6a4c', '#8f8a62', '#b2ab7d', '#d0c79a'],
   rock: ['#1b2230', '#2b3444', '#3d4859', '#535f72', '#6e7b8e'],
+  // sun-warmed sandstone for the shallow reef, so the bed is not all blue-grey
+  rockWarm: ['#2a2018', '#3f3324', '#5a4835', '#785f45', '#977a5a'],
   // blood
   blood: ['#4b0a12', '#7a0d16', '#a8151f', '#c4202c', '#e8515a'],
   foam: ['#cfe8f2', '#e9f6fb', '#ffffff'],
@@ -197,8 +199,8 @@ const GRADE_SPEC = {
   },
   // running into the dark
   night: {
-    bg: [[0, '#4e86b8', 0.16], [0.30, '#1b3f66', 0.18], [1, '#01060f', 0.48]],
-    fg: [[0, '#5e96c8', 0.10], [0.40, '#132c4a', 0.14], [1, '#01050c', 0.30]],
+    bg: [[0, '#5e9ad0', 0.20], [0.24, '#25548c', 0.14], [0.62, '#132a5a', 0.20], [1, '#050a20', 0.44]],
+    fg: [[0, '#6ea6da', 0.14], [0.40, '#18305c', 0.12], [1, '#04081c', 0.28]],
     shaft: 'cold', caustic: '#8fc0e0', bedCaustic: '#5d86a8', mote: '#9cc4e0',
   },
   // the yacht: glossy chrome, money-blue, a hard white skim on the surface
@@ -366,7 +368,7 @@ function buildBed() {
   }
   for (let i = 0; i < 70; i++) {
     const rx = R(rng.range(0, LW)), ry = R(rng.range(12, H - 6)), s = R(rng.range(1, 3));
-    P(x, IP.ink, rx, ry, s + 1, s + 1); P(x, IP.rock[3], rx, ry, s, s);
+    P(x, IP.ink, rx, ry, s + 1, s + 1); P(x, IP.rockWarm[3], rx, ry, s, s);
   }
   for (let i = 0; i < 14; i++) {
     const rx = R(rng.range(0, LW)), ry = R(rng.range(14, H - 8));
@@ -392,7 +394,7 @@ function buildGrass(H, ramp, dens, tall, seed) {
 }
 function buildShallowMid(seed) {
   const H = 190, c = can(LW, H), x = cx2(c), rng = new SeededRandom(seed);
-  for (let i = 0; i < 11; i++) drawRockForm(x, R(rng.range(0, LW)), H - R(rng.range(0, 7)), R(rng.range(20, 52)), R(rng.range(12, 30)), IP.rock, false);
+  for (let i = 0; i < 11; i++) drawRockForm(x, R(rng.range(0, LW)), H - R(rng.range(0, 7)), R(rng.range(20, 52)), R(rng.range(12, 30)), IP.rockWarm, false);
   for (let i = 0; i < 12; i++) {
     const kx = R(rng.range(0, LW));
     kelpStalk(kx, rng, H - R(rng.range(0, 6)), R(rng.range(50, 130)), IP.kelp, R(rng.range(2, 4)), rng.range(-0.5, 0.5))(x);
@@ -586,10 +588,30 @@ function buildFlipper(L, ramp) {
   for (let i = 0; i < 3; i++) P(o.ctx, ramp[4], R(W * 0.84) + i, R(cy + H * 0.06) + i);
   return spr(o.c, 2, cy);
 }
+// A one-pixel warm rim along the top edge and a cool bounce along the bottom,
+// baked into the hide.  Complementary light is what stops a grey animal
+// reading as a grey blob; the per-beat grade then recolours it.
+function edgeLight(cv, warm, cool) {
+  const x = cx2(cv), img = x.getImageData(0, 0, cv.width, cv.height), d = img.data;
+  const W = cv.width, H = cv.height;
+  const w = hexToRgb(warm), c = hexToRgb(cool);
+  const put = (px, y, col) => { const q = (y * W + px) * 4; if (d[q + 3] < 200) return; d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; };
+  for (let px = 0; px < W; px++) {
+    let top = -1, bot = -1;
+    for (let y = 0; y < H; y++) if (d[(y * W + px) * 4 + 3] > 180) { top = y; break; }
+    for (let y = H - 1; y >= 0; y--) if (d[(y * W + px) * 4 + 3] > 180) { bot = y; break; }
+    if (top < 0 || bot - top < 4) continue;
+    put(px, top + 1, w);
+    put(px, bot - 1, c);
+  }
+  x.putImageData(img, 0, 0);
+  return cv;
+}
 function buildManatee(L, who, opt) {
   opt = opt || {};
   const ramp = MAN_RAMP[who] || MAN_RAMP.you;
   const b = buildManateeBodyCan(L, ramp, opt);
+  edgeLight(b.c, mix(ramp[4], '#ffeccc', 0.62), mix(ramp[1], '#4fb0d8', 0.45));
   const body = spr(b.c, b.ax, b.ay);
   const scarCan = can(b.W, b.H); cx2(scarCan).drawImage(b.c, 0, 0);
   const bs = { c: scarCan, f: b.f, W: b.W, H: b.H, U: b.U, V: b.V };
@@ -1339,6 +1361,8 @@ function buildIntroArt() {
   WATER.money = buildWater(IP.money, 640, 360, { pow: 0.95 });
   WATER.dawn = buildWater(IP.dawn, 640, 360, { pow: 1.05, wob: 0.8 });
   for (const k in GRADE_SPEC) { GRADE[k] = buildGrade(GRADE_SPEC[k].bg); GLOW[k] = buildGrade(GRADE_SPEC[k].fg, 16); }
+  for (const k in SKYMODE) skyCan(k);      // every sky baked up front, never mid-cinematic
+  LAY.deckLight = buildGrade([[0, '#eafaff', 0.10], [0.36, '#ffe6a0', 0.04], [0.54, '#123a6c', 0.26], [0.60, '#ffd68a', 0.06], [0.82, '#ffb85e', 0.14], [1, '#ff8e3a', 0.26]], 26);
   LAY.shafts = buildShafts(LW, 300, '#d4f8ff');
   LAY.shaftsWarm = buildShafts(LW, 300, '#ffe2a0');
   LAY.shaftsRed = buildShafts(LW, 300, '#ff9a72');
@@ -1659,11 +1683,11 @@ function buildSky(cols, cloudPal) {
 // Each sky is its own hour: ramp, cloud palette, far-sea bands, whitecap and
 // the colour of the waterline.  All four are baked once into LAY.
 const SKYMODE = {
-  day:    { key: 'sky',       sea: ['#2a6f9c', '#1d5580'], glint: '#bcdcec', chop: '#2d6f86', cap: '#eaf8ff', line: '#0d2a33', lip: '#cfeaf2' },
-  gold:   { key: 'skyGold',   sea: ['#2f6f92', '#1f5070'], glint: '#ffe3a2', chop: '#2b6478', cap: '#fff0c4', line: '#241a22', lip: '#ffdfa0' },
-  dusk:   { key: 'skyDusk',   sea: ['#4a3a58', '#33243c'], glint: '#ff9e63', chop: '#402a38', cap: '#ffb782', line: '#1a0a10', lip: '#ff9d6a' },
-  chrome: { key: 'skyChrome', sea: ['#1f6a9e', '#134a78'], glint: '#f2fbff', chop: '#1b567a', cap: '#ffffff', line: '#061826', lip: '#dff6ff' },
-  dawnsky:{ key: 'skyDawn',   sea: ['#2b7fae', '#1b5e8c'], glint: '#ffeaae', chop: '#256f92', cap: '#fffbe6', line: '#0a2436', lip: '#ffeec0' },
+  day:    { zenith: '#1b4f86', key: 'sky',       sea: ['#2a6f9c', '#1d5580'], glint: '#bcdcec', chop: '#2d6f86', cap: '#eaf8ff', line: '#0d2a33', lip: '#cfeaf2' },
+  gold:   { zenith: '#15487e', key: 'skyGold',   sea: ['#2f6f92', '#1f5070'], glint: '#ffe3a2', chop: '#2b6478', cap: '#fff0c4', line: '#241a22', lip: '#ffdfa0' },
+  dusk:   { zenith: '#140d34', key: 'skyDusk',   sea: ['#4a3a58', '#33243c'], glint: '#ff9e63', chop: '#402a38', cap: '#ffb782', line: '#1a0a10', lip: '#ff9d6a' },
+  chrome: { zenith: '#0b3f78', key: 'skyChrome', sea: ['#1f6a9e', '#134a78'], glint: '#f2fbff', chop: '#1b567a', cap: '#ffffff', line: '#061826', lip: '#dff6ff' },
+  dawnsky:{ zenith: '#0c4a80', key: 'skyDawn',   sea: ['#2b7fae', '#1b5e8c'], glint: '#ffeaae', chop: '#256f92', cap: '#fffbe6', line: '#0a2436', lip: '#ffeec0' },
 };
 const SKY_RAMP = {
   sky: [IP.sky, ['#f6f8ee', '#ffffff', '#cfd6d0']],
@@ -1672,9 +1696,24 @@ const SKY_RAMP = {
   skyChrome: [['#175c9c', '#3486bf', '#68abd4', '#a2d0e8', '#daf0f8', '#ffffff'], ['#ffffff', '#ffffff', '#b6cddc']],
   skyDawn: [['#1d6ca8', '#3f9ac4', '#7ac8da', '#b2e5e6', '#ffe9b0', '#ffd07a'], ['#fff2cc', '#ffffff', '#c9a06e']],
 };
+function buildSkyTop(zenith, horizon) {
+  const c = can(640, 240), x = cx2(c), A = hexToRgb(zenith), B = hexToRgb(horizon);
+  const bands = 9;
+  for (let y = 0; y < 240; y++) {
+    const f = y / 239 * bands, i0 = Math.floor(f), fr = f - i0;
+    for (let px = 0; px < 640; px++) {
+      const k = clamp((fr > bay(px, y) ? i0 + 1 : i0) / bands, 0, 1);
+      P(x, 'rgb(' + R(A[0] + (B[0] - A[0]) * k) + ',' + R(A[1] + (B[1] - A[1]) * k) + ',' + R(A[2] + (B[2] - A[2]) * k) + ')', px, y);
+    }
+  }
+  return c;
+}
 function skyCan(mode) {
   const m = SKYMODE[mode] || SKYMODE.day;
-  if (!LAY[m.key]) LAY[m.key] = buildSky(SKY_RAMP[m.key][0], SKY_RAMP[m.key][1]);
+  if (!LAY[m.key]) {
+    LAY[m.key] = buildSky(SKY_RAMP[m.key][0], SKY_RAMP[m.key][1]);
+    LAY[m.key + 'Top'] = buildSkyTop(m.zenith, SKY_RAMP[m.key][0][0]);
+  }
   return LAY[m.key];
 }
 function drawAir(ctx, surfY, scroll, t, mode) {
@@ -1683,8 +1722,10 @@ function drawAir(ctx, surfY, scroll, t, mode) {
   const sy = R(surfY);
   if (sy <= 0) return;
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, 640, sy); ctx.clip();
-  P(ctx, SKY_RAMP[m.key][0][0], 0, 0, 640, sy);
-  tile(ctx, sc, scroll * 0.10, sy - sc.height - 10);
+  const topY = sy - sc.height - 10;
+  P(ctx, m.zenith, 0, 0, 640, Math.max(0, topY - 240));
+  ctx.drawImage(LAY[m.key + 'Top'], 0, R(topY - 240));
+  tile(ctx, sc, scroll * 0.10, topY);
   // far sea, sitting on the horizon
   const hz = sy - 12;
   for (let x = 0; x < 640; x += 2) {
@@ -2116,7 +2157,7 @@ BEATS.push({
   },
   render(ctx, bt) {
     const dk = clamp(bt / 4.5, 0, 1);
-    backdrop(ctx, { mood: bt > 2.6 ? 'night' : 'deep', grade: 'night', scroll: Intro.scroll, t: Intro.t, surfY: 30 - dk * 60, bedY: 350, set: 'D', shafts: 0.5 * (1 - dk), fog: ['#020a14', dk * 0.30] });
+    backdrop(ctx, { mood: bt > 2.6 ? 'night' : 'deep', grade: 'night', scroll: Intro.scroll, t: Intro.t, surfY: 30 - dk * 60, bedY: 350, set: 'D', shafts: 0.5 * (1 - dk), fog: ['#04122e', dk * 0.28] });
     // the boat shrinking behind
     ctx.save(); ctx.translate(R(SC.boatX), 44 + bt * 4); ctx.scale(SC.boatS, SC.boatS); ctx.globalAlpha = qa(0.9 - dk * 0.75);
     ctx.drawImage(BOAT.s.c, -BOAT.s.ax, -BOAT.s.ay); ctx.restore();
@@ -2390,7 +2431,7 @@ function drawDeck(ctx, t, bt) {
   // open sea behind the rail
   for (let y = 152; y < 190; y++) {
     const k = (y - 152) / 38;
-    P(ctx, k < 0.3 ? '#2a6f9c' : k < 0.62 ? '#1f5a86' : '#17466b', 0, y, 640, 1);
+    P(ctx, k < 0.3 ? '#2f86bc' : k < 0.62 ? '#1f679c' : '#154d7c', 0, y, 640, 1);
   }
   for (let x = 0; x < 640; x += 3) if (hash2(x, Math.floor(t * 2) + (x % 5)) > 0.84) P(ctx, '#bcdcec', x, 154 + R(hash2(x, 3) * 32), 4, 1);
   // guard rail
@@ -2404,20 +2445,21 @@ function drawDeck(ctx, t, bt) {
   // deck sole, darker where it meets the bulwark
   for (let y = 208; y < 360; y++) {
     const k = (y - 208) / 152;
-    const base = k < 0.16 ? '#7e7a6a' : k < 0.44 ? '#9a9584' : k < 0.74 ? '#aea895' : '#bdb6a1';
-    P(ctx, ((y % 11) === 0) ? '#5f5c50' : base, 0, y, 640, 1);
+    const base = k < 0.16 ? '#7b5c33' : k < 0.44 ? '#a07a44' : k < 0.74 ? '#bf9456' : '#d8b171';
+    P(ctx, ((y % 11) === 0) ? '#54391d' : base, 0, y, 640, 1);
   }
-  for (let x = 0; x < 640; x += 61) { P(ctx, '#5f5c50', x, 208, 1, 152); P(ctx, '#c9c2ad', x + 1, 208, 1, 152); }
-  for (let i = 0; i < 90; i++) { const gx = R(hash2(i, 5) * 640), gy = 210 + R(hash2(i, 9) * 148); P(ctx, hash2(gx, gy) > 0.5 ? '#8d8878' : '#c6bfab', gx, gy, 2, 1); }
-  for (let i = 0; i < 6; i++) { const gx = 40 + R(hash2(i, 21) * 520); P(ctx, '#7f8f86', gx, 300 + R(hash2(i, 3) * 44), R(20 + hash2(i, 7) * 40), 3); }
+  for (let x = 0; x < 640; x += 61) { P(ctx, '#54391d', x, 208, 1, 152); P(ctx, '#e8c78c', x + 1, 208, 1, 152); }
+  for (let i = 0; i < 90; i++) { const gx = R(hash2(i, 5) * 640), gy = 210 + R(hash2(i, 9) * 148); P(ctx, hash2(gx, gy) > 0.5 ? '#7d5c31' : '#e3c28a', gx, gy, 2, 1); }
+  for (let i = 0; i < 6; i++) { const gx = 40 + R(hash2(i, 21) * 520); P(ctx, '#3f7f72', gx, 300 + R(hash2(i, 3) * 44), R(20 + hash2(i, 7) * 40), 3); }
   // ---- crates, cooler and winch to port
-  P(ctx, IP.ink, 36, 246, 78, 58); P(ctx, '#8a5f2f', 37, 247, 76, 56); P(ctx, '#b5813f', 37, 247, 76, 5);
+  P(ctx, IP.ink, 36, 246, 78, 58); P(ctx, '#9a6526', 37, 247, 76, 56); P(ctx, '#e0a03c', 37, 247, 76, 5);
   for (let i = 0; i < 5; i++) P(ctx, '#5c3a1c', 37, 255 + i * 11, 76, 2);
   P(ctx, '#3f3324', 36, 304, 78, 4);
   P(ctx, IP.ink, 132, 262, 58, 42); P(ctx, '#d8dde4', 133, 263, 56, 40); P(ctx, '#9aa6b6', 133, 292, 56, 11);
-  P(ctx, '#c4202c', 138, 268, 46, 5); P(ctx, '#3f3324', 132, 304, 58, 4);
+  P(ctx, '#e8222e', 138, 268, 46, 5); P(ctx, '#3f3324', 132, 304, 58, 4);
   P(ctx, IP.ink, 206, 232, 54, 72); P(ctx, '#4a525e', 207, 233, 52, 70); P(ctx, '#767f8d', 207, 233, 52, 7);
   for (let i = 0; i < 5; i++) P(ctx, '#2a3038', 211 + i * 9, 246, 4, 46);
+  P(ctx, '#b8541e', 207, 252, 52, 3); P(ctx, '#e07a2e', 207, 252, 52, 1);
   P(ctx, '#3f3324', 206, 304, 54, 4);
   // ---- the tank, standing on the deck
   const tx = 392, ty = 150, tw = 212, th = 176;
@@ -2435,11 +2477,13 @@ function drawDeck(ctx, t, bt) {
     ctx.save(); ctx.translate(fx2, fy + R(Math.sin(t * 2 + i) * 3)); if (i & 1) ctx.scale(-1, 1); ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore();
   }
   for (let i = 0; i < 6; i++) { const sp = FISHDEAD[i % 4]; ctx.save(); ctx.translate(tx + 22 + i * 32, ty + 13 + R(Math.sin(t * 0.6 + i) * 2)); ctx.scale(1, -1); ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore(); }
-  for (let i = 0; i < 5; i++) { ctx.fillStyle = rgbaq('#f2fff0', 0.07); ctx.fillRect(tx + 14 + i * 42, ty + 8, 10, th - 16); }
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = rgbaq('#bff8ff', 0.09); ctx.fillRect(tx + 14 + i * 42, ty + 8, 10, th - 16); }
+  P(ctx, '#d8f8ff', tx + 2, ty + 6, 3, th - 18); P(ctx, '#8fd8e8', tx + tw - 5, ty + 6, 3, th - 18);
   P(ctx, IP.ink, tx - 6, ty + th + 6, tw + 12, 8); P(ctx, '#2a3038', tx - 5, ty + th + 6, tw + 10, 7);
   // ---- deck hands watching the catch come aboard
-  figure(ctx, 286, 322, 48, { facing: 1, lean: -0.05, armA: 0.25, foreA: 0.45, armB: 0.15, foreB: 0.30, legA: 0.46, legB: -0.44, head: 0.12 }, '#222c3e', '#6d8fae');
-  figure(ctx, 338, 324, 45, { facing: 1, lean: 0.08, armA: -0.45, foreA: -0.9, armB: 0.30, foreB: 0.55, legA: -0.42, legB: 0.46, head: 0.18 }, '#2b2436', '#7a7290');
+  figure(ctx, 286, 322, 48, { facing: 1, lean: -0.05, armA: 0.25, foreA: 0.45, armB: 0.15, foreB: 0.30, legA: 0.46, legB: -0.44, head: 0.12 }, '#222c3e', '#ffc46a');
+  figure(ctx, 338, 324, 45, { facing: 1, lean: 0.08, armA: -0.45, foreA: -0.9, armB: 0.30, foreB: 0.55, legA: -0.42, legB: 0.46, head: 0.18 }, '#4a2230', '#ffb45a');
+  if (LAY.deckLight) ctx.drawImage(LAY.deckLight, 0, 0);
   void bt;
 }
 // ===========================================================================
@@ -2873,7 +2917,7 @@ function buildBulb() {
 function buildHoldLight() {
   const c = can(640, 360), x = cx2(c), img = x.createImageData(640, 360), d = img.data;
   const WARM = ['#fff4d2', '#ffe2a0', '#ffbe63', '#e8853a', '#b4552a'];
-  const COLD = ['#4d82b8', '#356a9c', '#23507e', '#143560', '#0a1e3e'];
+  const COLD = ['#5f97cc', '#4478ae', '#2d5c90', '#1b3f70', '#0d2448'];
   const W = WARM.map(hexToRgb), C = COLD.map(hexToRgb);
   const LX = 168, LY = 152, RX = 430, RY = 360;
   for (let y = 0; y < 360; y++) {
@@ -2895,7 +2939,7 @@ function buildHoldLight() {
         const j = clamp(Math.floor(k), 0, C.length - 2), kf = k - j;
         const c0 = C[j], c1 = C[j + 1];
         col = [R(c0[0] + (c1[0] - c0[0]) * kf), R(c0[1] + (c1[1] - c0[1]) * kf), R(c0[2] + (c1[2] - c0[2]) * kf)];
-        a = 0.12 + 0.46 * clamp((band - 0.62) / 0.78, 0, 1);
+        a = 0.14 + 0.54 * clamp((band - 0.62) / 0.78, 0, 1);
       }
       // the bilge at the bottom stays coldest of all
       if (y > 320) a += (y - 320) / 40 * 0.10;

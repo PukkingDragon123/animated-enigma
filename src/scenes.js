@@ -298,9 +298,9 @@ const BP = {
   // NIGHT — cold indigo above, with the fire in the village bleeding a dirty
   // ember bruise into the bottom bands.
   skyNight: ['#03040e', '#050816', '#080c20', '#0c112b', '#111636', '#171c41', '#1f224c',
-             '#2a2652', '#372855', '#472953', '#59294b', '#6b2b40'],
+             '#28264f', '#332851', '#3f2a4d', '#4c2a44', '#5c2b3a'],
   skyDim:   ['#05070f', '#080c1c', '#0d1329', '#131b36', '#1a2444', '#232c51', '#2f335e',
-             '#3e386a', '#523a6a', '#683c62', '#7e3f54', '#933f47'],
+             '#3b3667', '#4a3868', '#5c3a62', '#703c58', '#833e4c'],
   // DAWN — the whole spectacle: night blue, violet, magenta, coral, amber, gold.
   skyDawn:  ['#080c24', '#0d1531', '#131e41', '#1a2951', '#243461', '#33396e', '#463c76',
              '#5c3f74', '#75416c', '#8d4762', '#a45259', '#b86153', '#ca7353', '#d98a57',
@@ -487,6 +487,7 @@ function buildBay(skyRamp, seaRamp, opt) {
       const base = Math.pow(y / (HZ - 1), opt.skyPow || 0.72) * (n - 1);
       for (let px = 0; px < 640; px++) {
         let fi = base + (hash2(px >> 3, y >> 1) - 0.5) * 0.09 * (n - 1);
+        if (opt.ember) fi += opt.ember * (n - 1) * Math.pow(1 - px / 640, 1.4) * Math.pow(y / HZ, 2.0);
         if (fi < 0) fi = 0; else if (fi > n - 1) fi = n - 1;
         let i = Math.floor(fi);
         if (bay(px, y) < fi - i) i++;
@@ -513,8 +514,8 @@ function buildBay(skyRamp, seaRamp, opt) {
     const cx0 = ((i * 151) % 660) - 30;
     const deep = Math.min(n_ - 1, Math.round(Math.pow(cy / HZ, opt.skyPow || 0.72) * (n_ - 1)));
     const lit = mixHex(skyRamp[Math.min(n_ - 1, deep + 2)], opt.cloudLit || skyRamp[n_ - 1], 0.4);
-    const mid = mixHex(skyRamp[Math.max(0, deep - 2)], BP.ink, 0.10);
-    const dark = mixHex(skyRamp[Math.max(0, deep - 4)], BP.ink, 0.28);
+    const mid = mixHex(skyRamp[Math.max(0, deep - 2)], BP.ink, 0.06);
+    const dark = mixHex(skyRamp[Math.max(0, deep - 4)], BP.ink, 0.14);
     const rows = 3 + (i & 1);
     let w0 = 0, sx0 = 0;
     for (let r = 0; r < rows; r++) {
@@ -735,7 +736,7 @@ function buildManateeSide(ghost) {
     { x: 138, y: 32, rx: 8, ry: 8 },     // blunt snout
   ]);
   const ramp = ghost
-    ? ['#0e2f38', '#19525f', '#277f8d', '#45aeb9', '#83dfe6']
+    ? ['#0b262e', '#13434e', '#1d6875', '#3390a0', '#5fbcc8']
     : ['#2a2730', '#3d3947', '#585462', '#726e7c', '#8f8b98'];
   const body = shadeBlob(W, H, f, ramp, { outline: ghost ? '#07202a' : BP.ink, smooth: 3, lift: 0.18 });
   const c = can(W, H), x = cx2(c);
@@ -743,7 +744,7 @@ function buildManateeSide(ghost) {
   // pale belly
   for (let y = 34; y < H - 1; y++) for (let px = 20; px < 146; px++) {
     const i = y * W + px; if (f[i] <= 0.04) continue;
-    if (f[i + W] <= 0.04 || bay(px, y) < (y - 34) / 18) P(x, ghost ? '#b6f2f4' : '#9fadbd', px, y, 1, 1);
+    if (f[i + W] <= 0.04 || bay(px, y) < (y - 34) / 18) P(x, ghost ? '#8ed6dd' : '#9fadbd', px, y, 1, 1);
   }
   if (!ghost) {
     // the plate bolted over her shoulder, and the harness strap
@@ -891,10 +892,10 @@ function buildCloseBg() {
       return 1 - Math.sqrt(dx * dx * 0.7 + dy * dy) * 1.05;
     });
   // embers riding up out of the burning village behind him, baked flat
-  for (let i = 0; i < 180; i++) {
-    const ex = R(hash2(i, 7) * 640), ey = R(120 + Math.pow(hash2(i, 23), 1.6) * 240);
+  for (let i = 0; i < 150; i++) {
+    const ex = R(hash2(i, 7) * 640), ey = R(360 - Math.pow(hash2(i, 23), 2.3) * 300);
     const b = hash2(i, 41);
-    P(x, b > 0.8 ? BP.fire[4] : b > 0.5 ? BP.fire[3] : BP.fire[2], ex, ey, 1, 1);
+    P(x, b > 0.86 ? BP.fire[4] : b > 0.52 ? BP.fire[3] : BP.fire[2], ex, ey, 1, 1);
   }
   // a hot band low down, where the water is throwing the fire back at him
   for (let y = 300; y < 360; y++) for (let px = 0; px < 640; px++) {
@@ -1029,9 +1030,9 @@ const BossCut = {
       const EMB = [[128, HZ - 22, 30, 22], [150, HZ - 14, 20, 15], [104, HZ - 30, 18, 14]];
       const EGL = [[128, BP.emberGlow, 0.62, 30], [150, BP.emberGlow, 0.46, 18]];
       A.bayNight = [
-        buildBay(BP.skyNight, BP.sea, { skyPow: 1.6, chop: BP.chopNight, wrecked: true, rim: '#5a1f14',
+        buildBay(BP.skyNight, BP.sea, { skyPow: 1.6, ember: 0.30, chop: BP.chopNight, wrecked: true, rim: '#5a1f14',
           stars: 170, cloudLit: '#5c2a30', cloudLip: '#8a3a2c', emberPools: EMB, glows: EGL }),
-        buildBay(BP.skyDim, BP.sea, { skyPow: 1.5, chop: BP.chopNight, wrecked: true, rim: '#5a2418',
+        buildBay(BP.skyDim, BP.sea, { skyPow: 1.5, ember: 0.26, chop: BP.chopNight, wrecked: true, rim: '#5a2418',
           stars: 120, cloudLit: '#7e4050', cloudLip: '#a8504a', emberPools: EMB, glows: EGL }),
         buildBay(BP.skyDawn, BP.seaDawn, {
           skyPow: 1.45, sun: [112, 182, 19, '#ffc07a', '#fff0cc'], road: '#a85a4e', road2: '#e09a6a',
@@ -1073,12 +1074,13 @@ const BossCut = {
       A.sharkNight = spr(rimLight(rimLight(cloneSpr(A.shark), -1, 0, '#e8622a', '#8c3316', 2),
                                   1, -1, '#4a6aa8', null, 1), A.shark.ax, A.shark.ay);
       A.chiefNight = spr(rimLight(cloneSpr(A.chief), -1, 0, '#e8622a', '#8c3316', 2), A.chief.ax, A.chief.ay);
-      A.manNight = spr(rimLight(rimLight(bounceLight(cloneSpr(A.man), '#3a5a7a', 3, 0.7),
-                                         -1, 0, '#ff8a3a', '#a84a1e', 2),
-                                1, -1, '#6a86c8', null, 1), A.man.ax, A.man.ay);
-      A.ottNight = spr(rimLight(cloneSpr(A.ott), -1, 0, '#ffa84a', '#b05a20', 2), A.ott.ax, A.ott.ay);
+      A.manNight = spr(rimLight(rimLight(rimLight(bounceLight(cloneSpr(A.man), '#3a5a7a', 3, 0.7),
+                                                  1, 0, '#ff8a3a', '#a84a1e', 2),
+                                         0, -1, '#8a6a9a', null, 1),
+                                -1, -1, '#6a86c8', null, 1), A.man.ax, A.man.ay);
+      A.ottNight = spr(rimLight(cloneSpr(A.ott), 1, 0, '#ffa84a', '#b05a20', 2), A.ott.ax, A.ott.ay);
       A.hatNight = spr(rimLight(cloneSpr(A.hat), -1, 0, '#ffa84a', null, 1), A.hat.ax, A.hat.ay);
-      A.rifleNight = spr(rimLight(cloneSpr(A.rifle), -1, 0, '#ffa84a', null, 1), A.rifle.ax, A.rifle.ay);
+      A.rifleNight = spr(rimLight(cloneSpr(A.rifle), 1, 0, '#ffa84a', null, 1), A.rifle.ax, A.rifle.ay);
       A.fin = (function () {
         const c = can(26, 22), x = cx2(c);
         triOutlined(x, '#253448', BP.ink, [24, 21], [2, 21], [8, 0]);
@@ -1103,7 +1105,7 @@ const BossCut = {
       A.miniCyan = spr(rimLight(cloneSpr(A.mini), 1, -1, '#34b4c4', '#145060', 2), A.mini.ax, A.mini.ay);
       A.miniHot = spr(rimLight(cloneSpr(A.mini), 1, -1, '#ff8a6a', '#8c1a1c', 2), A.mini.ax, A.mini.ay);
       A.ringCyan = A.mRing.map(o => spr(tintCanvas(cloneSpr(o), '#34b4c4', 0.8), o.ax, o.ay));
-      A.ringRed = A.mRing.map(o => spr(tintCanvas(cloneSpr(o), '#ff5a3a', 0.75), o.ax, o.ay));
+      A.ringRed = A.mRing.map(o => spr(tintCanvas(cloneSpr(o), '#ff7a4a', 0.88), o.ax, o.ay));
       A.buf = can(640, 360); A.bufCtx = cx2(A.buf);
       // the half-tone the minis darken the bay with, baked once: doing this
       // as 57k fillRects per frame cost 30ms a frame before it was baked
@@ -1129,13 +1131,18 @@ const BossCut = {
         } }
       A.ditherRed = can(640, 360);
       { const dx = cx2(A.ditherRed);
-        dx.fillStyle = '#1a0608'; dx.fillRect(0, 0, 640, 360);
-        dx.fillStyle = '#070103';
+        dx.fillStyle = '#2a090c'; dx.fillRect(0, 0, 640, 360);
+        dx.fillStyle = '#0d0205';
         for (let y = 0; y < 360; y += 2) for (let x = (y >> 1) & 1; x < 640; x += 2) dx.fillRect(x, y, 1, 1);
-        dx.fillStyle = '#3d0d10';
+        dx.fillStyle = '#5c1014';
         for (let y = 0; y < 360; y++) for (let x = 0; x < 640; x++) {
           const f = 1 - Math.sqrt(Math.pow((x - 320) / 320, 2) + Math.pow((y - 200) / 200, 2));
-          if (f > 0 && bay(x + 2, y + 1) < f * 0.40) dx.fillRect(x, y, 1, 1);
+          if (f > 0 && bay(x + 2, y + 1) < f * 0.48) dx.fillRect(x, y, 1, 1);
+        }
+        dx.fillStyle = '#8c1a1c';
+        for (let y = 0; y < 360; y++) for (let x = 0; x < 640; x++) {
+          const f = 1 - Math.sqrt(Math.pow((x - 320) / 190, 2) + Math.pow((y - 210) / 120, 2));
+          if (f > 0 && bay(x + 3, y + 2) < f * 0.34) dx.fillRect(x, y, 1, 1);
         } }
       // warm every baked canvas once so the first frame never pays to upload
       const wc = cx2(can(8, 8));
@@ -1766,7 +1773,7 @@ const BossCut = {
       // struck through, and stamped
       const w = Math.min(600, textWidth(this.name, nameSize) + 40);
       for (let i = 0; i < 4; i++) {
-        P(ctx, i === 0 || i === 3 ? '#7a0d16' : BP.red, 320 - w / 2 + i * 2, 72 + drop + i, w, 1);
+        P(ctx, i === 0 || i === 3 ? '#7a0d16' : BP.red, 320 - w / 2 + i * 2, 74 + drop + i, w, 1);
       }
       const sk = clamp((T - KX.stamp) / 0.1, 0, 1);
       ctx.globalAlpha = qa(sk);
