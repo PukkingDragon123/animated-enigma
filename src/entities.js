@@ -1526,6 +1526,13 @@ class Player {
 }
 
 // ============================ ENEMIES ====================================
+// NOTE on `radius`, `wake` and `turn`: the numbers written here are the
+// values this fleet was balanced at when every hull was half the size it is
+// now. They are NOT what the game runs on. tuneFleet() (above) overwrites
+// all three at load from the hull src/chars.js actually built, and keeps the
+// authored value in baseRadius / baseWake / baseTurn. Change the hull in
+// chars.js and the hitbox follows it on its own; editing the number here
+// only moves the fallback for a boat whose sprite is missing.
 const ENEMY_TYPES = {
   dinghy: { hp: 30, speed: 100, turn: 2.6, radius: 12, behavior: 'chase', ram: 12, drops: { wood: 2, metal: 1 }, name: 'Fishing Dinghy', wake: 6 },
   netter: { hp: 48, speed: 85, turn: 2.2, radius: 13, behavior: 'orbit', orbit: 150, attackCd: 3.0, attack: 'net', ram: 8, drops: { wood: 2, tech: 1 }, name: 'Net Boat', wake: 7 },
