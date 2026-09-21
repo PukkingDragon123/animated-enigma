@@ -123,7 +123,8 @@ class Projectile {
     if (this.owner === 'player') {
       for (const e of G.enemies) {
         if (e.dead || this.hits.has(e)) continue;
-        if (circleHit(this.x, this.y, this.size, e.x, e.y, e.radius)) { this.onHit(e); if (this.dead) return; }
+        const touched = e.hitTest ? e.hitTest(this.x, this.y, this.size) : circleHit(this.x, this.y, this.size, e.x, e.y, e.radius);
+        if (touched) { this.onHit(e); if (this.dead) return; }
       }
       if (G.boss && !G.boss.dead && !this.hits.has(G.boss) && circleHit(this.x, this.y, this.size, G.boss.x, G.boss.y, G.boss.radius)) this.onHit(G.boss);
       if (G.fisherman && G.fisherman.alive && circleHit(this.x, this.y, this.size + 4, G.fisherman.x, G.fisherman.y - 8, 10)) { G.fisherman.shot(this); this.dead = true; }
@@ -166,8 +167,10 @@ class Projectile {
     const r = this.explode;
     G.particles.explode(this.x, this.y, r, { water: true });
     G.shake(r / 12);
+    // floating wreckage is not scenery: the blast picks it up and throws it
+    if (typeof Wreck !== 'undefined' && Wreck.shove) Wreck.shove(this.x, this.y, r * 1.8, 0.55 + r / 90);
     if (this.owner === 'player') {
-      for (const e of G.enemies) if (!e.dead && dist(this.x, this.y, e.x, e.y) < r + e.radius) { const a = angleTo(this.x, this.y, e.x, e.y); e.hit(this.dmg * (this.hits.has(e) ? 0.5 : 1), Math.cos(a) * this.knock * 2, Math.sin(a) * this.knock * 2, this); }
+      for (const e of G.enemies) if (!e.dead && (e.hitTest ? e.hitTest(this.x, this.y, r) : dist(this.x, this.y, e.x, e.y) < r + e.radius)) { const a = angleTo(this.x, this.y, e.x, e.y); e.hit(this.dmg * (this.hits.has(e) ? 0.5 : 1), Math.cos(a) * this.knock * 2, Math.sin(a) * this.knock * 2, this); }
       const b = G.boss; if (b && !b.dead && dist(this.x, this.y, b.x, b.y) < r + b.radius) b.hit(this.dmg * (this.hits.has(b) ? 0.5 : 1), 0, 0, this);
     } else {
       const p = G.player;
@@ -225,6 +228,7 @@ class Mine extends Projectile {
       size: 5, explode: 36, knock: 0, absorbable: true,
     });
     this.arm = 0; this.ph = rand(0, TAU);
+    this.under = true;          // it goes off beneath a hull, and lifts her
   }
   update(dt) {
     this.age += dt; this.life -= dt;
@@ -284,30 +288,675 @@ class Mine extends Projectile {
   }
 }
 
-// ============================ WRECK (sinking boat) ======================
-class Wreck {
-  constructor(sprite, x, y, angle, radius) { this.sprite = sprite; this.x = x; this.y = y; this.angle = angle; this.t = 0; this.dur = 2.2 + radius / 20; this.radius = radius; this.dead = false; this.smokeT = 0; }
-  update(dt) {
-    this.t += dt; this.smokeT -= dt;
-    if (this.smokeT <= 0) { this.smokeT = 0.08; G.particles.smoke(this.x + rand(-this.radius, this.radius) * 0.5, this.y + rand(-4, 4), 1, 'rgba(30,28,34,', 5); if (Math.random() < 0.5) G.particles.fire(this.x + rand(-this.radius, this.radius) * 0.4, this.y, 1); if (Math.random() < 0.3) G.particles.bubbles(this.x + rand(-8, 8), this.y + rand(-4, 4), 1); }
-    if (this.t > this.dur) this.dead = true;
-    G.ocean.addOil(this.x, this.y, 0.02);
+// ======================= HULL BREAKUP / WRECKAGE ========================
+// A boat that dies does not fade out: it comes apart. The pieces are CUT OUT
+// OF THAT BOAT'S OWN SPRITE -- the very canvas the hull was rasterised into
+// -- so a broken trawler is unmistakably a broken trawler, down to the rust
+// weeping off her fastenings. Every piece then goes into the water as a real
+// object with its own mass, spin and buoyancy: it splashes, it shoves the
+// jelly surface aside, it bobs on the swell, it takes water on until it
+// swamps, and then it rolls over and slides under end-first. Warm timber
+// floats for twenty seconds and can be shouldered around; cold steel is gone
+// in three.
+//
+// WHAT DECIDES THE BREAK is the kill. A shell into her side folds her in
+// half; one down the throat takes the bow off; one up the transom takes the
+// stern off; a blast underneath opens her along the keel and throws her up
+// out of the water; a magazine going up shatters her into six.
+//
+// WHAT IT COSTS: each (hull x break pattern) is cut ONCE into small canvases
+// and cached on the sprite, so the twentieth trawler of the wave costs a
+// handful of object allocations and no pixel work at all. Live pieces are
+// capped globally -- past the cap the oldest floating wreckage is told to
+// take water, so a screen full of dying boats cannot run the count away.
+const BREAK = {
+  cap: 80,         // live pieces across every wreck on the water
+  maxWrecks: 12,   // breakup events kept at once
+  floatLife: 19,   // seconds a buoyant piece drifts before it gives up
+  minPix: 10,      // art pixels below which a piece is just particle debris
+};
+// Counted, never tallied: game.js is free to drop G.wrecks wholesale between
+// runs and the budget still reads true on the next breakup.
+function liveFrags() {
+  const ws = (typeof G !== 'undefined' && G && G.wrecks) || null;
+  if (!ws) return 0;
+  let n = 0;
+  for (let i = 0; i < ws.length; i++) n += ws[i].pieces ? ws[i].pieces.length : 0;
+  return n;
+}
+
+// chars.js's un-bridged blitter, for drawing a hi-res canvas under a
+// transform we have already scaled ourselves. Absent, we fall back to the
+// ordinary path and nothing changes but the cost.
+const RAWP = (typeof drawRaw === 'function') ? drawRaw : null;
+
+// ---- the source pixels ---------------------------------------------------
+// Read fresh for each cut and thrown away again: a hull is cut at most once
+// per break pattern in the life of the page, and half a millisecond then is
+// a far better trade than holding a megabyte of ImageData per hull for the
+// rest of the run. What IS remembered is a hull we could not read at all --
+// a tainted or absurdly large canvas -- so we never try that one twice.
+const _unreadable = new WeakSet();
+function hullPixels(spr) {
+  if (!spr || !spr.c || _unreadable.has(spr)) return null;
+  try {
+    const c = spr.c, w = c.width | 0, h = c.height | 0;
+    if (w > 1 && h > 1 && w * h <= 400000) {
+      const d = c.getContext('2d').getImageData(0, 0, w, h);
+      return { w, h, A: Math.max(1, Math.round(w / (spr.w || w))), data: d.data };
+    }
+  } catch (e) { /* fall through */ }
+  _unreadable.add(spr);
+  return null;
+}
+
+// ---- the cut plans -----------------------------------------------------
+// u runs 0 (transom) .. 1 (stem) along the hull, v across it. `split` names
+// the bands that are also opened down the centreline. Seams are jittered on
+// a hash, one integer step per row, so every tear is ragged and none of them
+// is a saw cut -- and the jitter is deterministic, so a hull always breaks
+// along the same grain.
+// A small boat breaks in two; a ship has frames enough to break into a bow,
+// a midships and a stern, so `big` hulls get the extra seam.
+const BREAK_PLANS = {
+  half:     { seams: [0.47], big: [0.32, 0.58], split: [] },
+  bowoff:   { seams: [0.67], big: [0.36, 0.70], split: [] },
+  sternoff: { seams: [0.30], big: [0.29, 0.62], split: [] },
+  // a blast under the keel: a ship opens along her centreline, a small boat
+  // has no centreline worth opening and simply comes apart in three
+  keel:     { seams: [0.40, 0.68], big: [0.50], split: [], bigSplit: [0, 1] },
+  shatter:  { seams: [0.28, 0.54, 0.77], big: [0.24, 0.46, 0.68, 0.85], split: [1, 2] },
+};
+
+const _breakCache = new WeakMap();        // sprite -> Map(planKey -> pieces[])
+function bakeBreak(spr, key, deckBox) {
+  let m = _breakCache.get(spr);
+  if (!m) { m = new Map(); _breakCache.set(spr, m); }
+  const ck = key + (deckBox ? '+d' : '');
+  if (m.has(ck)) return m.get(ck);
+  let out = null;
+  try {
+    const base = BREAK_PLANS[key] || BREAK_PLANS.half;
+    const useBig = !!(deckBox && base.big);
+    const plan = { seams: useBig ? base.big : base.seams, split: (useBig && base.bigSplit) ? base.bigSplit : base.split };
+    out = cutHull(spr, plan, deckBox);
+  } catch (e) { out = null; }
+  m.set(ck, out);
+  return out;
+}
+
+function cutHull(spr, plan, deckBox) {
+  const hp = hullPixels(spr);
+  if (!hp) return null;
+  const W = hp.w, H = hp.h, A = hp.A, data = hp.data, cy = H / 2;
+  // the seams, one integer x per row and one integer y per column
+  const seamX = [];
+  for (let i = 0; i < plan.seams.length; i++) {
+    const base = plan.seams[i] * W, a = new Int16Array(H);
+    for (let y = 0; y < H; y++) a[y] = (base + ((hash2(y * 7 + i * 131, 17 + i * 5) * 7) | 0) - 3) | 0;
+    seamX.push(a);
   }
+  const splitY = new Int16Array(W);
+  for (let x = 0; x < W; x++) splitY[x] = (cy + ((hash2(x * 5, 91) * 5) | 0) - 2) | 0;
+  const nb = plan.seams.length + 1;
+  // the deckhouse / gear box: a working boat's wheelhouse comes off whole
+  const box = deckBox ? { x0: (W * 0.58) | 0, x1: (W * 0.80) | 0, y0: (cy - H * 0.19) | 0, y1: (cy + H * 0.19) | 0 } : null;
+  const BOXID = nb * 2;
+
+  const ids = new Int16Array(W * H); ids.fill(-1);
+  const bk = new Map();
+  for (let y = 0; y < H; y++) {
+    const row = y * W;
+    for (let x = 0; x < W; x++) {
+      const o = (row + x) << 2;
+      if (data[o + 3] < 24) continue;
+      let b = 0;
+      for (let i = 0; i < seamX.length; i++) if (x >= seamX[i][y]) b = i + 1;
+      let id = b;
+      if (plan.split.indexOf(b) >= 0 && y >= splitY[x]) id = b + nb;
+      if (box && x >= box.x0 && x < box.x1 && y >= box.y0 && y < box.y1) id = BOXID;
+      ids[row + x] = id;
+      let e = bk.get(id);
+      if (!e) { e = { x0: x, x1: x, y0: y, y1: y, n: 0, sx: 0, r: 0, g: 0, b: 0 }; bk.set(id, e); }
+      if (x < e.x0) e.x0 = x; if (x > e.x1) e.x1 = x;
+      if (y < e.y0) e.y0 = y; if (y > e.y1) e.y1 = y;
+      e.n++; e.sx += x; e.r += data[o]; e.g += data[o + 1]; e.b += data[o + 2];
+    }
+  }
+
+  const pieces = [];
+  bk.forEach((e, id) => {
+    if (e.n < BREAK.minPix) return;
+    const fw = e.x1 - e.x0 + 1, fh = e.y1 - e.y0 + 1;
+    const c = (typeof newCan === 'function') ? newCan(fw, fh) : null;
+    if (!c) return;
+    const fctx = c.getContext('2d');
+    const img = fctx.createImageData(fw, fh), od = img.data;
+    for (let y = e.y0; y <= e.y1; y++) for (let x = e.x0; x <= e.x1; x++) {
+      if (ids[y * W + x] !== id) continue;
+      const s = ((y * W + x) << 2), d2 = (((y - e.y0) * fw) + (x - e.x0)) << 2;
+      od[d2] = data[s]; od[d2 + 1] = data[s + 1]; od[d2 + 2] = data[s + 2]; od[d2 + 3] = data[s + 3];
+    }
+    fctx.putImageData(img, 0, 0);
+    const fs = (A > 1 && typeof spriteFromHi === 'function')
+      ? spriteFromHi(c, fw / 2, fh / 2)
+      : { c, w: fw, h: fh, ax: fw / 2, ay: fh / 2 };
+    pieces.push({
+      spr: fs,
+      ox: (e.x0 + fw / 2) / A - spr.ax,      // where it sat on the hull, world units
+      oy: (e.y0 + fh / 2) / A - spr.ay,
+      n: e.n,                                 // art pixels -> mass
+      u: (e.sx / e.n) / W,                    // where its weight lies along her
+      // paint temperature: warm timber swims, cold steel does not
+      warm: (e.r - e.b) / (e.n * 255),
+      lum: (e.r + e.g + e.b) / (e.n * 765),
+      box: id === BOXID,
+    });
+  });
+  pieces.sort((a, b) => b.n - a.n);
+  return pieces.length ? pieces : null;
+}
+
+// Is this a ship or a boat? Measured against the longest hull the fleet has,
+// never against a number: a ship breaks into a bow, a midships and a stern
+// and sheds her wheelhouse whole, where a small boat simply breaks in two.
+// Rescale the whole fleet and the same boats stay on the same side of it.
+let _maxHullA = 0;
+function fleetMaxHull() {
+  if (_maxHullA) return _maxHullA;
+  if (typeof SP === 'undefined' || !SP.boats) return 1200;
+  for (const k in SP.boats) { const q = SP.boats[k]; if (q) { const a = q.w * q.h; if (a > _maxHullA) _maxHullA = a; } }
+  return _maxHullA || 1200;
+}
+// Deck area rather than length alone, so a beamy barge counts as a ship and
+// a long thin runabout does not -- and so the mini-boss hulls, which nothing
+// in this file sizes, land on the right side of it too.
+function hullIsShip(spr) { return !!spr && spr.w * spr.h >= fleetMaxHull() * 0.42; }
+
+// ---- the darkening ladder, posterized into two hard steps ---------------
+// The ladder is hung on the fragment sprite itself, and the fragments are
+// already cached per (hull x break), so a screen full of sinking wreckage
+// bakes each step exactly once in the life of the page and never again.
+function sinkTint(s, step) {
+  if (step <= 0) return s;
+  if (step > 2) step = 2;
+  let lad = s._sink;
+  if (!lad) lad = s._sink = [];
+  let v = lad[step];
+  if (v) return v;
+  const col = '#0a1a30', a = 0.26 + step * 0.26;
+  v = lad[step] = (s.hi && typeof tintHi === 'function') ? tintHi(s, col, a) : tintSprite(s, col, a);
+  return v;
+}
+
+// oil does not arrive in a dot: it spreads off a hull that is losing it
+function spillOil(x, y, amt, spread) {
+  const o = G.ocean; if (!o || !o.addOil) return;
+  o.addOil(x, y, amt * 0.5);
+  for (let i = 0; i < 3; i++) o.addOil(x + rand(-spread, spread), y + rand(-spread, spread), amt * 0.17);
+}
+
+// ============================ WRECK ====================================
+// Constructed as `new Wreck(sprite, x, y, angle, radius)` from boss.js and
+// from Enemy.die -- the fifth argument is still the radius and the sixth is
+// optional, so every existing call site keeps working untouched.
+//
+//   opts.rel    radians between her heading and the way the killing blow was
+//               travelling: 0 = up the transom, +-PI = down the throat,
+//               +-PI/2 = into her side
+//   opts.blast  the kill was an explosion
+//   opts.under  it went off beneath her
+//   opts.power  impulse multiplier
+//   opts.vx/vy  the way she was already going
+//   opts.cargo / opts.mast / opts.crew / opts.fuel  what she had aboard
+//   opts.steel  false to silence the boiler (it is otherwise measured off
+//               the wreckage itself, not asked for)
+class Wreck {
+  constructor(sprite, x, y, angle, radius, opts) {
+    const o = opts || {};
+    this.sprite = sprite; this.x = x; this.y = y; this.angle = angle || 0;
+    this.radius = Math.max(6, radius || 12);
+    this.t = 0; this.dead = false; this.smokeT = 0; this.oilT = 0;
+    this.pieces = []; this.events = [];
+    this.fireT = o.fire === false ? 0 : 1.2 + this.radius / 9;
+    this.build(o);
+    // a sprite we cannot read pixels out of still sinks the old way rather
+    // than popping out of existence
+    this.whole = this.pieces.length ? null : { dur: 2.2 + this.radius / 20 };
+  }
+
+  planKey(o) {
+    if (o.under) return 'keel';
+    if (o.blast && hullIsShip(this.sprite)) return 'shatter';
+    if (o.rel === undefined || o.rel === null) return 'half';
+    const a = Math.abs(o.rel);
+    if (a < 0.75) return 'sternoff';       // it came up her wake and took the stern
+    if (a > 2.40) return 'bowoff';         // straight down the throat
+    return 'half';                          // amidships: she folds
+  }
+
+  build(o) {
+    const key = this.planKey(o);
+    const cut = bakeBreak(this.sprite, key, hullIsShip(this.sprite));
+    if (!cut) return;
+    // ---- budget. Past the cap the oldest wreckage starts taking water and
+    //      this break gets only its biggest pieces; the rest becomes the
+    //      particle debris it would otherwise have been.
+    let room = BREAK.cap - liveFrags();
+    if (room < cut.length) { Wreck.makeRoom(cut.length - room); room = BREAK.cap - liveFrags(); }
+    const take = clamp(room, 1, cut.length);
+    const ca = Math.cos(this.angle), sa = Math.sin(this.angle);
+    const power = o.power || 1, lift = o.under ? 1 : (o.blast ? 0.45 : 0.12);
+    const bigN = cut[0].n;
+    for (let i = 0; i < cut.length; i++) {
+      const p = cut[i];
+      if (i >= take) {   // over budget: it still leaves splinters on the water
+        G.particles.debris(this.x + p.ox * ca - p.oy * sa, this.y + p.ox * sa + p.oy * ca, 2);
+        continue;
+      }
+      const wx = this.x + p.ox * ca - p.oy * sa, wy = this.y + p.ox * sa + p.oy * ca;
+      const away = (wx === this.x && wy === this.y) ? rand(0, TAU) : Math.atan2(wy - this.y, wx - this.x);
+      const mass = Math.max(0.3, p.n / (bigN || 1));
+      // the light stuff is thrown, the heavy stuff barely moves: real momentum.
+      // A hull that folds in half opens SLOWLY -- two halves of a ship have
+      // a ship's inertia -- and it is the blast kills that scatter her.
+      const push = power * (13 + 30 * (1 - mass)) * (o.blast ? 2.2 : 1);
+      const buoy = clamp(0.30 + p.warm * 2.5 + p.lum * 0.3, 0.07, 0.95);
+      const frag = {
+        spr: p.spr, x: wx, y: wy, z: 0,
+        vx: (o.vx || 0) * 0.45 + Math.cos(away) * push + rand(-14, 14),
+        vy: (o.vy || 0) * 0.45 + Math.sin(away) * push + rand(-14, 14),
+        vz: lift * (26 + 66 * (1 - mass)) * power * rand(0.6, 1.25),
+        ang: this.angle, spin: rand(-1, 1) * (0.5 + 2.4 * (1 - mass)),
+        mass, buoy, swamp: 0, sink: 0, sinking: false,
+        life: 0, ph: rand(0, TAU), down: p.u > 0.5 ? 1 : -1,
+        r: Math.max(2.5, Math.max(p.spr.w, p.spr.h) * 0.36),   // how wide it is to bump into
+        box: p.box,
+      };
+      if (frag.vz > 1) frag.z = 0.5;
+      this.pieces.push(frag);
+    }
+    // ---- the water answers: a hole punched in the surface, a ring of foam,
+    //      oil out of her tanks and a real splash where each piece lands
+    const oc = G.ocean;
+    if (oc) {
+      if (oc.disturb) { oc.disturb(this.x, this.y, -7, 0, 0); oc.disturb(this.x, this.y, 5.5, o.vx || 0, o.vy || 0); }
+      if (oc.ripple) { oc.ripple(this.x, this.y, this.radius * 4.2, 110, 0.75); oc.ripple(this.x, this.y, this.radius * 2.2, 70, 0.5); }
+      for (let i = 0; i < 9; i++) { const a = i / 9 * TAU; oc.addFoam(this.x + Math.cos(a) * this.radius, this.y + Math.sin(a) * this.radius, 0.5); }
+      spillOil(this.x, this.y, 0.5 + this.radius / 26, this.radius * 0.8);
+    }
+    G.particles.splash(this.x, this.y, Math.min(2.6, 0.9 + this.radius / 16));
+
+    // ---- what she was MADE of, measured off the pieces that just came out
+    //      of her: if the wreckage barely floats she was plate, and a boat
+    //      built of plate has a boiler in her to let go. One measurement,
+    //      used for both, so the two can never disagree.
+    let mb = 0;
+    for (let i = 0; i < this.pieces.length; i++) mb += this.pieces[i].buoy;
+    this.steel = this.pieces.length ? (mb / this.pieces.length) < 0.42 : false;
+    const boiler = this.steel && o.steel !== false;
+
+    // ---- what else was aboard ------------------------------------------
+    // The order is the order it happens in. The first fireball has cleared by
+    // about two thirds of a second, so anything that has to be SEEN -- the
+    // derrick coming down, the crew going over the side -- waits for it.
+    if (o.fuel) this.events.push({ t: 0.16 + rand(0, 0.12), k: 'fuel' });
+    if (boiler) this.events.push({ t: 0.50 + rand(0, 0.25), k: 'boiler' });
+    if (o.cargo) this.events.push({ t: 0.44 + rand(0, 0.15), k: 'cargo' });
+    if (o.mast) this.events.push({ t: 0.66 + rand(0, 0.2), k: 'mast' });
+    if (o.crew) this.events.push({ t: 0.80 + rand(0, 0.3), k: 'crew' });
+    this.events.sort((a, b) => a.t - b.t);
+  }
+
+  // an event on the way down
+  fireEvent(k) {
+    const r = this.radius, P = G.particles, oc = G.ocean;
+    switch (k) {
+      case 'fuel': {          // the tanks go up: a column of flame, no water in it
+        P.explode(this.x + rand(-r, r) * 0.4, this.y + rand(-r, r) * 0.4, r * 0.95, { water: false, oil: 0.8 + r / 18 });
+        if (typeof Toon !== 'undefined') { Toon.burst(this.x, this.y, 1.6 + r / 20, '#ff9a3c'); Toon.shock(this.x, this.y, r * 3.6, 0.45, '#ffd27a'); }
+        P.fire(this.x, this.y, 10); P.smoke(this.x, this.y, 3, 'rgba(24,20,24,', r / 5.5);
+        this.shove(this.x, this.y, r * 2.4, 1.0);
+        G.shake(Math.min(11, 4 + r / 5));
+        spillOil(this.x, this.y, 1.1 + r / 20, r);
+        break;
+      }
+      case 'boiler': {        // steam and plate: a hard white flash, then metal
+        P.explode(this.x, this.y, r * 0.75, { water: false, debris: 6, debrisColors: ['#aeb6c1', '#7d858f', '#4a515a'] });
+        P.sparks(this.x, this.y, 16);
+        for (let i = 0; i < 3; i++) P.smoke(this.x + rand(-r, r) * 0.5, this.y + rand(-r, r) * 0.5, 1, 'rgba(198,206,214,', r / 6);
+        if (typeof Toon !== 'undefined') Toon.shock(this.x, this.y, r * 2.8, 0.35, '#eaf8ff');
+        this.shove(this.x, this.y, r * 2.0, 0.8);
+        break;
+      }
+      case 'cargo': {         // the deck load goes over the side
+        P.debris(this.x, this.y, 9, ['#c9a469', '#8f6a3a', '#5c3a1c', '#d8cfae']);
+        for (let i = 0; i < 4; i++) {
+          const a = rand(0, TAU), d = rand(r * 0.4, r * 1.2);
+          P.splash(this.x + Math.cos(a) * d, this.y + Math.sin(a) * d, 0.55);
+        }
+        break;
+      }
+      case 'mast': this.dropMast(); break;
+      case 'crew': {
+        // the people aboard go into the water. Hazards owns swimmers; this
+        // only ever asks it for one, and only when the water is not already
+        // full of them, so a sinking fleet never turns into a mob.
+        if (typeof Hazards === 'undefined' || !Hazards.spawnSwimmer) break;
+        const sw = Hazards.swimmers;
+        if (sw && sw.length > 5) break;
+        const a = rand(0, TAU);
+        Hazards.spawnSwimmer(this.x + Math.cos(a) * (r + 4), this.y + Math.sin(a) * (r + 4), Math.random() < 0.3 ? 'gaff' : 'knife');
+        break;
+      }
+    }
+  }
+
+  // ---- the derrick. It does not drop: it swings, because it is hinged at
+  //      the foot, and it hits the water at the end of the arc.
+  dropMast() {
+    const r = this.radius;
+    const spr = mastSprite(Math.round(r * 1.5));
+    if (!spr) return;
+    if (liveFrags() >= BREAK.cap) return;
+    const side = Math.random() < 0.5 ? 1 : -1;
+    this.pieces.push({
+      spr, x: this.x, y: this.y, z: 0, vx: (this.pieces[0] ? this.pieces[0].vx : 0) * 0.3, vy: 0, vz: 0,
+      ang: this.angle, spin: 0, mass: 0.45, buoy: 0.9, swamp: 0, sink: 0, sinking: false,
+      life: 0, ph: rand(0, TAU), down: -1, r: 3,
+      // hinged at the foot, not spun about its middle: the head of it swings
+      // through a real arc and lands a mast's length from where it stood
+      pivot: { a: this.angle, to: this.angle + side * 1.45, t: 0, dur: 0.72,
+               hx: this.x - Math.cos(this.angle) * spr.w * 0.34, hy: this.y - Math.sin(this.angle) * spr.w * 0.34,
+               arm: spr.w * 0.5 },
+    });
+  }
+
+  // an explosion nearby throws the wreckage about again
+  shove(x, y, r, power) {
+    for (let i = 0; i < this.pieces.length; i++) {
+      const p = this.pieces[i];
+      const dx = p.x - x, dy = p.y - y, d = Math.hypot(dx, dy);
+      if (d > r || p.pivot || p.sinking) continue;      // one already going under stays going under
+      const k = (1 - d / r) * power / (0.5 + p.mass);
+      const a = d < 0.5 ? rand(0, TAU) : Math.atan2(dy, dx);
+      p.vx += Math.cos(a) * 130 * k; p.vy += Math.sin(a) * 130 * k;
+      p.vz += 34 * k; if (p.z <= 0) p.z = 0.4;
+      p.spin += rand(-1, 1) * 5 * k;
+      p.swamp += 0.10 * k;              // and stoves her in a little more
+    }
+  }
+
+  // The player shoulders through the floating stuff. She pushes it: she can
+  // never throw it faster than she is going herself, which is what stops a
+  // long contact from turning a hull half into a bullet, and a roll shoves
+  // far harder than a swim because she is going far faster.
+  bump(pl, pr, dt) {
+    const hard = pl.roll && pl.roll.active;
+    const plSp = Math.hypot(pl.vx, pl.vy);
+    const cap = plSp * (hard ? 1 : 0.5);
+    const rate = (hard ? 1500 : 520) * dt;
+    for (let i = 0; i < this.pieces.length; i++) {
+      const p = this.pieces[i];
+      if (p.sinking || p.z > 3 || p.pivot) continue;
+      const dx = p.x - pl.x, dy = p.y - pl.y, rr = pr + p.r;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      const d = Math.hypot(dx, dy) || 0.01;
+      const ca = dx / d, sa = dy / d;
+      const along = p.vx * ca + p.vy * sa;              // what it is already doing
+      const add = Math.min(Math.max(0, cap - along), rate / (0.3 + p.mass));
+      if (add > 0) { p.vx += ca * add; p.vy += sa * add; }
+      p.spin += (hard ? 2.6 : 0.8) * sign(angleDiff(Math.atan2(sa, ca), Math.atan2(pl.vy, pl.vx) || 0)) * dt;
+      if (hard) { p.swamp += 0.04; if (Math.random() < 0.25) G.particles.splash(p.x, p.y, 0.4); }
+      // she feels it too -- but only a nudge, and less from a piece that is
+      // already half under. Wreckage is scenery she can shoulder through,
+      // never a wall she can be pinned against.
+      const back = 70 * p.mass * (1 - p.swamp * 0.7) * dt;
+      pl.vx -= ca * back; pl.vy -= sa * back;
+    }
+  }
+
+  update(dt) {
+    this.t += dt;
+    const P = G.particles, oc = G.ocean;
+    // Wreckage that has drifted out of shot still floats, drifts, swamps and
+    // sinks -- it simply stops paying for foam, bubbles and jelly it would
+    // be making where nobody can see it. That is most of the cost of a bay
+    // full of broken boats.
+    const cm = G.cam || { x: this.x - 320, y: this.y - 180 };
+    const seen = (x, y) => x > cm.x - 90 && x < cm.x + 730 && y > cm.y - 90 && y < cm.y + 450;
+    // scheduled secondaries
+    while (this.events.length && this.events[0].t <= this.t) this.fireEvent(this.events.shift().k);
+    // she burns and bleeds oil while there is anything left of her
+    if (this.fireT > 0) {
+      this.fireT -= dt; this.smokeT -= dt;
+      if (this.smokeT <= 0) {
+        this.smokeT = 0.09;
+        // the fire is ON the wreckage: it goes where the pieces go, so two
+        // halves drifting apart drag two columns of smoke apart with them
+        const q = this.pieces.length ? this.pieces[(Math.random() * this.pieces.length) | 0] : this;
+        if (!q.sinking && seen(q.x, q.y)) {
+          P.smoke(q.x + rand(-4, 4), q.y + rand(-3, 3), 1, 'rgba(30,28,34,', 3.4);
+          if (Math.random() < 0.55) P.fire(q.x + rand(-3, 3), q.y, 1);
+        }
+        if (Math.random() < 0.3) P.bubbles(this.x + rand(-8, 8), this.y + rand(-4, 4), 1);
+      }
+    }
+    this.oilT -= dt;
+    if (this.oilT <= 0) { this.oilT = 0.25; if (oc) oc.addOil(this.x, this.y, 0.03); }
+
+    if (this.whole) {                  // the fallback sink, unchanged in feel
+      if (this.t > this.whole.dur) this.dead = true;
+      return;
+    }
+
+    // ---- hard stops. However she is shoved about, floating wreckage has a
+    //      last day: past this she takes water whatever she is made of, and
+    //      past THIS she is gone, so nothing can ever accumulate on the bay.
+    if (this.t > BREAK.floatLife + 20) { this.pieces.length = 0; this.dead = true; return; }
+    if (this.t > BREAK.floatLife + 13) {
+      for (let i = 0; i < this.pieces.length; i++) {
+        const q = this.pieces[i];
+        if (!q.sinking) { q.pivot = null; q.z = 0; q.vz = 0; q.swamp = 1; q.sinking = true; q.sinkDur = 0.7; }
+      }
+    }
+    let cx = 0, cy = 0, n = 0, rad = 6;
+    const forced = this.t > BREAK.floatLife;
+    for (let i = this.pieces.length - 1; i >= 0; i--) {
+      const p = this.pieces[i];
+      p.life += dt;
+
+      // ---- the derrick swinging down on its hinge
+      if (p.pivot) {
+        const pv = p.pivot;
+        pv.t += dt;
+        const k = Math.min(1, pv.t / pv.dur), e = k * k;         // it accelerates
+        p.ang = pv.a + (pv.to - pv.a) * e;
+        p.x = pv.hx + Math.cos(p.ang) * pv.arm;
+        p.y = pv.hy + Math.sin(p.ang) * pv.arm;
+        if (k >= 1) {
+          p.pivot = null; p.spin = rand(-1.4, 1.4);
+          if (seen(p.x, p.y)) {
+            P.splash(p.x, p.y, 1.5);
+            if (oc) { oc.disturb(p.x, p.y, 4.5, 0, 0); oc.ripple(p.x, p.y, 44, 90, 0.6); }
+            Audio_.splash(0.9);
+          }
+        }
+        cx += p.x; cy += p.y; n++;
+        continue;
+      }
+
+      // ---- in the air, thrown clear
+      if (p.z > 0 || p.vz > 0) {
+        p.vz -= 460 * dt; p.z += p.vz * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        p.ang += p.spin * dt;
+        if (p.z <= 0) {
+          p.z = 0; p.vz = 0;
+          if (seen(p.x, p.y)) {
+            P.splash(p.x, p.y, clamp(0.4 + p.mass * 1.3, 0.35, 2));
+            if (oc) { oc.disturb(p.x, p.y, 2 + p.mass * 4, p.vx, p.vy); oc.ripple(p.x, p.y, 20 + p.mass * 30, 70, 0.55); oc.addFoam(p.x, p.y, 0.5); }
+            if (p.mass > 0.6) Audio_.splash(0.8);
+          }
+          p.vx *= 0.45; p.vy *= 0.45; p.spin *= 0.4;
+        }
+        cx += p.x; cy += p.y; n++;
+        continue;
+      }
+
+      // ---- in the water
+      const k = Math.pow(0.10 + p.buoy * 0.06, dt);
+      p.vx *= k; p.vy *= k;
+      // the set of the current is resampled a few times a second, not sixty:
+      // it changes far more slowly than the wreckage drifting through it
+      p.flowT = (p.flowT || 0) - dt;
+      if (p.flowT <= 0 && oc) { p.flowT = 0.3; const f = oc.flow(p.x, p.y); p.fx = f.x; p.fy = f.y; }
+      if (p.fx || p.fy) { const g = dt * (0.35 + p.buoy * 0.9); p.vx += p.fx * g; p.vy += p.fy * g; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.x = clamp(p.x, 6, G.ocean.W - 6); p.y = clamp(p.y, WATER_TOP - 10, G.ocean.H - 6);
+      p.ang += p.spin * dt;
+      p.spin *= Math.pow(0.18, dt);
+      // a piece still moving pushes the surface about and leaves foam
+      const sp = Math.hypot(p.vx, p.vy);
+      if (sp > 26 && oc && seen(p.x, p.y)) {
+        if (oc.disturb && p.mass > 0.45 && Math.random() < dt * 7) oc.disturb(p.x, p.y, Math.min(2.4, sp / 55), p.vx, p.vy);
+        if (Math.random() < dt * 4) oc.addFoam(p.x, p.y, 0.09);
+      }
+      // ---- swamping: she fills, and what she is made of decides how fast
+      if (!p.sinking) {
+        const rate = Math.pow(1 - p.buoy, 1.6) * 0.55 + 0.012;
+        p.swamp += dt * rate * (0.65 + p.mass * 0.7) + (forced ? dt * 0.55 : 0);
+        if (p.swamp >= 1) {
+          p.sinking = true; p.sinkDur = 0.9 + p.buoy * 2.4 + p.mass * 0.8;
+          p.spin = (p.spin || rand(-0.4, 0.4)) + rand(-0.7, 0.7);
+          if (seen(p.x, p.y)) { P.bubbles(p.x, p.y, 4); if (oc) { oc.ripple(p.x, p.y, 18 + p.mass * 26, 55, 0.5); oc.addFoam(p.x, p.y, 0.4); } }
+        }
+      } else {
+        p.sink += dt / p.sinkDur;
+        if (Math.random() < dt * 3.5 && seen(p.x, p.y)) P.bubbles(p.x + rand(-4, 4), p.y + rand(-4, 4), 1);
+        if (p.sink >= 1) {
+          if (oc) { oc.addFoam(p.x, p.y, 0.3); oc.addOil(p.x, p.y, 0.05); }
+          if (seen(p.x, p.y)) P.bubbles(p.x, p.y, 3);
+          this.pieces.splice(i, 1);
+          continue;
+        }
+      }
+      cx += p.x; cy += p.y; n++;
+      const dd = Math.hypot(p.x - this.x, p.y - this.y) + p.r;
+      if (dd > rad) rad = dd;
+    }
+    if (n) { this.x = cx / n; this.y = cy / n; this.radius = clamp(rad, 6, 90); }
+    else this.dead = true;
+  }
+
   render(ctx, cam) {
-    const k = this.t / this.dur, sx = this.x - cam.x, sy = this.y - cam.y;
-    ctx.save(); ctx.globalAlpha = 1 - k * k;
-    // it lists and sinks: squash on one axis, darken
-    const tilt = Math.sin(k * 2) * 0.5;
-    drawSprite(ctx, tintSpriteCached(this.sprite, k), sx, sy, this.angle + tilt * 0.5, 1 - k * 0.3, 1 - k * 0.6);
-    ctx.restore();
+    if (this.whole) {
+      const k = clamp(this.t / this.whole.dur, 0, 1);
+      ctx.save(); ctx.globalAlpha = 1 - k * k;
+      const tilt = Math.sin(k * 2) * 0.5;
+      drawSprite(ctx, sinkTint(this.sprite, Math.min(2, (k * 3) | 0)), this.x - cam.x, this.y - cam.y, this.angle + tilt * 0.5, 1 - k * 0.3, 1 - k * 0.6);
+      ctx.restore();
+      return;
+    }
+    const T = G.time || this.t, oc = G.ocean;
+    for (let i = 0; i < this.pieces.length; i++) {
+      const p = this.pieces[i];
+      const bx = p.x - cam.x, by = p.y - cam.y;
+      if (bx < -80 || by < -80 || bx > 720 || by > 440) continue;
+      // she rides the swell, and rides it less the more water she has taken
+      const float = (1 - p.swamp * 0.7);
+      const bob = (Math.sin(p.life * 2.3 + p.ph) * (0.5 + p.buoy * 1.1)
+        + (oc && oc.waveHeight ? oc.waveHeight(p.x, p.y, T) * 1.3 : 0)) * float;
+      if (p.z > 1.5) {                    // its shadow on the water below it
+        ctx.fillStyle = 'rgba(6,18,48,0.34)';
+        const sw = Math.max(2, Math.round(p.spr.w * 0.55));
+        ctx.fillRect(Math.round(bx - sw / 2), Math.round(by), sw, 2);
+      }
+      const k = p.sinking ? clamp(p.sink, 0, 1) : 0;
+      // swamped reads darker even before she starts down: the paint is wet
+      const spr = sinkTint(p.spr, Math.min(2, ((k * 2.6) | 0) + (p.swamp > 0.85 ? 1 : 0)));
+      // going down end-first: she shortens toward the end that is under
+      const sh = p.down * p.spr.w * 0.42 * k;
+      // and she rocks on the swell she is riding, less the deeper she sits
+      const ang = p.ang + (p.z > 0 ? 0 : Math.sin(p.life * 1.15 + p.ph * 1.7) * 0.055 * float);
+      const dx = bx + Math.cos(ang) * sh, dy = by - p.z + bob + Math.sin(ang) * sh;
+      const al = 1 - k * k * 0.92;
+      // One transform per piece, set up by hand. drawSprite would take a save
+      // for itself and the hi-res bridge another for the 1/DETAIL scale, and
+      // with seventy pieces on the water that is seventy state saves a frame
+      // paid twice over for nothing.
+      ctx.save();
+      if (al < 1) ctx.globalAlpha = al;
+      ctx.translate(Math.round(dx * DETAIL) / DETAIL, Math.round(dy * DETAIL) / DETAIL);
+      ctx.rotate(ang);
+      if (RAWP && spr.hi) {
+        const iv = 1 / DETAIL;
+        ctx.scale((1 - k * 0.72) * iv, (1 - k * 0.34) * iv);
+        RAWP(ctx, spr.c, -spr.ax * DETAIL, -spr.ay * DETAIL);
+      } else {
+        if (k) ctx.scale(1 - k * 0.72, 1 - k * 0.34);
+        ctx.drawImage(spr.c, -spr.ax, -spr.ay);
+      }
+      ctx.restore();
+    }
   }
 }
-const _tintCache = new Map();
-function tintSpriteCached(s, k) {
-  const step = Math.min(3, Math.floor(k * 4));
-  const key = s.c.width + 'x' + s.c.height + ':' + step + ':' + (s._id || (s._id = Math.random()));
-  if (!_tintCache.has(key)) _tintCache.set(key, tintSprite(s, '#0a1a30', 0.2 + step * 0.2));
-  return _tintCache.get(key);
+
+// ---- global wreckage services ------------------------------------------
+// Every explosion in this file routes through here, so a blast anywhere near
+// floating wreckage throws it about instead of ignoring it.
+Wreck.shove = function (x, y, r, power) {
+  const ws = G && G.wrecks; if (!ws) return;
+  for (let i = 0; i < ws.length; i++) {
+    const w = ws[i];
+    if (w.shove && Math.abs(w.x - x) < r + w.radius + 40 && Math.abs(w.y - y) < r + w.radius + 40) w.shove(x, y, r + w.radius * 0.5, power);
+  }
+};
+// Over budget: the oldest floating wreckage starts taking water, so the piece
+// count comes down on its own instead of being snapped out of existence.
+Wreck.makeRoom = function (need) {
+  const ws = G && G.wrecks; if (!ws || !ws.length) return;
+  const order = ws.slice().sort((a, b) => b.t - a.t);      // oldest first
+  let freed = 0;
+  for (const w of order) {
+    if (!w.pieces) continue;
+    for (const p of w.pieces) {
+      if (p.sinking) continue;
+      p.swamp = 1; p.sinking = true; p.sinkDur = 0.5; freed++;
+      if (freed >= need) return;
+    }
+  }
+};
+
+// ---- a derrick, built once per size ------------------------------------
+// Pixel art, integer coordinates, three posterized bands and a hard outline:
+// the same rules the hulls are drawn to.
+const _mastCache = new Map();
+function mastSprite(len) {
+  len = clamp(len | 0, 12, 100);   // a derrick grows with the fleet it stands on
+  const key = len;
+  if (_mastCache.has(key)) return _mastCache.get(key);
+  let s = null;
+  try {
+    const A = (typeof AS === 'number') ? AS : 1;
+    const W = len * A, H = 9 * A, c = newCan(W, H), x = c.getContext('2d');
+    const cy = (H / 2) | 0;
+    const put = (col, px0, py0, w, h) => { x.fillStyle = col; x.fillRect(px0 | 0, py0 | 0, w | 0, h | 0); };
+    put('#14141c', 0, cy - 2, W, 5);                    // the spar, outlined
+    put('#8f6a3a', 0, cy - 1, W, 3);
+    put('#c9a469', 0, cy - 1, W, 1);
+    put('#5c3a1c', 0, cy + 1, W, 1);
+    for (let i = 1; i * 6 * A < W - 2; i++) put('#3a2413', i * 6 * A, cy - 1, 1, 3);   // bands
+    // cross-tree two thirds up, and a block at the head
+    const cxp = (W * 0.62) | 0;
+    put('#14141c', cxp - 1, cy - 4 * A, 3, 8 * A);
+    put('#aeb6c1', cxp, cy - 4 * A + 1, 1, 8 * A - 2);
+    put('#14141c', W - 3 * A, cy - 3, 3 * A, 7);
+    put('#cdd8e6', W - 3 * A + 1, cy - 2, 2 * A - 1, 2);
+    s = (A > 1 && typeof spriteFromHi === 'function') ? spriteFromHi(c, W / 2, cy) : { c, w: W, h: H, ax: W / 2, ay: cy };
+  } catch (e) { s = null; }
+  _mastCache.set(key, s);
+  return s;
 }
 
 // ============================ DECOY BUOY ==============================
@@ -413,6 +1062,17 @@ class Player {
     // bounds & rocks
     this.x = clamp(this.x, 16, G.ocean.W - 16); this.y = clamp(this.y, WATER_TOP, G.ocean.H - 16);
     for (const r of G.rocks) { const d = dist(this.x, this.y, r.x, r.y); if (d < r.r + 8) { const a = angleTo(r.x, r.y, this.x, this.y); this.x = r.x + Math.cos(a) * (r.r + 8); this.y = r.y + Math.sin(a) * (r.r + 8); if (this.roll.active) { this.endRoll(); G.particles.splash(this.x, this.y, 1.2); } this.vx *= 0.5; this.vy *= 0.5; } }
+    // floating wreckage is real: she shoulders it aside, and a roll scatters
+    // a raft of broken hull right across the water
+    if (G.wrecks.length) {
+      for (let i = 0; i < G.wrecks.length; i++) {
+        const w = G.wrecks[i];
+        if (!w.bump) continue;
+        const reach = w.radius + 22;
+        if (Math.abs(w.x - this.x) > reach || Math.abs(w.y - this.y) > reach) continue;
+        w.bump(this, 12, dt);
+      }
+    }
     // facing & tilt
     const sp = Math.hypot(this.vx, this.vy);
     if (sp > 20) {
@@ -589,9 +1249,10 @@ class Player {
     this.tidalCd = this.cd(12);
     G.particles.splash(this.x, this.y, 3.5); G.ocean.ripple(this.x, this.y, 140, 260, 1); G.ocean.ripple(this.x, this.y, 110, 200, 0.7); G.shake(8); Audio_.splash(2.5); Audio_.explosion(0.8);
     G.particles.text(this.x, this.y - 24, 'TIDAL SLAM!', '#8ac6ff', 9);
-    for (const e of G.enemies) if (!e.dead && dist(this.x, this.y, e.x, e.y) < 150 + e.radius) { const a = angleTo(this.x, this.y, e.x, e.y); e.hit(40, Math.cos(a) * 420, Math.sin(a) * 420, null); }
+    for (const e of G.enemies) if (!e.dead && (e.hitTest ? e.hitTest(this.x, this.y, 150) : dist(this.x, this.y, e.x, e.y) < 150 + e.radius)) { const a = angleTo(this.x, this.y, e.x, e.y); e.hit(40, Math.cos(a) * 420, Math.sin(a) * 420, null); }
     if (G.boss && !G.boss.dead && dist(this.x, this.y, G.boss.x, G.boss.y) < 160) G.boss.hit(40, 0, 0, null);
     for (const pr of G.projectiles) if (pr.owner === 'enemy' && dist(this.x, this.y, pr.x, pr.y) < 150) pr.dead = true;
+    if (typeof Wreck !== 'undefined' && Wreck.shove) Wreck.shove(this.x, this.y, 150, 1.4);
   }
   startRampage() {
     this.rampage.active = true; this.rampage.t = 0; this.rampage.meter = 0; this.rampage.dur = this.stats.rampDur;
@@ -1059,15 +1720,98 @@ const EXTRA_BOAT_PAINT = {
     for (let i = 0; i < 3; i++) HPX(ctx, '#c08054', Math.round(X0 + L * 0.3) + i * 6, cy - 5, 4, 11); // spoil chutes
   },
 };
+// ---- keeping step with the fleet ---------------------------------------
+// src/chars.js owns the hull dimensions and is free to rescale the whole
+// fleet; this file must never be the reason a hitbox is wrong afterwards.
+// So: nothing here carries a hard-coded size. The ten extra hulls are scaled
+// by whatever factor the twelve original ones have moved by (measured off
+// the built sprites, not off a copy of their numbers), and every collision
+// radius in ENEMY_TYPES is then derived from the hull it actually belongs to.
+//
+// buildBoat rasterises a hull of `len` x `beam` (world units, beam being the
+// HALF-beam at her widest) into a canvas of (len + 4) x (beam * 2 + 6), and
+// the sprite record reports that in world units -- so the dimensions read
+// straight back out of any hull, whoever built it:
+const HULL_PAD_L = 4, HULL_PAD_B = 6;
+// the collision radius at which a boat handles exactly as her `turn` says
+const TURN_REF = 17;
+function hullSize(spr) {
+  if (!spr || !spr.w) return null;
+  return { len: Math.max(4, spr.w - HULL_PAD_L), beam: Math.max(1.5, (spr.h - HULL_PAD_B) / 2) };
+}
+// The lengths the twelve original hulls were drawn at when this fleet was
+// tuned. They are reference marks only: what matters is the RATIO between
+// them and whatever chars.js is building today.
+const HULL_BASE_LEN = { dinghy: 28, netter: 30, harpooner: 32, speedboat: 36, jetski: 20, dynaboat: 30, trawler: 52, gunboat: 46, tug: 34, longliner: 40, crabber: 32, spotter: 24 };
+function fleetGrowth() {
+  let sum = 0, n = 0;
+  for (const k in HULL_BASE_LEN) {
+    const h = hullSize(SP.boats[k]);
+    if (h) { sum += h.len / HULL_BASE_LEN[k]; n++; }
+  }
+  return n ? clamp(sum / n, 0.4, 6) : 1;
+}
+// A boat's collision circle, from her own hull. A quarter of her length plus
+// most of her half-beam: the circle that best matched the twelve hand-tuned
+// radii this fleet was balanced on, so nothing changes shape when the hulls
+// are the size they were and everything follows when they are not.
+function hullRadius(spr, fallback) {
+  const h = hullSize(spr);
+  if (!h) return fallback;
+  return Math.max(5, Math.round(h.len * 0.25 + h.beam * 0.85));
+}
+let _fleetTuned = false;
+function tuneFleet() {
+  if (_fleetTuned) return;
+  if (typeof SP === 'undefined' || !SP.boats || !SP.boats.dinghy) return;
+  _fleetTuned = true;
+  _maxHullA = 0;                 // the biggest hull is measured again
+  for (const k in ENEMY_TYPES) {
+    const c = ENEMY_TYPES[k], spr = SP.boats[k];
+    if (!spr) continue;
+    c.baseRadius = c.baseRadius === undefined ? c.radius : c.baseRadius;
+    c.radius = hullRadius(spr, c.baseRadius);
+    // her wake is as wide as she is, and she throws the surface about in
+    // proportion to her displacement
+    c.baseWake = c.baseWake === undefined ? c.wake : c.baseWake;
+    c.wake = Math.max(c.baseWake, Math.round(c.radius * 0.62));
+    // ---- and the shape she really is. One circle cannot be both a jetski
+    // and a fifty-foot trawler: on a long hull it stops shots a boat's width
+    // out in open water and lets them straight through the bow. So a boat
+    // also carries her own length and beam, and a shot counts if it is
+    // inside EITHER the circle or the hull. That only ever ADDS hits -- the
+    // bow and the stern become hittable, nothing stops being hittable.
+    const h = hullSize(spr);
+    c.hitLong = h ? h.len * 0.5 : c.radius;
+    c.hitWide = h ? h.beam : c.radius;
+    // A hull turns inside a circle set by her own length, so the longer she
+    // is the wider she swings. TURN_REF is the size at which a boat still
+    // handles exactly as she was tuned to: anything bigger comes round more
+    // slowly, and the clamp says nothing ever turns FASTER than it did and
+    // nothing ever ends up a barge that cannot come about at all. Both ends
+    // of that are deliberate -- this must not make anything harder to dodge.
+    c.baseTurn = c.baseTurn === undefined ? c.turn : c.baseTurn;
+    c.turn = c.baseTurn * clamp(TURN_REF / c.radius, 0.62, 1);
+  }
+}
+
 let _extraBoatsBuilt = false;
 function ensureExtraBoats() {
   if (_extraBoatsBuilt) return;
   if (typeof SP === 'undefined' || !SP.boats || !SP.boats.dinghy) return;  // chars.js has not run yet
   _extraBoatsBuilt = true;
   const A = (typeof DETAIL === 'number') ? DETAIL : 1;
+  const grow = fleetGrowth();
   for (const k in EXTRA_BOAT_DEFS) {
     if (SP.boats[k]) continue;
     const rec = EXTRA_BOAT_DEFS[k];
+    // these ten were drawn to sit alongside the other twelve, so they grow
+    // with them rather than being left as rowing boats among ships
+    if (!rec.scaled) {
+      rec.scaled = true;
+      rec.def.len = Math.max(8, Math.round(rec.def.len * grow));
+      rec.def.beam = Math.max(2, Math.round(rec.def.beam * grow));
+    }
     let spr = null;
     try { if (typeof buildBoat === 'function') spr = buildBoat(rec.def); } catch (e) { spr = null; }
     if (!spr || !spr.c) {   // the builder is gone: fly another boat's colours
@@ -1085,6 +1829,7 @@ function ensureExtraBoats() {
     SP.boats[k] = spr;
     SP.boatsHurt[k] = (typeof tintHi === 'function' && spr.hi) ? tintHi(spr, '#ffffff', 0.8) : tintSprite(spr, '#ffffff', 0.8);
   }
+  tuneFleet();
 }
 
 
@@ -1096,6 +1841,7 @@ class Enemy {
     this.diff = diff;
     this.x = x; this.y = y; this.vx = 0; this.vy = 0;
     this.hp = Math.round(c.hp * (1 + (diff - 1) * 1.15)); this.maxHp = this.hp; this.radius = c.radius;
+    this.hitLong = c.hitLong || c.radius; this.hitWide = c.hitWide || c.radius;
     this.angle = angleTo(x, y, G.player.x, G.player.y); this.speed = c.speed * (1 + (diff - 1) * 0.30); this.throttle = 1; this.rallied = 0;
     this.attackT = rand(0.5, c.attackCd || 2) / (0.6 + diff * 0.4); this.state = 'approach'; this.stateT = rand(0, 2); this.orbitDir = Math.random() < 0.5 ? -1 : 1;
     this.dead = false; this.flash = 0; this.burn = 0; this.burnT = 0; this.kx = 0; this.ky = 0; this.ramCd = 0; this.bob = rand(0, TAU);
@@ -1124,6 +1870,18 @@ class Enemy {
       case 'tender': s.pt = 0.9; break;
     }
   }
+  // Is a shot of radius `r` touching this boat? The circle, plus the hull
+  // itself as an oriented ellipse -- so the long ends of a big hull are hit
+  // where they are drawn instead of being shot through.
+  hitTest(x, y, r) {
+    r = r || 0;
+    const dx = x - this.x, dy = y - this.y, rr = this.radius + r;
+    if (dx * dx + dy * dy < rr * rr) return true;
+    const ca = Math.cos(-this.angle), sa = Math.sin(-this.angle);
+    const lx = dx * ca - dy * sa, ly = dx * sa + dy * ca;   // into her own frame
+    const a = this.hitLong + r, b = this.hitWide + r;
+    return (lx * lx) / (a * a) + (ly * ly) / (b * b) < 1;
+  }
   targetPos() { if (G.buoy && !G.buoy.dead) return G.buoy; return G.player; }
   update(dt, t) {
     const c = this.cfg, p = this.targetPos(); this.age += dt;
@@ -1140,7 +1898,9 @@ class Enemy {
     const d = dist(this.x, this.y, p.x, p.y);
     // approach the slot this boat has claimed around the target, not the target
     // itself, so a wave arrives as a ring instead of a conga line
-    const spread = Math.min(70, d * 0.55);
+    // the ring the fleet forms around her has to be wide enough to hold the
+    // hulls that are in it, or big boats simply pile into one another
+    const spread = Math.min(70 + this.radius * 1.5, d * 0.55);
     const ax0 = p.x + Math.cos(this.slot) * spread, ay0 = p.y + Math.sin(this.slot) * spread;
     const toP = angleTo(this.x, this.y, ax0, ay0);
     const toPDirect = angleTo(this.x, this.y, p.x, p.y);
@@ -1249,14 +2009,20 @@ class Enemy {
     // ramming / kamikaze against the real player only
     const pl = G.player;
     const dp = dist(this.x, this.y, pl.x, pl.y);
-    if (!pl.dead && !pl.diving && !this.submerged && dp < this.radius + 11) {
+    // A hull that is twice the size it was must not ram twice as often. Her
+    // collision circle grew because she IS bigger, but only her bow can run
+    // anyone down: brushing along the side of a trawler is now a shove, not a
+    // ramming. That keeps the bigger fleet no more dangerous than the small
+    // one was, which is the way it has to stay.
+    const bowOn = Math.abs(angleDiff(this.angle, angleTo(this.x, this.y, pl.x, pl.y))) < 1.15;
+    if (!pl.dead && !pl.diving && !this.submerged && dp < this.radius * 0.72 + 12) {
       if (c.kamikaze) {
         this.die(true); G.particles.explode(this.x, this.y, 44);
         if (!pl.absorb.active) pl.damage(c.kamikaze * (1 + (this.diff - 1) * 0.8), this.x, this.y);
         else pl.absorbHit({ x: this.x, y: this.y, dmg: c.kamikaze, explode: 0, absorbable: true });
         return;
       }
-      if (c.ram && this.ramCd <= 0 && spd > 30 && !pl.rolling && !pl.absorb.active) { this.ramCd = 1.6; pl.damage(c.ram * (1 + (this.diff - 1) * 0.8), this.x, this.y); this.kx -= Math.cos(this.angle) * 80; this.ky -= Math.sin(this.angle) * 80; G.particles.splash((this.x + pl.x) / 2, (this.y + pl.y) / 2, 1.2); }
+      if (c.ram && bowOn && this.ramCd <= 0 && spd > 30 && !pl.rolling && !pl.absorb.active) { this.ramCd = 1.8; pl.damage(c.ram * (1 + (this.diff - 1) * 0.8), this.x, this.y); this.kx -= Math.cos(this.angle) * 80; this.ky -= Math.sin(this.angle) * 80; G.particles.splash((this.x + pl.x) / 2, (this.y + pl.y) / 2, 1.2); }
       else if (pl.rolling && !pl.stats.rollDmg) { const a = angleTo(pl.x, pl.y, this.x, this.y); this.kx += Math.cos(a) * 120; this.ky += Math.sin(a) * 120; }
     }
     // crew bail out and swim at you when their boat closes in
@@ -1677,6 +2443,15 @@ class Enemy {
     }
     if (this.vulnT > 0 || this.stunned) dmg *= 1.6;
     this.hp -= dmg; this.flash = 0.08; this.kx += kx / (this.cfg.big ? 3 : 1); this.ky += ky / (this.cfg.big ? 3 : 1);
+    // remember what the blow was and which way it was going: if this is the
+    // one that kills her it decides how she comes apart
+    if (kx || ky || proj) {
+      this.lastHit = {
+        a: (kx || ky) ? Math.atan2(ky, kx) : (proj ? Math.atan2(proj.vy, proj.vx) : this.angle),
+        blast: !!(proj && proj.explode), under: !!(proj && proj.under),
+        power: clamp(0.65 + dmg / 55, 0.6, 2.3),
+      };
+    }
     if (!silent) {
       G.particles.sparks(this.x, this.y, 3); G.particles.debris(this.x, this.y, 2);
       Toon.impact(this.x, this.y, proj && proj.crit ? 1.5 : 0.8, proj && proj.crit ? '#ffe48f' : '#ffffff');
@@ -1704,18 +2479,46 @@ class Enemy {
     const c = this.cfg, r = this.radius;
     if (!silentBoom) {
       Toon.burst(this.x, this.y, 1 + r / 22); Toon.shock(this.x, this.y, r * 3.4, 0.5);
-      // the hull comes apart into planks that tumble and float
-      G.particles.debris(this.x, this.y, Math.round(r * 1.6), ['#b57d3f', '#8f5c2c', '#5c3a1c', '#d6a05e']);
+      // splinters off the break -- a handful now, because the hull itself is
+      // coming apart into pieces you can see and the smoke used to bury them
+      G.particles.debris(this.x, this.y, Math.round(r * 0.7), ['#b57d3f', '#8f5c2c', '#5c3a1c', '#d6a05e']);
       for (let i = 0; i < 3; i++) Toon.puff(this.x + rand(-r, r), this.y + rand(-r, r), 2, '#d8e4ee');
     }
-    if (!silentBoom) G.particles.explode(this.x, this.y, r * 2.2, { debris: Math.round(r * 1.2), oil: 0.6 + r / 15, debrisColors: this.type === 'gunboat' || this.type === 'harpooner' ? ['#7d858f', '#4a515a', '#aeb6c1'] : undefined });
+    // the bang is smaller than it was and the BREAKUP is the spectacle: a
+    // fireball the size of the old one hid the wreckage for a second and a
+    // half, which is exactly the second and a half worth watching
+    if (!silentBoom) G.particles.explode(this.x, this.y, 11 + r * 0.85, { debris: Math.round(r * 0.5), oil: 0.6 + r / 15, debrisColors: this.type === 'gunboat' || this.type === 'harpooner' ? ['#7d858f', '#4a515a', '#aeb6c1'] : undefined });
     G.particles.blood(this.x, this.y, 0.8 + r / 22);
     // the crew goes with the boat
     if (typeof Gore !== 'undefined') { Gore.burst(this.x, this.y, 1.1 + r / 14, rand(0, TAU)); if (r > 18) Gore.burst(this.x + rand(-r, r) * 0.5, this.y + rand(-r, r) * 0.5, 0.8, rand(0, TAU)); }
     G.shake(Math.min(14, 4 + r / 3));
-    G.wrecks.push(new Wreck(this.sprite, this.x, this.y, this.angle, r));
+    // ---- and she comes apart. What killed her decides how.
+    const lh = this.lastHit;
+    const drops = c.drops || {};
+    const wreck = new Wreck(this.sprite, this.x, this.y, this.angle, r, {
+      rel: lh ? angleDiff(this.angle, lh.a) : undefined,
+      blast: !!(lh && lh.blast) || this.type === 'dynaboat',
+      under: !!(lh && lh.under) || !!(silentBoom && c.kamikaze),
+      power: (lh ? lh.power : 1) * (silentBoom ? 1.5 : 1),
+      vx: this.vx, vy: this.vy,
+      // what she had aboard, read off the boat rather than off a list of
+      // names, so a new type in ENEMY_TYPES inherits all of it for free
+      fuel: (drops.fuel || 0) >= 2 || (drops.powder || 0) >= 3,
+      cargo: (drops.wood || 0) >= 3 || !!c.big,
+      // a derrick is a working boat's gear: she has to be long enough to
+      // have somewhere to step one, whatever the fleet has been rescaled to
+      mast: (c.hitLong || r) >= ((ENEMY_TYPES.trawler && ENEMY_TYPES.trawler.hitLong) || 26) * 0.75,
+      crew: !!c.big && (!G.director || G.director.waveIdx >= 3),
+    });
+    // the blast that killed her throws whatever was already floating nearby
+    // (before she joins the list, or she would be thrown by her own death)
+    if (!silentBoom) Wreck.shove(this.x, this.y, r * 3, 0.7);
+    G.wrecks.push(wreck);
+    // and nothing may pile up forever: the oldest breakup goes under first
+    while (G.wrecks.length > BREAK.maxWrecks) G.wrecks.shift();
     if (this.type === 'dynaboat') { // chain reaction
       G.particles.explode(this.x, this.y, 70, { water: true });
+      Wreck.shove(this.x, this.y, 90, 1.3);
       for (const e of G.enemies) if (!e.dead && e !== this && dist(this.x, this.y, e.x, e.y) < 70 + e.radius) e.hit(40, 0, 0, null);
       if (dist(this.x, this.y, G.player.x, G.player.y) < 70) G.player.damage(18, this.x, this.y);
     }

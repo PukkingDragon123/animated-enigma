@@ -38,13 +38,19 @@ function spriteFrom(c, ax, ay) { return { c, w: c.width, h: c.height, ax: ax ?? 
 
 // ===========================================================================
 //  HI-RES ART  (DETAIL x)
-//  Every BOAT, shark, chief and shield canvas in this file is rasterized at
-//  DETAIL art pixels per world unit, so one art pixel lands on (about) one
-//  screen pixel instead of being blown up. The hero pair is the deliberate
-//  exception: she is authored at 1 art pixel per world unit (see CHUNKY
-//  CHARACTER ART below), is NOT registered here, and must never be. The sprite record still reports its size in WORLD units
-//  — w/h/ax/ay are unchanged from the old build — so every call site in the
-//  rest of the codebase keeps working with the offsets it already has.
+//  Almost everything in this file — the hero pair, every boat, the shark,
+//  the chief and the shields — is rasterized at DETAIL art pixels per world
+//  unit, so one art pixel lands on (about) one screen pixel instead of being
+//  blown up. The sprite record still reports its size in WORLD units, so
+//  every call site in the rest of the codebase keeps working with the
+//  offsets it already has.
+//
+//  The two deliberate exceptions are named where they are built: the SIDE-ON
+//  cinematic set (CH.side) and the two silhouette records CH.otterHead /
+//  CH.otterStand stay at one art pixel per world unit, because src/death.js
+//  reads their rasters directly — it maps her flank column by column and
+//  bakes rim lights the size of the canvas — and that arithmetic only closes
+//  when a sprite's canvas width IS its world width.
 //
 //  The bridge is here: a hi-res canvas remembers that it is hi-res, and the
 //  3-argument `drawImage(img, dx, dy)` (the only form used for sprites) draws
@@ -176,9 +182,9 @@ function stamp(ctx, rows, x, y, map) {
 }
 function px(ctx, col, x, y, w = 1, h = 1) { ctx.fillStyle = col; ctx.fillRect(x | 0, y | 0, w, h); }
 // ---- detail passes -------------------------------------------------------
-// For the 2x art only — the boats, the shark, the chief. The chunky 1x hero
-// pair below does its shading by hand, because a probabilistic grain at one
-// art pixel per world unit is not texture, it is damage.
+// For the machinery — the boats, the shark, the chief. The hero pair below
+// does its shading by hand: a probabilistic grain reads as texture on a
+// welded steel hull and as damage on an animal.
 // These add the sub-pixel information an upscaled silhouette cannot carry:
 // a one-pixel lit rim along every top edge and a shadow along every bottom
 // edge, and a sparse, colour-keyed texture grain. Both work on the raster, so
@@ -241,48 +247,85 @@ function stampUp(ctx, rows, x, y, map) {
 }
 
 // ===========================================================================
-//  CHUNKY CHARACTER ART  (1x)
-//  The hero pair is the one thing in this file that is NOT rasterized at
-//  DETAIL art pixels per world unit. She is authored at ONE art pixel per
-//  world unit and drawn through the rig at RIG_SCALE = 1, so a single art
-//  pixel lands on a 2x2 block of screen pixels: half the resolution of the
-//  machines around her and twice the size on screen. Nothing built here is
-//  registered in HIRES — the 1/DETAIL bridge must not touch it — and the
-//  sprite records are plain `spriteFrom` records whose w/h ARE the art size.
+//  HERO ART  (DETAIL x)  — fine grid, small animal
+//  The pair is rasterized at DETAIL art pixels per world unit, like every
+//  machine in the game, and registered in HIRES so the 1/DETAIL bridge
+//  scales it: one art pixel lands on one screen pixel. She is SMALLER in
+//  world units than she was and carries more than twice the art pixels,
+//  which is where the hide texture, the scarring, the stitching in the
+//  harness and the rivets in the plate come from.
 //
 //  Authoring rules for this half of the file:
-//    * bold blocking first. Four bands of hide, a hard black rim, one lit
-//      top edge and one shadowed bottom edge. No grain, no speckle: a single
-//      stray pixel is 2x2 on screen and reads as damage.
-//    * every feature is at least 2px, except the deliberate 1px creases.
+//    * silhouette first: the beam is a hand-keyed curve, not a heap of
+//      blobs, so the fluke reads as a fluke and the head as a head.
+//    * shade in hard bands off that curve — lit back, dark keel — then put
+//      every mark back into the SAME ramp or it vanishes into its band.
 //    * her eye is a DOT — one bead and one glint. Never an anatomical eye.
+//    * anything an outside file anchors to is quoted in WORLD units: the
+//      flipper socket at (15, +-13) is src/death.js's too.
 // ===========================================================================
 function tintFlat(s, color, alpha) {
   const c = newCan(s.c.width, s.c.height), ctx = c.getContext('2d');
-  ctx.drawImage(s.c, 0, 0);
+  drawRaw(ctx, s.c, 0, 0);
   ctx.globalCompositeOperation = 'source-atop'; ctx.globalAlpha = alpha;
   ctx.fillStyle = color; ctx.fillRect(0, 0, c.width, c.height);
+  if (s.hi) { HIRES.add(c); return { c, w: s.w, h: s.h, ax: s.ax, ay: s.ay, hi: 1 }; }
   return { c, w: s.w, h: s.h, ax: s.ax, ay: s.ay };
 }
-// ===========================================================================
-//  WAR MANATEE  — top-down, facing RIGHT, one art pixel per world unit
-// ===========================================================================
-const MAN_W = 94, MAN_H = 42, MAN_CX = 47, MAN_CY = 21;
+// Bake a hi-res raster down to one art pixel per world unit, silhouette
+// intact. src/death.js cuts the otter's hat off his head, builds his bare
+// skull and bakes his rim lights straight off the canvas of CH.otterHead /
+// CH.otterStand, in canvas pixels, and then places the result with the
+// record's WORLD anchors — so those two records have to stay square with
+// the world grid. The hi-res twin is what actually gets drawn.
+function bake1x(s) {
+  const W = Math.round(s.c.width / AS), H = Math.round(s.c.height / AS);
+  const src = newCan(s.c.width, s.c.height), sg = src.getContext('2d');
+  drawRaw(sg, s.c, 0, 0);
+  const d = sg.getImageData(0, 0, s.c.width, s.c.height).data;
+  const c = newCan(W, H), ctx = c.getContext('2d');
+  const img = ctx.createImageData(W, H), o = img.data;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    // the most opaque sample of the 2x2 block, so nothing thin drops out
+    let bi = -1, ba = -1;
+    for (let q = 0; q < AS * AS; q++) {
+      const sx = x * AS + (q % AS), sy = y * AS + ((q / AS) | 0);
+      if (sx >= s.c.width || sy >= s.c.height) continue;
+      const i = (sy * s.c.width + sx) * 4;
+      if (d[i + 3] > ba) { ba = d[i + 3]; bi = i; }
+    }
+    if (bi < 0 || ba < 40) continue;
+    const p = (y * W + x) * 4;
+    o[p] = d[bi]; o[p + 1] = d[bi + 1]; o[p + 2] = d[bi + 2]; o[p + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return { c, w: W, h: H, ax: s.ax, ay: s.ay };
+}
 
-// Her own hide ramp, wider than the shared CPAL one: four bands is all this
-// grid can hold, so they have to be far enough apart to read as a rounded
-// back, and every detail pass below picks its colour from the SAME ramp or
-// the detail simply disappears into the band underneath it.
-const HD = { dd: '#211d27', d: '#3b3743', m: '#5b5765', l: '#837f91', ll: '#a9a6b6', pale: '#c6c4d2' };
-// Her half-beam, in art pixels, keyed along her length. A hand-keyed curve
-// beats a field of blobs at this resolution: the blobs smooth into a heap of
-// lumps, where a curve gives a fluke that is plainly a fluke, a waist that is
-// plainly a waist and a head that is plainly a head.
+// ===========================================================================
+//  WAR MANATEE  — top-down, facing RIGHT, DETAIL art pixels per world unit
+//  140 x 64 art px = 70 x 32 WORLD units.  (She was 94 x 42 world units.)
+// ===========================================================================
+const MAN_W = 140, MAN_H = 64, MAN_CX = 70, MAN_CY = 32;
+
+// Her hide ramp: six bands, far enough apart to read as a rounded back at a
+// glance and close enough that a crease drawn one band darker still reads as
+// a crease and not a hole.
+const HD = {
+  dd: '#211d27', d: '#37333f', m: '#4d4a56', mm: '#635f6c',
+  l: '#807c8a', ll: '#9c98a7', pale: '#bdbac9', top: '#d6d4de',
+};
+const HALG = ['#3c5f48', '#2c4936', '#4a7355'];      // algae on her back
+// Her half-beam, in ART pixels, keyed along her length. A hand-keyed curve
+// beats a field of blobs: blobs smooth into a heap of lumps, a curve gives a
+// spade fluke, a real peduncle waist and a blunt head. The flipper socket
+// the rig (and src/death.js) uses is world (15, +-13) = art (100, +-26), so
+// the curve has to still be 26 art px deep there.
 const MAN_KEYS = [
-  [2, 10], [3, 12], [5, 13], [9, 12.8], [13, 11.6], [17, 9.4], [21, 7.4],
-  [25, 7.0], [28, 8.6], [32, 11.2], [38, 14.0], [44, 15.8], [50, 16.0],
-  [56, 15.4], [61, 14.0], [66, 12.2], [70, 10.6], [74, 9.6], [78, 8.8],
-  [83, 8.0], [87, 6.6], [90, 4.6], [92, 2.4],
+  [2, 14], [5, 20], [9, 24], [14, 25], [19, 23], [24, 19], [29, 14],
+  [34, 11], [40, 11.5], [46, 14], [52, 18], [58, 22], [66, 26], [74, 28.5],
+  [82, 29], [90, 28.5], [98, 27], [106, 25], [112, 22], [117, 19.5],
+  [122, 18], [127, 16.5], [132, 14.5], [136, 12], [138, 10.5], [139, 9],
 ];
 function manHalf(x) {
   if (x < MAN_KEYS[0][0] || x > MAN_KEYS[MAN_KEYS.length - 1][0]) return -1;
@@ -290,150 +333,262 @@ function manHalf(x) {
     const [x1, h1] = MAN_KEYS[i];
     if (x > x1) continue;
     const [x0, h0] = MAN_KEYS[i - 1];
-    return h0 + (h1 - h0) * (x - x0) / (x1 - x0);
+    const u = (x - x0) / (x1 - x0);
+    return h0 + (h1 - h0) * (u * u * (3 - 2 * u));     // smooth, no corners
   }
   return -1;
 }
 function buildManateeBody(armored) {
   const cyy = MAN_CY, c = newCan(MAN_W, MAN_H), ctx = c.getContext('2d');
+  HIRES.add(c);
   const span = new Int16Array(MAN_W * 2);
-  // ---- the body, painted in five bands from a lit back to a dark keel.
+  // ---- the body, painted in eight bands from a lit back to a dark keel.
   //      One pass, hard edges, no gradients: this is the whole animal.
+  const bandOf = t => t < 0.05 ? HD.top : t < 0.13 ? HD.pale : t < 0.24 ? HD.ll
+    : t < 0.40 ? HD.l : t < 0.58 ? HD.mm : t < 0.74 ? HD.m : t < 0.89 ? HD.d : HD.dd;
   for (let x = 0; x < MAN_W; x++) {
     const hw = manHalf(x);
     span[x * 2] = 1; span[x * 2 + 1] = -1;
-    if (hw < 0.8) continue;
+    if (hw < 1.0) continue;
     const y0 = Math.round(cyy - hw), y1 = Math.round(cyy + hw);
     span[x * 2] = y0; span[x * 2 + 1] = y1;
-    const h = y1 - y0;
+    const h = Math.max(1, y1 - y0);
     for (let y = y0; y <= y1; y++) {
       if (y === y0 || y === y1) { px(ctx, CPAL.out, x, y); continue; }
-      const t = (y - y0) / h;
-      px(ctx, t < 0.14 ? HD.ll : t < 0.32 ? HD.l : t < 0.60 ? HD.m : t < 0.82 ? HD.d : HD.dd, x, y);
+      px(ctx, bandOf((y - y0) / h), x, y);
     }
   }
   const solid = (x, y) => x >= 0 && x < MAN_W && y > span[x * 2] && y < span[x * 2 + 1];
-  const edgeCol = (x, y) => { const y0 = span[x * 2], y1 = span[x * 2 + 1]; const t = (y - y0) / (y1 - y0); return t < 0.14 ? HD.ll : t < 0.32 ? HD.l : t < 0.60 ? HD.m : t < 0.82 ? HD.d : HD.dd; };
-  // ---- the nose and tail caps: round the two ends off by hand
-  for (let y = cyy - 2; y <= cyy + 2; y++) px(ctx, CPAL.out, 93, y);
-  // ---- fluke: five ridges fanning out of the peduncle, and a pale trailing
-  //      edge. This is what makes the paddle read as a paddle.
-  for (const i of [-1, 1]) {
-    for (let x = 8; x < 22; x++) {
-      const y = Math.round(cyy + i * 5 + (22 - x) * i * 0.22);
-      if (!solid(x, y)) continue;
-      px(ctx, HD.dd, x, y);
+  const deep = (x, y, k) => {            // k art px in from either sheer
+    if (!solid(x, y)) return false;
+    return (y - span[x * 2]) >= k && (span[x * 2 + 1] - y) >= k;
+  };
+  const tOf = (x, y) => (y - span[x * 2]) / Math.max(1, span[x * 2 + 1] - span[x * 2]);
+  // ---- blunt muzzle: a manatee's snout ends in a wall, not a point, so the
+  //      front column is all outline with the two corners knocked off
+  for (let y = cyy - 9; y <= cyy + 9; y++) px(ctx, CPAL.out, MAN_W - 1, y);
+  ctx.clearRect(MAN_W - 1, cyy - 9, 1, 1); ctx.clearRect(MAN_W - 1, cyy + 9, 1, 1);
+  px(ctx, CPAL.out, MAN_W - 2, cyy - 9); px(ctx, CPAL.out, MAN_W - 2, cyy + 9);
+
+  // ---- hide grain. Very sparse single art pixels one band off their own, in
+  //      the mid-tones only, so she reads leathery rather than speckled.
+  for (let x = 4; x < MAN_W - 4; x++) for (let y = 2; y < MAN_H - 2; y++) {
+    if (!deep(x, y, 4)) continue;
+    const t = tOf(x, y);
+    if (t < 0.22 || t > 0.84) continue;
+    const r = hash2(x * 7 + 3, y * 13 + 5);
+    if (r > 0.988) px(ctx, t < 0.5 ? HD.l : HD.d, x, y);
+    else if (r < 0.010) px(ctx, t < 0.5 ? HD.ll : HD.m, x, y);
+  }
+  // ---- transverse skin folds across the barrel: a dark core with a lit
+  //      upper lip, bowed the way a fold sits on a round back, and stopping
+  //      short of the sheer so they crease her instead of banding her
+  for (const fx of [60, 80, 100]) for (let y = 2; y < MAN_H - 2; y++) {
+    const x = fx + Math.round(Math.sin((y - cyy) / 30) * 5);
+    if (!deep(x, y, 7)) continue;
+    px(ctx, HD.m, x, y); px(ctx, HD.d, x + 1, y);
+    if (deep(x - 1, y, 8)) px(ctx, tOf(x, y) < 0.5 ? HD.pale : HD.l, x - 1, y);
+  }
+  // ---- the crease where her neck meets her shoulders, so the head is a head
+  for (let y = 3; y < MAN_H - 3; y++) {
+    const x = 116 + Math.round(Math.sin((y - cyy) / 26) * 3);
+    if (!deep(x, y, 3)) continue;
+    px(ctx, HD.d, x, y); px(ctx, HD.dd, x + 1, y);
+    if (deep(x + 2, y, 4)) px(ctx, HD.pale, x + 2, y);
+  }
+  // ---- fluke: ridges fanning out of the peduncle and a pale trailing edge
+  for (let i = -3; i <= 3; i++) {
+    if (!i) continue;
+    for (let x = 5; x < 36; x++) {
+      const y = Math.round(cyy + i * 6 + (36 - x) * i * 0.12);
+      if (!deep(x, y, 2)) continue;
+      px(ctx, HD.d, x, y);
+      if ((x & 3) === 0 && deep(x, y - 1, 2)) px(ctx, HD.l, x, y - 1);
     }
   }
-  for (let y = 7; y < MAN_H - 7; y++) if (solid(3, y)) px(ctx, HD.pale, 3, y);
-  // ---- two transverse skin folds across the barrel
-  for (const fx of [40, 57]) for (let y = 3; y < MAN_H - 3; y++) {
-    const x = fx + Math.round(Math.sin((y - cyy) / 16) * 3);
-    if (!solid(x, y) || !solid(x, y + 1)) continue;
-    px(ctx, HD.dd, x, y);
-    if (solid(x - 1, y)) px(ctx, edgeCol(x - 1, y) === HD.dd ? HD.d : HD.ll, x - 1, y);
+  for (let y = 4; y < MAN_H - 4; y++) { if (solid(3, y)) px(ctx, HD.pale, 3, y); if (solid(4, y)) px(ctx, HD.ll, 4, y); }
+  // a torn notch out of the trailing edge — she has been in the gear before
+  for (let i = 0; i < 4; i++) for (let y = cyy - 11 - i; y <= cyy - 8 + i; y++) {
+    if (!solid(2 + i, y)) continue;
+    ctx.clearRect(2 + i, y, 1, 1);
   }
-  // ---- the step where her neck meets her shoulders, so the head is a head
-  for (let y = 4; y < MAN_H - 4; y++) {
-    if (!solid(69, y)) continue;
-    px(ctx, HD.dd, 69, y);
-    if (solid(70, y)) px(ctx, HD.ll, 70, y);
+  for (let i = 0; i < 5; i++) if (solid(6 + i, cyy - 10)) px(ctx, CPAL.out, 5 + i, cyy - 11 + (i >> 1), 1, 2);
+
+  // ---- old propeller gashes: paired pale gouges with a dark lower lip
+  const gash = (x0, y0, dx, dy, n) => {
+    for (let i = 0; i < n; i++) {
+      const x = Math.round(x0 + i * dx), y = Math.round(y0 + i * dy);
+      if (!deep(x, y, 2)) continue;
+      px(ctx, HD.pale, x, y, 2, 1); px(ctx, HD.dd, x, y + 1, 2, 1);
+    }
+  };
+  gash(64, 12, 1.6, 1.0, 11);
+  gash(86, 50, 1.5, -0.9, 9);
+  gash(52, 40, 1.2, 0.7, 7);
+  gash(104, 20, 1.0, -0.5, 5);
+  // ---- algae on the back, where the light hits and nothing rubs it off
+  for (const [ax, ay, w2, h2] of [[68, 14, 9, 5], [92, 44, 8, 4], [54, 24, 7, 4], [40, 34, 6, 3]]) {
+    for (let y = ay; y < ay + h2; y++) for (let x = ax; x < ax + w2; x++) {
+      if (!deep(x, y, 3)) continue;
+      const r = hash2(x * 3, y * 5);
+      if (r > 0.55) px(ctx, HALG[r > 0.86 ? 2 : r > 0.7 ? 0 : 1], x, y);
+    }
   }
-  // ---- two old propeller gashes across the back
-  for (let i = 0; i < 7; i++) { if (solid(44 + i, 8 + i)) { px(ctx, HD.pale, 44 + i, 8 + i); px(ctx, HD.dd, 44 + i, 9 + i); } }
-  for (let i = 0; i < 5; i++) { if (solid(58 + i, 32 - i)) { px(ctx, HD.pale, 58 + i, 32 - i); px(ctx, HD.dd, 58 + i, 33 - i); } }
-  // ---- three barnacles. A dozen would only read as noise at this size.
-  for (const [bx, by] of [[38, 12], [54, 28], [33, 25]]) {
-    if (!solid(bx, by)) continue;
-    px(ctx, HD.dd, bx - 1, by - 1, 4, 4);
-    px(ctx, CPAL.bone, bx, by, 2, 2);
-    px(ctx, CPAL.white, bx, by);
+  // ---- barnacles: a dark rim, a dull shell and a shadow, three art px wide
+  for (const [bx, by] of [[58, 20], [82, 46], [48, 34], [74, 52], [66, 26]]) {
+    if (!deep(bx, by, 5)) continue;
+    px(ctx, HD.dd, bx - 1, by - 1, 5, 5);
+    px(ctx, '#9a9382', bx, by, 3, 3);
+    px(ctx, '#c2bba6', bx, by, 2, 1);
+    px(ctx, HD.dd, bx + 1, by + 1, 2, 2);
   }
 
   // ---- head ---------------------------------------------------------------
   // The eye is a DOT: one black bead with one glint, ringed by a pale socket
   // so it survives against whichever band of hide it lands on.
-  for (const ey of [11, 25]) {
-    px(ctx, HD.pale, 72, ey, 6, 1);
-    px(ctx, CPAL.out, 73, ey + 1, 4, 4);
-    px(ctx, CPAL.eye, 73, ey + 1, 3, 3);
-    px(ctx, CPAL.shine, 74, ey + 2);
+  for (const ey of [cyy - 12, cyy + 8]) {
+    px(ctx, HD.pale, 118, ey - 1, 5, 1);          // lit brow over the socket
+    stamp(ctx, [
+      '.kkk.',
+      'keeek',
+      'keeek',
+      'keeek',
+      '.kkk.',
+    ], 118, ey, { k: CPAL.out, e: CPAL.eye });
+    px(ctx, CPAL.shine, 119, ey + 1);             // the one glint
+    px(ctx, HD.dd, 118, ey + 5, 5, 1);            // the socket's own shadow
   }
   // whisker pad: the brightest block on her, right at the front, so the
-  // silhouette has a face end and a tail end at any distance
-  stamp(ctx, [
-    '.kkkkkkk.',
-    'kPPPPPPPk',
-    'kPPPPPPPk',
-    'kPwPPwPPk',
-    'kPPPPPPPk',
-    'kPPPPPPPk',
-    '.kkkkkkk.',
-  ], 81, cyy - 3, { k: CPAL.out, P: HD.ll, w: HD.d });
-  px(ctx, HD.pale, 82, cyy - 2, 7, 1);
-  // nostrils, and a mouth crease under the pad
-  px(ctx, CPAL.out, 88, cyy - 4, 2, 2); px(ctx, HD.pale, 88, cyy - 5, 2, 1);
-  px(ctx, CPAL.out, 88, cyy + 3, 2, 2); px(ctx, HD.pale, 88, cyy + 2, 2, 1);
-  for (const [wx, wy] of [[90, cyy - 6], [90, cyy + 5], [91, cyy - 2], [91, cyy + 1]]) px(ctx, CPAL.bone, wx, wy, 2, 1);
+  // silhouette has a face end and a tail end at any distance. Clipped to the
+  // muzzle, so it never spills off the outline.
+  for (let y = cyy - 10; y <= cyy + 10; y++) for (let x = 127; x < MAN_W - 1; x++) {
+    if (!deep(x, y, 1)) continue;
+    const t = Math.abs(y - cyy) / 10.5, u = (x - 127) / 13;
+    if (t * t + u * u * 0.30 > 1) continue;
+    px(ctx, t > 0.88 ? HD.l : t > 0.66 ? HD.ll : t > 0.34 ? HD.pale : HD.top, x, y);
+  }
+  for (let y = cyy - 8; y <= cyy + 8; y++) if (deep(126, y, 2)) px(ctx, HD.m, 126, y);
+  // dimples in the pad, a lit row and a shaded one, so it reads as stippled
+  for (const [dx, dy] of [[130, -6], [133, -6], [136, -5], [130, 5], [133, 5], [136, 4]]) {
+    if (!deep(dx, cyy + dy, 1)) continue;
+    px(ctx, HD.l, dx, cyy + dy); px(ctx, HD.top, dx, cyy + dy - 1);
+  }
+  // nostrils: two short slits high on the muzzle with a lit upper lip
+  for (const ny of [cyy - 7, cyy + 5]) {
+    px(ctx, HD.top, 135, ny - 1, 2, 1);
+    px(ctx, CPAL.out, 135, ny, 2, 3);
+    px(ctx, HD.dd, 135, ny + 3, 2, 1);
+  }
+  // the mouth, a crease across the front of the pad
+  px(ctx, HD.m, 132, cyy - 1, 6, 1); px(ctx, HD.d, 133, cyy, 5, 1); px(ctx, HD.dd, 134, cyy + 1, 3, 1);
+  for (const [wx, wy] of [[137, cyy - 4], [137, cyy + 3], [136, cyy - 9], [136, cyy + 8]])
+    if (solid(wx, wy)) px(ctx, CPAL.bone, wx, wy, 2, 1);
 
   if (armored) {
     // ---- ONE riveted back plate, aft of the saddle where it can be seen,
     //      and a collar over her neck. She is an animal wearing armour, not
-    //      a tank: most of what you see has to stay hide.
-    const plates = [[32, 11, 12, 21]];
-    for (const [pxx, pyy, pw, ph] of plates) {
-      for (let y = pyy; y < pyy + ph; y++) for (let x = pxx; x < pxx + pw; x++) {
-        if (!solid(x, y, 0.10)) continue;
-        const e = x === pxx || x === pxx + pw - 1 || y === pyy || y === pyy + ph - 1;
-        let col = e ? CPAL.out : (y < pyy + 3 ? CPAL.metL : y > pyy + ph - 4 ? CPAL.metDD : CPAL.metD);
-        if (!e && y >= pyy + 3 && y <= pyy + 5) col = CPAL.met;
+    //      a tank: most of what you see has to stay hide. The plate is inset
+    //      from the sheer by a fifth of the local beam, so hide shows all
+    //      the way round it and her back still reads as a back.
+    const ST = { k: '#1b1c22', dd: '#2b2f38', d: '#3e444f', m: '#535a67', l: '#6d7686', ll: '#939daf', w: '#c3cbd8' };
+    const pxx = 52, pw = 24;
+    for (let x = pxx; x < pxx + pw; x++) {
+      const hw = manHalf(x); if (hw < 6) continue;
+      const inset = Math.round(hw * 0.34) + 2;
+      const y0 = Math.round(cyy - hw) + inset, y1 = Math.round(cyy + hw) - inset;
+      for (let y = y0; y <= y1; y++) {
+        const e = x === pxx || x === pxx + pw - 1 || y === y0 || y === y1;
+        let col = e ? CPAL.out : (y < y0 + 5 ? ST.l : y > y1 - 6 ? ST.dd : ST.m);
+        if (!e && y >= y0 + 5 && y <= y0 + 9) col = ST.ll;
+        if (!e && hash2(x * 5, y * 3) > 0.93) col = ST.d;
+        if (!e && hash2(x * 13, y * 7) > 0.988) col = ST.ll;
         px(ctx, col, x, y);
       }
-      for (const [rx, ry] of [[pxx + 2, pyy + 3], [pxx + pw - 4, pyy + 3], [pxx + 2, pyy + ph - 5], [pxx + pw - 4, pyy + ph - 5]]) {
-        px(ctx, CPAL.out2, rx, ry, 2, 2); px(ctx, CPAL.metLL, rx, ry);
-      }
-      for (let i = 0; i < 4; i++) px(ctx, CPAL.metLL, pxx + 3 + i, pyy + 8 + i);
-      px(ctx, '#8a4a22', pxx + pw - 3, pyy + ph - 9, 1, 6);   // a rust weep
+      // rolled edges, lit to port and shadowed to starboard
+      if (x > pxx && x < pxx + pw - 1) { px(ctx, ST.w, x, y0 + 1); px(ctx, ST.k, x, y1 - 1); }
+      // the welded seam down the middle of the plate: a bead, not a dotted
+      // line — a gap every other pixel reads as perforation at this size
+      if (y0 + 2 < cyy && cyy < y1 - 2) { px(ctx, ST.dd, x, cyy); px(ctx, ST.l, x, cyy - 1); }
     }
+    // rivets: dome, highlight, drop shadow
+    for (let i = 0; i < 4; i++) {
+      const x = pxx + 3 + i * 6, hw = manHalf(x); if (hw < 6) continue;
+      const inset = Math.round(hw * 0.34) + 2;
+      for (const y of [Math.round(cyy - hw) + inset + 3, Math.round(cyy + hw) - inset - 4]) {
+        px(ctx, ST.k, x - 1, y - 1, 4, 4);
+        px(ctx, ST.ll, x, y, 2, 2);
+        px(ctx, ST.w, x, y);
+        px(ctx, ST.k, x + 1, y + 2, 2, 1);
+      }
+    }
+    // shot scars in the plate, and a rust weep off one of the fastenings
+    for (const [gx, gy, n] of [[pxx + 5, cyy - 8, 5], [pxx + 14, cyy + 5, 4]])
+      for (let i = 0; i < n; i++) { px(ctx, ST.w, gx + i, gy + (i >> 1), 1, 1); px(ctx, ST.k, gx + i, gy + 1 + (i >> 1), 1, 1); }
+    for (let i = 0; i < 7; i++) px(ctx, i < 2 ? '#b4653a' : '#8a4526', pxx + pw - 5, cyy + 4 + i);
     // ---- steel collar round her neck, right behind the head
-    for (let x = 64; x <= 72; x++) for (let y = 2; y < MAN_H - 2; y++) {
-      if (!solid(x, y, 0.06)) continue;
-      const top = !solid(x, y - 1, 0.06), bot = !solid(x, y + 1, 0.06);
-      px(ctx, x === 64 || x === 72 ? CPAL.out : top ? CPAL.metLL : bot ? CPAL.metDD : (x < 67 ? CPAL.met : CPAL.metD), x, y);
+    for (let x = 106; x <= 115; x++) for (let y = 2; y < MAN_H - 2; y++) {
+      if (!solid(x, y)) continue;
+      const top = !solid(x, y - 1), bot = !solid(x, y + 1);
+      px(ctx, x === 106 || x === 115 ? CPAL.out : top ? CPAL.metLL : bot ? CPAL.metDD : (x < 110 ? CPAL.met : CPAL.metD), x, y);
     }
-    for (const cy2 of [cyy - 8, cyy, cyy + 8]) { px(ctx, CPAL.out2, 66, cy2, 2, 2); px(ctx, CPAL.metLL, 66, cy2); }
-    px(ctx, CPAL.goldD, 68, cyy - 3, 4, 7); px(ctx, CPAL.gold, 68, cyy - 3, 3, 6);
-    px(ctx, CPAL.goldL, 68, cyy - 3, 2, 1);
-    // ---- leather harness: one strap right round her, with a brass buckle
-    for (const sx of [48]) {
-      for (let y = 2; y < MAN_H - 2; y++) {
-        if (!solid(sx, y, 0.04)) continue;
-        px(ctx, CPAL.leaD, sx, y, 3, 1);
-        px(ctx, CPAL.lea, sx, y, 2, 1);
-        if ((y & 3) === 1) px(ctx, CPAL.creamD, sx + 1, y);
-      }
-      px(ctx, CPAL.out, sx - 1, cyy - 3, 5, 7);
-      px(ctx, CPAL.gold, sx, cyy - 2, 3, 5);
-      px(ctx, CPAL.goldL, sx, cyy - 2, 3, 1);
-      px(ctx, CPAL.goldD, sx, cyy + 2, 3, 1);
-      px(ctx, CPAL.out, sx + 1, cyy, 1, 2);
+    for (const cy2 of [cyy - 13, cyy - 4, cyy + 4, cyy + 13]) {
+      if (!solid(110, cy2)) continue;
+      px(ctx, CPAL.out2, 109, cy2 - 1, 4, 4); px(ctx, CPAL.metL, 110, cy2, 2, 2); px(ctx, CPAL.metLL, 110, cy2);
     }
+    px(ctx, CPAL.goldD, 112, cyy - 5, 5, 11); px(ctx, CPAL.gold, 112, cyy - 4, 4, 9);
+    px(ctx, CPAL.goldL, 112, cyy - 4, 4, 2); px(ctx, CPAL.goldL, 112, cyy - 4, 2, 8);
+    px(ctx, CPAL.out2, 114, cyy - 1, 2, 2);
+    // ---- leather harness: one strap right round her, stitched down both
+    //      edges, with a brass buckle over her spine
+    const sx = 84;
+    for (let y = 2; y < MAN_H - 2; y++) {
+      if (!solid(sx, y)) continue;
+      px(ctx, CPAL.leaD, sx, y, 6, 1);
+      px(ctx, CPAL.lea, sx + 1, y, 4, 1);
+      if ((y & 3) === 1) { px(ctx, CPAL.leaL, sx + 2, y, 2, 1); px(ctx, CPAL.creamD, sx, y); px(ctx, CPAL.creamD, sx + 5, y); }
+      if ((y & 7) === 4) px(ctx, CPAL.leaD, sx + 2, y, 2, 1);
+    }
+    px(ctx, CPAL.out, sx - 2, cyy - 7, 10, 15);
+    px(ctx, CPAL.goldD, sx - 1, cyy - 6, 8, 13);
+    px(ctx, CPAL.gold, sx, cyy - 5, 6, 11);
+    px(ctx, CPAL.goldL, sx, cyy - 5, 6, 2);
+    px(ctx, CPAL.out, sx + 2, cyy - 2, 2, 5);                 // the tongue
+    px(ctx, CPAL.out, sx + 2, cyy - 9, 2, 2); px(ctx, CPAL.out, sx + 2, cyy + 8, 2, 2);
     // ---- shoulder spikes: out at the widest point, where they break the
     //      silhouette instead of disappearing into the back
-    stamp(ctx, ['..kk..', '.kLLk.', 'kLMMLk', 'kMMMMk', 'kkkkkk'], 43, 2, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL });
-    stamp(ctx, ['kkkkkk', 'kMMMMk', 'kLMMLk', '.kLLk.', '..kk..'], 43, MAN_H - 7, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL });
+    stamp(ctx, [
+      '....kk....',
+      '...kLLk...',
+      '..kLMMLk..',
+      '.kLMMMMLk.',
+      'kLMMMMMMLk',
+      'kMMmmmmMMk',
+      'kkkkkkkkkk',
+    ], 78, 1, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL, m: CPAL.metD });
+    stamp(ctx, [
+      'kkkkkkkkkk',
+      'kMMmmmmMMk',
+      'kLMMMMMMLk',
+      '.kLMMMMLk.',
+      '..kLMMLk..',
+      '...kLLk...',
+      '....kk....',
+    ], 78, MAN_H - 8, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL, m: CPAL.metD });
     // ---- a brass ring through the snout: the fleet put it there
-    px(ctx, CPAL.goldD, 89, cyy - 3, 2, 7);
-    px(ctx, CPAL.goldL, 89, cyy - 3, 2, 1);
-    px(ctx, CPAL.goldD, 91, cyy - 1, 2, 3);
+    px(ctx, CPAL.goldD, 133, cyy - 5, 3, 11);
+    px(ctx, CPAL.goldL, 133, cyy - 5, 3, 2);
+    px(ctx, CPAL.goldD, 136, cyy - 2, 3, 5);
+    px(ctx, CPAL.gold, 136, cyy - 2, 3, 2);
   }
-  return spriteFrom(c, MAN_CX, MAN_CY);
+  return spriteFromHi(c, MAN_CX, MAN_CY);
 }
 
 // ---- saddle (sits mid-back, the otter perches here) -----------------------
+//  19 x 17 world units, anchored at world (9, 8) — unchanged, so the rig and
+//  every scene that places the rider keep the offsets they had.
 function buildSaddle() {
-  const W = 19, H = 17, c = newCan(W, H), ctx = c.getContext('2d');
-  stamp(ctx, [
+  const c = newCanHi(19, 17), ctx = c.getContext('2d');   // 38 x 34 art px
+  stampUp(ctx, [
     '..kkkkkkkkkkkkk..',
     '.kLLLLLLLLLLLLLk.',
     'kLlllllllllllllLk',
@@ -445,69 +600,114 @@ function buildSaddle() {
     'kLlllllllllllllLk',
     '.kLLLLLLLLLLLLLk.',
     '..kkkkkkkkkkkkk..',
-  ], 1, 3, { k: CPAL.out, L: CPAL.leaL, l: CPAL.lea, d: CPAL.leaD, D: '#3a2412' });
-  // stitched seam inside the rolled rim
-  for (let x = 3; x < 16; x += 2) { px(ctx, CPAL.cream, x, 6); px(ctx, CPAL.cream, x, 11); }
-  // brass studs down both flanks
-  for (let i = 0; i < 3; i++) {
-    const sx = 4 + i * 5;
-    px(ctx, CPAL.goldD, sx, 5, 2, 2); px(ctx, CPAL.gold, sx, 5);
-    px(ctx, CPAL.goldD, sx, 11, 2, 2); px(ctx, CPAL.gold, sx, 11);
+  ], 2, 6, { k: CPAL.out, L: CPAL.leaL, l: CPAL.lea, d: CPAL.leaD, D: '#3a2412' });
+  // the rolled rim, and a stitched seam running inside it all the way round
+  for (let x = 8; x < 32; x++) {
+    if ((x & 1) === 0) { px(ctx, CPAL.cream, x, 11); px(ctx, CPAL.creamD, x, 12); px(ctx, CPAL.cream, x, 27); px(ctx, CPAL.creamD, x, 28); }
   }
-  return spriteFrom(c, 9, 8);
+  for (let y = 13; y < 27; y++) if ((y & 1) === 0) { px(ctx, CPAL.creamD, 7, y); px(ctx, CPAL.creamD, 32, y); }
+  // grain: a few worn streaks along the seat
+  for (let i = 0; i < 14; i++) {
+    const x = 10 + ((i * 7) % 20), y = 15 + ((i * 5) % 10);
+    px(ctx, hash2(i, 3) > 0.5 ? '#4a2c16' : CPAL.leaL, x, y, 2, 1);
+  }
+  // brass studs down both flanks: dome, highlight, drop shadow
+  for (let i = 0; i < 4; i++) {
+    const sx = 10 + i * 6;
+    for (const sy of [10, 26]) {
+      px(ctx, CPAL.out2, sx - 1, sy - 1, 4, 4);
+      px(ctx, CPAL.goldD, sx, sy, 3, 3);
+      px(ctx, CPAL.gold, sx, sy, 2, 2);
+      px(ctx, CPAL.goldL, sx, sy);
+    }
+  }
+  return spriteFromHi(c, 18, 16);
 }
 
 // ---- flipper --------------------------------------------------------------
+//  16 x 11 world units, anchored at world (3, 5) — unchanged.
 function buildFlipper() {
-  const W = 16, H = 11;
-  const f = blobField(W, H, [{ x: 4, y: 5, rx: 4.6, ry: 4.8 }, { x: 9, y: 5, rx: 5.4, ry: 4.2 }, { x: 13, y: 5, rx: 3.4, ry: 2.8 }]);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man], { outline: CPAL.out, lift: 0.10, smooth: 1, contrast: 0.7 });
-  px(ctx, CPAL.manL, 3, 2, 5, 1);
-  for (let i = 0; i < 3; i++) px(ctx, CPAL.bone, 12 - i, 3 + i * 2);   // nails
-  return spriteFrom(c, 3, 5);
+  const W = 32, c = newCanHi(16, 11), ctx = c.getContext('2d');   // 32 x 22 art px
+  // a hand-keyed paddle, not a blob: wide at the shoulder, rounded at the tip
+  const key = [[1, 3], [4, 7], [8, 9], [13, 9.5], [18, 9], [23, 7.5], [27, 5.5], [30, 3]];
+  const halfAt = x => {
+    if (x < key[0][0] || x > key[key.length - 1][0]) return -1;
+    for (let i = 1; i < key.length; i++) {
+      if (x > key[i][0]) continue;
+      const u = (x - key[i - 1][0]) / (key[i][0] - key[i - 1][0]);
+      return key[i - 1][1] + (key[i][1] - key[i - 1][1]) * (u * u * (3 - 2 * u));
+    }
+    return -1;
+  };
+  for (let x = 0; x < W; x++) {
+    const hw = halfAt(x); if (hw < 0.8) continue;
+    const y0 = Math.round(11 - hw), y1 = Math.round(11 + hw);
+    for (let y = y0; y <= y1; y++) {
+      if (y === y0 || y === y1) { px(ctx, CPAL.out, x, y); continue; }
+      const t = (y - y0) / (y1 - y0);
+      px(ctx, t < 0.14 ? HD.ll : t < 0.34 ? HD.l : t < 0.62 ? HD.mm : t < 0.84 ? HD.d : HD.dd, x, y);
+    }
+  }
+  // a lit leading edge, two creases and three nails at the tip
+  for (let x = 4; x < 27; x++) px(ctx, HD.pale, x, Math.round(11 - halfAt(x)) + 1);
+  for (const k of [-0.35, 0.3]) for (let x = 8; x < 27; x++) {
+    const hw = halfAt(x); if (hw < 2) continue;
+    px(ctx, HD.d, x, Math.round(11 + hw * k));
+  }
+  for (let i = 0; i < 3; i++) { px(ctx, CPAL.bone, 26 - i, 8 + i * 4, 2, 2); px(ctx, HD.dd, 26 - i, 10 + i * 4, 2, 1); }
+  return spriteFromHi(c, 6, 10);
 }
 
 // ---- pirate flag on a pole (flies behind the saddle) ----------------------
+//  20 x 18 world units, anchored at world (2, 9) — unchanged.
 function buildFlag(frame) {
-  const W = 20, H = 18, c = newCan(W, H), ctx = c.getContext('2d');
+  const c = newCanHi(20, 18), ctx = c.getContext('2d');
   const wav = [0, 1, 2, 1, 0, -1, -2, -1][frame & 7];
-  for (let y = 0; y < 12; y++) {
-    const ph = (y / 12) * 3.1 + frame * 0.8;
-    const off = Math.round(Math.sin(ph) * 1.5 + wav * 0.4);
+  for (let y = 0; y < 24; y++) {
+    const ph = (y / 24) * 3.1 + frame * 0.8;
+    const off = Math.round(Math.sin(ph) * 3 + wav * 0.8);
     const lit = Math.cos(ph);
-    for (let x = 0; x < 15; x++) {
-      const yy = 3 + y + off;
+    for (let x = 0; x < 30; x++) {
+      const yy = 6 + y + off;
       let col = CPAL.hatD;
       if (lit > 0.45) col = CPAL.hat;
+      if (lit > 0.86) col = CPAL.hatL;
       if (lit < -0.55) col = CPAL.out2;
-      if (y === 0 || y === 11 || x > 13) col = CPAL.out2;
-      px(ctx, col, 3 + x, yy);
+      // the fly end frays, and the whole field is hemmed
+      if (y === 0 || y === 23 || x > 27) col = CPAL.out2;
+      if (x > 25 && ((x + y) & 3) === 0) continue;
+      px(ctx, col, 6 + x, yy);
     }
   }
-  // a skull, reduced to the two black sockets and a jaw that still reads
-  const off0 = Math.round(Math.sin(0.45 * 3.1 + frame * 0.8) * 1.5 + wav * 0.4);
+  // a skull, reduced to two black sockets and a jaw that still reads
+  const off0 = Math.round(Math.sin(0.45 * 3.1 + frame * 0.8) * 3 + wav * 0.8);
   stamp(ctx, [
-    '.WWWW.',
-    'WWWWWW',
-    'WkWWkW',
-    'WWWWWW',
-    '.WkkW.',
-    '.WWWW.',
-  ], 7, 6 + off0, { k: CPAL.out, W: CPAL.white });
-  return spriteFrom(c, 2, 9);
+    '..WWWWWW..',
+    '.WWWWWWWW.',
+    'WWWWWWWWWW',
+    'WWkkWWkkWW',
+    'WWkkWWkkWW',
+    'WWWWWWWWWW',
+    'WWWWkkWWWW',
+    '.WWWWWWWW.',
+    '..WkWkWkW.',
+    '..WWWWWWW.',
+  ], 14, 12 + off0, { k: CPAL.out, W: CPAL.white });
+  return spriteFromHi(c, 4, 18);
 }
 
 // ===========================================================================
 //  CAPTAIN OTTER — rides the saddle, aims 360 degrees.
-//  Authored at the size he is DRAWN at in the rig (scale 1), one art pixel
-//  per world unit, so every part of the pair shares one pixel grid.
+//  Every part keeps the WORLD size and the joint offsets it already had, so
+//  the standing pose, the skill tree's drowning otter, the cinematics' rough
+//  copy of him and the shore scene all stay put — only the resolution moved.
 // ===========================================================================
 function buildOtterTorso() {
-  const W = 21, H = 19, c = newCan(W, H), ctx = c.getContext('2d');
+  const c = newCanHi(21, 19), ctx = c.getContext('2d');
   const M = { k: CPAL.out, C: CPAL.cape, c: CPAL.capeD, L: CPAL.capeL,
-              f: CPAL.fur, d: CPAL.furD, l: CPAL.furL, r: CPAL.cream };
+              f: CPAL.fur, d: CPAL.furD, D: CPAL.furDD, l: CPAL.furL, r: CPAL.cream, R: CPAL.creamD };
   // cape: a collar behind the shoulders that falls away aft, not a curtain
-  stamp(ctx, [
+  stampUp(ctx, [
     '...kkkkkkkkk...',
     '.kkcCCCCCCCckk.',
     'kcCCCCCCCCCCCck',
@@ -516,9 +716,12 @@ function buildOtterTorso() {
     '..kcCCCCCCCck..',
     '...kkcCCCckk...',
     '.....kkkkk.....',
-  ], 3, 9, M);
+  ], 6, 18, M);
+  // cape folds, and a torn hem
+  for (let i = 0; i < 4; i++) { const x = 10 + i * 6; for (let y = 22; y < 34; y++) if (hash2(x, y) > 0.25) px(ctx, CPAL.capeD, x, y); }
+  for (let x = 12; x < 30; x += 3) px(ctx, CPAL.capeL, x, 21, 2, 1);
   // torso: shoulders at the top, a cream chest, hips at the bottom
-  stamp(ctx, [
+  stampUp(ctx, [
     '...kkkkkkk...',
     '.kkddfffddkk.',
     'kdffffffffdk.',
@@ -529,36 +732,48 @@ function buildOtterTorso() {
     'kddffffffddk.',
     '.kkddffddkk..',
     '...kkkkkk....',
-  ], 4, 1, M);
-  // bandolier across the chest, with two brass rounds in the loops
-  for (let i = 0; i < 8; i++) {
-    const x = 6 + i, y = 4 + i;
-    px(ctx, CPAL.leaD, x, y, 1, 2); px(ctx, CPAL.lea, x, y);
-    if (i === 2 || i === 5) px(ctx, CPAL.goldL, x, y + 1);
+  ], 8, 2, M);
+  // fur: a lit crown over the shoulders and a shaded flank, then a grain pass
+  for (let x = 12; x < 32; x++) px(ctx, CPAL.furL, x, 7);
+  for (let y = 8; y < 32; y++) for (let x = 10; x < 34; x++) {
+    if (hash2(x * 5 + 1, y * 3) > 0.945) px(ctx, CPAL.furD, x, y);
+    else if (hash2(x * 11, y * 7) > 0.975) px(ctx, CPAL.furLL || CPAL.furL, x, y);
+  }
+  // bandolier across the chest, with brass rounds in the loops
+  for (let i = 0; i < 17; i++) {
+    const x = 11 + i, y = 7 + i;
+    px(ctx, CPAL.leaD, x, y, 2, 4); px(ctx, CPAL.lea, x, y, 2, 2); px(ctx, CPAL.leaL, x, y, 2, 1);
+    if (i % 4 === 1) { px(ctx, CPAL.goldD, x, y + 2, 2, 3); px(ctx, CPAL.goldL, x, y + 2, 2, 1); }
   }
   // the buckle over the heart
-  px(ctx, CPAL.out, 10, 8, 3, 3); px(ctx, CPAL.gold, 11, 9); px(ctx, CPAL.goldL, 10, 8);
-  // salvaged steel pauldrons, tucked in at the shoulders
-  for (const sx of [4, 14]) {
-    px(ctx, CPAL.out, sx, 2, 3, 4);
-    px(ctx, CPAL.metL, sx, 3, 3, 2);
-    px(ctx, CPAL.metD, sx, 5, 3, 1);
-    px(ctx, CPAL.metLL, sx + 1, 3);
+  px(ctx, CPAL.out, 19, 16, 6, 6); px(ctx, CPAL.goldD, 20, 17, 4, 4);
+  px(ctx, CPAL.gold, 20, 17, 3, 3); px(ctx, CPAL.goldL, 20, 17, 2, 1);
+  // salvaged steel pauldrons, tucked in at the shoulders, with a rivet each
+  for (const sx of [8, 28]) {
+    px(ctx, CPAL.out, sx, 4, 6, 9);
+    px(ctx, CPAL.metL, sx + 1, 5, 4, 4);
+    px(ctx, CPAL.metD, sx + 1, 9, 4, 3);
+    px(ctx, CPAL.metLL, sx + 1, 5, 3, 1);
+    px(ctx, CPAL.out2, sx + 2, 7, 2, 2); px(ctx, CPAL.metLL, sx + 2, 7);
+    px(ctx, '#8a4526', sx + 4, 10, 1, 2);
   }
-  return spriteFrom(c, 10, 9);
+  return spriteFromHi(c, 20, 18);
 }
 
 // Head + tricorn hat. The face is NOT baked in — drawOtterFace paints it live
 // onto CH.headBuf so the expression can change every frame.
-function buildOtterHead() {
-  const W = 19, H = 17, c = newCan(W, H), ctx = c.getContext('2d');
+function buildOtterHeadHi() {
+  const c = newCanHi(19, 17), ctx = c.getContext('2d');
   const M = { k: CPAL.out, f: CPAL.fur, d: CPAL.furD, D: CPAL.furDD, l: CPAL.furL,
               h: CPAL.hat, H: CPAL.hatL, x: CPAL.hatD, X: CPAL.hatLL, W: CPAL.white };
   // ears first, so the skull overlaps them
-  stamp(ctx, ['kkk', 'kDk', 'kfk', 'kkk'], 1, 5, M);
-  stamp(ctx, ['kkk', 'kDk', 'kfk', 'kkk'], 15, 5, M);
+  for (const ex of [2, 30]) {
+    px(ctx, CPAL.out, ex, 10, 6, 8);
+    px(ctx, CPAL.furDD, ex + 1, 11, 4, 6);
+    px(ctx, '#7a4356', ex + 2, 12, 2, 3);
+  }
   // skull: wide cheeks, narrow chin
-  stamp(ctx, [
+  stampUp(ctx, [
     '.kkkkkkkkkkk.',
     'kdffffffffdk.',
     'kffffffffffk',
@@ -568,107 +783,166 @@ function buildOtterHead() {
     '.kdffffffdk.',
     '..kddffddk..',
     '...kkkkkk...',
-  ], 3, 5, M);
+  ], 6, 10, M);
+  // fur: a lit crown down the middle, shaded jowls, then a grain pass
+  for (let y = 13; y < 22; y++) px(ctx, CPAL.furL, 17 - ((y - 13) >> 2), y, 5, 1);
+  for (let i = 0; i < 5; i++) { px(ctx, CPAL.furL, 8 + i, 22 + i, 2, 1); px(ctx, CPAL.furL, 29 - i, 22 + i, 2, 1); }
+  for (let y = 12; y < 30; y++) for (let x = 7; x < 32; x++) {
+    if (hash2(x * 7, y * 5 + 2) > 0.955) px(ctx, CPAL.furD, x, y);
+    else if (hash2(x * 3, y * 11) > 0.978) px(ctx, CPAL.furL, x, y);
+  }
   // tricorn: a wide brim over the brow, a low crown, a gold band
-  stamp(ctx, [
+  stampUp(ctx, [
     '....kkkkkkk....',
     '...kxhhhhhxk...',
     '.kkxhhhHHHhxkk.',
     'kxhhhhhhhhhhhxk',
     'kXxxxxxxxxxxxXk',
-  ], 2, 0, M);
-  for (let x = 2; x < 17; x++) { px(ctx, CPAL.goldD, x, 5); px(ctx, CPAL.goldL, x, 4); }
-  px(ctx, CPAL.out, 2, 5); px(ctx, CPAL.out, 16, 5);
+  ], 4, 0, M);
+  // felt nap on the brim, a crown crease and the three cocked corners
+  for (let x = 8; x < 30; x++) { px(ctx, CPAL.hatLL, x, 3); px(ctx, CPAL.hatL, x, 5); }
+  for (let x = 6; x < 32; x++) if ((x & 3) === 0) px(ctx, CPAL.hatD, x, 7);
+  px(ctx, CPAL.out, 4, 8, 3, 2); px(ctx, CPAL.out, 31, 8, 3, 2);
+  // hat band with a gold edge
+  for (let x = 4; x < 34; x++) { px(ctx, CPAL.goldD, x, 10, 1, 2); px(ctx, CPAL.goldL, x, 10); }
+  px(ctx, CPAL.out, 4, 10, 1, 2); px(ctx, CPAL.out, 33, 10, 1, 2);
   // the skull badge on the crown
-  stamp(ctx, ['WWW', 'WkW'], 8, 1, M);
-  return spriteFrom(c, 9, 9);
+  stamp(ctx, ['.WWWW.', 'WWWWWW', 'WkWWkW', 'WWWWWW', '.WkkW.'], 16, 2, M);
+  return spriteFromHi(c, 18, 18);
 }
 
-// Muzzle + expression, drawn live over the head raster.
+// Muzzle + expression, drawn live over the head raster, in ART pixels.
+// When it is called on anything but CH.headBuf the destination is in WORLD
+// units (src/death.js paints the face onto his bare skull inside a frame
+// scaled by 2), so the whole pass goes through a 1/AS scale there and lands
+// back on whole screen pixels.
 // exp: 'idle' | 'happy' | 'angry' | 'talk' | 'surprised' | 'hurt' | 'pain' | 'drown'
 function drawOtterFace(ctx, exp, blink, t) {
+  const world = !CH.headBuf || ctx.canvas !== CH.headBuf;
+  if (world) { ctx.save(); ctx.scale(1 / AS, 1 / AS); }
   const O = CPAL.out, C = CPAL.cream, CD = CPAL.creamD, E = CPAL.eye, W = CPAL.shine;
   // muzzle pad and nose leather, always there
   stamp(ctx, [
-    '.kkkkk.',
-    'kCCCCCk',
-    'kCCCCCk',
-    '.kCCCk.',
-  ], 6, 10, { k: O, C });
-  px(ctx, CD, 7, 12, 5, 1);
-  px(ctx, O, 8, 10, 3, 2); px(ctx, '#8a5b46', 8, 10, 2, 1);
+    '..kkkkkkkkkk..',
+    '.kCCCCCCCCCCk.',
+    'kCCCCCCCCCCCCk',
+    'kCCCCCCCCCCCCk',
+    'kRCCCCCCCCCCRk',
+    '.kRCCCCCCCCRk.',
+    '..kkRRRRRRkk..',
+  ], 11, 20, { k: O, C, R: CD });
+  px(ctx, CD, 14, 25, 8, 1);
+  px(ctx, O, 16, 20, 6, 4); px(ctx, '#8a5b46', 16, 20, 4, 2); px(ctx, '#a97a63', 16, 20, 2, 1);
 
   if (exp === 'drown' || exp === 'pain') {
-    for (const ex of [4, 12]) { px(ctx, O, ex, 8, 3, 1); px(ctx, CPAL.furDD, ex, 7, 3, 1); }
+    for (const ex of [8, 24]) { px(ctx, O, ex, 16, 6, 2); px(ctx, CPAL.furDD, ex, 14, 6, 2); }
     const g = Math.floor(t * 4) & 1;
-    px(ctx, O, 7, 13, 5, 2 + g);
-    px(ctx, CPAL.bloodD, 8, 14, 3, g);
+    px(ctx, O, 14, 27, 10, 4 + g * 2);
+    px(ctx, CPAL.bloodD, 16, 29, 6, g * 2);
+    if (world) ctx.restore();
     return;
   }
   const shut = blink || exp === 'happy';
-  for (const ex of [4, 12]) {
-    if (shut) { px(ctx, O, ex, 8, 3, 1); continue; }
-    const big = exp === 'surprised' ? 1 : 0;
-    px(ctx, O, ex - big, 6 - big, 3 + big * 2, 4 + big * 2);
-    px(ctx, CPAL.white, ex, 7, 2, 2);
-    px(ctx, E, ex + 1, 7);
-    px(ctx, W, ex, 7);
+  for (const ex of [8, 24]) {
+    if (shut) { px(ctx, O, ex, 16, 6, 2); px(ctx, CPAL.furDD, ex, 15, 6, 1); continue; }
+    const big = exp === 'surprised' ? 2 : 0;
+    px(ctx, O, ex - big, 12 - big, 6 + big * 2, 8 + big * 2);
+    px(ctx, CPAL.white, ex, 14, 4, 4);
+    px(ctx, E, ex + 1, 14, 3, 3);
+    px(ctx, W, ex, 14, 2, 2);
   }
   // brows say the mood at this size more than the eyes do
   if (exp === 'angry') {
-    px(ctx, CPAL.furDD, 3, 5, 4, 1); px(ctx, CPAL.furDD, 5, 6, 2, 1);
-    px(ctx, CPAL.furDD, 12, 5, 4, 1); px(ctx, CPAL.furDD, 12, 6, 2, 1);
-  } else if (exp === 'surprised') { px(ctx, CPAL.furDD, 3, 4, 4, 1); px(ctx, CPAL.furDD, 12, 4, 4, 1); }
+    px(ctx, CPAL.furDD, 6, 10, 8, 2); px(ctx, CPAL.furDD, 10, 12, 5, 2);
+    px(ctx, CPAL.furDD, 24, 10, 8, 2); px(ctx, CPAL.furDD, 23, 12, 5, 2);
+  } else if (exp === 'surprised') { px(ctx, CPAL.furDD, 6, 8, 8, 2); px(ctx, CPAL.furDD, 24, 8, 8, 2); }
   // mouth
-  if (exp === 'happy') { px(ctx, O, 7, 14, 5, 1); px(ctx, O, 6, 13); px(ctx, O, 12, 13); px(ctx, CPAL.white, 8, 13, 3, 1); }
-  else if (exp === 'angry') { px(ctx, O, 7, 14, 5, 2); px(ctx, CPAL.white, 8, 14); px(ctx, CPAL.white, 10, 14); }
-  else if (exp === 'talk') { const o = Math.floor(t * 9) & 1; px(ctx, O, 8, 13, 4, 2 + o); px(ctx, CPAL.blood, 9, 14, 2, o); }
-  else if (exp === 'surprised') { px(ctx, O, 8, 13, 3, 3); px(ctx, CPAL.bloodD, 9, 14); }
-  else { px(ctx, O, 7, 14, 5, 1); }
+  if (exp === 'happy') {
+    px(ctx, O, 14, 28, 10, 2); px(ctx, O, 12, 26, 2, 2); px(ctx, O, 24, 26, 2, 2);
+    px(ctx, CPAL.white, 16, 26, 6, 2);
+  } else if (exp === 'angry') {
+    px(ctx, O, 14, 28, 10, 4); px(ctx, CPAL.white, 16, 28, 2, 2); px(ctx, CPAL.white, 20, 28, 2, 2);
+  } else if (exp === 'talk') {
+    const o = Math.floor(t * 9) & 1; px(ctx, O, 16, 26, 8, 4 + o * 2); px(ctx, CPAL.blood, 18, 28, 4, o * 2);
+  } else if (exp === 'surprised') { px(ctx, O, 16, 26, 6, 6); px(ctx, CPAL.bloodD, 18, 28, 2, 2); }
+  else { px(ctx, O, 14, 28, 10, 2); }
   // two whiskers a side, short, so they do not read as a moustache
-  px(ctx, CD, 4, 12, 2, 1); px(ctx, CD, 13, 12, 2, 1);
+  px(ctx, CD, 7, 24, 5, 1); px(ctx, CD, 7, 26, 4, 1);
+  px(ctx, CD, 26, 24, 5, 1); px(ctx, CD, 27, 26, 4, 1);
+  if (world) ctx.restore();
 }
 
 // ---- cigar (clamped in the muzzle, ember at the far end) ------------------
+//  9 x 4 world units, anchored at world (0, 2) — unchanged.
 function buildCigar() {
-  const c = newCan(9, 4), ctx = c.getContext('2d');
-  stamp(ctx, [
-    'kkkkkkk..',
-    'kDDDDDek.',
-    'kDdddDEe.',
-    'kkkkkkk..',
-  ], 0, 0, { k: CPAL.out, D: CPAL.woodDD, d: CPAL.woodD, e: CPAL.ember, E: CPAL.emberL });
-  px(ctx, CPAL.goldD, 2, 2);
-  return spriteFrom(c, 0, 2);
+  const c = newCanHi(9, 4), ctx = c.getContext('2d');
+  for (let x = 0; x < 15; x++) {
+    px(ctx, CPAL.out, x, 1, 1, 6);
+    px(ctx, x & 1 ? CPAL.woodDD : CPAL.woodD, x, 2, 1, 4);
+    px(ctx, CPAL.woodD, x, 2);
+  }
+  px(ctx, CPAL.goldD, 4, 2, 2, 4); px(ctx, CPAL.goldL, 4, 2, 2, 1);
+  px(ctx, CPAL.out, 15, 2, 1, 4);
+  px(ctx, CPAL.ember, 15, 3, 2, 2); px(ctx, CPAL.emberL, 16, 3, 1, 1);
+  px(ctx, '#3a3a3a', 13, 2, 2, 1);
+  return spriteFromHi(c, 0, 4);
 }
 
 // ---- arm (shoulder at the anchor, paw at the far end) ---------------------
+//  11 x 6 world units, anchored at world (1, 3) — unchanged.
 function buildOtterArm() {
-  const c = newCan(11, 6), ctx = c.getContext('2d');
-  stamp(ctx, [
-    '.kkkkkkk..',
-    'kdffffdDk.',
-    'kfffffflDk',
-    'kdffffdDk.',
-    '.kkkkkkk..',
-  ], 0, 0, { k: CPAL.out, f: CPAL.fur, d: CPAL.furD, D: CPAL.furDD, l: CPAL.furL });
-  px(ctx, CPAL.furL, 2, 1, 4, 1);
-  // leather cuff, then the paw
-  px(ctx, CPAL.lea, 6, 1, 2, 3); px(ctx, CPAL.leaL, 6, 1, 2, 1);
-  px(ctx, CPAL.out, 8, 1, 3, 4);
-  px(ctx, CPAL.furD, 8, 2, 2, 2);
-  px(ctx, CPAL.fur, 8, 2, 1, 1);
-  return spriteFrom(c, 1, 3);
+  const c = newCanHi(11, 6), ctx = c.getContext('2d');
+  // the sleeve of his coat, the cuff, then the paw
+  for (let x = 0; x < 15; x++) {
+    const hw = x < 2 ? 3 : x < 10 ? 4 : 3;
+    px(ctx, CPAL.out, x, 6 - hw, 1, hw * 2);
+    px(ctx, CPAL.furD, x, 7 - hw, 1, hw * 2 - 2);
+    px(ctx, CPAL.fur, x, 8 - hw, 1, hw * 2 - 4);
+    px(ctx, CPAL.furL, x, 8 - hw, 1, 1);
+  }
+  for (let x = 2; x < 12; x++) if (hash2(x * 5, 9) > 0.6) px(ctx, CPAL.furDD, x, 8 + (x & 1));
+  // leather cuff with two stitches
+  px(ctx, CPAL.out, 13, 2, 3, 8); px(ctx, CPAL.lea, 13, 3, 3, 6);
+  px(ctx, CPAL.leaL, 13, 3, 3, 2); px(ctx, CPAL.creamD, 14, 5, 1, 4);
+  // the paw: three fingers curled round a grip, with claws
+  px(ctx, CPAL.out, 16, 2, 6, 8);
+  px(ctx, CPAL.furD, 17, 3, 4, 6);
+  px(ctx, CPAL.fur, 17, 3, 3, 3);
+  px(ctx, CPAL.furL, 17, 3, 2, 1);
+  px(ctx, CPAL.out, 17, 5, 4, 1); px(ctx, CPAL.out, 17, 7, 4, 1);
+  px(ctx, CPAL.bone, 21, 3, 1, 1); px(ctx, CPAL.bone, 21, 6, 1, 1);
+  return spriteFromHi(c, 2, 6);
 }
 
 function buildOtterTail() {
-  const W = 14, H = 8;
-  const f = blobField(W, H, [{ x: 3, y: 4, rx: 4.0, ry: 3.6 }, { x: 7, y: 4, rx: 4.2, ry: 3.0 }, { x: 11, y: 4, rx: 3.2, ry: 2.2 }]);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.furDD, CPAL.furD, CPAL.fur], { outline: CPAL.out, lift: 0.22, smooth: 1, contrast: 0.7 });
-  for (let x = 2; x < 12; x++) if (f[3 * W + x] > 0.2) px(ctx, CPAL.furL, x, 3);
-  return spriteFrom(c, 2, 4);
+  const c = newCanHi(14, 8), ctx = c.getContext('2d');
+  // flat, rudder-like, thick at the root and tapering: a real otter tail
+  const key = [[1, 2], [5, 4.6], [11, 5.2], [17, 4.6], [22, 3.4], [26, 1.6]];
+  const halfAt = x => {
+    if (x < key[0][0] || x > key[key.length - 1][0]) return -1;
+    for (let i = 1; i < key.length; i++) {
+      if (x > key[i][0]) continue;
+      const u = (x - key[i - 1][0]) / (key[i][0] - key[i - 1][0]);
+      return key[i - 1][1] + (key[i][1] - key[i - 1][1]) * (u * u * (3 - 2 * u));
+    }
+    return -1;
+  };
+  for (let x = 0; x < 28; x++) {
+    const hw = halfAt(x); if (hw < 0.8) continue;
+    const y0 = Math.round(8 - hw), y1 = Math.round(8 + hw);
+    for (let y = y0; y <= y1; y++) {
+      if (y === y0 || y === y1) { px(ctx, CPAL.out, x, y); continue; }
+      const t = (y - y0) / (y1 - y0);
+      px(ctx, t < 0.20 ? CPAL.furL : t < 0.55 ? CPAL.fur : t < 0.80 ? CPAL.furD : CPAL.furDD, x, y);
+    }
+  }
+  for (let x = 3; x < 25; x++) if (halfAt(x) > 2) px(ctx, CPAL.furLL || CPAL.furL, x, Math.round(8 - halfAt(x)) + 1);
+  for (let x = 2; x < 26; x++) for (let y = 3; y < 14; y++) {
+    if (halfAt(x) < 2 || Math.abs(y - 8) > halfAt(x) - 2) continue;
+    if (hash2(x * 7 + 2, y * 3) > 0.94) px(ctx, CPAL.furDD, x, y);
+  }
+  return spriteFromHi(c, 4, 8);
 }
-
 
 // ===========================================================================
 //  THE CANONICAL CAST  —  one set of character sprites, used everywhere
@@ -678,11 +952,17 @@ function buildOtterTail() {
 //  pose is missing, add it here and it is instantly the same character in
 //  every beat of the game.
 //
-//  ALL of it is 1 art pixel per world unit. Draw it at an INTEGER scale
-//  (1, 2, 3) so the chunky grid stays square; the gameplay rig draws it at 1.
+//  It is all rasterized at DETAIL art pixels per world unit and reports its
+//  size in WORLD units, so draw it at an INTEGER scale (1, 2, 3) and every
+//  art pixel stays square; the gameplay rig draws it at 1. The exceptions
+//  are named above: CH.side, CH.manatee, CH.otterHead and CH.otterStand are
+//  one art pixel per world unit because src/death.js measures their rasters.
 //
 //  TOP-DOWN (bow/nose to the RIGHT, mirror with ctx.scale(-1,1)):
-//    CH.manatee / CH.manateeArmor      whole body, unarmoured / armoured
+//    CH.manateeHi / CH.manateeArmor    whole body, unarmoured / armoured
+//    CH.manatee                        the same body, baked to 1 art pixel
+//                                      per world unit, for the scenes that
+//                                      measure her raster rather than draw it
 //    CH.manateeHurtP / CH.manateeHurt  the same, white-hot for a hit frame
 //    CH.manateeBelly / CH.manateeBellyA  belly-up (she has rolled over)
 //    CH.manPFore/manPFluke (+manA...)  the body cut at the peduncle, for a
@@ -703,17 +983,23 @@ function buildOtterTail() {
 // ===========================================================================
 
 // ---- belly-up: the same body, drained of the back's colour ---------------
+//  Works for both halves of the cast: the top-down hero is hi-res, the
+//  side-on cinematic body is not, so the marks are keyed off the raster it
+//  is actually given rather than off one set of constants.
 function buildManateeBelly(src) {
-  const c = newCan(src.c.width, src.c.height), ctx = c.getContext('2d');
-  ctx.drawImage(src.c, 0, 0);
+  const W = src.c.width, H = src.c.height;
+  const c = newCan(W, H), ctx = c.getContext('2d');
+  drawRaw(ctx, src.c, 0, 0);
   ctx.globalCompositeOperation = 'source-atop';
   ctx.globalAlpha = 0.72; ctx.fillStyle = CPAL.belly;
-  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillRect(0, 0, W, H);
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  const k = src.hi ? AS : 1, cy = Math.round(H / 2);
   // a pale keel line down the middle and two old boat scars across it
-  for (let x = 10; x < src.c.width - 8; x += 2) px(ctx, '#c9d6e2', x, MAN_CY);
-  for (let i = 0; i < 7; i++) { px(ctx, CPAL.blood, 34 + i, 11 + i); px(ctx, CPAL.bloodD, 34 + i, 12 + i); }
-  for (let i = 0; i < 5; i++) px(ctx, CPAL.bloodD, 52 + i, 30 - i);
+  for (let x = 10 * k; x < W - 8 * k; x += 2) px(ctx, '#c9d6e2', x, cy);
+  for (let i = 0; i < 7 * k; i++) { px(ctx, CPAL.blood, 34 * k + i, 11 * k + i); px(ctx, CPAL.bloodD, 34 * k + i, 12 * k + i); }
+  for (let i = 0; i < 5 * k; i++) px(ctx, CPAL.bloodD, 52 * k + i, 30 * k - i);
+  if (src.hi) { HIRES.add(c); return { c, w: src.w, h: src.h, ax: src.ax, ay: src.ay, hi: 1 }; }
   return spriteFrom(c, src.ax, src.ay);
 }
 
@@ -881,12 +1167,15 @@ function drawManateeSide(ctx, m, t) {
 //  OTTER, STANDING — side-on, facing RIGHT. For every scene where he is on
 //  his feet: working, talking, holding something out in front of him.
 // ===========================================================================
+//  16 x 22 world units, anchored at world (8, 12) — unchanged, so the shore
+//  scene's joints still land. CH.otterStand is the 1x bake of this (see
+//  bake1x); CH.otterStandHi is what actually gets drawn.
 function buildOtterStand() {
-  const W = 16, H = 22, c = newCan(W, H), ctx = c.getContext('2d');
-  const M = { k: CPAL.out, C: CPAL.cape, c: CPAL.capeD, f: CPAL.fur, d: CPAL.furD,
-              l: CPAL.furL, r: CPAL.cream, e: CPAL.lea, E: CPAL.leaL };
+  const c = newCanHi(16, 22), ctx = c.getContext('2d');
+  const M = { k: CPAL.out, C: CPAL.cape, c: CPAL.capeD, L: CPAL.capeL, f: CPAL.fur, d: CPAL.furD,
+              D: CPAL.furDD, l: CPAL.furL, r: CPAL.cream, R: CPAL.creamD, e: CPAL.lea, E: CPAL.leaL };
   // cape hanging down his back
-  stamp(ctx, [
+  stampUp(ctx, [
     '.kkkk.',
     'kcCCck',
     'kCCCCk',
@@ -894,9 +1183,11 @@ function buildOtterStand() {
     'kcCCck',
     'kCCCCk',
     '.kcck.',
-  ], 1, 4, M);
+  ], 2, 8, M);
+  for (let y = 11, i = 0; y < 34; y += 3, i++) px(ctx, CPAL.capeD, 5 + (i & 1) * 4, y, 1, 3);
+  for (let x = 4; x < 12; x += 3) px(ctx, CPAL.capeL, x, 10, 2, 1);
   // body: chest forward, belly, haunches
-  stamp(ctx, [
+  stampUp(ctx, [
     '..kkkkk..',
     '.kddfffk.',
     'kdffffrk.',
@@ -906,16 +1197,26 @@ function buildOtterStand() {
     'kddffrrk.',
     'kdddffkk.',
     '.kkkkk...',
-  ], 4, 3, M);
+  ], 8, 6, M);
+  // fur grain over the back, a lit chest edge and a shaded belly fold
+  for (let y = 9; y < 26; y++) for (let x = 9; x < 24; x++) {
+    if (hash2(x * 5, y * 7 + 1) > 0.94) px(ctx, CPAL.furD, x, y);
+    else if (hash2(x * 13, y * 3) > 0.975) px(ctx, CPAL.furL, x, y);
+  }
+  for (let i = 0; i < 9; i++) px(ctx, CPAL.creamD, 20 - (i >> 2), 12 + i);
   // hind legs and webbed feet
-  stamp(ctx, ['kddk', 'kdfk', 'kddk', 'kkkk'], 5, 12, M);
-  px(ctx, CPAL.out, 4, 16, 7, 3);
-  px(ctx, CPAL.furD, 5, 17, 5, 1);
-  px(ctx, CPAL.out, 7, 19, 7, 2); px(ctx, CPAL.furD, 8, 19, 5, 1);
-  // belt and buckle
-  px(ctx, CPAL.lea, 5, 11, 6, 2); px(ctx, CPAL.leaL, 5, 11, 6, 1);
-  px(ctx, CPAL.gold, 8, 11, 2, 2); px(ctx, CPAL.goldL, 8, 11);
-  return spriteFrom(c, 8, 12);
+  stampUp(ctx, ['kddk', 'kdfk', 'kddk', 'kkkk'], 10, 24, M);
+  px(ctx, CPAL.out, 8, 32, 14, 6);
+  px(ctx, CPAL.furD, 10, 34, 10, 2); px(ctx, CPAL.furDD, 10, 36, 10, 1);
+  px(ctx, CPAL.out, 14, 38, 14, 4); px(ctx, CPAL.furD, 16, 39, 10, 2);
+  for (let i = 0; i < 3; i++) { px(ctx, CPAL.furDD, 11 + i * 3, 34, 1, 3); px(ctx, CPAL.furDD, 17 + i * 3, 39, 1, 3); }
+  // belt, buckle and a knife on his hip
+  px(ctx, CPAL.leaD, 10, 22, 12, 5); px(ctx, CPAL.lea, 10, 22, 12, 3); px(ctx, CPAL.leaL, 10, 22, 12, 1);
+  for (let x = 11; x < 22; x += 3) px(ctx, CPAL.creamD, x, 25);
+  px(ctx, CPAL.out, 16, 21, 5, 7); px(ctx, CPAL.goldD, 17, 22, 3, 5);
+  px(ctx, CPAL.gold, 17, 22, 2, 4); px(ctx, CPAL.goldL, 17, 22, 2, 1);
+  px(ctx, CPAL.out, 9, 26, 3, 8); px(ctx, CPAL.metL, 10, 27, 1, 6); px(ctx, CPAL.woodD, 10, 26, 1, 2);
+  return spriteFromHi(c, 16, 24);
 }
 // o: {x, y, scale, facing, exp, blink, t, rage, arms:[near,far], hold, tail, alpha}
 function drawOtterStanding(ctx, o, t) {
@@ -933,7 +1234,8 @@ function drawOtterStanding(ctx, o, t) {
   // far arm
   ctx.save(); ctx.translate(1, -1); ctx.rotate(arms[1]);
   ctx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay); ctx.restore();
-  ctx.drawImage(CH.otterStand.c, -CH.otterStand.ax, -CH.otterStand.ay);
+  const stand = CH.otterStandHi || CH.otterStand;
+  ctx.drawImage(stand.c, -stand.ax, -stand.ay);
   // near arm, and whatever is in his paw
   ctx.save(); ctx.translate(2, -2); ctx.rotate(arms[0]);
   ctx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay);
@@ -984,17 +1286,24 @@ function drawOtter(ctx, o, t) {
 // ===========================================================================
 const CH = {};
 function buildCharacters() {
-  CH.manatee      = buildManateeBody(false);
+  // Her unarmoured body is kept in two records for the same reason his head
+  // is (see below): CH.manateeHi is the hi-res raster everything draws, and
+  // CH.manatee is its one-art-pixel-per-world-unit bake. src/death.js reads
+  // CH.manatee's canvas SIZE to work out where the gear went into her —
+  // m.c.width * 0.56 - m.ax, in world units — and that only comes out on her
+  // shoulder if the canvas it measures is square with the world grid.
+  CH.manateeHi    = buildManateeBody(false);
+  CH.manatee      = bake1x(CH.manateeHi);
   CH.manateeArmor = buildManateeBody(true);
   CH.manateeHurt  = tintFlat(CH.manateeArmor, '#ffffff', 0.85);
-  CH.manateeHurtP = tintFlat(CH.manatee, '#ffffff', 0.85);
+  CH.manateeHurtP = tintFlat(CH.manateeHi, '#ffffff', 0.85);
   // belly-up, for the moment she rolls over: the same body, drained of its
   // back and given a pale keel line, so no scene has to redraw her
-  CH.manateeBelly = buildManateeBelly(CH.manatee);
+  CH.manateeBelly = buildManateeBelly(CH.manateeHi);
   CH.manateeBellyA = buildManateeBelly(CH.manateeArmor);
   // the same bodies, cut at the peduncle so the rig can let the fluke lag
-  CH.manPFluke = slice1(CH.manatee, 0, MAN_CUT_T);
-  CH.manPFore  = slice1(CH.manatee, MAN_CUT_F, MAN_W);
+  CH.manPFluke = slice1(CH.manateeHi, 0, MAN_CUT_T);
+  CH.manPFore  = slice1(CH.manateeHi, MAN_CUT_F, MAN_W);
   CH.manAFluke = slice1(CH.manateeArmor, 0, MAN_CUT_T);
   CH.manAFore  = slice1(CH.manateeArmor, MAN_CUT_F, MAN_W);
   CH.manPFlukeH = tintFlat(CH.manPFluke, '#ffffff', 0.85);
@@ -1005,18 +1314,28 @@ function buildCharacters() {
   CH.saddle       = buildSaddle();
   CH.flags        = []; for (let i = 0; i < 8; i++) CH.flags.push(buildFlag(i));
   CH.otterTorso   = buildOtterTorso();
-  CH.otterHead    = buildOtterHead();
+  // His head and his standing body are built hi-res and kept in TWO records:
+  // the `...Hi` one is what gets drawn, and CH.otterHead / CH.otterStand are
+  // one-art-pixel-per-world-unit bakes of exactly the same silhouette.
+  // src/death.js cuts his hat off, builds his bare skull and bakes his rim
+  // lights straight off those canvases in canvas pixels, and then places the
+  // results with the record's WORLD anchors — which only closes if the
+  // canvas it read is square with the world grid. Nothing else changes: the
+  // two records carry the same w/h/ax/ay they always did.
+  CH.otterHeadHi  = buildOtterHeadHi();
+  CH.otterHead    = bake1x(CH.otterHeadHi);
   CH.otterArm     = buildOtterArm();
   CH.otterTail    = buildOtterTail();
   CH.cigar        = buildCigar();
   CH.otterRage    = tintFlat(CH.otterTorso, '#ff4a26', 0.4);
-  CH.headRage     = tintFlat(CH.otterHead, '#ff4a26', 0.35);
-  // head canvas we redraw the face onto each frame (1x, like its source)
-  CH.headBuf = newCan(CH.otterHead.w, CH.otterHead.h);
+  CH.headRage     = tintFlat(CH.otterHeadHi, '#ff4a26', 0.35);
+  // head canvas we redraw the face onto each frame (hi-res, like its source)
+  CH.headBuf = newCanHi(CH.otterHead.w, CH.otterHead.h);
   CH.headBufCtx = CH.headBuf.getContext('2d');
   // ---- the side-on set every cinematic shares ----------------------------
   CH.side = buildManateeSideSet();
-  CH.otterStand = buildOtterStand();
+  CH.otterStandHi = buildOtterStand();
+  CH.otterStand = bake1x(CH.otterStandHi);
   CH.drawManateeSide = drawManateeSide;
   CH.sideFace = manateeSideFace;
   CH.drawOtter = drawOtter;
@@ -1031,7 +1350,7 @@ function buildCharacters() {
 function otterHeadWithFace(exp, blink, t, rage) {
   const ctx = CH.headBufCtx;
   ctx.clearRect(0, 0, CH.headBuf.width, CH.headBuf.height);
-  drawRaw(ctx, (rage ? CH.headRage : CH.otterHead).c, 0, 0);
+  drawRaw(ctx, (rage ? CH.headRage : CH.otterHeadHi).c, 0, 0);
   drawOtterFace(ctx, exp, blink, t);
   return CH.headBuf;
 }
@@ -1100,20 +1419,20 @@ function _snapXY(ctx, x, y) {
 // instead of being welded to them. The two cuts overlap, and the forebody is
 // drawn OVER the fluke, so the join stays closed at every angle the fluke
 // reaches. No pixel is redrawn — these are the same rasters, split.
-// She is authored at 1 art pixel per world unit, so these cuts are in world
-// units too, re-derived for the coarse raster: the waist sits at x=26 and the
-// two cuts straddle it with a three-pixel overlap, which at this resolution
-// is six screen pixels of closed join at every angle the fluke reaches.
-const MAN_PIVX = 27;                    // peduncle pivot, art pixels
-const MAN_CUT_F = 24;                   // forebody keeps art x >= this
-const MAN_CUT_T = 30;                   // fluke keeps art x < this
-const MAN_PIV = MAN_PIVX - MAN_CX;      // pivot in world units, sprite-local
+// Re-derived for the fine raster: the peduncle waist of the new keyed body
+// sits at art x = 40 (world -15), so the pivot goes there and the two cuts
+// straddle it with a TWELVE art pixel overlap — six world units, twelve
+// screen pixels of closed join at every angle the fluke reaches.
+const MAN_PIVX = 40;                    // peduncle pivot, art pixels
+const MAN_CUT_F = 34;                   // forebody keeps art x >= this
+const MAN_CUT_T = 46;                   // fluke keeps art x < this
+const MAN_PIV = (MAN_PIVX - MAN_CX) / AS;   // pivot in world units, sprite-local
 // The slice is cropped to its own ink, so the two halves together cost the
 // same to blit as the one body they came from.
 function slice1(src, x0, x1) {
   const W = src.c.width, H = src.c.height;
   const tmp = newCan(W, H), tg = tmp.getContext('2d');
-  tg.drawImage(src.c, 0, 0);
+  drawRaw(tg, src.c, 0, 0);
   const d = tg.getImageData(0, 0, W, H).data;
   let bx0 = x1, bx1 = x0, by0 = H, by1 = 0;
   for (let y = 0; y < H; y++) for (let x = x0; x < Math.min(x1, W); x++) {
@@ -1123,8 +1442,8 @@ function slice1(src, x0, x1) {
   }
   if (bx1 <= bx0) { bx0 = x0; bx1 = x0 + 1; by0 = 0; by1 = 1; }
   const c = newCan(bx1 - bx0, by1 - by0), g = c.getContext('2d');
-  g.drawImage(tmp, -bx0, -by0);
-  return spriteFrom(c, MAN_CX - bx0, MAN_CY - by0);
+  drawRaw(g, tmp, -bx0, -by0);
+  return spriteFromHi(c, MAN_CX - bx0, MAN_CY - by0);
 }
 
 // ===========================================================================
@@ -1134,6 +1453,11 @@ function slice1(src, x0, x1) {
 //  Nothing in that state is used raw: `_advance` eases every channel first,
 //  so a step input becomes a move with a beginning, a middle and an end.
 // ===========================================================================
+// The rider group's scale on her back. Everything he is made of is authored
+// at the size he STANDS at (src/death.js and the cinematics place his joints
+// in those units, and they are not ours to move), so the one place he is a
+// passenger is the one place he is scaled.
+const RIDER = 0.78;
 const Rig = {
   blinkT: 0, blink: false, cigarSmoke: 0,
 
@@ -1358,24 +1682,32 @@ const Rig = {
       }
     } else {
       // slices missing (an odd build order) — fall back to the whole body
-      const body = s.hurt ? (arm ? CH.manateeHurt : CH.manateeHurtP) : (arm ? CH.manateeArmor : CH.manatee);
+      const body = s.hurt ? (arm ? CH.manateeHurt : CH.manateeHurtP) : (arm ? CH.manateeArmor : CH.manateeHi);
       ctx.drawImage(body.c, -body.ax, -body.ay);
     }
 
     // ---- rider (hidden while belly-up mid-roll, or before he boards)
     if (!belly && !s.riderHidden && riderFade > 0.01) {
       if (riderFade < 1) ctx.globalAlpha = a0 * riderFade;
-      // saddle
-      ctx.save(); ctx.translate(8, 0);
+      // saddle. The rider group is drawn a little under her own scale: an
+      // otter riding a manatee is about a quarter of her length, and at 1:1
+      // he covers the back she is wearing armour on.
+      ctx.save(); ctx.translate(9, 0); ctx.scale(RIDER, RIDER);
       ctx.drawImage(CH.saddle.c, -CH.saddle.ax, -CH.saddle.ay); ctx.restore();
       // flag whipping behind — the pole lags her yaw, so it cracks on a turn
       const flag = CH.flags[Math.floor(this._flagPh) & 7];
       const poleLag = clamp((this._tilt.x - this._tiltSlow) * 2.2, -0.34, 0.34);
       // The pole is tall enough to carry the flag clear of her back: over the
       // body it would only hide the armour it is flying above.
-      ctx.save(); ctx.translate(-20, 3); ctx.rotate(-0.13 + poleLag + this._fluke.x * 0.18);
-      px(ctx, CPAL.woodD, -1, -27, 2, 29); px(ctx, CPAL.wood, -1, -27, 1, 29);
-      ctx.drawImage(flag.c, -flag.ax, -flag.ay - 19);
+      ctx.save(); ctx.translate(-16, 4); ctx.rotate(-0.13 + poleLag + this._fluke.x * 0.18);
+      // the pole itself is drawn on the ART grid, so it is a crisp two-art-
+      // pixel spar with a lit side rather than a slab two world units wide
+      ctx.save(); ctx.scale(1 / AS, 1 / AS);
+      px(ctx, CPAL.out, -2, -50, 4, 54);
+      px(ctx, CPAL.woodDD, -1, -49, 2, 52); px(ctx, CPAL.woodD, -1, -49, 1, 52);
+      px(ctx, CPAL.wood, -1, -49, 1, 8);
+      ctx.restore();
+      ctx.drawImage(flag.c, -flag.ax, -flag.ay - 20);
       ctx.restore();
 
       // The otter rides over the shoulders, sized like a passenger, and he is
@@ -1383,7 +1715,8 @@ const Rig = {
       // fore and aft with whatever she just did to him.
       const bob = -Math.cos(ph + 0.55 - 0.85) * drive * 0.9;
       ctx.save();
-      ctx.translate(8, -2 + bob + this._kick.x * 0.5);
+      ctx.translate(9, -2 + bob + this._kick.x * 0.5);
+      ctx.scale(RIDER, RIDER);
       ctx.rotate(this._lean.x + this._sway.x * 0.5);
 
       // aim in the manatee's flipped local space, one flavour per body part
@@ -1396,8 +1729,8 @@ const Rig = {
       const oPinch = 0.45 + 0.55 * _eo(this._oflip);
 
       // tail curls out behind him, trailing the lean and the sway
-      ctx.save(); ctx.translate(-7, 3);
-      ctx.rotate(2.5 + _stroke(ph - 1.4, 0.4) * 0.16 - this._lean.x * 0.7 - this._sway.x);
+      ctx.save(); ctx.translate(-9, 5);
+      ctx.rotate(2.95 + _stroke(ph - 1.4, 0.4) * 0.16 - this._lean.x * 0.7 - this._sway.x);
       ctx.drawImage(CH.otterTail.c, -CH.otterTail.ax, -CH.otterTail.ay);
       ctx.restore();
 
@@ -1543,8 +1876,8 @@ const Toon = {
 
 // ===========================================================================
 //  BOATS — procedural top-down hulls, bow RIGHT, rasterized at DETAIL art
-//  pixels per world unit (they are the fine-drawn machinery the chunky
-//  animal is thrown against, so they keep every pixel they can get).
+//  pixels per world unit (they are the machinery the animal is thrown
+//  against, and at this size they can carry real naval architecture).
 //
 //  A hull is built in this order, and each step only ever draws over the one
 //  before it: hull form -> topside bands -> strakes -> boot-top -> wear ->
@@ -1560,6 +1893,21 @@ const Toon = {
 //      mast, name} — everything optional is inferred from her proportions,
 //  so the ten hulls registered from entities.js get the treatment too.
 // ===========================================================================
+// ---------------------------------------------------------------------------
+//  HOW BIG THE FLEET IS.  The twelve hulls in `defs` below carry len/beam in
+//  WORLD units and every one of them has been DOUBLED from what it was, so
+//  the fleet towers over the animal instead of being outgrown by her. The
+//  frame derivation is untouched — the canvas is still (len + 4) x
+//  (beam * 2 + 6) world units with the hull from X0 = 2*AS — so everything
+//  that paints into a finished hull keeps its coordinates.
+//
+//  The ten hulls registered from src/entities.js scale themselves: that file
+//  measures the growth of these twelve off the BUILT sprites and applies the
+//  same factor to its own definitions before calling in here, and derives
+//  every collision radius from the hull it belongs to. So the multiplier
+//  must live in this table and NOT inside buildBoat, or it would be applied
+//  twice to those ten.
+// ---------------------------------------------------------------------------
 // pseudo-lettering: the ticks of a name at this size, never real glyphs
 function nameTicks(ctx, x, y, n, col) {
   for (let i = 0, cx = x; i < n; i++) {
@@ -1578,6 +1926,9 @@ function buildBoat(o) {
   const deck = o.deck || CPAL.wood, deckD = o.deckD || CPAL.woodD;
   const X0 = 2 * AS;
   const RUST = '#8a4526', RUSTL = '#b4653a', GRIME = '#2e3239';
+  const BOOT = o.boot || '#5b2a2c';            // boot-top, at the waterline
+  const ANTI = o.anti || '#261519';            // antifouling below it
+  const R = Math.round;
 
   // ---- hull form. Which class of boat this is, read off her proportions
   //      unless the definition says otherwise.
@@ -1585,6 +1936,8 @@ function buildBoat(o) {
   const bow = o.bow || (o.gear === 'turret' ? 'ram' : ratio > 0.26 ? 'bluff' : ratio < 0.20 ? 'fine' : 'spoon');
   const sternW = o.stern !== undefined ? o.stern : (ratio > 0.24 ? 0.94 : 0.64);
   const bmax = o.bmax || (bow === 'bluff' ? 0.46 : 0.38);
+  // steel or wood decides the topside treatment: plating and welds, or planks
+  const steel = o.steel !== undefined ? o.steel : !!(o.gear === 'turret' || o.cabin && o.beam >= 16);
   const halfW = x => {
     const u = clamp((x - X0) / L, 0, 1);
     let w;
@@ -1601,317 +1954,472 @@ function buildBoat(o) {
   const hwAt = [];
   for (let x = 0; x < W; x++) hwAt[x] = (x >= X0 && x <= X0 + L) ? halfW(x) : -1;
   const solid = (x, y) => x >= 0 && x < W && hwAt[x] > 1.2 && Math.abs(y - cy) < hwAt[x];
+  // the deck edge, inboard of the sheer by however far the topsides flare
+  const flare = Math.max(2, R(B * 0.13));
+  const freeb = Math.max(1, R(B * 0.07));         // freeboard: cap rail width
+  const deckHalf = x => hwAt[x] - flare - freeb;
 
-  // ---- topsides: a lit cap rail to port, a shadowed one to starboard, the
-  //      boot-top down near the waterline and a dark garboard under that
+  // ---- topsides, painted as rings in from the sheer: antifouling at the
+  //      waterline, the boot-top over it, the painted topside above that and
+  //      the cap rail along the deck edge. The flare is what makes a hull
+  //      read as a hull from above instead of a flat lozenge.
   const stripe = o.stripe || null;
   for (let x = X0; x <= L + X0 - 1; x++) {
     const hw = hwAt[x]; if (hw < 1.2) continue;
-    const y0 = Math.round(cy - hw), y1 = Math.round(cy + hw);
+    const y0 = R(cy - hw), y1 = R(cy + hw);
     for (let y = y0; y <= y1; y++) {
-      if (y === y0 || y === y1 || x === X0 || x > L + X0 - 2) { px(ctx, CPAL.out, x, y); continue; }
       const n = Math.min(y - y0, y1 - y);          // distance in from the sheer
       const port = y < cy;
       let col;
-      if (n === 1) col = port ? hullL : hullDD;
-      else if (n === 2) col = port ? hull : hullD;
-      else if (n === 3) col = port ? hull : hullD;
+      if (y === y0 || y === y1 || x === X0 || x > L + X0 - 2) col = CPAL.out;
+      else if (n === 1) col = ANTI;
+      else if (n === 2 && flare >= 4) col = BOOT;
+      else if (n < flare) col = port ? hull : hullD;
+      else if (n === flare) col = stripe || (port ? hullL : hullDD);
+      else if (n < flare + freeb) col = port ? hullL : hullD;
+      else if (n === flare + freeb) col = port ? CPAL.out2 : CPAL.out;   // cap rail shadow
       else col = hullD;
-      if (stripe && n === 2) col = stripe;
       px(ctx, col, x, y);
     }
-    // strakes: seams that follow the hull instead of running straight, so
-    // they crowd together at the bow the way real planking does
-    for (const k of [0.52, 0.78]) {
-      const dy = Math.round(hw * k);
-      if (dy > 2) { px(ctx, hullDD, x, cy - dy); px(ctx, hullDD, x, cy + dy); }
+    // plating seams on the steel boats, planking on the wooden ones: both
+    // follow the hull, so they crowd together toward the bow the way the
+    // real thing does
+    if (steel) {
+      if (((x - X0) % Math.max(7, R(L / 14))) === 0) {
+        for (let n = 1; n < flare; n++) { px(ctx, hullDD, x, R(cy - hw) + n); px(ctx, hullDD, x, R(cy + hw) - n); }
+        px(ctx, hullL, x + 1, R(cy - hw) + 1, 1, Math.max(1, flare - 1));
+      }
+    } else {
+      for (const k of [0.46, 0.68, 0.86]) {
+        const dy = R(hw * k);
+        if (dy > 2) { px(ctx, hullDD, x, cy - dy); px(ctx, hullDD, x, cy + dy); }
+      }
+    }
+  }
+  // ---- draught marks at the bow and the stern, on the boot-top
+  for (const mx of [X0 + R(L * 0.06), X0 + R(L * 0.93)]) {
+    const hw = hwAt[mx]; if (hw < 5) continue;
+    for (let i = 0; i < 4; i++) {
+      const y = R(cy - hw) + 1 + i * 2;
+      if (!solid(mx, y)) continue;
+      px(ctx, CPAL.white, mx, y, 1 + (i & 1), 1);
     }
   }
   // ---- wear: rust weeping aft from the fastenings, a patched plate, grime
-  for (let x = X0 + 5; x < L + X0 - 5; x += 9) {
-    const hw = hwAt[x]; if (hw < 4) continue;
-    if (hash2(x * 3, 7) > 0.45) {
-      const len = 2 + Math.floor(hash2(x, 11) * 4);
+  for (let x = X0 + 6; x < L + X0 - 6; x += Math.max(7, R(L / 12))) {
+    const hw = hwAt[x]; if (hw < 6) continue;
+    if (hash2(x * 3, 7) > 0.40) {
+      const len = 2 + Math.floor(hash2(x, 11) * (flare + 2));
       for (let i = 0; i < len; i++) {
-        px(ctx, i ? RUST : RUSTL, x, Math.round(cy - hw) + 1 + i);
-        if (hash2(x, 19) > 0.6) px(ctx, i ? RUST : RUSTL, x + 1, Math.round(cy + hw) - 1 - i);
+        px(ctx, i ? RUST : RUSTL, x, R(cy - hw) + 2 + i);
+        if (hash2(x, 19) > 0.55) px(ctx, i ? RUST : RUSTL, x + 1, R(cy + hw) - 2 - i);
       }
     }
   }
   {
-    const pxx = Math.round(X0 + L * (0.34 + hash2(L, B) * 0.3)), pw = 5 + ((L / 8) | 0) % 4;
+    const pxx = R(X0 + L * (0.34 + hash2(L, B) * 0.3)), pw = Math.max(6, R(L * 0.07));
     const hw = hwAt[pxx];
-    if (hw > 5) {
-      const py = Math.round(cy - hw) + 3;
-      for (let y = py; y < py + 4; y++) for (let x = pxx; x < pxx + pw; x++) if (solid(x, y)) px(ctx, hullDD, x, y);
-      for (let x = pxx; x < pxx + pw; x += 2) { px(ctx, hullL, x, py); px(ctx, GRIME, x, py + 3); }
+    if (hw > 7) {
+      const py = R(cy - hw) + 3;
+      for (let y = py; y < py + Math.max(3, flare - 1); y++) for (let x = pxx; x < pxx + pw; x++) if (solid(x, y)) px(ctx, hullDD, x, y);
+      for (let x = pxx; x < pxx + pw; x += 2) { px(ctx, hullL, x, py); px(ctx, GRIME, x, py + Math.max(2, flare - 2)); }
     }
   }
-  // ---- open deck well: fore-and-aft planking, a king plank, frames, and a
-  //      dark margin where the deck meets the topsides
-  const wellA = Math.round(X0 + L * 0.13), wellB = Math.round(X0 + L * (o.cabin ? 0.80 : 0.84));
+
+  // ---- open deck well: fore-and-aft planking, a king plank, deck beams and
+  //      a dark margin where the deck meets the bulwark
+  const wellA = R(X0 + L * 0.11), wellB = R(X0 + L * (o.cabin ? 0.80 : 0.86));
+  const beamSp = Math.max(6, R(L / 16));
   for (let x = wellA; x <= wellB; x++) {
-    const hw = hwAt[x] - 3 * AS; if (hw < 1.5) continue;
-    const y0 = Math.round(cy - hw), y1 = Math.round(cy + hw);
+    const hw = deckHalf(x) - 1; if (hw < 1.5) continue;
+    const y0 = R(cy - hw), y1 = R(cy + hw);
     for (let y = y0; y <= y1; y++) {
       if (y === y0 || y === y1 || x === wellA || x === wellB) { px(ctx, CPAL.out2, x, y); continue; }
-      let col = ((y - cy) % 4 === 0) ? deckD : deck;
-      if (y === cy) col = deckD;                              // king plank
-      if (((x - wellA) % 11) === 0) col = deckD;              // athwartship frame
-      if (hash2(x * 5, y * 3) > 0.94) col = deckD;            // worn tread
+      const k = Math.abs(y - cy) / Math.max(1, hw);
+      // deck camber: the crown of the deck catches the light, the waterways
+      // at the margins sit in shadow
+      let col = k < 0.30 ? deck : k < 0.72 ? deckD : GRIME;
+      if (((y - cy) % 4) === 0) col = deckD;                    // seams
+      if (y === cy) col = k < 0.3 ? deck : deckD;               // king plank
+      if (y === cy - 1) col = deck;
+      if (((x - wellA) % beamSp) === 0) col = deckD;            // deck beam
+      if (hash2(x * 5, y * 3) > 0.955) col = deckD;             // worn tread
       px(ctx, col, x, y);
     }
+    // the bulwark's inner face, lit to port and dark to starboard
+    px(ctx, hullL, x, y0 - 1); px(ctx, hullDD, x, y1 + 1);
   }
   // ---- thwarts (bench seats) across the well, with a worn top edge
   for (const f of (o.thwarts || [0.34, 0.62])) {
-    const x = Math.round(X0 + L * f), hw = halfW(x) - 2 * AS; if (hw < 1.5) continue;
-    const ya = Math.round(cy - hw), yb = Math.round(cy + hw);
-    for (let y = ya; y <= yb; y++) { px(ctx, hullL, x, y, 2, 1); px(ctx, hullD, x + 1, y); }
-    px(ctx, CPAL.out2, x + 2, ya, 1, yb - ya + 1);
+    const x = R(X0 + L * f), hw = deckHalf(x); if (hw < 1.5) continue;
+    const ya = R(cy - hw), yb = R(cy + hw), tw = Math.max(2, R(L * 0.016));
+    for (let y = ya; y <= yb; y++) { px(ctx, hullL, x, y, tw, 1); px(ctx, hullD, x + tw, y, 1, 1); }
+    px(ctx, CPAL.out2, x + tw + 1, ya, 1, yb - ya + 1);
     px(ctx, CPAL.out2, x - 1, ya, 1, yb - ya + 1);
   }
+
   // ---- transom, outboard motor and skeg at the stern
-  if (o.motor) {
-    const mx = 1, my = cy;
+  if (o.motor && !o.cabin) {
+    const mx = X0 - 2, my = cy;
     // the transom board itself, with a name plate screwed to it
-    for (let y = Math.round(cy - hwAt[X0 + 1]) + 1; y < Math.round(cy + hwAt[X0 + 1]); y++) px(ctx, hullDD, X0 + 1, y);
-    stamp(ctx, [
-      'kkkkkkkk',
-      'kXXXXXXk',
-      'kXmmmmXk',
-      'kXmMMmXk',
-      'kXmMMmXk',
-      'kXmmmmXk',
-      'kXXXXXXk',
-      'kkkkkkkk',
-    ], mx, my - 4, { k: CPAL.out, X: CPAL.metDD, m: CPAL.metD, M: CPAL.metL });
-    px(ctx, CPAL.metLL, mx + 2, my - 3, 2, 1);               // cowling highlight
-    px(ctx, CPAL.out, mx + 8, my - 1, 3, 2);                 // leg into the well
-    px(ctx, RUST, mx + 1, my + 2, 2, 1);                     // rust at the clamp
+    for (let y = R(cy - hwAt[X0 + 1]) + 1; y < R(cy + hwAt[X0 + 1]); y++) { px(ctx, hullDD, X0 + 1, y); px(ctx, hullD, X0 + 2, y); }
+    const mw = Math.max(8, R(B * 0.42)), mh = Math.max(8, R(B * 0.5));
+    for (let y = my - (mh >> 1); y <= my + (mh >> 1); y++) for (let x = mx; x < mx + mw; x++) {
+      const e = y === my - (mh >> 1) || y === my + (mh >> 1) || x === mx || x === mx + mw - 1;
+      px(ctx, e ? CPAL.out : (y < my - mh * 0.15 ? CPAL.metD : y > my + mh * 0.15 ? CPAL.metDD : CPAL.met), x, y);
+    }
+    px(ctx, CPAL.metLL, mx + 2, my - (mh >> 1) + 1, Math.max(2, mw - 5), 1);   // cowling highlight
+    px(ctx, CPAL.out, mx + mw, my - 1, 4, 3);                                  // leg into the well
+    px(ctx, CPAL.metD, mx + mw, my, 3, 1);
+    px(ctx, RUST, mx + 1, my + (mh >> 1) - 2, 3, 1);                           // rust at the clamp
     // tiller arm, swung out to port
-    px(ctx, CPAL.out, mx + 3, my - 7, 5, 2);
-    px(ctx, CPAL.metL, mx + 3, my - 7, 4, 1);
+    px(ctx, CPAL.out, mx + 3, my - (mh >> 1) - 4, Math.max(6, mw - 2), 3);
+    px(ctx, CPAL.metL, mx + 3, my - (mh >> 1) - 4, Math.max(5, mw - 3), 1);
+  } else {
+    // a ship's stern: a transom board, the rudder stock and a quadrant, and
+    // an exhaust riser with soot on the lip. An outboard clamped to a hull
+    // this size would only read as a toy.
+    for (let y = R(cy - hwAt[X0 + 1]) + 1; y < R(cy + hwAt[X0 + 1]); y++) { px(ctx, hullDD, X0 + 1, y); px(ctx, hullD, X0 + 2, y); }
+    px(ctx, CPAL.out, X0 - 2, cy - 4, 5, 9);
+    px(ctx, CPAL.metD, X0 - 1, cy - 3, 3, 7);
+    px(ctx, CPAL.metL, X0 - 1, cy - 3, 3, 2);
+    px(ctx, CPAL.metDD, X0 - 1, cy + 2, 3, 2);
+    const qy = cy - R(B * 0.34);
+    px(ctx, CPAL.out, X0 + 4, qy, 7, 6);
+    px(ctx, CPAL.met, X0 + 5, qy + 1, 5, 4);
+    px(ctx, CPAL.metL, X0 + 5, qy + 1, 5, 1);
+    px(ctx, GRIME, X0 + 5, qy + R(B * 0.68), 6, 4);
+    px(ctx, '#0d0f12', X0 + 6, qy + R(B * 0.68) + 1, 4, 2);
   }
-  // ---- deck furniture: the fittings a working boat cannot do without
-  const fwdX = Math.round(X0 + L * 0.88), aftX = Math.round(X0 + L * 0.10);
-  // bow and stern bitts
-  for (const bx of [fwdX, aftX + 2]) {
-    if (hwAt[bx] < 3) continue;
-    px(ctx, CPAL.out, bx, cy - 2, 3, 5);
-    px(ctx, CPAL.metL, bx, cy - 1, 2, 1);
-    px(ctx, CPAL.metDD, bx, cy + 1, 2, 1);
-  }
-  // a hatch with a lifting handle, set a third of the way forward
-  {
-    const hx = Math.round(X0 + L * 0.68), hy = cy - 3;
-    if (hwAt[hx] > 5) {
-      for (let y = hy; y < hy + 7; y++) for (let x = hx; x < hx + 6; x++) {
-        const e = y === hy || y === hy + 6 || x === hx || x === hx + 5;
-        px(ctx, e ? CPAL.out2 : (y < hy + 3 ? hullL : hull), x, y);
-      }
-      px(ctx, CPAL.metL, hx + 2, hy + 3, 2, 1);
-      px(ctx, GRIME, hx + 1, hy + 5, 4, 1);
+
+  // ---- deck furniture: the fittings a working boat cannot do without ------
+  const fwdX = R(X0 + L * 0.90), aftX = R(X0 + L * 0.08);
+  const bollard = (bx, by) => {
+    px(ctx, CPAL.out, bx - 1, by - 3, 5, 7);
+    px(ctx, CPAL.metD, bx, by - 2, 3, 5);
+    px(ctx, CPAL.metL, bx, by - 2, 3, 2);
+    px(ctx, CPAL.metDD, bx, by + 2, 3, 1);
+    px(ctx, CPAL.metLL, bx, by - 2, 1, 1);
+  };
+  for (const bx of [fwdX, aftX + 3]) if (hwAt[bx] > 4) bollard(bx, cy);
+  // side bitts, on the beamy ones where there is a bulwark to put them on
+  if (B > 12) for (const f of [0.3, 0.55, 0.74]) {
+    const bx = R(X0 + L * f), hw = deckHalf(bx); if (hw < 5) continue;
+    for (const sgn of [-1, 1]) {
+      const by = R(cy + sgn * hw);
+      px(ctx, CPAL.out, bx, by - 1, 3, 3); px(ctx, CPAL.metL, bx, by, 2, 1);
     }
   }
-  // a fuel drum lashed to the deck, and a bucket beside it
+  // a hatch with a raised coaming and a lifting handle
   {
-    const dx = Math.round(X0 + L * 0.22), dy = cy - Math.round(B * 0.42);
-    if (hwAt[dx] > 6) {
-      for (let y = dy; y < dy + 6; y++) for (let x = dx; x < dx + 6; x++) {
-        const d = Math.hypot(x - dx - 2.5, y - dy - 2.5);
-        if (d > 3) continue;
-        px(ctx, d > 2.3 ? CPAL.out : d > 1.4 ? CPAL.metD : CPAL.metL, x, y);
+    const hx = R(X0 + L * 0.66), hh = Math.max(6, R(B * 0.52)), hwid = Math.max(6, R(L * 0.075));
+    const hy = cy - (hh >> 1);
+    if (deckHalf(hx) > hh * 0.6) {
+      for (let y = hy; y < hy + hh; y++) for (let x = hx; x < hx + hwid; x++) {
+        const e = y === hy || y === hy + hh - 1 || x === hx || x === hx + hwid - 1;
+        px(ctx, e ? CPAL.out2 : (y < hy + hh * 0.4 ? hullL : hull), x, y);
       }
-      px(ctx, RUST, dx + 1, dy + 4, 2, 1);
-      px(ctx, CPAL.out, dx + 7, dy + 2, 3, 3); px(ctx, CPAL.metL, dx + 8, dy + 3);
+      for (let x = hx + 1; x < hx + hwid - 1; x += 3) px(ctx, hullDD, x, hy + 1);
+      px(ctx, CPAL.metL, hx + (hwid >> 1) - 1, hy + (hh >> 1), 3, 1);
+      px(ctx, GRIME, hx + 1, hy + hh - 2, hwid - 2, 1);
     }
   }
-  // a life ring lashed to the rail, port side: white with two red quarters
+  // a fish hold with its boards off, forward of the house
+  if (o.beam >= 14) {
+    const hx = R(X0 + L * 0.5), hh = Math.max(7, R(B * 0.7)), hwid = Math.max(7, R(L * 0.09));
+    const hy = cy - (hh >> 1);
+    if (deckHalf(hx) > hh * 0.62) {
+      px(ctx, CPAL.out2, hx - 1, hy - 1, hwid + 2, hh + 2);
+      for (let y = hy; y < hy + hh; y++) for (let x = hx; x < hx + hwid; x++)
+        px(ctx, ((x - hx) % 4 === 0) ? '#101820' : (y < hy + 2 ? '#25313c' : '#16202a'), x, y);
+      for (let i = 0; i < 3; i++) px(ctx, '#7d8b96', hx + 1 + i * 3, hy + hh - 3, 2, 2);   // ice
+    }
+  }
+  // fuel drums lashed to the deck, and a bucket beside them
   {
-    const rx = Math.round(X0 + L * 0.40), ry = Math.round(cy - hwAt[Math.round(X0 + L * 0.40)]) + 2;
-    if (hwAt[rx] > 6) {
-      px(ctx, CPAL.white, rx + 1, ry, 2, 1); px(ctx, CPAL.white, rx + 1, ry + 3, 2, 1);
-      px(ctx, CPAL.blood, rx, ry + 1, 1, 2); px(ctx, CPAL.blood, rx + 3, ry + 1, 1, 2);
+    const dx = R(X0 + L * 0.20), dy = cy - R(B * 0.46), dr = Math.max(3, R(B * 0.17));
+    if (deckHalf(dx) > dr * 2) {
+      for (let i = 0; i < 2; i++) {
+        const ox = dx + i * (dr * 2 + 2);
+        for (let y = dy; y < dy + dr * 2; y++) for (let x = ox; x < ox + dr * 2; x++) {
+          const d = Math.hypot(x - ox - dr + 0.5, y - dy - dr + 0.5);
+          if (d > dr) continue;
+          px(ctx, d > dr - 1 ? CPAL.out : d > dr - 2.2 ? CPAL.metD : d > dr * 0.45 ? CPAL.met : CPAL.metL, x, y);
+        }
+        px(ctx, RUST, ox + 1, dy + dr, 2, 1);
+        px(ctx, CPAL.metLL, ox + dr - 1, dy + 1, 1, 1);
+      }
+      px(ctx, CPAL.out, dx + dr * 4 + 4, dy + 1, 4, 4); px(ctx, CPAL.metL, dx + dr * 4 + 5, dy + 2, 2, 2);
+    }
+  }
+  // a liferaft canister, and a life ring lashed to the rail
+  {
+    const rx = R(X0 + L * 0.42), ry = R(cy - deckHalf(rx)) + 1;
+    if (deckHalf(rx) > 6) {
+      px(ctx, CPAL.out, rx, ry, 7, 4); px(ctx, CPAL.white, rx + 1, ry + 1, 5, 2); px(ctx, '#d8763a', rx + 1, ry + 1, 5, 1);
+      const lx = R(X0 + L * 0.34), ly = R(cy + deckHalf(lx)) - 4;
+      px(ctx, CPAL.white, lx + 1, ly, 3, 1); px(ctx, CPAL.white, lx + 1, ly + 4, 3, 1);
+      px(ctx, CPAL.blood, lx, ly + 1, 1, 3); px(ctx, CPAL.blood, lx + 4, ly + 1, 1, 3);
+      px(ctx, CPAL.out2, lx, ly, 1, 1); px(ctx, CPAL.out2, lx + 4, ly, 1, 1);
     }
   }
   // fenders (old tyres) hung over the side on the beamy working boats
   if (o.fenders || ratio > 0.25) {
-    for (let i = 0; i < 3; i++) {
-      const fx = Math.round(X0 + L * (0.28 + i * 0.18));
-      const hw = hwAt[fx]; if (hw < 4) continue;
+    for (let i = 0; i < 4; i++) {
+      const fx = R(X0 + L * (0.24 + i * 0.15));
+      const hw = hwAt[fx]; if (hw < 5) continue;
       for (const sgn of [-1, 1]) {
-        const fy = Math.round(cy + sgn * hw) - sgn;
-        px(ctx, CPAL.out, fx, fy - 1, 4, 3);
-        px(ctx, GRIME, fx + 1, fy, 2, 1);
+        const fy = R(cy + sgn * hw) - sgn * 2;
+        px(ctx, CPAL.out, fx, fy - 2, 6, 5);
+        px(ctx, GRIME, fx + 1, fy - 1, 4, 3);
+        px(ctx, '#494f58', fx + 2, fy, 2, 1);
       }
     }
   }
+
   // ---- wheelhouse / cabin -------------------------------------------------
   if (o.cabin) {
     // The wheelhouse is painted, not bare steel: weathered white unless the
     // definition says otherwise, which is what tells two grey boats apart.
     const hs = o.house || '#cfcabd', hsL = o.houseL || '#ece8dd', hsD = o.houseD || '#8e8a80', hsDD = o.houseDD || '#5d5a53';
-    const cw = Math.round(L * 0.22), ch = Math.round(B * 1.15);
-    const cx0 = Math.round(X0 + L * o.cabin), cy0 = Math.round(cy - ch / 2);
+    const cw = R(L * 0.20), ch = R(B * 1.2);
+    const cx0 = R(X0 + L * o.cabin), cy0 = R(cy - ch / 2);
+    // the shadow the house throws aft across the deck
+    for (let y = cy0 + 2; y < cy0 + ch + 2; y++) for (let x = cx0 - 3; x < cx0; x++) if (solid(x, y)) px(ctx, GRIME, x, y);
     for (let y = cy0; y < cy0 + ch; y++) for (let x = cx0; x < cx0 + cw; x++) {
       const e = y === cy0 || y === cy0 + ch - 1 || x === cx0 || x === cx0 + cw - 1;
-      let col = e ? CPAL.out : (y < cy0 + 3 ? hsL : y > cy0 + ch - 4 ? hsDD : hs);
-      if (!e && ((x - cx0) % 5) === 0) col = hsD;         // roof panel seams
+      let col = e ? CPAL.out : (y < cy0 + 4 ? hsL : y > cy0 + ch - 5 ? hsDD : hs);
+      if (!e && ((x - cx0) % 6) === 0) col = hsD;         // roof panel seams
+      if (!e && hash2(x * 7, y * 5) > 0.965) col = hsD;   // weathering
       px(ctx, col, x, y);
     }
     px(ctx, hsL, cx0 + 1, cy0 + 1, cw - 2, 1);           // roof rail, port
     px(ctx, CPAL.out2, cx0 + 1, cy0 + ch - 2, cw - 2, 1);
-    for (let x = cx0 + 2; x < cx0 + cw - 2; x += 6) px(ctx, RUST, x, cy0 + ch - 3, 1, 2);
+    // handrails round the roof, and a monkey island abaft the mast
+    for (let x = cx0 + 2; x < cx0 + cw - 2; x += 3) { px(ctx, CPAL.out2, x, cy0 + 3); px(ctx, CPAL.out2, x, cy0 + ch - 4); }
+    for (let y = cy0 + 4; y < cy0 + ch - 4; y += 3) px(ctx, CPAL.out2, cx0 + 3, y);
+    px(ctx, CPAL.out, cx0 + R(cw * 0.34), cy0 + R(ch * 0.30), R(cw * 0.34), R(ch * 0.40));
+    px(ctx, hsD, cx0 + R(cw * 0.34) + 1, cy0 + R(ch * 0.30) + 1, R(cw * 0.34) - 2, R(ch * 0.40) - 2);
+    px(ctx, hs, cx0 + R(cw * 0.34) + 1, cy0 + R(ch * 0.30) + 1, R(cw * 0.34) - 2, 2);
+    for (let x = cx0 + 2; x < cx0 + cw - 2; x += 7) px(ctx, RUST, x, cy0 + ch - 3, 1, 2);
     // the wheelhouse windows, lit from inside, with mullions between them
-    for (let i = 0; i < 3; i++) {
-      const wy = cy0 + 3 + i * Math.max(2, Math.floor((ch - 6) / 3));
-      if (wy > cy0 + ch - 4) break;
-      px(ctx, CPAL.out, cx0 + cw - 5, wy, 4, 2);
-      px(ctx, CPAL.goldL, cx0 + cw - 4, wy, 2, 1);
-      px(ctx, CPAL.gold, cx0 + cw - 4, wy + 1, 2, 1);
+    const nwin = Math.max(3, Math.floor(ch / 6));
+    for (let i = 0; i < nwin; i++) {
+      const wy = cy0 + 3 + R(i * (ch - 6) / nwin);
+      if (wy > cy0 + ch - 5) break;
+      px(ctx, CPAL.out, cx0 + cw - 7, wy, 6, 3);
+      px(ctx, CPAL.goldL, cx0 + cw - 6, wy, 4, 1);
+      px(ctx, CPAL.gold, cx0 + cw - 6, wy + 1, 4, 1);
+      px(ctx, '#7a5a1e', cx0 + cw - 6, wy + 2, 4, 1);
     }
-    // the door in the aft face, and a scuttle beside it
-    px(ctx, CPAL.out, cx0 + 1, cy0 + Math.round(ch / 2) - 2, 2, 4);
-    px(ctx, hsD, cx0 + 1, cy0 + Math.round(ch / 2) - 1, 1, 2);
-    // a stubby stack with soot on the lip, and a radar dome on the roof
-    px(ctx, CPAL.out, cx0 + 2, cy0 + 1, 3, 3);
-    px(ctx, CPAL.metD, cx0 + 3, cy0 + 2, 1, 1);
-    px(ctx, GRIME, cx0 + 2, cy0 + 1, 3, 1);
-    const rx = cx0 + cw - 4;
-    px(ctx, CPAL.out, rx, cy0 + Math.round(ch / 2) - 1, 3, 3);
-    px(ctx, CPAL.white, rx + 1, cy0 + Math.round(ch / 2));
-    // an aerial whipping aft off the roof
-    for (let i = 0; i < 5; i++) px(ctx, CPAL.metDD, cx0 - 1 - i, cy0 + 2 - (i >> 1));
+    // the door in the aft face, and a ladder to the roof beside it
+    px(ctx, CPAL.out, cx0 + 1, cy0 + R(ch / 2) - 3, 3, 6);
+    px(ctx, hsD, cx0 + 1, cy0 + R(ch / 2) - 2, 2, 4);
+    for (let i = 0; i < 3; i++) px(ctx, CPAL.metL, cx0 + 2, cy0 + 3 + i * 2, 3, 1);
+    // a stack with soot on the lip, a radar dome and a searchlight
+    px(ctx, CPAL.out, cx0 + 3, cy0 + 2, 5, 5);
+    px(ctx, CPAL.metD, cx0 + 4, cy0 + 3, 3, 3);
+    px(ctx, GRIME, cx0 + 4, cy0 + 3, 3, 1);
+    px(ctx, '#0d0f12', cx0 + 5, cy0 + 4, 1, 1);
+    const rx = cx0 + cw - 6;
+    px(ctx, CPAL.out, rx, cy0 + R(ch / 2) - 2, 5, 5);
+    px(ctx, CPAL.metL, rx + 1, cy0 + R(ch / 2) - 1, 3, 3);
+    px(ctx, CPAL.white, rx + 2, cy0 + R(ch / 2));
+    px(ctx, CPAL.out, cx0 + cw - 4, cy0 + 2, 3, 3); px(ctx, '#ffe9b0', cx0 + cw - 3, cy0 + 3);
+    // aerials whipping aft off the roof
+    for (let i = 0; i < Math.max(6, R(L * 0.09)); i++) px(ctx, CPAL.metDD, cx0 - 1 - i, cy0 + 3 - (i >> 1));
+    for (let i = 0; i < Math.max(5, R(L * 0.07)); i++) px(ctx, CPAL.metDD, cx0 - 1 - i, cy0 + ch - 4 + (i >> 1));
   } else {
     // open boat: a helm console, a wheel and a seat for whoever is driving
-    const sx = Math.round(X0 + L * 0.56);
-    if (hwAt[sx] > 4) {
-      px(ctx, CPAL.out, sx, cy - 3, 4, 7);
-      px(ctx, CPAL.metD, sx + 1, cy - 2, 2, 5);
-      px(ctx, CPAL.metL, sx + 1, cy - 2, 2, 1);
-      px(ctx, CPAL.out, sx + 4, cy - 1, 1, 3);           // the wheel, edge-on
-      px(ctx, hullL, sx - 4, cy - 2, 3, 5);               // the seat
-      px(ctx, hullD, sx - 4, cy + 1, 3, 2);
+    const sx = R(X0 + L * 0.56), sw = Math.max(4, R(L * 0.05)), sh = Math.max(6, R(B * 0.55));
+    if (deckHalf(sx) > sh * 0.55) {
+      px(ctx, CPAL.out, sx, cy - (sh >> 1), sw, sh);
+      px(ctx, CPAL.metD, sx + 1, cy - (sh >> 1) + 1, sw - 2, sh - 2);
+      px(ctx, CPAL.metL, sx + 1, cy - (sh >> 1) + 1, sw - 2, 2);
+      px(ctx, '#1d2733', sx + 2, cy - 2, sw - 3, 4);        // the instrument face
+      px(ctx, CPAL.out, sx + sw, cy - 2, 2, 5);             // the wheel, edge-on
+      px(ctx, hullL, sx - 6, cy - 3, 5, 7);                 // the seat
+      px(ctx, hullD, sx - 6, cy + 1, 5, 3);
+      px(ctx, CPAL.out2, sx - 7, cy - 3, 1, 7);
     }
   }
+
+  // ---- crew: two or three of them, seen from straight above — a head, a
+  //      pair of shoulders and a shadow. Nothing in a boat this size reads
+  //      as crewed without them.
+  {
+    const spots = [[0.30, -0.45], [0.46, 0.5], [0.70, 0.1]];
+    const skin = ['#c98d5e', '#8e5c37', '#e0b07c'];
+    for (let i = 0; i < (o.beam >= 14 ? 3 : o.beam >= 9 ? 2 : 1); i++) {
+      const [f, k] = spots[i];
+      const hx = R(X0 + L * f), hy = R(cy + deckHalf(hx) * k);
+      if (deckHalf(hx) < 5 || !solid(hx, hy)) continue;
+      px(ctx, CPAL.out2, hx - 1, hy + 2, 5, 2);                      // his shadow
+      px(ctx, CPAL.out, hx - 2, hy - 1, 6, 4);                       // shoulders
+      px(ctx, i === 1 ? '#c4c0b2' : i === 2 ? '#3f5a72' : '#6b6f4a', hx - 1, hy, 4, 2);
+      px(ctx, CPAL.out, hx, hy - 2, 3, 4);                           // the head
+      px(ctx, skin[i], hx, hy - 1, 2, 2);
+      px(ctx, i === 0 ? '#b8562c' : '#2a2f38', hx, hy - 2, 3, 1);    // his cap
+    }
+  }
+
   // ---- role-specific gear -------------------------------------------------
   if (o.gear === 'net') {
-    const nx0 = wellA + 4, nx1 = wellA + Math.round(L * 0.3);
+    const nx0 = wellA + Math.max(4, R(L * 0.03)), nx1 = wellA + R(L * 0.30);
+    const nh = R(B * 0.55);
     for (let x = nx0; x < nx1; x++)
-      for (let y = Math.round(cy - B * 0.5); y < Math.round(cy + B * 0.5); y++) {
-        if (((x + y) & 3) === 0) px(ctx, CPAL.white, x, y);
-        else if (((x - y + 64) & 3) === 0) px(ctx, CPAL.creamD, x, y);
+      for (let y = cy - nh; y < cy + nh; y++) {
+        if (!solid(x, y)) continue;
+        if (((x + y) & 3) === 0) px(ctx, CPAL.creamD, x, y);
+        else if (((x - y + 64) & 3) === 0) px(ctx, '#8e8a72', x, y);
+        else if (((x + y) & 7) === 4) px(ctx, '#5d5b4c', x, y);
       }
-    px(ctx, CPAL.out2, nx0 - 2, Math.round(cy - B * 0.5), 2, Math.round(B));
-    for (let y = Math.round(cy - B * 0.5); y < Math.round(cy + B * 0.5); y += 5) px(ctx, CPAL.ember, nx1, y, 2, 2);
+    px(ctx, CPAL.out2, nx0 - 2, cy - nh, 2, nh * 2);
+    for (let y = cy - nh; y < cy + nh; y += 7) px(ctx, CPAL.ember, nx1, y, 2, 3);       // floats
     // the net drum it pays off, and the gallows frame over the stern
-    const dx = nx0 - 5;
-    for (let y = cy - Math.round(B * 0.55); y <= cy + Math.round(B * 0.55); y++) {
-      px(ctx, CPAL.out, dx, y, 4, 1);
-      px(ctx, ((y & 3) === 0) ? CPAL.metD : CPAL.met, dx + 1, y, 2, 1);
+    const dx = nx0 - Math.max(6, R(L * 0.05));
+    for (let y = cy - R(B * 0.62); y <= cy + R(B * 0.62); y++) {
+      if (!solid(dx, y)) continue;
+      px(ctx, CPAL.out, dx, y, Math.max(5, R(L * 0.04)), 1);
+      px(ctx, ((y & 3) === 0) ? CPAL.metD : CPAL.met, dx + 1, y, Math.max(3, R(L * 0.04) - 2), 1);
     }
-    px(ctx, CPAL.metLL, dx + 1, cy - Math.round(B * 0.55), 2, 1);
+    px(ctx, CPAL.metLL, dx + 1, cy - R(B * 0.62), Math.max(3, R(L * 0.04) - 2), 1);
+    // gallows: two posts and a head beam, right aft
+    for (const sgn of [-1, 1]) px(ctx, CPAL.out, dx - 4, cy + sgn * R(B * 0.55) - 2, 4, 5);
+    px(ctx, CPAL.metD, dx - 3, cy - R(B * 0.55), 2, R(B * 1.1));
   } else if (o.gear === 'harpoon') {
-    const hx = Math.round(X0 + L * 0.62), len = Math.round(L * 0.3);
-    px(ctx, CPAL.metDD, hx, cy - 2, len, 5);
-    px(ctx, CPAL.metL, hx, cy - 1, len, 1);
-    px(ctx, CPAL.metLL, hx + len - 6, cy - 1, 6, 1);
-    px(ctx, CPAL.out, hx - 3, cy - 5, 6, 11);              // mount
-    px(ctx, CPAL.met, hx - 2, cy - 4, 4, 9);
-    px(ctx, CPAL.metL, hx - 2, cy - 4, 4, 2);
-    for (let i = 0; i < 3; i++) px(ctx, CPAL.metDD, hx - 2, cy - 1 + i * 2, 4, 1);
+    const hx = R(X0 + L * 0.60), len = R(L * 0.34), gh = Math.max(9, R(B * 0.8));
+    px(ctx, CPAL.metDD, hx, cy - 3, len, 7);
+    px(ctx, CPAL.metL, hx, cy - 2, len, 2);
+    px(ctx, CPAL.metLL, hx + len - 9, cy - 2, 9, 1);
+    px(ctx, CPAL.out, hx + len, cy - 2, 3, 5);
+    px(ctx, CPAL.out, hx - 5, cy - (gh >> 1), 9, gh);              // mount
+    px(ctx, CPAL.met, hx - 4, cy - (gh >> 1) + 1, 7, gh - 2);
+    px(ctx, CPAL.metL, hx - 4, cy - (gh >> 1) + 1, 7, 3);
+    for (let i = 0; i < 4; i++) px(ctx, CPAL.metDD, hx - 4, cy - 3 + i * 3, 7, 1);
     // the line tub and a rack of spare irons behind the gun
-    px(ctx, CPAL.out, hx - 12, cy + 2, 7, 6);
-    px(ctx, CPAL.woodL, hx - 11, cy + 3, 5, 4);
-    for (let i = 0; i < 3; i++) px(ctx, CPAL.creamD, hx - 11, cy + 3 + i, 5, 1);
-    for (let i = 0; i < 3; i++) px(ctx, CPAL.metL, hx - 14, cy - 6 + i * 2, 9, 1);
+    const tw = Math.max(9, R(L * 0.08));
+    px(ctx, CPAL.out, hx - tw - 8, cy + 3, tw, Math.max(7, R(B * 0.4)));
+    px(ctx, CPAL.woodL, hx - tw - 7, cy + 4, tw - 2, Math.max(5, R(B * 0.4) - 2));
+    for (let i = 0; i < 4; i++) px(ctx, CPAL.creamD, hx - tw - 7, cy + 4 + i * 2, tw - 2, 1);
+    for (let i = 0; i < 4; i++) px(ctx, CPAL.metL, hx - tw - 12, cy - 8 + i * 3, R(L * 0.12), 1);
   } else if (o.gear === 'dyna') {
-    const bx = Math.round(X0 + L * 0.3);
-    stamp(ctx, [
-      'kkkkkkkkkk',
-      'krrrrrrrrk',
-      'krRrrRrrRk',
-      'krRrrRrrRk',
-      'krrrrrrrrk',
-      'kfkkfkkfkk',
-      'kkkkkkkkkk',
-    ], bx, cy - 4, { k: CPAL.out, r: CPAL.blood, R: '#ff6161', f: CPAL.gold });
-    for (let i = 0; i < 3; i++) px(ctx, CPAL.emberL, bx + 2 + i * 3, cy + 2, 1, 2);
-    // a second crate, open, with the sticks showing
-    px(ctx, CPAL.out, bx + 12, cy - 4, 8, 7);
-    px(ctx, CPAL.woodD, bx + 13, cy - 3, 6, 5);
-    for (let i = 0; i < 3; i++) px(ctx, CPAL.blood, bx + 13, cy - 3 + i * 2, 6, 1);
-  } else if (o.gear === 'turret') {
-    const tx = Math.round(X0 + L * 0.55);
-    for (let y = cy - 7; y <= cy + 7; y++)
-      for (let x = tx - 7; x <= tx + 7; x++) {
-        const d = Math.hypot(x - tx, y - cy); if (d > 7) continue;
-        px(ctx, d > 5.6 ? CPAL.out : d > 4.4 ? CPAL.metD : d > 2 ? CPAL.met : CPAL.metL, x, y);
-      }
-    for (let i = 0; i < 8; i++) {
-      const th = i / 8 * TAU;
-      px(ctx, CPAL.metLL, Math.round(tx + Math.cos(th) * 5), Math.round(cy + Math.sin(th) * 5));
+    const bx = R(X0 + L * 0.28), bw = Math.max(12, R(L * 0.12)), bh = Math.max(9, R(B * 0.6));
+    for (let y = cy - (bh >> 1); y < cy + (bh >> 1); y++) for (let x = bx; x < bx + bw; x++) {
+      const e = y === cy - (bh >> 1) || y === cy + (bh >> 1) - 1 || x === bx || x === bx + bw - 1;
+      px(ctx, e ? CPAL.out : (((x - bx) % 4 === 1) ? '#ff6161' : CPAL.blood), x, y);
     }
-    const bl = Math.round(L * 0.24);
-    px(ctx, CPAL.metDD, tx + 4, cy - 2, bl, 4);
-    px(ctx, CPAL.metL, tx + 4, cy - 2, bl, 1);
-    px(ctx, CPAL.out, tx + 4 + bl, cy - 3, 2, 6);                 // muzzle brake
+    for (let i = 0; i < 4; i++) px(ctx, CPAL.gold, bx + 2 + i * 3, cy + (bh >> 1) - 2, 1, 2);
+    for (let i = 0; i < 4; i++) px(ctx, CPAL.emberL, bx + 2 + i * 3, cy + (bh >> 1), 1, 3);
+    // a second crate, open, with the sticks showing
+    px(ctx, CPAL.out, bx + bw + 3, cy - (bh >> 1), Math.max(9, R(L * 0.08)), bh);
+    px(ctx, CPAL.woodD, bx + bw + 4, cy - (bh >> 1) + 1, Math.max(7, R(L * 0.08) - 2), bh - 2);
+    for (let i = 0; i < 4; i++) px(ctx, CPAL.blood, bx + bw + 4, cy - (bh >> 1) + 2 + i * 2, Math.max(7, R(L * 0.08) - 2), 1);
+  } else if (o.gear === 'turret') {
+    const tx = R(X0 + L * 0.52), tr = Math.max(7, R(B * 0.40));
+    for (let y = cy - tr; y <= cy + tr; y++)
+      for (let x = tx - tr; x <= tx + tr; x++) {
+        const d = Math.hypot(x - tx, y - cy); if (d > tr) continue;
+        px(ctx, d > tr - 1.4 ? CPAL.out : d > tr - 3 ? CPAL.metD : d > tr * 0.3 ? CPAL.met : CPAL.metL, x, y);
+      }
+    for (let i = 0; i < 10; i++) {
+      const th = i / 10 * TAU;
+      px(ctx, CPAL.metLL, R(tx + Math.cos(th) * (tr - 2)), R(cy + Math.sin(th) * (tr - 2)));
+    }
+    const bl = R(L * 0.26);
+    px(ctx, CPAL.metDD, tx + tr - 2, cy - 3, bl, 7);
+    px(ctx, CPAL.metL, tx + tr - 2, cy - 2, bl, 2);
+    px(ctx, CPAL.out, tx + tr - 2 + bl, cy - 4, 3, 9);                 // muzzle brake
+    px(ctx, CPAL.metLL, tx + tr - 2 + bl, cy - 3, 3, 1);
     // ready-use ammunition, boxed and strapped down beside the mount
-    px(ctx, CPAL.out, tx - 12, cy + 3, 9, 5);
-    px(ctx, CPAL.metD, tx - 11, cy + 4, 7, 3);
-    px(ctx, CPAL.goldL, tx - 10, cy + 5, 5, 1);
+    px(ctx, CPAL.out, tx - tr - 12, cy + 4, 13, 8);
+    px(ctx, CPAL.metD, tx - tr - 11, cy + 5, 11, 6);
+    px(ctx, CPAL.goldL, tx - tr - 10, cy + 7, 9, 2);
+    px(ctx, CPAL.metDD, tx - tr - 8, cy + 5, 1, 6);
   } else if (o.gear === 'crates') {
     // stacked clear of the wheelhouse, on whatever deck she has left
-    const cb = o.cabin ? Math.min(0.62, o.cabin + 0.28) : 0.28;
-    for (const [fx, fy] of [[cb, -0.4], [cb, 0.35], [cb + 0.16, 0]]) {
-      const bx = Math.round(X0 + L * fx), by = Math.round(cy + B * fy) - 4;
-      stamp(ctx, [
-        'kkkkkkkkk',
-        'kLLLLLLLk',
-        'kLTTTTTLk',
-        'kLTTTTTLk',
-        'kLTTTTTLk',
-        'kdddddddk',
-        'kkkkkkkkk',
-      ], bx, by, { k: CPAL.out, L: CPAL.woodL, T: CPAL.wood, d: CPAL.woodD });
-      px(ctx, CPAL.metD, bx + 1, by + 3, 7, 1);                   // steel banding
-      px(ctx, CPAL.metL, bx + 1, by + 3, 7, 1);
-      px(ctx, CPAL.metD, bx + 4, by + 1, 1, 4);
-      px(ctx, RUST, bx + 7, by + 4, 1, 2);
-      px(ctx, CPAL.out2, bx + 1, by + 7, 8, 1);                   // its shadow
+    const cb = o.cabin ? Math.min(0.62, o.cabin + 0.26) : 0.26;
+    const bw = Math.max(11, R(L * 0.09)), bh = Math.max(9, R(B * 0.34));
+    for (const [fx, fy] of [[cb, -0.42], [cb, 0.36], [cb + 0.14, -0.04], [cb + 0.13, 0.62]]) {
+      const bx = R(X0 + L * fx), by = R(cy + B * fy) - (bh >> 1);
+      if (deckHalf(bx) < 4 || !solid(bx + (bw >> 1), by + (bh >> 1))) continue;
+      for (let y = by; y < by + bh; y++) for (let x = bx; x < bx + bw; x++) {
+        const e = y === by || y === by + bh - 1 || x === bx || x === bx + bw - 1;
+        px(ctx, e ? CPAL.out : (y < by + 2 ? CPAL.woodL : y > by + bh - 3 ? CPAL.woodD : CPAL.wood), x, y);
+      }
+      for (let i = 1; i < bw - 1; i += 3) px(ctx, CPAL.woodDD, bx + i, by + 1, 1, bh - 2);   // lid boards
+      for (const sy2 of [by + 2, by + bh - 4]) {                        // steel banding
+        px(ctx, CPAL.metD, bx + 1, sy2, bw - 2, 2);
+        px(ctx, CPAL.metL, bx + 1, sy2, bw - 2, 1);
+      }
+      px(ctx, RUST, bx + bw - 3, by + bh - 4, 1, 3);
+      px(ctx, CPAL.out2, bx + 1, by + bh, bw, 2);                      // its shadow
     }
   }
-  // ---- a mast or A-frame, lying over the deck the way it looks from above
-  if (o.mast || (o.cabin && o.beam >= 9)) {
-    const mx = Math.round(X0 + L * 0.58), ml = Math.min(Math.round(L * 0.26), mx - X0 - 4);
-    for (let i = 0; i < ml; i++) px(ctx, i & 1 ? CPAL.metD : CPAL.metL, mx - i, cy - 1, 1, 2);
-    px(ctx, CPAL.out, mx, cy - 3, 2, 6);
-    if (ml > 2) px(ctx, CPAL.emberL, mx - ml, cy - 1, 2, 2);         // masthead light
+
+  // ---- a mast or A-frame, lying over the deck the way it looks from above,
+  //      with its stays running out to the rail
+  if (o.mast || (o.cabin && o.beam >= 18)) {
+    const mx = R(X0 + L * 0.58), ml = Math.min(R(L * 0.28), mx - X0 - 6);
+    px(ctx, CPAL.out, mx - ml, cy - 3, ml + 3, 6);
+    for (let i = 0; i < ml; i++) px(ctx, i & 1 ? CPAL.metD : CPAL.metL, mx - i, cy - 2, 1, 4);
+    px(ctx, CPAL.out, mx, cy - 5, 3, 11);                               // the tabernacle
+    px(ctx, CPAL.metL, mx, cy - 4, 2, 9);
+    for (const sgn of [-1, 1]) {                                        // stays
+      const run = Math.min(ml, R(L * 0.12));
+      for (let i = 0; i < run; i += 2) {
+        const y = R(cy + sgn * (3 + i * (deckHalf(mx - run) - 3) / Math.max(1, run)));
+        px(ctx, '#6d6551', mx - i, y);
+      }
+    }
+    if (ml > 4) { px(ctx, CPAL.out, mx - ml - 2, cy - 2, 4, 5); px(ctx, CPAL.emberL, mx - ml - 1, cy - 1, 2, 3); }
   }
-  // ---- bow cleat, an anchor stowed on the foredeck, and a coil of rope
-  const clx = Math.round(X0 + L * 0.88);
-  px(ctx, CPAL.out, clx, cy - 2, 3, 4);
-  px(ctx, CPAL.metL, clx, cy - 1, 2, 1); px(ctx, CPAL.metDD, clx, cy + 1, 2, 1);
+
+  // ---- bow gear: a cleat, the anchor in its hawse, a windlass and a coil
+  const clx = R(X0 + L * 0.86);
+  if (hwAt[clx] > 3) bollard(clx, cy);
   {
-    const ax = Math.round(X0 + L * 0.78), ay = cy + Math.round(B * 0.34);
-    if (hwAt[ax] > 5) {
-      px(ctx, CPAL.metD, ax, ay, 6, 1);
-      px(ctx, CPAL.metD, ax + 4, ay - 2, 1, 5);
-      px(ctx, CPAL.metL, ax + 5, ay - 2, 1, 1); px(ctx, CPAL.metL, ax + 5, ay + 2, 1, 1);
+    const ax = R(X0 + L * 0.76), ay = cy + R(B * 0.40);
+    if (deckHalf(ax) > 4) {
+      px(ctx, CPAL.metDD, ax, ay, 10, 2);
+      px(ctx, CPAL.metD, ax + 7, ay - 4, 2, 10);
+      px(ctx, CPAL.metL, ax + 9, ay - 4, 2, 2); px(ctx, CPAL.metL, ax + 9, ay + 4, 2, 2);
+      px(ctx, CPAL.metL, ax, ay, 4, 1);
+      px(ctx, CPAL.out, ax - 3, ay - 1, 3, 4);                           // the hawse pipe
+    }
+    const wx = R(X0 + L * 0.81);
+    if (deckHalf(wx) > 5) {
+      px(ctx, CPAL.out, wx, cy - 4, 6, 9);
+      px(ctx, CPAL.metD, wx + 1, cy - 3, 4, 7);
+      px(ctx, CPAL.metL, wx + 1, cy - 3, 4, 2);
+      px(ctx, CPAL.metDD, wx + 1, cy, 4, 1);
     }
   }
-  const rcx = Math.round(X0 + L * 0.72), rcy = Math.round(cy - B * 0.42);
-  for (let r = 1; r <= 3; r++) for (let th = 0; th < 20; th++) {
-    const ang = th / 20 * TAU;
-    px(ctx, r === 2 ? CPAL.creamD : CPAL.woodD, Math.round(rcx + Math.cos(ang) * r), Math.round(rcy + Math.sin(ang) * r * 0.8));
+  {
+    const rcx = R(X0 + L * 0.70), rcy = R(cy - B * 0.44), rr = Math.max(3, R(B * 0.15));
+    if (deckHalf(rcx) > rr * 2) for (let r = 1; r <= rr; r++) for (let th = 0; th < 28; th++) {
+      const ang = th / 28 * TAU;
+      px(ctx, r === rr - 1 ? CPAL.creamD : CPAL.woodD, R(rcx + Math.cos(ang) * r), R(rcy + Math.sin(ang) * r * 0.8));
+    }
+  }
+  // ---- nav lights: red to port, green to starboard, right up at the bow
+  {
+    const nx = R(X0 + L * 0.93);
+    const hw = hwAt[nx];
+    if (hw > 3) { px(ctx, '#ff4a4a', nx, R(cy - hw) + 1, 2, 2); px(ctx, '#3cd97a', nx, R(cy + hw) - 2, 2, 2); }
   }
   // ---- her name on the transom and her number on the bow
   {
-    const ny = cy - 3;
-    px(ctx, GRIME, X0 + 2, ny, 7, 5);
-    nameTicks(ctx, X0 + 3, ny + 1, 3, CPAL.bone);
-    const bx = Math.round(X0 + L * 0.80);
-    if (hwAt[bx] > 4) nameTicks(ctx, bx, Math.round(cy - hwAt[bx]) + 2, 2, o.trim || CPAL.white);
+    // clear of the outboard, when she is carrying one
+    const ny = cy - 4, nx0 = X0 + 3 + ((o.motor && !o.cabin) ? Math.max(9, R(B * 0.42)) : 0);
+    px(ctx, GRIME, nx0, ny, 13, 8);
+    nameTicks(ctx, nx0 + 1, ny + 2, 4, CPAL.bone);
+    nameTicks(ctx, nx0 + 1, ny + 5, 3, CPAL.bone);
+    const bx = R(X0 + L * 0.80);
+    if (hwAt[bx] > 5) {
+      nameTicks(ctx, bx, R(cy - hwAt[bx]) + 3, 3, o.trim || CPAL.white);
+      nameTicks(ctx, bx, R(cy + hwAt[bx]) - 4, 3, o.trim || CPAL.white);
+    }
   }
   return spriteFromHi(c, W / 2, cy);
 }
@@ -1922,42 +2430,42 @@ function buildBoats() {
   // the gunboat. Ten more are registered from src/entities.js through this
   // same builder; they inherit their form from their proportions.
   const defs = {
-    dinghy:    { len: 28, beam: 6,  motor: 1, thwarts: [0.34, 0.62], bow: 'spoon', stern: 0.86 },
-    netter:    { len: 30, beam: 7,  motor: 1, gear: 'net', thwarts: [0.6], bow: 'bluff', stern: 0.92,
+    dinghy:    { len: 56, beam: 12,  motor: 1, thwarts: [0.34, 0.62], bow: 'spoon', stern: 0.86 },
+    netter:    { len: 60, beam: 14,  motor: 1, gear: 'net', thwarts: [0.6], bow: 'bluff', stern: 0.92,
                  stripe: '#5d6f3c' },
-    harpooner: { len: 32, beam: 7,  motor: 1, gear: 'harpoon', thwarts: [0.36], bow: 'fine', stern: 0.62,
+    harpooner: { len: 64, beam: 14,  motor: 1, gear: 'harpoon', thwarts: [0.36], bow: 'fine', stern: 0.62,
                  hull: '#7d858f', hullL: '#c3ccd8', hullD: '#575e68', hullDD: '#383e46', deck: '#6a717b', deckD: '#4c525b',
                  stripe: '#2b3a4a' },
-    speedboat: { len: 36, beam: 7,  motor: 1, cabin: 0.30, thwarts: [0.66], bow: 'fine', stern: 0.70,
+    speedboat: { len: 72, beam: 14,  motor: 1, cabin: 0.30, thwarts: [0.66], bow: 'fine', stern: 0.70,
                  house: '#e8e8ee', houseL: '#ffffff', houseD: '#9ea2ae', houseDD: '#5c1518',
                  hull: '#c4383a', hullL: '#ff8f84', hullD: '#8e2326', hullDD: '#5c1518', deck: '#e8e8ee', deckD: '#b9bcc6',
                  stripe: '#f4f7fb', trim: '#ffe48f' },
-    jetski:    { len: 20, beam: 5,  motor: 1, thwarts: [0.5], bow: 'fine', stern: 0.74,
+    jetski:    { len: 40, beam: 10,  motor: 1, thwarts: [0.5], bow: 'fine', stern: 0.74,
                  hull: '#e0a838', hullL: '#ffe48f', hullD: '#a87a1e', hullDD: '#6d4d10', deck: '#3d4767', deckD: '#28314c',
                  stripe: '#3d4767' },
-    dynaboat:  { len: 30, beam: 7,  motor: 1, gear: 'dyna', thwarts: [0.62], bow: 'spoon', stern: 0.88,
+    dynaboat:  { len: 60, beam: 14,  motor: 1, gear: 'dyna', thwarts: [0.62], bow: 'spoon', stern: 0.88,
                  stripe: '#8e2326' },
-    trawler:   { len: 52, beam: 12, motor: 1, cabin: 0.16, gear: 'crates', thwarts: [0.68], bow: 'bluff', mast: 1, fenders: 1,
+    trawler:   { len: 104, beam: 24, motor: 1, cabin: 0.16, gear: 'crates', thwarts: [0.68], bow: 'bluff', mast: 1, fenders: 1,
                  hull: '#8f6a3a', hullL: '#d9a25a', hullD: '#6a4a24', hullDD: '#432d14', stripe: '#2f5f52' },
-    gunboat:   { len: 46, beam: 10, motor: 1, cabin: 0.18, gear: 'turret', thwarts: [], bow: 'ram', stern: 0.80,
+    gunboat:   { len: 92, beam: 20, motor: 1, cabin: 0.18, gear: 'turret', thwarts: [], bow: 'ram', stern: 0.80,
                  house: '#5b6472', houseL: '#98a2b0', houseD: '#3b424c', houseDD: '#22262d',
                  hull: '#4c535e', hullL: '#98a2b0', hullD: '#343a43', hullDD: '#20242b', deck: '#454b55', deckD: '#2e333a',
                  stripe: '#20242b', trim: '#cdd9ea' },
     // a squat pusher with a high wheelhouse and a fendered bow
-    tug:       { len: 34, beam: 11, motor: 1, cabin: 0.22, gear: 'crates', thwarts: [0.72], bow: 'bluff', stern: 0.96, fenders: 1,
+    tug:       { len: 68, beam: 22, motor: 1, cabin: 0.22, gear: 'crates', thwarts: [0.72], bow: 'bluff', stern: 0.96, fenders: 1,
                  hull: '#7a3f22', hullL: '#c07a3e', hullD: '#542914', hullDD: '#32180b', deck: '#4a3a2a', deckD: '#31251a',
                  stripe: '#1f2833' },
     // a long low hull paying out line off a drum in the stern
-    longliner: { len: 40, beam: 7,  motor: 1, cabin: 0.20, gear: 'net', thwarts: [0.5, 0.74], bow: 'fine', stern: 0.66, mast: 1,
+    longliner: { len: 80, beam: 14,  motor: 1, cabin: 0.20, gear: 'net', thwarts: [0.5, 0.74], bow: 'fine', stern: 0.66, mast: 1,
                  house: '#c9d8cf', houseL: '#f0f7f2', houseD: '#7d9a8e', houseDD: '#3f5a50',
                  hull: '#2f5f52', hullL: '#66ab95', hullD: '#1f4138', hullDD: '#132924', deck: '#3d5a52', deckD: '#263a35',
                  stripe: '#f0b87e' },
     // pots stacked on the afterdeck
-    crabber:   { len: 32, beam: 9,  motor: 1, cabin: 0.24, gear: 'crates', thwarts: [0.66], bow: 'bluff', fenders: 1,
+    crabber:   { len: 64, beam: 18,  motor: 1, cabin: 0.24, gear: 'crates', thwarts: [0.66], bow: 'bluff', fenders: 1,
                  hull: '#7a6a2a', hullL: '#c8b155', hullD: '#544819', hullDD: '#32290c', deck: '#5c5327', deckD: '#3c3617',
                  stripe: '#32290c' },
     // small, fast, and carrying nothing but a flare rack
-    spotter:   { len: 24, beam: 5,  motor: 1, gear: 'dyna', thwarts: [0.55], bow: 'fine', stern: 0.68,
+    spotter:   { len: 48, beam: 10,  motor: 1, gear: 'dyna', thwarts: [0.55], bow: 'fine', stern: 0.68,
                  hull: '#d97a2a', hullL: '#ffc06a', hullD: '#954914', hullDD: '#5c2c08', deck: '#33384a', deckD: '#212532',
                  stripe: '#33384a' },
   };

@@ -1450,15 +1450,24 @@
       const FX = 330;
       pixelText(ctx, 'WHAT WAITS THERE', FX, 266, 5, '#9ab4c6', 'left', false);
       R(ctx, '#2b3548', FX, 274, 128, 1);
+      // the row pitch comes off the hull, because the fleet has been rescaled
+      // twice now and a fixed 15 leaves the boats stacked on top of each other
+      let ry = 279;
+      const FW = 96;                 // width the thumbnails have to live in
       for (let i = 0; i < d.foes.length; i++) {
-        const f = d.foes[i], ry = 279 + i * 15;
+        const f = d.foes[i];
         if (f === 'chief') {
           drawSprite(ctx, SP.skull, FX + 8, ry + 6);
           pixelText(ctx, FOE_NAME[f], FX + 20, ry + 3, 6, '#ff6161', 'left', false);
+          ry += 15;
         } else {
           const s = SP.boats[f];
-          if (s) ctx.drawImage(s.c, FX, ry + 6 - Math.round(s.h / 2));
-          pixelText(ctx, FOE_NAME[f] || f, FX + (s ? s.w : 0) + 5, ry + 3, 6, '#dfe9f2', 'left', false);
+          // and shrink anything too long to sit beside its own label
+          const k = s ? Math.min(1, FW / Math.max(1, s.w)) : 1;
+          const sw = s ? Math.round(s.w * k) : 0, sh = s ? Math.round(s.h * k) : 0;
+          if (s) ctx.drawImage(s.c, 0, 0, s.c.width, s.c.height, FX, ry + 6 - Math.round(sh / 2), sw, sh);
+          pixelText(ctx, FOE_NAME[f] || f, FX + sw + 5, ry + 3, 6, '#dfe9f2', 'left', false);
+          ry += Math.max(15, sh + 3);
         }
       }
 

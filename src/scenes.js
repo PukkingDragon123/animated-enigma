@@ -200,6 +200,12 @@ function tintCanvas(c, col, amt) {
 // the side the light comes from is recoloured, one band hot, one band warm.
 // Colouring the light instead of the object is what stops these figures
 // reading as flat cut-outs against a coloured sky.
+//
+// (lx, ly) POINTS AT THE LIGHT, in sprite space: (1,0) is a light off to the
+// right and lights the right-hand edge, (0,-1) is a light overhead.  It used
+// to test the neighbour at px - lx, which lit the edge AWAY from the light,
+// so every figure here was lit on the wrong side; the callers below all point
+// at their actual source now.
 function rimLight(c, lx, ly, hot, warm, depth) {
   const x = cx2(c), w = c.width, h = c.height;
   const img = x.getImageData(0, 0, w, h), d = img.data;
@@ -210,11 +216,11 @@ function rimLight(c, lx, ly, hot, warm, depth) {
   for (let y = 0; y < h; y++) for (let px = 0; px < w; px++) {
     const i = y * w + px;
     if (!op[i]) continue;
-    const qx = px - lx, qy = y - ly;
+    const qx = px + lx, qy = y + ly;          // the pixel between us and the light
     const out = qx < 0 || qy < 0 || qx >= w || qy >= h || !op[qy * w + qx];
     if (!out) continue;
-    for (let k = 0; k < depth; k++) {
-      const rx = px + lx * k, ry = y + ly * k;
+    for (let k = 0; k < depth; k++) {         // and the band running away from it
+      const rx = px - lx * k, ry = y - ly * k;
       if (rx < 0 || ry < 0 || rx >= w || ry >= h) break;
       const j = ry * w + rx;
       if (!op[j]) break;
@@ -278,6 +284,21 @@ function paintRamp(ctx, x0, y0, w, h, ramp, fy) {
   }
   ctx.putImageData(img, x0, y0);
 }
+// ---- easing.  Nothing in a cut moves at a constant rate: a body accelerates
+// into a fall and decelerates out of a rise, and a card that slams arrives
+// hard and settles.  These are the only curves used below.
+function eo2(u) { u = clamp(u, 0, 1); return 1 - (1 - u) * (1 - u); }
+function eo3(u) { u = clamp(u, 0, 1); const v = 1 - u; return 1 - v * v * v; }
+function ei2(u) { u = clamp(u, 0, 1); return u * u; }
+function sstep(u) { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); }
+// a slam that overshoots and settles back: a card that stops dead is a decal,
+// a card that recoils a couple of pixels has weight
+function slamK(u) {
+  u = clamp(u, 0, 1);
+  if (u >= 1) return 1;
+  const v = u - 1;
+  return 1 + 2.30158 * v * v * v + 1.30158 * v * v;
+}
 // a flat pixel disc (sun, moon) — scanline rows, never a canvas arc
 function disc(ctx, cx, cy, r, col, rim) {
   for (let y = -r; y <= r; y++) {
@@ -295,12 +316,13 @@ const BP = {
   // waterline.  Fifteen bands so the dither has something to ramp between.
   skyDusk:  ['#140b2e', '#1c1039', '#271345', '#37174c', '#4b1c4e', '#642349', '#802c44',
              '#9c3a3e', '#b84a37', '#ce5f31', '#df7a31', '#ed993c', '#f6b755', '#fbd27e', '#ffeab4'],
-  // NIGHT — cold indigo above, with the fire in the village bleeding a dirty
-  // ember bruise into the bottom bands.
-  skyNight: ['#03040e', '#050816', '#080c20', '#0c112b', '#111636', '#171c41', '#1f224c',
-             '#28264f', '#332851', '#3f2a4d', '#4c2a44', '#5c2b3a'],
-  skyDim:   ['#05070f', '#080c1c', '#0d1329', '#131b36', '#1a2444', '#232c51', '#2f335e',
-             '#3b3667', '#4a3868', '#5c3a62', '#703c58', '#833e4c'],
+  // NIGHT — nothing is burning.  Cold indigo at the zenith going steel at the
+  // waterline, so the only warm thing in the frame is a lamp somebody lit.
+  skyNight: ['#02030b', '#040613', '#06091c', '#080d26', '#0a1130', '#0d163b', '#101c46',
+             '#142251', '#19295c', '#1f3168', '#263a74', '#2f4482'],
+  // the hour before dawn: the same sky with the black drained out of the top
+  skyPale:  ['#05070f', '#080c1d', '#0b122b', '#0f1a3a', '#14234a', '#1b2d5a', '#24386a',
+             '#2f457a', '#3d548a', '#4d649a', '#6076aa', '#7589ba'],
   // DAWN — the whole spectacle: night blue, violet, magenta, coral, amber, gold.
   skyDawn:  ['#080c24', '#0d1531', '#131e41', '#1a2951', '#243461', '#33396e', '#463c76',
              '#5c3f74', '#75416c', '#8d4762', '#a45259', '#b86153', '#ca7353', '#d98a57',
@@ -311,6 +333,8 @@ const BP = {
              '#172956', '#1d305f', '#243766'],
   seaDusk:  ['#060616', '#080a20', '#0b0f2a', '#0e1637', '#121e44', '#172852', '#1f3260',
              '#2c3b68', '#42406c', '#5c456a', '#794a63', '#94525a', '#a95d4e'],
+  seaPale:  ['#03060f', '#050a19', '#071024', '#0a1730', '#0d1e3d', '#11274b', '#163159',
+             '#1d3b66', '#264674', '#315282'],
   seaDawn:  ['#05081a', '#070c26', '#0a1233', '#0d1941', '#12224f', '#182c5d', '#22356a',
              '#333b73', '#4a3f75', '#65456f', '#824b66', '#9d545c', '#b56152', '#c87055'],
   // chop, from the near water out to the horizon — it is not one grey
@@ -323,7 +347,10 @@ const BP = {
   fire:     ['#5c1b10', '#9c3115', '#d4661c', '#ffab34', '#ffe6a2'],
   // the pools of light a torch throws, darkest ring out to the white core
   torchGlow:['#2a1410', '#4a2012', '#6e3315', '#9c4e1a', '#c87024', '#eda03e'],
-  emberGlow:['#33110e', '#571a10', '#7f2a13', '#ab4317', '#d4661c', '#ffab34'],
+  // and the one the moon lays down: the same shape in the cold register
+  moonGlow: ['#0a1224', '#111e38', '#1a2d50', '#26406c', '#385a8e', '#6a90c0'],
+  // stirred water at night lights itself up — the boil where he went under
+  biolum:   ['#06232c', '#0b3d46', '#136068', '#1f8f92', '#43c8bc', '#a8f4e6'],
   gold: '#ffe48f', goldD: '#e0a838', red: '#c4202c', redL: '#e8515a',
   bone: '#e8e4d8', white: '#f2f6fa', steel: '#8a9ab5',
   // signature colours for the two mini cards
@@ -351,7 +378,7 @@ function drawHut(x, dx, dy, w, h, col, rim) {
   tri(x, rim, dx - 4, dy - h, dx + w / 2, dy - h, dx + w / 2, dy - h - 9);
   P(x, rim, dx - 4, dy - h - 1, w + 8, 1);
 }
-function drawVillage(x, deckY, col, rim, wrecked) {
+function drawVillage(x, deckY, col, rim) {
   // the long pier, walking out over the water on stilts
   P(x, col, -2, deckY, 214, 4);
   P(x, rim, -2, deckY, 214, 1);
@@ -372,10 +399,6 @@ function drawVillage(x, deckY, col, rim, wrecked) {
   P(x, col, 124, deckY - 56, 3, 56);
   P(x, col, 118, deckY - 56, 15, 2);
   for (let i = 0; i < 5; i++) { P(x, col, 119 + i * 3, deckY - 52, 2, 5); P(x, rim, 119 + i * 3, deckY - 52, 2, 1); }
-  if (wrecked) {                                  // after the boss: half of it is ash
-    P(x, BP.ink, 86, deckY - 24, 34, 24);
-    P(x, BP.ink, 132, deckY - 17, 24, 8);
-  }
   TORCH.length = 0;
   TORCH.push([10, deckY - 3], [62, deckY - 4], [104, deckY - 28], [128, deckY - 58], [172, deckY - 25], [202, deckY - 3]);
 }
@@ -388,11 +411,15 @@ function drawFarBoat(x, bx, by, col, rim, broke) {
 }
 const SEA_CACHE = {};
 function seaLayer(seaRamp, opt) {
-  const chop = opt.chop || BP.foam[0], sun = opt.sun ? opt.sun[0] : -1;
+  const chop = opt.chop || BP.foam[0];
+  // the road under the key light.  A sun gives it its own x; a moon has to be
+  // told, because its disc is drawn separately.
+  const sun = opt.sun ? opt.sun[0] : (opt.roadX === undefined ? -1 : opt.roadX);
   const chopR = Array.isArray(chop) ? chop : [chop];
   const glows = opt.glows || [];
-  const key = seaRamp.join('') + chopR.join('') + sun + (opt.road || '') +
-              glows.map(g => g[0] + g[1].join('') + g[2]).join('|');
+  const key = seaRamp.join('') + chopR.join('') + sun + (opt.road || '') + (opt.road2 || '') +
+              (opt.roadW || 0) + (opt.roadD || 0) +
+              glows.map(g => g[0] + g[1].join('') + g[2] + (g[3] || 0)).join('|');
   if (SEA_CACHE[key]) return SEA_CACHE[key];
   const H = 360 - HZ, b = pixBuf(640, H);
   const cols = seaRamp.map(hexToRgb), n = cols.length;
@@ -427,35 +454,38 @@ function seaLayer(seaRamp, opt) {
   }
   // the light on the water under the sun, a hard dithered road
   if (sun >= 0) {
-    const RD = hexToRgb(opt.road || opt.sun[3]);
-    const RD2 = hexToRgb(opt.road2 || opt.sun[4] || opt.road || opt.sun[3]);
+    const RD = hexToRgb(opt.road || (opt.sun ? opt.sun[3] : '#ffffff'));
+    const RD2 = hexToRgb(opt.road2 || (opt.sun && opt.sun[4]) || opt.road || '#ffffff');
+    const RW = opt.roadW || 62, RDN = opt.roadD === undefined ? 0.72 : opt.roadD;
     for (let y = 0; y < H; y++) {
-      const u = y / H, sp = 6 + u * 62, len = 1 + R(u * 2);
+      const u = y / H, sp = 6 + u * RW, len = 1 + R(u * 2);
       for (let dx = -sp; dx <= sp; dx += 1) {
         const px = R(sun + dx);
         if (px < 0 || px > 639) continue;
         const fall = 1 - Math.abs(dx) / sp;
-        if (bay(px, y + HZ) > fall * (0.72 - u * 0.45)) continue;
+        if (bay(px, y + HZ) > fall * (RDN - u * RDN * 0.62)) continue;
         const C = fall > 0.62 && u < 0.5 ? RD2 : RD;
         for (let d = 0; d < len; d++) pset(b, C, px + d, y);
       }
     }
   }
-  // every other light on the shore also lands on the water: a torch line, a
-  // burning hut.  Same posterized road, narrower and banded by its own ramp.
+  // every other light on the shore also lands on the water: the lamps along
+  // the pier.  Same posterized road, narrower and banded by its own ramp.
   for (const g of glows) {
     const gx = g[0], ramp = g[1].map(hexToRgb), reach = g[2] || 0.55, wid = g[3] || 26;
+    const base = g[4] === undefined ? 3 : g[4], dens = g[5] === undefined ? 0.92 : g[5];
+    const pw = g[6] === undefined ? 1 : g[6];
     for (let y = 0; y < H; y++) {
       const u = y / H;
       if (u > reach) break;
-      const sp = 3 + u * wid, len = 1 + R(u * 2);
-      const depth = 1 - u / reach;
+      const sp = base + u * wid, len = 1 + R(u * 2);
+      const depth = Math.pow(1 - u / reach, pw);
       for (let dx = -sp; dx <= sp; dx += 1) {
         const px = R(gx + dx);
         if (px < 0 || px > 639) continue;
         const fall = (1 - Math.abs(dx) / sp) * depth;
         if (fall <= 0) continue;
-        if (bay(px, y + HZ) > fall * 0.92) continue;
+        if (bay(px, y + HZ) > fall * dens) continue;
         let i = Math.floor(fall * ramp.length);
         if (i < 0) i = 0; else if (i > ramp.length - 1) i = ramp.length - 1;
         for (let d = 0; d < len; d++) pset(b, ramp[i], px + d, y);
@@ -487,7 +517,6 @@ function buildBay(skyRamp, seaRamp, opt) {
       const base = Math.pow(y / (HZ - 1), opt.skyPow || 0.72) * (n - 1);
       for (let px = 0; px < 640; px++) {
         let fi = base + (hash2(px >> 3, y >> 1) - 0.5) * 0.09 * (n - 1);
-        if (opt.ember) fi += opt.ember * (n - 1) * Math.pow(1 - px / 640, 1.4) * Math.pow(y / HZ, 2.0);
         if (fi < 0) fi = 0; else if (fi > n - 1) fi = n - 1;
         let i = Math.floor(fi);
         if (bay(px, y) < fi - i) i++;
@@ -535,13 +564,32 @@ function buildBay(skyRamp, seaRamp, opt) {
     disc(x, opt.sun[0], opt.sun[1], opt.sun[2], opt.sun[3]);
     disc(x, opt.sun[0], opt.sun[1], opt.sun[2] - 3, opt.sun[4]);
   }
+  // the moon: a hard disc with two maria bitten out of it and a thin halo, so
+  // it is a body in the sky and not a hole punched in the backdrop
+  if (opt.moon) {
+    const mx = opt.moon[0], my = opt.moon[1], mr = opt.moon[2];
+    for (let r = mr + 4; r > mr; r--) {
+      const a = (mr + 5 - r) / 5;
+      for (let d = 0; d < 360; d += 3) {
+        const px = mx + R(Math.cos(d * 0.01745) * r), py = my + R(Math.sin(d * 0.01745) * r);
+        if (bay(px, py) > a * 0.35) continue;
+        P(x, '#182448', px, py, 1, 1);
+      }
+    }
+    disc(x, mx, my, mr, '#6b7ba6');
+    disc(x, mx, my, mr - 1, '#b8c4e2');
+    disc(x, mx, my, mr - 4, '#e6ecff');
+    P(x, '#94a2c8', mx - R(mr * 0.35), my - R(mr * 0.2), 3, 3);
+    P(x, '#94a2c8', mx + R(mr * 0.25), my + R(mr * 0.35), 4, 2);
+    P(x, '#94a2c8', mx + R(mr * 0.1), my - R(mr * 0.55), 2, 2);
+  }
   // ---- the sea, in ONE pixel pass: ramp, chop and the road under the sun.
   // as fillRect-per-dash this alone was most of the bake budget.
   x.drawImage(seaLayer(seaRamp, opt), 0, HZ);
   // ---- the village on its pier, standing in the water
-  drawVillage(x, HZ - 16, BP.vill, opt.rim || BP.villR, opt.wrecked);
-  drawFarBoat(x, 300, HZ - 4, BP.vill, opt.rim || BP.villR, opt.wrecked);
-  drawFarBoat(x, 470, HZ - 2, BP.vill, opt.rim || BP.villR, opt.wrecked);
+  drawVillage(x, HZ - 16, BP.vill, opt.rim || BP.villR);
+  drawFarBoat(x, 300, HZ - 4, BP.vill, opt.rim || BP.villR, opt.broke);
+  drawFarBoat(x, 470, HZ - 2, BP.vill, opt.rim || BP.villR, opt.broke);
   // ---- the light the village makes.  Baked: the flicker on top of it is a
   // handful of pixels per frame, this is the part that costs anything.
   if (opt.torchPools) {
@@ -556,8 +604,31 @@ function buildBay(skyRamp, seaRamp, opt) {
       P(x, BP.torchGlow[3], px, HZ - 12, 1, 1);
     }
   }
-  if (opt.emberPools) {
-    for (const g of opt.emberPools) glowPool(x, g[0], g[1], g[2], g[3], BP.emberGlow, 0.85);
+  return c;
+}
+// The water closing over something floating in it: a band that starts sparse
+// and goes solid, baked once so a scene can blit it instead of writing ten
+// thousand pixels a frame.
+function buildVeil(w, h, col, col2) {
+  const c = can(w, h), x = cx2(c);
+  for (let px = 0; px < w; px++) for (let y = 0; y < h; y++) {
+    const f = y / (h - 1);
+    if (bay(px, y) > 0.10 + f * 1.05) continue;
+    P(x, f > 0.6 ? (col2 || col) : col, px, y, 1, 1);
+  }
+  return spr(c, w / 2, 0);
+}
+
+// the dark that closes the corners of a cut: baked once, blitted, instead of
+// forty-eight fillRects a frame
+function buildVignette() {
+  const c = can(640, 360), x = cx2(c);
+  for (let i = 0; i < 12; i++) {
+    const inset = i * 6, a = 0.10 - i * 0.007;
+    if (a <= 0) break;
+    x.fillStyle = rgbaq('#04060e', a);
+    x.fillRect(0, inset, 640, 1); x.fillRect(0, 359 - inset, 640, 1);
+    x.fillRect(inset, 0, 1, 360); x.fillRect(639 - inset, 0, 1, 360);
   }
   return c;
 }
@@ -723,99 +794,262 @@ function buildSpear() {
   return spr(outlineIt(c, BP.ink), 20, 4);
 }
 
-// ---- the war manatee, side on ------------------------------------------
-function buildManateeSide(ghost) {
-  const W = 152, H = 58;
-  const f = blobField(W, H, [
-    { x: 16, y: 30, rx: 14, ry: 7 },     // fluke
-    { x: 30, y: 30, rx: 10, ry: 8 },
-    { x: 50, y: 30, rx: 18, ry: 15 },
-    { x: 76, y: 29, rx: 23, ry: 19 },    // thickest
-    { x: 104, y: 29, rx: 20, ry: 17 },
-    { x: 124, y: 30, rx: 15, ry: 13 },
-    { x: 138, y: 32, rx: 8, ry: 8 },     // blunt snout
-  ]);
-  const ramp = ghost
-    ? ['#0b262e', '#13434e', '#1d6875', '#3390a0', '#5fbcc8']
-    : ['#2a2730', '#3d3947', '#585462', '#726e7c', '#8f8b98'];
-  const body = shadeBlob(W, H, f, ramp, { outline: ghost ? '#07202a' : BP.ink, smooth: 3, lift: 0.18 });
-  const c = can(W, H), x = cx2(c);
-  x.drawImage(body.c, 0, 0);
-  // pale belly
-  for (let y = 34; y < H - 1; y++) for (let px = 20; px < 146; px++) {
-    const i = y * W + px; if (f[i] <= 0.04) continue;
-    if (f[i + W] <= 0.04 || bay(px, y) < (y - 34) / 18) P(x, ghost ? '#8ed6dd' : '#9fadbd', px, y, 1, 1);
+// =========================================================================
+//  THE CAST — she and the otter are NOT drawn in this file.  They are
+//  CH.side and CH.otterStand out of chars.js, composed here exactly the way
+//  chars.js composes them, so every cinematic stays on model when the cast
+//  is rebuilt.  What IS new is the light: each beat bakes its own copy of
+//  every part, darkened to the ambient of that scene and then given the rim
+//  of whatever is actually burning in it.
+// =========================================================================
+const MSC = 2;                      // the cast, two screen pixels per art pixel
+
+// the hat comes off in the defeat, so it is cut out of the cast's own head
+// rather than drawn again.  Same cut death.js uses.
+function hatCut() { return Math.max(3, R(CH.otterHead.c.height * 0.36)); }
+function cutHat() {
+  const src = CH.otterHead, c0 = cloneSpr(src), W = src.c.width, cut = hatCut();
+  const d = cx2(c0).getImageData(0, 0, W, cut).data;
+  let x0 = W, x1 = -1, y0 = cut, y1 = -1;
+  for (let y = 0; y < cut; y++) for (let px = 0; px < W; px++) {
+    if (d[(y * W + px) * 4 + 3] < 24) continue;
+    if (px < x0) x0 = px; if (px > x1) x1 = px;
+    if (y < y0) y0 = y; if (y > y1) y1 = y;
   }
-  if (!ghost) {
-    // the plate bolted over her shoulder, and the harness strap
-    P(x, BP.ink, 84, 11, 34, 9); P(x, '#63728d', 85, 12, 32, 7);
-    P(x, '#93a4c0', 85, 12, 32, 2); P(x, '#45526b', 85, 17, 32, 2);
-    for (let i = 0; i < 5; i++) P(x, '#cdd9ea', 88 + i * 7, 15, 2, 2);
-    cap(x, '#472c17', 74, 14, 72, 44, 3);
-    P(x, BP.goldD, 71, 26, 5, 4);
-    // propeller scars across her back
-    for (let i = 0; i < 4; i++) LN(x, '#b8b3c0', 44 + i * 9, 14 + i, 52 + i * 9, 21 + i, 1);
+  if (x1 < x0) { x0 = 0; x1 = W - 1; y0 = 0; y1 = cut - 1; }
+  const c = can(x1 - x0 + 1, y1 - y0 + 1);
+  cx2(c).drawImage(c0, -x0, -y0);
+  return spr(c, (x1 - x0 + 1) / 2, (y1 - y0 + 1) / 2);
+}
+// his head with the hat taken off it: the felt cleared and the skull closed
+// over with his own fur, so a bare head still reads as a head.
+function cutBareHead(exp) {
+  const src = CH.otterHead, c = headCan(exp), x = cx2(c);
+  const W = c.width, H = c.height, cut = hatCut();
+  x.clearRect(0, 0, W, cut);
+  const d = x.getImageData(0, 0, W, H).data;
+  let lx = W, rx = -1;
+  for (let q = cut; q < Math.min(H, cut + 3); q++) for (let px = 0; px < W; px++) {
+    if (d[(q * W + px) * 4 + 3] < 24) continue;
+    if (px < lx) lx = px; if (px > rx) rx = px;
   }
-  // flipper, tucked under
-  cap(x, ramp[1], 108, 40, 96, 52, 7);
-  P(x, ramp[0], 94, 48, 8, 5);
-  // face
-  P(x, ghost ? '#07202a' : BP.ink, 132, 24, 4, 4); P(x, ghost ? '#0d3038' : '#241a12', 133, 25, 2, 2);
-  if (!ghost) P(x, BP.white, 133, 25, 1, 1);
-  P(x, ramp[0], 134, 34, 10, 2);                       // mouth line
-  for (let i = 0; i < 4; i++) P(x, '#c9c4d0', 142 + (i & 1) * 2, 30 + i * 2, 2, 1);   // whiskers
-  if (ghost) {
-    // she is a memory, not a body: knock half the pixels out on a hard grid
-    const img = x.getImageData(0, 0, W, H), d = img.data;
-    for (let y = 0; y < H; y++) for (let px = 0; px < W; px++) {
-      if (bay(px, y) > 0.42) d[(y * W + px) * 4 + 3] = 0;
+  if (rx <= lx) { lx = R(W * 0.18); rx = R(W * 0.82); }
+  const cxp = (lx + rx) / 2, rw = (rx - lx) / 2, rh = Math.max(2, R(H * 0.20));
+  for (let y = -rh; y <= 1; y++) {
+    const k = 1 - (y / (rh + 0.6)) * (y / (rh + 0.6)); if (k <= 0) continue;
+    const hw = R(rw * Math.sqrt(k));
+    for (let px = -hw; px <= hw; px++) {
+      const u = Math.abs(px) / (hw + 1), v = (-y) / rh;
+      const col = (u > 0.84 || v > 0.92) ? CPAL.out : v > 0.55 ? CPAL.furL : u < 0.55 ? CPAL.fur : CPAL.furD;
+      P(x, col, R(cxp + px), cut + y, 1, 1);
     }
-    x.putImageData(img, 0, 0);
   }
-  return spr(c, 76, 30);
+  P(x, CPAL.out, R(cxp - rw - 1), cut - rh + 1, 2, 3); P(x, CPAL.furDD, R(cxp - rw), cut - rh + 2, 1, 1);
+  P(x, CPAL.out, R(cxp + rw), cut - rh + 1, 2, 3); P(x, CPAL.furDD, R(cxp + rw), cut - rh + 2, 1, 1);
+  return spr(outlineIt(c, CPAL.out), src.ax, src.ay);
+}
+// a snapshot of the cast's live head, with one expression baked onto it, at
+// one art pixel per world unit like the rest of this file's cast
+function headSpr(exp) {
+  const buf = CH.headWithFace(exp || 'idle', false, 0, false);
+  const raw = can(buf.width, buf.height);
+  cx2(raw).drawImage(buf, 0, 0, buf.width, buf.height, 0, 0, buf.width, buf.height);
+  const H = CH.otterHead;
+  return cast1x({ c: raw, w: H.w, h: H.h, ax: H.ax, ay: H.ay });
+}
+function headCan(exp) { return cloneSpr(headSpr(exp)); }
+
+// chars.js rasterizes most of the cast at DETAIL art pixels per world unit
+// and patches drawImage to scale those canvases down on the way out.  The
+// side-on set and his head and body are deliberate exceptions and stay at one
+// art pixel per world unit; his arm and his tail are not.  Everything here
+// bakes rim lights in canvas pixels and then places the result with world
+// anchors, so every part has to be square with the world grid first — and the
+// whole side-on cast has to be one resolution or his sleeve comes out finer
+// than her hide.  Same 2x2 reduction chars.js uses: the most opaque sample in
+// each block, so nothing thin drops out.
+function cast1x(s) {
+  const W = Math.max(1, R(s.w)), H = Math.max(1, R(s.h));
+  if (s.c.width === W && s.c.height === H) return s;
+  const SW = s.c.width, SH = s.c.height, k = SW / W;
+  const src = cx2(can(SW, SH));
+  src.drawImage(s.c, 0, 0, SW, SH, 0, 0, SW, SH);     // 8-arg: no hi-res bridge
+  const d = src.getImageData(0, 0, SW, SH).data;
+  const c = can(W, H), x = cx2(c);
+  const img = x.createImageData(W, H), o = img.data;
+  for (let y = 0; y < H; y++) for (let px = 0; px < W; px++) {
+    let best = -1, bi = 0;
+    for (let dy = 0; dy < k; dy++) for (let dx = 0; dx < k; dx++) {
+      const sx = R(px * k + dx), sy = R(y * k + dy);
+      if (sx >= SW || sy >= SH) continue;
+      const q = (sy * SW + sx) * 4;
+      if (d[q + 3] > best) { best = d[q + 3]; bi = q; }
+    }
+    const q = (y * W + px) * 4;
+    o[q] = d[bi]; o[q + 1] = d[bi + 1]; o[q + 2] = d[bi + 2]; o[q + 3] = d[bi + 3];
+  }
+  x.putImageData(img, 0, 0);
+  return spr(c, s.ax, s.ay);
 }
 
-// ---- the otter, side on, standing --------------------------------------
-function buildOtterSide() {
-  const c = can(28, 34), x = cx2(c);
-  const F = '#c8703c', FD = '#9c4d24', FDD = '#6d3316', CR = '#e8d3ae';
-  cap(x, FD, 10, 26, 1, 22, 5);                       // tail
-  P(x, FDD, 0, 20, 4, 4);
-  cap(x, FDD, 11, 25, 9, 31, 4);                      // far leg
-  P(x, FDD, 6, 30, 6, 3);
-  P(x, F, 9, 13, 11, 13);                             // torso
-  P(x, FD, 9, 13, 2, 13);
-  P(x, CR, 12, 16, 7, 9);
-  cap(x, F, 15, 25, 17, 31, 5);                       // near leg
-  P(x, FDD, 15, 30, 7, 3);
-  for (let i = 0; i < 10; i++) P(x, '#472c17', 10 + i, 24 - i, 2, 1);   // bandolier
-  P(x, BP.goldD, 14, 20, 3, 3); P(x, BP.gold, 14, 20, 3, 1);
-  cap(x, F, 18, 16, 21, 24, 3);                       // near arm
-  P(x, F, 10, 4, 11, 10);                             // head
-  P(x, FD, 10, 4, 2, 10);
-  P(x, CR, 16, 9, 6, 4);                              // muzzle
-  P(x, BP.ink, 9, 3, 4, 4); P(x, FDD, 10, 4, 2, 2);   // ear
-  P(x, BP.ink, 17, 6, 2, 2); P(x, BP.white, 17, 6, 1, 1);
-  P(x, '#2a1a10', 21, 10, 2, 2);
-  P(x, BP.ink, 16, 13, 6, 1);
-  return spr(outlineIt(c, BP.ink), 14, 32);
+// darken a part to a scene's ambient, then paint its lights back onto the
+// edges.  dirs entries are [lx, ly, hot, warm, depth] and POINT AT THE LIGHT
+// in the sprite's own space — mirror them yourself for a mirrored draw.
+function litPart(s, dark, dirs, edge) {
+  let c = cloneSpr(s);
+  if (dark) c = tintCanvas(c, dark[0], dark[1]);
+  // A tint takes the outline down with everything else, and a figure with no
+  // outline left has nothing holding its silhouette on the side the light
+  // does not reach.  Put the edge back before the rims, so the rims overwrite
+  // it only where the light actually lands.
+  if (edge !== null) darkEdge(c, edge || '#05060f');
+  if (dirs) for (const d of dirs) c = rimLight(c, d[0], d[1], d[2], d[3], d[4] === undefined ? 1 : d[4]);
+  return spr(c, s.ax, s.ay);
 }
-function buildOtterHat() {
-  const c = can(18, 10), x = cx2(c);
-  tri(x, '#3d4767', 0, 8, 17, 8, 9, 0);
-  P(x, '#28314c', 0, 7, 18, 2);
-  P(x, '#586590', 1, 6, 16, 1);
-  P(x, BP.white, 5, 4, 3, 1);
-  P(x, '#c4202c', 11, 5, 3, 1);
-  return spr(outlineIt(c, BP.ink), 9, 9);
+// re-ink the outermost opaque pixel all the way round
+function darkEdge(c, col) {
+  const x = cx2(c), w = c.width, h = c.height;
+  const img = x.getImageData(0, 0, w, h), d = img.data;
+  const op = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) op[i] = d[i * 4 + 3] > 8 ? 1 : 0;
+  const C = hexToRgb(col);
+  for (let y = 0; y < h; y++) for (let px = 0; px < w; px++) {
+    const i = y * w + px;
+    if (!op[i]) continue;
+    if (px > 0 && op[i - 1] && px < w - 1 && op[i + 1] && y > 0 && op[i - w] && y < h - 1 && op[i + w]) continue;
+    const q = i * 4;
+    d[q] = C[0]; d[q + 1] = C[1]; d[q + 2] = C[2]; d[q + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  return c;
 }
+// One lighting of her: the four parts chars.js builds her out of, so the
+// fluke can still beat and the flippers can still swing.
+//  opt = { dark, dirs, far, scarred }
+function herLit(opt) {
+  const S = CH.side, dk = opt.dark, dr = opt.dirs, eg = opt.edge;
+  return {
+    body: litPart(cast1x(opt.scarred ? S.bodyScar : S.body), dk, dr, eg),
+    fluke: litPart(cast1x(S.fluke), dk, dr, eg),
+    flip: litPart(cast1x(S.flip), dk, dr, eg),
+    flipFar: litPart(cast1x(S.flipFar), dk, opt.far || null, eg),
+    belly: opt.belly ? litPart(cast1x(S.belly), dk, dr, eg) : null,
+  };
+}
+// and one of him: torso, arm, tail, and a head with a fixed expression
+function himLit(opt) {
+  const dk = opt.dark, dr = opt.dirs, eg = opt.edge;
+  return {
+    stand: litPart(cast1x(CH.otterStand), dk, dr, eg),
+    arm: litPart(cast1x(CH.otterArm), dk, dr, eg),
+    tail: litPart(cast1x(CH.otterTail), dk, opt.far || dr, eg),
+    head: litPart(headSpr(opt.exp), dk, dr, eg),
+    bare: opt.bare ? litPart(cutBareHead(opt.exp), dk, dr, eg) : null,
+    hat: opt.bare ? litPart(cutHat(), dk, dr, eg) : null,
+  };
+}
+// Compose her out of the lit parts, in chars.js's own order and at its own
+// offsets.  m: {x,y,rot,flip,scale,phase,tailAmp,flipperA,exp,blink,belly}
+function drawHer(ctx, L, m, t) {
+  const S = CH.side;
+  ctx.save();
+  ctx.translate(R(m.x), R(m.y));
+  if (m.rot) ctx.rotate(m.rot);
+  const k = m.scale === undefined ? MSC : m.scale;
+  ctx.scale(m.flip ? -k : k, k * (m.sy || 1));
+  if (m.alpha !== undefined) ctx.globalAlpha = qa(m.alpha);
+  const ph = m.phase || 0;
+  const amp = m.tailAmp === undefined ? 0.22 : m.tailAmp;
+  const fa = (m.flipperA === undefined ? 2.15 : m.flipperA) + Math.sin(ph + 0.9) * 0.24;
+  ctx.save(); ctx.translate(S.shoX - 5, S.shoY - 4); ctx.rotate(fa - 0.22);
+  ctx.drawImage(L.flipFar.c, -L.flipFar.ax, -L.flipFar.ay); ctx.restore();
+  ctx.save(); ctx.translate(S.tailX, 0); ctx.rotate(Math.sin(ph) * amp);
+  ctx.drawImage(L.fluke.c, -L.fluke.ax, -L.fluke.ay); ctx.restore();
+  const b = m.belly && L.belly ? L.belly : L.body;
+  ctx.drawImage(b.c, -b.ax, -b.ay);
+  ctx.save(); ctx.translate(S.shoX, S.shoY); ctx.rotate(fa);
+  ctx.drawImage(L.flip.c, -L.flip.ax, -L.flip.ay); ctx.restore();
+  // the eye is the one thing the night does not get to take: drawn live, at
+  // full strength, over the darkened body
+  if (!m.belly && m.exp !== false) CH.sideFace(ctx, m.exp || 'calm', m.blink, t || 0);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+// and him.  o: {x,y,flip,scale,rot,arms,hold,tail,headR,headX,headY,bare}
+function drawHim(ctx, L, o) {
+  ctx.save();
+  ctx.translate(R(o.x), R(o.y));
+  const k = o.scale === undefined ? MSC : o.scale;
+  ctx.scale(o.flip ? -k : k, k);
+  if (o.rot) ctx.rotate(o.rot);
+  if (o.alpha !== undefined) ctx.globalAlpha = qa(o.alpha);
+  const arms = o.arms || [-0.25, 0.35];
+  ctx.save(); ctx.translate(-6, 4); ctx.rotate(2.9 + (o.tail || 0));
+  ctx.drawImage(L.tail.c, -L.tail.ax, -L.tail.ay); ctx.restore();
+  ctx.save(); ctx.translate(1, -1); ctx.rotate(arms[1]);
+  ctx.drawImage(L.arm.c, -L.arm.ax, -L.arm.ay); ctx.restore();
+  ctx.drawImage(L.stand.c, -L.stand.ax, -L.stand.ay);
+  ctx.save(); ctx.translate(2, -2); ctx.rotate(arms[0]);
+  ctx.drawImage(L.arm.c, -L.arm.ax, -L.arm.ay);
+  if (o.hold) ctx.drawImage(o.hold.c, 9 - o.hold.ax, -o.hold.ay);
+  ctx.restore();
+  ctx.save(); ctx.translate(1 + (o.headX || 0), -11 + (o.headY || 0)); ctx.rotate(o.headR || 0);
+  const hd = o.bare && L.bare ? L.bare : L.head;
+  ctx.drawImage(hd.c, -hd.ax, -hd.ay);
+  ctx.restore();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+// The lamp she carries.  It turns up on her plate in four of these beats, so
+// it is one sprite: a hurricane lamp in a brass cage, with its bail hook.
+function buildLamp() {
+  const c = can(13, 21), x = cx2(c);
+  P(x, '#6d5a3a', 5, 0, 3, 2);                    // the hook
+  P(x, '#8a7550', 5, 0, 1, 2);
+  P(x, '#3a2a18', 2, 2, 9, 3);                    // the cap
+  P(x, '#6d5a3a', 2, 2, 9, 1);
+  P(x, '#241a10', 1, 5, 11, 12);                  // the cage
+  P(x, '#ffe8a8', 2, 6, 9, 10);                   // the glass
+  P(x, '#fff8dc', 4, 8, 4, 6);                    // the flame in it
+  P(x, '#ffffff', 5, 9, 2, 3);
+  for (let i = 0; i < 3; i++) P(x, '#3a2a18', 3 + i * 3, 5, 1, 12);   // cage bars
+  P(x, '#3a2a18', 2, 17, 9, 3);                   // the base
+  P(x, '#6d5a3a', 2, 17, 9, 1);
+  return spr(outlineIt(c, BP.ink), 6, 18);
+}
+
+// She is also a memory once: the same body, knocked half out on a hard grid
+// and drained into the cold.
+function buildGhost() {
+  const S = CH.side, B = cast1x(S.body);
+  let c = cloneSpr(B);
+  tintCanvas(c, '#0b3446', 0.82);
+  darkEdge(c, '#04141e');
+  // the rim goes on while she is still solid: knock the holes in her first
+  // and every hole grows its own lit edge, which reads as a checkerboard
+  c = rimLight(c, 0, -1, '#3f9cb0', '#175a6e', 2);
+  const x = cx2(c), W = c.width, H = c.height;
+  const img = x.getImageData(0, 0, W, H), d = img.data;
+  for (let y = 0; y < H; y++) for (let px = 0; px < W; px++) {
+    const i = (y * W + px) * 4; if (d[i + 3] < 9) continue;
+    if (bay(px, y) > 0.90 - (y / (H - 1)) * 0.46) d[i + 3] = 0;
+  }
+  x.putImageData(img, 0, 0);
+  return spr(c, B.ax, B.ay);
+}
+
 function buildRifle() {
-  const c = can(24, 7), x = cx2(c);
-  P(x, '#5d6675', 4, 2, 19, 2);
-  P(x, '#9aa6b6', 4, 2, 19, 1);
-  P(x, '#7d4a22', 0, 2, 6, 4);
-  P(x, '#472c17', 6, 4, 4, 2);
-  return spr(outlineIt(c, BP.ink), 12, 3);
+  const c = can(26, 8), x = cx2(c);
+  P(x, '#3f4756', 9, 2, 16, 2);                  // barrel
+  P(x, '#6d7889', 9, 2, 16, 1);
+  P(x, '#2a303c', 8, 1, 6, 4);                   // receiver
+  P(x, '#5d6675', 8, 1, 6, 1);
+  P(x, '#8f6038', 0, 2, 9, 4);                   // stock
+  P(x, '#6d4527', 0, 4, 9, 2);
+  P(x, '#b58a52', 1, 2, 7, 1);
+  P(x, '#472c17', 7, 5, 4, 2);                   // trigger guard
+  P(x, '#2a303c', 22, 1, 2, 2);                  // front sight
+  return spr(outlineIt(c, BP.ink), 13, 4);
 }
 
 // ---- water furniture ----------------------------------------------------
@@ -865,43 +1099,121 @@ function buildSpray(w, h, seed) {
   }
   return spr(pixTo(b), w / 2, h);
 }
-function buildFlame(seed) {
-  const b = pixBuf(26, 34), CO = BP.fire.map(hexToRgb);
-  for (let y = 0; y < 34; y++) {
-    const u = 1 - y / 33;
-    const w = R((1 - u * u) * 11 + 1 + (hash2(y, seed) - 0.5) * 4);
-    for (let d = -w; d <= w; d++) {
-      const px = 13 + d, fall = 1 - Math.abs(d) / (w + 1);
-      if (bay(px, y + seed) > 0.25 + fall * 0.7) continue;
-      let ci = Math.floor(fall * 3 + (1 - u) * 1.6);
-      if (ci < 0) ci = 0; else if (ci > 4) ci = 4;
-      pset(b, CO[ci], px, y);
+// The frame the Chief is held in for his close-up.  Same bay, same hour, from
+// down at the waterline: the sun sitting on the horizon just past his
+// shoulder, his village a black ridge along it, and the sea running away
+// under him.  Nothing in this shot is on fire.
+function buildCloseBg() {
+  const HZ2 = 244;
+  const c = can(640, 360), x = cx2(c);
+  // sky: the same dusk ramp, one stop down, so the card reads over it
+  {
+    const b = pixBuf(640, HZ2), cols = BP.skyDusk.map(hexToRgb), n = cols.length;
+    for (let y = 0; y < HZ2; y++) {
+      const base = Math.pow(y / (HZ2 - 1), 1.7) * (n - 1);
+      for (let px = 0; px < 640; px++) {
+        let fi = base + (hash2(px >> 3, y >> 1) - 0.5) * 0.09 * (n - 1);
+        if (fi < 0) fi = 0; else if (fi > n - 1) fi = n - 1;
+        let i = Math.floor(fi);
+        if (bay(px, y) < fi - i) i++;
+        if (i > n - 1) i = n - 1;
+        pset(b, cols[i], px, y);
+      }
+    }
+    x.drawImage(pixTo(b), 0, 0);
+  }
+  // hard cloud slabs, low and long, lit underneath
+  for (let i = 0; i < 6; i++) {
+    const cy = 40 + i * 30, cw = 92 + ((i * 97) % 150), cx0 = ((i * 211) % 720) - 70;
+    P(x, '#3a1c3e', cx0, cy, cw, 3);
+    P(x, '#2a1434', cx0 + 7, cy - 2, R(cw * 0.66), 2);
+    for (let px = 0; px < cw; px++) {
+      const f = Math.sin((px / cw) * Math.PI);
+      if (bay(cx0 + px, cy) < f * 0.55) P(x, '#c4663e', cx0 + px, cy + 3, 1, 1);
+      if (bay(cx0 + px, cy + 1) < f * 0.22) P(x, '#ffa860', cx0 + px, cy + 4, 1, 1);
     }
   }
-  return spr(pixTo(b), 13, 33);
-}
-// the dark, near-black frame the Chief is held in for his close-up
-function buildCloseBg() {
-  const c = can(640, 360), x = cx2(c);
-  // cold indigo at the top, the village fire coming up from under the frame
-  paintRamp(x, 0, 0, 640, 360,
-    ['#06081a', '#0b0c22', '#11102a', '#1a1130', '#271334', '#361634', '#481a30',
-     '#5d2029', '#742820', '#8c331c'],
-    (u, px, py) => {
-      const dx = (px - 320) / 360, dy = (py - 300) / 300;
-      return 1 - Math.sqrt(dx * dx * 0.7 + dy * dy) * 1.05;
-    });
-  // embers riding up out of the burning village behind him, baked flat
-  for (let i = 0; i < 150; i++) {
-    const ex = R(hash2(i, 7) * 640), ey = R(360 - Math.pow(hash2(i, 23), 2.3) * 300);
-    const b = hash2(i, 41);
-    P(x, b > 0.86 ? BP.fire[4] : b > 0.52 ? BP.fire[3] : BP.fire[2], ex, ey, 1, 1);
+  // the sun, sitting on the horizon, with a banded bloom round it
+  for (let r = 74; r > 24; r--) {
+    const f = 1 - (r - 24) / 50;
+    for (let d = 0; d < 720; d += 2) {
+      const px = 494 + R(Math.cos(d * 0.008727) * r), py = HZ2 - 10 + R(Math.sin(d * 0.008727) * r * 0.9);
+      if (px < 0 || px > 639 || py < 0 || py >= HZ2) continue;
+      if (bay(px, py) > f * f * 0.80) continue;
+      P(x, f > 0.70 ? '#f0a95e' : f > 0.42 ? '#c4663e' : '#8a3a3c', px, py, 1, 1);
+    }
   }
-  // a hot band low down, where the water is throwing the fire back at him
-  for (let y = 300; y < 360; y++) for (let px = 0; px < 640; px++) {
-    const f = (y - 300) / 60;
-    if (bay(px, y) > f * 0.5) continue;
-    P(x, f > 0.75 ? '#a5411d' : '#6d2a18', px, y, 1, 1);
+  disc(x, 494, HZ2 - 10, 24, '#ffbb6e');
+  disc(x, 494, HZ2 - 10, 20, '#ffe0aa');
+  disc(x, 494, HZ2 - 10, 12, '#fff4d8');
+  // his village, a black ridge along the horizon with its lamps coming on
+  P(x, '#08070f', 0, HZ2 - 6, 330, 6);
+  const RIDGE = [[4, 16], [26, 11], [42, 19], [66, 9], [80, 14], [104, 22], [132, 12], [154, 17],
+                 [180, 9], [200, 15], [228, 11], [252, 18], [280, 10], [302, 13]];
+  for (const h of RIDGE) {
+    const hx = h[0], hh = h[1], hw = 14 + (hh & 3);
+    P(x, '#08070f', hx, HZ2 - 6 - hh, hw, hh);
+    tri(x, '#08070f', hx - 4, HZ2 - 6 - hh, hx + hw + 4, HZ2 - 6 - hh, hx + hw / 2, HZ2 - 6 - hh - 6);
+  }
+  P(x, '#08070f', 116, HZ2 - 62, 3, 56); P(x, '#08070f', 108, HZ2 - 62, 18, 3);
+  for (let i = 0; i < 7; i++) {
+    const lx = 14 + i * 46;
+    glowPool(x, lx, HZ2 - 9, 9, 6, BP.torchGlow, 0.44);
+    P(x, BP.fire[3], lx, HZ2 - 11, 1, 2); P(x, BP.fire[4], lx, HZ2 - 10, 1, 1);
+  }
+  // the sea, running away under him, with the sun's road down the middle
+  {
+    const H = 360 - HZ2, b = pixBuf(640, H);
+    const cols = BP.seaDusk.map(hexToRgb), n = cols.length;
+    for (let y = 0; y < H; y++) {
+      const u = y / (H - 1);
+      for (let px = 0; px < 640; px++) {
+        let v = 1 - Math.pow(u, 0.5) + (hash2(px >> 2, y) - 0.5) * 0.12;
+        if (v < 0) v = 0; else if (v > 1) v = 1;
+        const fi = v * (n - 1);
+        let i = Math.floor(fi);
+        if (bay(px, y + HZ2) < fi - i) i++;
+        if (i < 0) i = 0; else if (i > n - 1) i = n - 1;
+        pset(b, cols[i], px, y);
+      }
+    }
+    const RD = hexToRgb('#b8603e'), RD2 = hexToRgb('#eb9a5e');
+    for (let y = 0; y < H; y++) {
+      const u = y / H, sp = 8 + u * 96, len = 1 + R(u * 3);
+      for (let dx = -sp; dx <= sp; dx++) {
+        const px = R(494 + dx); if (px < 0 || px > 639) continue;
+        const fall = 1 - Math.abs(dx) / sp;
+        if (bay(px, y + HZ2) > fall * (0.70 - u * 0.44)) continue;
+        const C = fall > 0.62 && u < 0.5 ? RD2 : RD;
+        for (let d = 0; d < len; d++) pset(b, C, px + d, y);
+      }
+    }
+    const CH_ = BP.chopDusk.map(hexToRgb);
+    for (let y = 2; y < H; y++) {
+      const u = y / H, step = 3 + R(u * 6), len = 1 + R(u * 6);
+      let ci = Math.round((1 - Math.pow(u, 0.5)) * (CH_.length - 1));
+      if (ci < 0) ci = 0; else if (ci > CH_.length - 1) ci = CH_.length - 1;
+      let sx = R(hash2(y, 91) * 40);
+      while (sx < 640) {
+        if (hash2(sx * 3 + y, y * 7 + 11) < 0.40) { const C = CH_[ci]; for (let d = 0; d < len; d++) pset(b, C, sx + d, y); }
+        sx += step + R(hash2(sx, y) * 9);
+      }
+    }
+    x.drawImage(pixTo(b), 0, HZ2);
+  }
+  // spindrift hanging in the low light
+  for (let i = 0; i < 120; i++) {
+    const ex = R(hash2(i, 7) * 640), ey = R(hash2(i, 23) * 320);
+    const near = Math.abs(ex - 494) < 150 && Math.abs(ey - (HZ2 - 10)) < 120;
+    P(x, near ? (hash2(i, 41) > 0.6 ? '#ffe6b8' : '#e8a35e') : '#5c4670', ex, ey, 1, 1);
+  }
+  // the corner darkening this plate wants, folded into it
+  for (let i = 0; i < 18; i++) {
+    const inset = i * 5, a = 0.14 - i * 0.008;
+    if (a <= 0) break;
+    x.fillStyle = rgbaq('#08051a', a);
+    x.fillRect(0, inset, 640, 1); x.fillRect(0, 359 - inset, 640, 1);
+    x.fillRect(inset, 0, 1, 360); x.fillRect(639 - inset, 0, 1, 360);
   }
   return c;
 }
@@ -985,7 +1297,8 @@ const LINES_I = [
   [0.35, 1.05, 'the bay went quiet.'],
   [1.40, 1.05, 'then the drums started.'],
 ];
-// the Chief goes down
+// the Chief goes down.  No fire in this one: the pier lamps are still lit
+// behind her, the moon does the work, and the dawn arrives on the mother.
 const KD = { roll: 0.00, slip: 1.25, rise: 2.60, hat: 4.05, mother: 5.25, ribbon: 6.35, end: 7.55 };
 const LINES_D = [
   [0.30, 1.05, 'the shark went over.'],
@@ -994,6 +1307,7 @@ const LINES_D = [
   [4.15, 1.00, 'the otter took his hat off.'],
   [5.35, 1.60, 'for the one they took first.'],
 ];
+const DX = 384;                     // where he sinks, and where she comes up
 // the minis
 const KM = { rise: 0.00, card: 0.62, hold: 1.25, out: 1.68, end: 2.10 };
 const KX = { hit: 0.00, crack: 0.22, card: 0.42, stamp: 0.78, out: 1.28, end: 1.68 };
@@ -1025,70 +1339,98 @@ const BossCut = {
         chop: BP.chopDusk, cloudLit: '#ffbe6e', cloudLip: '#ffd58c',
         rim: '#4a2418', torchPools: true, glows: TGL,
       });
-      // the fire in the wreck is the only light in the first two, so it gets
-      // its own pool on the huts and its own road on the water
-      const EMB = [[128, HZ - 22, 30, 22], [150, HZ - 14, 20, 15], [104, HZ - 30, 18, 14]];
-      const EGL = [[128, BP.emberGlow, 0.62, 30], [150, BP.emberGlow, 0.46, 18]];
+      // NIGHT — nothing is burning.  The village is still standing behind
+      // her, dark, with the lamps along its pier the only warm thing in the
+      // frame; the moon is the key, off to the right, and the dawn comes up
+      // under it.  Three plates, cross-cut on the beat.
       A.bayNight = [
-        buildBay(BP.skyNight, BP.sea, { skyPow: 1.6, ember: 0.30, chop: BP.chopNight, wrecked: true, rim: '#5a1f14',
-          stars: 170, cloudLit: '#5c2a30', cloudLip: '#8a3a2c', emberPools: EMB, glows: EGL }),
-        buildBay(BP.skyDim, BP.sea, { skyPow: 1.5, ember: 0.26, chop: BP.chopNight, wrecked: true, rim: '#5a2418',
-          stars: 120, cloudLit: '#7e4050', cloudLip: '#a8504a', emberPools: EMB, glows: EGL }),
+        buildBay(BP.skyNight, BP.sea, { skyPow: 1.6, chop: BP.chopNight,
+          stars: 210, moon: [520, 72, 13], cloudLit: '#2f4482', cloudLip: '#4a6197',
+          roadX: 520, road: '#22375f', road2: '#44669c', roadW: 74, roadD: 0.50,
+          rim: '#1d2b4e', torchPools: true, glows: TGL }),
+        buildBay(BP.skyPale, BP.seaPale, { skyPow: 1.5, chop: BP.chopNight,
+          stars: 90, moon: [520, 72, 13], cloudLit: '#6076aa', cloudLip: '#8fa2cc',
+          roadX: 520, road: '#2c4470', road2: '#5878ae', roadW: 74, roadD: 0.44,
+          rim: '#2d3d62', torchPools: true, glows: TGL }),
         buildBay(BP.skyDawn, BP.seaDawn, {
-          skyPow: 1.45, sun: [112, 182, 19, '#ffc07a', '#fff0cc'], road: '#a85a4e', road2: '#e09a6a',
+          skyPow: 1.45, sun: [516, 178, 20, '#ffc07a', '#fff0cc'], road: '#a85a4e', road2: '#e09a6a',
           chop: BP.chopDawn, cloudLit: '#ffa878', cloudLip: '#ffcb94',
-          wrecked: true, rim: '#7a3a28', stars: 40, emberPools: EMB, glows: EGL }),
+          rim: '#4a3a44', stars: 24, torchPools: true, glows: TGL }),
       ];
       A.closeBg = buildCloseBg();
+      A.vig = buildVignette();
+      A.veilNight = buildVeil(200, 22, '#0d1834');
+      A.veilDawn = buildVeil(200, 22, '#2a2a52');
       A.swell = []; for (let i = 0; i < 7; i++) A.swell.push(buildSwellRow(i, i < 4 ? BP.foam[0] : BP.foam[1]));
       // the swell is lit by whatever is in the sky, so it gets a set each
       A.swellDusk = []; for (let i = 0; i < 7; i++) A.swellDusk.push(buildSwellRow(i, i < 3 ? '#6a4a6a' : i < 5 ? '#a06a66' : '#d08a5e'));
-      A.swellNight = []; for (let i = 0; i < 7; i++) A.swellNight.push(buildSwellRow(i, i < 4 ? '#24365e' : '#3c4a74'));
+      A.swellNight = []; for (let i = 0; i < 7; i++) A.swellNight.push(buildSwellRow(i, i < 4 ? '#1a2c52' : '#2d4372'));
+      A.swellPale = []; for (let i = 0; i < 7; i++) A.swellPale.push(buildSwellRow(i, i < 4 ? '#243c68' : '#41598e'));
       A.swellDawn = []; for (let i = 0; i < 7; i++) A.swellDawn.push(buildSwellRow(i, i < 3 ? '#3c4a7c' : i < 5 ? '#7a5278' : '#b86c60'));
       A.shark = buildSharkSide();
-      A.sharkWhite = tintSprite(A.shark, '#ffffff', 0.9);
       A.sharkBack = buildSharkBack();
       A.chief = buildChiefSide();
       A.chiefRim = tintSprite(A.chief, '#ff9a4a', 1);
       A.spear = buildSpear();
-      A.man = buildManateeSide(false);
-      A.manGhost = buildManateeSide(true);
-      A.ott = buildOtterSide();
-      A.hat = buildOtterHat();
       A.rifle = buildRifle();
+      A.ghost = buildGhost();
+      A.lamp = buildLamp();
       // ---- lit copies.  Every figure that stands in front of a coloured sky
       // gets that sky's colour on its edge, baked in, so nothing is a flat
-      // black cut-out.  Two sets: the sun behind him at dusk, the burning
-      // village off to the left at night.
+      // black cut-out.  (lx, ly) always POINTS AT the light.
+      //
+      // DUSK: the sun is low and off to the RIGHT, behind the animal, and the
+      // water under it throws warm light back up.
       A.sharkDusk = spr(rimLight(bounceLight(cloneSpr(A.shark), '#7a4a3c', 3, 0.7),
-                                 1, -1, '#ffbe72', '#c06a36', 2), A.shark.ax, A.shark.ay);
-      A.chiefDusk = spr(rimLight(cloneSpr(A.chief), 1, -1, '#ffd08a', '#c4763a', 2), A.chief.ax, A.chief.ay);
-      A.spearDusk = spr(rimLight(cloneSpr(A.spear), 1, -1, '#ffd08a', '#c4763a', 1), A.spear.ax, A.spear.ay);
-      A.finDusk = null;                        // filled below, once A.fin exists
-      A.sharkBackLit = spr(rimLight(cloneSpr(A.sharkBack), 0, -1, '#ff9a4a', '#a8471f', 2),
+                                 1, 0, '#ffbe72', '#c06a36', 2), A.shark.ax, A.shark.ay);
+      A.chiefDusk = spr(rimLight(cloneSpr(A.chief), 1, 0, '#ffd08a', '#c4763a', 2), A.chief.ax, A.chief.ay);
+      A.spearDusk = spr(rimLight(cloneSpr(A.spear), 1, 0, '#ffd08a', '#c4763a', 1), A.spear.ax, A.spear.ay);
+      A.sharkBackLit = spr(rimLight(cloneSpr(A.sharkBack), 1, -1, '#ffbe72', '#a8471f', 2),
                            A.sharkBack.ax, A.sharkBack.ay);
-      A.chiefClose = spr(rimLight(rimLight(cloneSpr(A.chief), -1, 0, '#ff8a3a', '#a84a1e', 2),
-                                  1, 0, '#5d7bc4', '#2b3a6a', 1), A.chief.ax, A.chief.ay);
-      A.spearClose = spr(rimLight(cloneSpr(A.spear), -1, 0, '#ff8a3a', '#a84a1e', 1), A.spear.ax, A.spear.ay);
-      // night: the fire is off to the left, the dawn sky is cold on the right
-      A.sharkNight = spr(rimLight(rimLight(cloneSpr(A.shark), -1, 0, '#e8622a', '#8c3316', 2),
-                                  1, -1, '#4a6aa8', null, 1), A.shark.ax, A.shark.ay);
-      A.chiefNight = spr(rimLight(cloneSpr(A.chief), -1, 0, '#e8622a', '#8c3316', 2), A.chief.ax, A.chief.ay);
-      A.manNight = spr(rimLight(rimLight(rimLight(bounceLight(cloneSpr(A.man), '#3a5a7a', 3, 0.7),
-                                                  1, 0, '#ff8a3a', '#a84a1e', 2),
-                                         0, -1, '#8a6a9a', null, 1),
-                                -1, -1, '#6a86c8', null, 1), A.man.ax, A.man.ay);
-      A.ottNight = spr(rimLight(cloneSpr(A.ott), 1, 0, '#ffa84a', '#b05a20', 2), A.ott.ax, A.ott.ay);
-      A.hatNight = spr(rimLight(cloneSpr(A.hat), -1, 0, '#ffa84a', null, 1), A.hat.ax, A.hat.ay);
-      A.rifleNight = spr(rimLight(cloneSpr(A.rifle), 1, 0, '#ffa84a', null, 1), A.rifle.ax, A.rifle.ay);
+      // the close-up: the sun burns past his right shoulder, the sea throws a
+      // cold fill onto the other side of his face
+      A.chiefClose = spr(rimLight(rimLight(cloneSpr(A.chief), 1, 0, '#ffd08a', '#c4763a', 2),
+                                  -1, 0, '#5d7bc4', '#2b3a6a', 1), A.chief.ax, A.chief.ay);
+      A.spearClose = spr(rimLight(cloneSpr(A.spear), 1, 0, '#ffd08a', '#c4763a', 1), A.spear.ax, A.spear.ay);
+      // NIGHT: the moon is high and off to the RIGHT, the pier lamps are a
+      // weak warm wash from the LEFT, and the water is a cold bounce.
+      const NDK = ['#0a1024', 0.62], SDK = ['#0c1428', 0.46];
+      A.sharkNight = spr(rimLight(rimLight(darkEdge(tintCanvas(cloneSpr(A.shark), SDK[0], SDK[1]), '#04060f'),
+                                           1, -1, '#b0c6f0', '#46639c', 2),
+                                  -1, 0, '#6a4426', null, 1), A.shark.ax, A.shark.ay);
+      A.chiefNight = spr(rimLight(rimLight(darkEdge(tintCanvas(cloneSpr(A.chief), NDK[0], NDK[1]), '#04060f'),
+                                           1, -1, '#b0c6f0', '#46639c', 2),
+                                  -1, 0, '#6a4426', null, 1), A.chief.ax, A.chief.ay);
+      A.spearNight = spr(rimLight(tintCanvas(cloneSpr(A.spear), NDK[0], NDK[1]),
+                                  1, -1, '#9fb8e8', '#3f5a90', 1), A.spear.ax, A.spear.ay);
+      // Her and the otter in the defeat.  BOTH are drawn mirrored — she faces
+      // the village, off to the left — so in their own space the moon, which
+      // is high and off to the RIGHT of frame, is overhead and to the LEFT,
+      // and the lantern hanging behind them is on their right.
+      A.herMoon = herLit({ dark: NDK, edge: '#04060f',
+                           dirs: [[0, -1, '#7d97cc', '#33507e'], [-1, 0, '#c9883c', null, 1]],
+                           far: [[0, -1, '#2c4670', null, 1]] });
+      A.himMoon = himLit({ dark: NDK, edge: '#04060f', exp: 'idle', bare: true,
+                           dirs: [[0, -1, '#8aa4d8', '#3a5888'], [-1, 0, '#d8933c', null, 1]],
+                           far: [[0, -1, '#2c4670', null, 1]] });
+      // and the same two once the sun is up behind them
+      const DDK = ['#241634', 0.42];
+      A.herDawn = herLit({ dark: DDK, edge: '#0c0714',
+                           dirs: [[0, -1, '#c9a0a8', '#6a4a62'], [-1, 0, '#ffb45a', '#a8601c', 2]],
+                           far: [[0, -1, '#5c4460', null, 1]] });
+      A.himDawn = himLit({ dark: DDK, edge: '#0c0714', exp: 'idle', bare: true,
+                           dirs: [[0, -1, '#d4a8a8', '#7a5468'], [-1, 0, '#ffc470', '#a8601c', 2]],
+                           far: [[0, -1, '#5c4460', null, 1]] });
+      A.rifleNight = spr(rimLight(darkEdge(tintCanvas(cloneSpr(A.rifle), NDK[0], NDK[1]), '#04060f'), -1, -1, '#c08a3c', null, 1), A.rifle.ax, A.rifle.ay);
+      // the boil of stirred-up light where he went under
+      A.bio = []; for (let i = 0; i < 8; i++) A.bio.push(ringSprite(20 + i * 17, 6 + i * 5, 3 + i, BP.biolum[Math.min(5, 5 - (i >> 1))]));
       A.fin = (function () {
         const c = can(26, 22), x = cx2(c);
         triOutlined(x, '#253448', BP.ink, [24, 21], [2, 21], [8, 0]);
         P(x, '#516787', 8, 2, 2, 12);
         return spr(outlineIt(c, BP.ink), 13, 21);
       })();
-      A.spearNight = spr(rimLight(cloneSpr(A.spear), -1, 0, '#e8622a', '#8c3316', 1), A.spear.ax, A.spear.ay);
-      A.finDusk = spr(rimLight(cloneSpr(A.fin), 1, -1, '#ffbe72', '#c06a36', 2), A.fin.ax, A.fin.ay);
+      A.finDusk = spr(rimLight(cloneSpr(A.fin), 1, 0, '#ffbe72', '#c06a36', 2), A.fin.ax, A.fin.ay);
       A.shadow = discSprite(104, 22, '#020509', 1.5);
       A.ring = []; for (let i = 0; i < 8; i++) A.ring.push(ringSprite(26 + i * 20, 7 + i * 5, 3 + i, BP.foam[Math.min(3, 3 - (i >> 2))]));
       A.mRing = []; for (let i = 0; i < 8; i++) A.mRing.push(ringSprite(26 + i * 18, 12 + i * 8, 4 + i * 2, BP.foam[Math.min(4, 4 - (i >> 1))]));
@@ -1097,23 +1439,26 @@ const BossCut = {
       // water thrown up in front of a sunset is not white
       A.sprayDusk = A.spray.map(o => spr(tintCanvas(cloneSpr(o), '#ffb877', 0.30), o.ax, o.ay));
       A.spraySDusk = A.sprayS.map(o => spr(tintCanvas(cloneSpr(o), '#ffb877', 0.26), o.ax, o.ay));
-      A.sprayNight = A.spray.map(o => spr(tintCanvas(cloneSpr(o), '#5d7bc4', 0.34), o.ax, o.ay));
-      A.ringWarm = null;
-      A.flame = []; for (let i = 0; i < 4; i++) A.flame.push(buildFlame(i));
       A.mini = buildMiniShade();
       A.miniWhite = tintSprite(A.mini, '#ffffff', 1);
-      A.miniCyan = spr(rimLight(cloneSpr(A.mini), 1, -1, '#34b4c4', '#145060', 2), A.mini.ax, A.mini.ay);
-      A.miniHot = spr(rimLight(cloneSpr(A.mini), 1, -1, '#ff8a6a', '#8c1a1c', 2), A.mini.ax, A.mini.ay);
+      A.miniCyan = spr(rimLight(cloneSpr(A.mini), 0, -1, '#34b4c4', '#145060', 2), A.mini.ax, A.mini.ay);
+      A.miniHot = spr(rimLight(cloneSpr(A.mini), 0, -1, '#ff8a6a', '#8c1a1c', 2), A.mini.ax, A.mini.ay);
       A.ringCyan = A.mRing.map(o => spr(tintCanvas(cloneSpr(o), '#34b4c4', 0.8), o.ax, o.ay));
       A.ringRed = A.mRing.map(o => spr(tintCanvas(cloneSpr(o), '#ff7a4a', 0.88), o.ax, o.ay));
+      // the flash the mini comes apart in, at four strengths
+      A.blow = [];
+      for (let n = 0; n < 4; n++) {
+        const f = (n + 1) / 4, c = can(218, 110), bx = cx2(c);
+        for (let y = -54; y <= 54; y++) for (let dx = -108; dx <= 108; dx++) {
+          const q = 1 - Math.sqrt((dx / 108) * (dx / 108) + (y / 54) * (y / 54));
+          if (q <= 0 || bay(dx + 109, y + 55) > q * f * 1.15) continue;
+          P(bx, q > 0.62 ? '#ffd88a' : q > 0.34 ? '#ffb04a' : '#c4542a', dx + 109, y + 55, 1, 1);
+        }
+        A.blow.push(spr(c, 109, 55));
+      }
       A.buf = can(640, 360); A.bufCtx = cx2(A.buf);
       // the half-tone the minis darken the bay with, baked once: doing this
       // as 57k fillRects per frame cost 30ms a frame before it was baked
-      A.dither = can(640, 360);
-      { const dx = cx2(A.dither);
-        dx.fillStyle = '#04080f'; dx.fillRect(0, 0, 640, 360);
-        dx.fillStyle = '#000205';
-        for (let y = 0; y < 360; y += 2) for (let x = (y >> 1) & 1; x < 640; x += 2) dx.fillRect(x, y, 1, 1); }
       // the two minis each get their own colour of dark to sit in
       A.ditherCyan = can(640, 360);
       { const dx = cx2(A.ditherCyan);
@@ -1149,7 +1494,7 @@ const BossCut = {
       const warm = o => { if (!o) return; const c = o.c || o; if (c && c.width) wc.drawImage(c, 0, 0, c.width, c.height, 0, 0, 8, 8); };
       for (const k in A) { const v = A[k]; if (Array.isArray(v)) v.forEach(warm); else warm(v); }
       BUILT = true;
-    } catch (e) { BUILT = false; }
+    } catch (e) { BUILT = false; if (typeof console !== 'undefined') console.error('BossCut bake', e); }
   },
 
   // ---------------------------------------------------------------- start
@@ -1177,10 +1522,10 @@ const BossCut = {
       this._chf = { x: 300, y: 214, rot: 0 };
       this.sfx(() => { Audio_.tone(46, 1.6, 'sine', 0.30, 8); Audio_.noise(1.4, 0.10, 240, 30); });
     } else if (kind === 'chief_defeat') {
-      this._shk = { x: 356, y: 218, rot: -0.34 };
-      this._chf = { x: 356, y: 206, rot: 0.2 };
-      this._man = { x: 448, y: 372, rot: 0 };
-      this._ott = { x: 462, y: 342, arm: 0, hat: 0 };
+      this._shk = { x: DX, y: 232, rot: -0.30 };
+      this._chf = { x: DX - 10, y: 214, rot: 0.24 };
+      this._man = { x: DX, y: 376, rot: 0, dip: 0 };
+      this._ott = { x: DX + 14, y: 346, arm: 0, hat: 0 };
       this.sfx(() => { Audio_.tone(64, 1.1, 'sawtooth', 0.26, -30); Audio_.splash(2.2); });
     } else {
       this.shake = kind === 'mini_intro' ? 6 : 9;
@@ -1271,31 +1616,36 @@ const BossCut = {
   updDefeat(dt, T) {
     const s = this._shk, c = this._chf, m = this._man, o = this._ott;
     if (T < KD.slip) {
-      // she rolled him over: the animal is belly-up and settling
-      const k = clamp(T / KD.slip, 0, 1);
-      s.rot = lerp(-0.34, 0.16, k); s.y = 218 + R(k * 8);
-      c.rot = lerp(0.2, 0.9, k); c.y = 206 + R(k * 8); c.x = 356 + R(k * 8);
+      // she rolled him over: the animal is belly-up and settling, and the
+      // settle eases out rather than running at a constant rate
+      const k = eo2(T / KD.slip);
+      s.rot = lerp(-0.30, 0.14, k); s.y = 232 + R(k * 10);
+      c.rot = lerp(0.24, 0.95, k); c.y = 214 + R(k * 14); c.x = DX - 10 + R(k * 14);
       if (Math.random() < 10 * dt) FX.bub(s.x + rand(-50, 50), s.y + rand(-6, 10), 1);
     } else if (T < KD.rise) {
-      const k = clamp((T - KD.slip) / (KD.rise - KD.slip), 0, 1);
-      s.rot = 0.16 + k * 0.26; s.y = 226 + R(k * 58);
-      c.rot = 0.9 + k * 1.5; c.y = 214 + R(k * 66); c.x = 364 + R(k * 10);
-      if (this.cue('under', KD.slip, () => { Audio_.splash(1.6); Audio_.tone(58, 0.8, 'sine', 0.22, -20); })) FX.bub(356, 230, 14);
-      if (Math.random() < 14 * dt) FX.bub(356 + rand(-26, 26), 232 + rand(0, 14), 1);
+      // he lets go and goes.  ease IN: gravity has him now
+      const k = ei2(clamp((T - KD.slip) / (KD.rise - KD.slip), 0, 1));
+      s.rot = 0.14 + k * 0.26; s.y = 242 + R(k * 76);
+      c.rot = 0.95 + k * 1.5; c.y = 228 + R(k * 86); c.x = DX + 4 + R(k * 14);
+      if (this.cue('under', KD.slip, () => { Audio_.splash(1.6); Audio_.tone(58, 0.8, 'sine', 0.22, -20); })) FX.bub(DX, 230, 16);
+      if (Math.random() < 14 * dt) FX.bub(DX + rand(-26, 26), 232 + rand(0, 14), 1);
     } else {
-      // they keep going down while she comes up
-      s.y += 46 * dt; s.rot += 0.2 * dt;
-      c.y += 40 * dt; c.rot += 0.9 * dt;
+      // they keep going down while she comes up in the same water
+      s.y += 60 * dt; s.rot += 0.2 * dt;
+      c.y += 52 * dt; c.rot += 0.9 * dt;
       const k = clamp((T - KD.rise) / 1.05, 0, 1);
-      const e = k * k * (3 - 2 * k);
-      m.y = R(lerp(372, 292, e)); m.x = 448;
-      o.y = m.y - 19; o.x = 462;
+      // out of the water hard, then the last of it slow: she is heavy
+      const e = k < 0.42 ? ei2(k / 0.42) * 0.62 : 0.62 + eo3((k - 0.42) / 0.58) * 0.38;
+      m.y = R(lerp(376, 284, e)); m.x = DX;
+      o.y = m.y - 21; o.x = DX + 14;
       if (this.cue('rise', KD.rise, () => { Audio_.splash(2.6); Audio_.tone(150, 0.6, 'sine', 0.18, 90); })) {
-        FX.drop(448, 318, 40, 1.5, 58);
+        FX.drop(DX, 318, 40, 1.5, 58);
       }
-      if (k < 1 && Math.random() < 26 * dt) FX.drop(448 + rand(-64, 64), m.y + rand(-4, 16), 1, 0.7, 8);
-      o.arm = clamp((T - KD.hat) / 0.5, 0, 1);
-      o.hat = clamp((T - KD.hat - 0.15) / 0.4, 0, 1);
+      if (k < 1 && Math.random() < 26 * dt) FX.drop(DX + rand(-64, 64), m.y + rand(-4, 16), 1, 0.7, 8);
+      o.arm = eo3(clamp((T - KD.hat) / 0.55, 0, 1));
+      o.hat = eo2(clamp((T - KD.hat - 0.18) / 0.44, 0, 1));
+      // she lowers her head when her mother comes past, and holds it there
+      m.dip = sstep(clamp((T - KD.mother - 0.35) / 0.9, 0, 1)) * 0.10;
       this.cue('hat', KD.hat, () => Audio_.tone(330, 0.5, 'triangle', 0.10, 120));
       this.cue('mum', KD.mother, () => { Audio_.tone(262, 1.4, 'sine', 0.12, 40); Audio_.tone(392, 1.6, 'sine', 0.08, 30); });
       this.cue('rib', KD.ribbon, () => { Audio_.tone(196, 0.8, 'square', 0.16); Audio_.tone(294, 0.9, 'square', 0.12); });
@@ -1303,7 +1653,6 @@ const BossCut = {
       if (this.fade > 0) this.worldActive = true;
       if (T > KD.end) this.finish();
     }
-    if (Math.random() < 9 * dt) FX.ember(128, HZ - 6, 1);
   },
 
   // =======================================================================
@@ -1357,7 +1706,7 @@ const BossCut = {
 
   // ---- shared furniture ---------------------------------------------------
   letterbox(ctx, k) {
-    const h = R(BAR * (k === undefined ? 1 : clamp(k, 0, 1)));
+    const h = R(BAR * (k === undefined ? 1 : eo3(k)));
     if (h <= 0) return;
     P(ctx, '#000000', 0, 0, 640, h);
     P(ctx, '#000000', 0, 360 - h, 640, h);
@@ -1373,9 +1722,12 @@ const BossCut = {
       const prog = T - at;
       const n = Math.max(0, Math.min(s.length, Math.floor(prog * 36)));
       const shown = s.slice(0, n);
-      ctx.globalAlpha = T > at + dur ? qa(1 - (T - at - dur) / 0.6) : 1;
-      pixelTextOutlined(ctx, shown, 320, 344, 8, '#e8eef4', '#000000', 'center');
-      if (n < s.length && (Math.floor(prog * 8) & 1)) P(ctx, '#e8eef4', 320 + R(textWidth(shown, 8) / 2) + 2, 345, 4, 7);
+      // a line does not snap on: it comes up two pixels and fades out again
+      const inK = eo2(prog / 0.18);
+      ctx.globalAlpha = T > at + dur ? qa((1 - (T - at - dur) / 0.6)) : qa(inK);
+      const y = 344 + R((1 - inK) * 2);
+      pixelTextOutlined(ctx, shown, 320, y, 8, '#e8eef4', '#000000', 'center');
+      if (n < s.length && (Math.floor(prog * 8) & 1)) P(ctx, '#e8eef4', 320 + R(textWidth(shown, 8) / 2) + 2, y + 1, 4, 7);
       ctx.globalAlpha = 1;
     }
   },
@@ -1389,19 +1741,14 @@ const BossCut = {
       ctx.drawImage(set[i], 640 - off, y);
     }
   },
-  vignette(ctx) {
-    for (let i = 0; i < 12; i++) {
-      const inset = i * 6, a = qa(0.10 - i * 0.007);
-      if (a <= 0) break;
-      ctx.fillStyle = rgbaq('#04060e', a);
-      ctx.fillRect(0, inset, 640, 1); ctx.fillRect(0, 359 - inset, 640, 1);
-      ctx.fillRect(inset, 0, 1, 360); ctx.fillRect(639 - inset, 0, 1, 360);
-    }
-  },
+  // baked once in init(): this used to be forty-eight fillRects a frame
+  vignette(ctx) { if (A.vig) ctx.drawImage(A.vig, 0, 0); },
   // a hard black slab that slams in from one side (extra slides it back out)
   slab(ctx, y, h, k, dir, col, extra) {
     if (k <= 0) return 0;
-    const e = k >= 1 ? 0 : (1 - k) * (1 - k) * 760;
+    // signed, so an easing that overshoots past 1 actually slides past the
+    // mark and comes back instead of snapping dead on it
+    const d = 1 - k, e = d * Math.abs(d) * 760;
     const ox = R(dir * e + (extra || 0));
     P(ctx, col || '#000000', ox, y, 640, h);
     return ox;
@@ -1457,14 +1804,31 @@ const BossCut = {
       // the animal itself, and the man on its back, at twice the size
       this.drawRider(ctx, s, 2, true);
       if (T >= KI.down) {
+        // the crash: two hard wings of water thrown out sideways and a short
+        // column up the middle, not one white sheet across the frame
         const dk = clamp((T - KI.down - 0.30) / 0.55, 0, 1);
-        if (dk > 0) {
-          const fr = A.sprayDusk[Math.min(3, Math.floor(dk * 4))];
-          ctx.drawImage(fr.c, 398 - fr.ax, 336 - fr.h);
-          const fr2 = A.sprayDusk[Math.min(3, 3 - Math.floor(dk * 3))];
-          ctx.save(); ctx.scale(-1, 1);
-          ctx.drawImage(fr2.c, -(398 + fr2.ax), 340 - fr2.h);
+        if (dk > 0 && dk < 1) {
+          const rk = A.ring[Math.min(7, Math.floor(dk * 8))];
+          ctx.globalAlpha = qa(1 - dk * 0.8);
+          ctx.drawImage(rk.c, 398 - rk.ax, 330 - rk.ay);
+          ctx.globalAlpha = 1;
+          const fr = A.spraySDusk[Math.min(3, Math.floor(dk * 4))];
+          const rise = R(eo2(dk) * 26);
+          for (let sg = -1; sg <= 1; sg += 2) {
+            ctx.save();
+            ctx.translate(398 + sg * 26, 336 - rise);
+            ctx.scale(sg * 2, 2);
+            ctx.globalAlpha = qa(1 - dk * 0.55);
+            ctx.drawImage(fr.c, -fr.ax, -fr.h);
+            ctx.restore();
+          }
+          ctx.globalAlpha = 1;
+          const up = A.spraySDusk[Math.min(3, Math.floor(dk * 3))];
+          ctx.save(); ctx.translate(398, 338 - R(eo2(dk) * 44)); ctx.scale(1, 2);
+          ctx.globalAlpha = qa(1 - dk * 0.7);
+          ctx.drawImage(up.c, -up.ax, -up.h);
           ctx.restore();
+          ctx.globalAlpha = 1;
         }
       }
     }
@@ -1583,45 +1947,91 @@ const BossCut = {
   },
 
   // ---- CHIEF: the defeat --------------------------------------------------
+  //  Nothing is burning.  The village is still standing off to the left with
+  //  the lamps along its pier alight; the moon is the key, high and right;
+  //  the water he went under in lights itself up; and the sun comes up on
+  //  the beat her mother drifts past.
   drawDefeat(ctx, T, t) {
-    const bi = T < KD.mother ? 0 : T < KD.mother + 0.9 ? 1 : 2;
+    // the plate cross-fades rather than cutting: night, then the hour before,
+    // then the dawn, each one arriving under the beat it belongs to
+    const dk = clamp((T - (KD.mother - 1.1)) / 1.3, 0, 1);
+    const bi = dk <= 0 ? 0 : dk >= 1 ? 2 : 1;
     const bg = A.bayNight[bi];
     ctx.drawImage(bg, 0, 0);
-    this.swell(ctx, T, bi === 2 ? A.swellDawn : A.swellNight);
-    // the wreck of his village, burning down to the waterline
-    const fl = A.flame[Math.floor(t * 12) % 4];
-    ctx.drawImage(fl.c, 128 - fl.ax, HZ - 2 - fl.ay);
-    const fl2 = A.flame[Math.floor(t * 9 + 2) % 4];
-    ctx.drawImage(fl2.c, 0, 0, fl2.w, fl2.h, 150 - R(fl2.ax * 0.6), HZ - 2 - R(fl2.h * 0.6), R(fl2.w * 0.6), R(fl2.h * 0.6));
+    if (bi === 1) {                        // dither the next plate in over it
+      const nx = dk < 0.55 ? A.bayNight[0] : A.bayNight[2];
+      ctx.globalAlpha = qa(dk < 0.55 ? 1 - dk / 0.55 : (dk - 0.55) / 0.45);
+      ctx.drawImage(nx, 0, 0);
+      ctx.globalAlpha = 1;
+    }
+    const swell = bi === 2 ? A.swellDawn : bi === 1 ? A.swellPale : A.swellNight;
+    this.swell(ctx, T, swell);
+    // the lamps along the pier, guttering.  the only fire in this cut, and
+    // it belongs to people who are still alive.
+    for (let i = 0; i < TORCH.length; i++) {
+      const tx = TORCH[i][0], ty = TORCH[i][1];
+      const f = Math.floor(t * 11 + i * 2) % 3;
+      const dim = bi === 2 ? 0.5 : 1;
+      if (bi === 2 && (i & 1)) continue;   // some of them have gone out by dawn
+      P(ctx, BP.fire[2], tx - 1, ty - 4, 3, 5);
+      P(ctx, BP.fire[dim < 1 ? 2 : 3], tx, ty - 5 - f, 1, 4);
+      P(ctx, BP.fire[4], tx, ty - 4, 1, 2);
+    }
 
     const s = this._shk, c = this._chf, m = this._man, o = this._ott;
     // ---- what is sinking. drawn whole, then cut off at the waterline by
     //      re-blitting the baked sea over it: no alpha, no soft edges, and
     //      going under actually looks like going under.
     ctx.save();
-    ctx.translate(R(s.x), R(s.y)); ctx.rotate(s.rot); ctx.scale(1, -1);
+    ctx.translate(R(s.x), R(s.y)); ctx.rotate(s.rot); ctx.scale(2, -2);
     ctx.drawImage(A.sharkNight.c, -A.sharkNight.ax, -A.sharkNight.ay);
     ctx.restore();
     ctx.save();
-    ctx.translate(R(c.x), R(c.y)); ctx.rotate(c.rot);
+    ctx.translate(R(c.x), R(c.y)); ctx.rotate(c.rot); ctx.scale(2, 2);
     ctx.drawImage(A.chiefNight.c, -A.chiefNight.ax, -A.chiefNight.ay);
     ctx.restore();
     if (T > KD.slip && T < KD.rise + 0.8) {
       const k = (T - KD.slip);
       ctx.save();
-      ctx.translate(R(344 + k * 18), R(196 + k * k * 78)); ctx.rotate(k * 3.4);
+      ctx.translate(R(DX - 30 + k * 26), R(190 + k * k * 96)); ctx.rotate(k * 3.4); ctx.scale(2, 2);
       ctx.drawImage(A.spearNight.c, -A.spearNight.ax, -A.spearNight.ay);
       ctx.restore();
     }
     ctx.drawImage(bg, 0, WLY, 640, 360 - WLY, 0, WLY, 640, 360 - WLY);
-    this.swell(ctx, T, bi === 2 ? A.swellDawn : A.swellNight);
+    if (bi === 1) {
+      const nx = dk < 0.55 ? A.bayNight[0] : A.bayNight[2];
+      ctx.globalAlpha = qa(dk < 0.55 ? 1 - dk / 0.55 : (dk - 0.55) / 0.45);
+      ctx.drawImage(nx, 0, WLY, 640, 360 - WLY, 0, WLY, 640, 360 - WLY);
+      ctx.globalAlpha = 1;
+    }
+    this.swell(ctx, T, swell);
     // froth along the cut, so the waterline reads as water and not as a crop
     if (s.y < WLY + 40) {
       const half = R(78 * clamp((WLY + 40 - s.y) / 60, 0, 1));
       for (let dx = -half; dx <= half; dx++) {
         const px = R(s.x) + dx, wob = R(Math.sin((px + T * 26) * 0.3) * 1.5);
-        if (bay(px, T * 8) < 0.62) P(ctx, '#4a6a92', px, WLY - 2 + wob, 1, 2);
+        if (bay(px, T * 8) < 0.62) P(ctx, '#3a5a86', px, WLY - 2 + wob, 1, 2);
         if (bay(px + 2, T * 8 + 1) < 0.34) P(ctx, bi === 2 ? '#e8a878' : '#9fc2dc', px, WLY - 3 + wob, 1, 1);
+      }
+    }
+    // ---- the water he went under in lights itself up.  Stirred hard enough,
+    //      at night, it does: a cold bloom that swells and dies while the
+    //      bubbles are still coming up through it.
+    if (T > KD.slip - 0.1 && T < KD.slip + 2.6) {
+      const bk = clamp((T - KD.slip + 0.1) / 2.6, 0, 1);
+      const rg = A.bio[Math.min(7, Math.floor(bk * 8))];
+      ctx.globalAlpha = qa(Math.sin(clamp(bk * 1.25, 0, 1) * Math.PI) * 0.9);
+      ctx.drawImage(rg.c, DX - rg.ax, WLY + 6 - rg.ay);
+      ctx.globalAlpha = qa(Math.sin(clamp(bk * 1.6, 0, 1) * Math.PI) * 0.55);
+      const rg2 = A.bio[Math.min(7, Math.floor(bk * 5))];
+      ctx.drawImage(rg2.c, DX - rg2.ax, WLY + 2 - rg2.ay);
+      ctx.globalAlpha = 1;
+      // and the specks of it that come up with the bubbles
+      for (let i = 0; i < 20; i++) {
+        const a = hash2(i, 3) * TAU + T * 0.6, rr = 12 + hash2(i, 7) * 62;
+        const px = DX + R(Math.cos(a) * rr), py = WLY + 6 + R(Math.sin(a) * rr * 0.30);
+        if (hash2(i, R(T * 9)) > 0.5) continue;
+        P(ctx, i & 1 ? BP.biolum[4] : BP.biolum[5], px, py, 1, 1);
       }
     }
     // the foam still boiling where he went down
@@ -1629,68 +2039,95 @@ const BossCut = {
       const rk = clamp((T - KD.slip) / 1.4, 0, 1);
       const rg = A.ring[Math.min(7, Math.floor(rk * 8))];
       ctx.globalAlpha = qa(1 - rk);
-      ctx.drawImage(rg.c, 356 - rg.ax, WLY + 6 - rg.ay);
+      ctx.drawImage(rg.c, DX - rg.ax, WLY + 6 - rg.ay);
       ctx.globalAlpha = 1;
     }
 
-    // ---- her mother, drifting past under the surface
+    // ---- her mother, drifting past under the surface, right to left: the
+    //      way a body goes when nobody is swimming it
     if (T >= KD.mother) {
-      const mk = clamp((T - KD.mother) / 2.2, 0, 1);
-      const g = A.manGhost;
-      const gx = R(lerp(96, 396, mk)), gy = 272 + R(Math.sin(mk * 3.1) * 4);
-      ctx.globalAlpha = qa(Math.sin(clamp(mk, 0, 1) * Math.PI) * 0.95);
-      ctx.drawImage(g.c, gx - g.ax, gy - g.ay);
+      const mk = clamp((T - KD.mother) / 2.3, 0, 1);
+      const g = A.ghost;
+      const gx = R(lerp(596, 92, sstep(mk))), gy = 314 + R(Math.sin(mk * 3.1) * 5);
+      ctx.save();
+      ctx.globalAlpha = qa(Math.sin(clamp(mk, 0, 1) * Math.PI) * 1.0);
+      ctx.translate(gx, gy); ctx.rotate(0.06 - mk * 0.12); ctx.scale(-MSC, MSC);
+      ctx.drawImage(g.c, -g.ax, -g.ay);
+      ctx.restore();
       ctx.globalAlpha = 1;
     }
 
     // ---- her, up in the near water, with him standing on her back
     if (T >= KD.rise) {
       const k = clamp((T - KD.rise) / 1.05, 0, 1);
+      const L = bi === 2 ? A.herDawn : A.herMoon, LO = bi === 2 ? A.himDawn : A.himMoon;
       if (k < 1) {
         const rg = A.ring[Math.min(7, Math.floor(k * 8))];
-        ctx.drawImage(rg.c, 448 - rg.ax, 318 - rg.ay);
+        ctx.drawImage(rg.c, DX - rg.ax, 318 - rg.ay);
       }
-      ctx.save();
-      ctx.translate(R(m.x), R(m.y));
-      ctx.scale(-1, 1);                                    // she faces the village
-      ctx.drawImage(A.manNight.c, -A.manNight.ax, -A.manNight.ay);
-      ctx.restore();
-      if (k < 1) for (let i = 0; i < 14; i++) {
-        const dx = -66 + i * 10, hgt = R((1 - k) * 14 * (0.4 + hash2(i, 3)));
+      // the water still coming off her back, in hard falling columns
+      if (k < 1) for (let i = 0; i < 16; i++) {
+        const dx = -76 + i * 10, hgt = R((1 - k) * 18 * (0.4 + hash2(i, 3)));
         if (hgt <= 0) continue;
-        P(ctx, i & 1 ? '#c8e2ef' : '#e8b088', m.x + dx, m.y - 20 - hgt, 1, hgt);
+        P(ctx, i & 1 ? '#c8e2ef' : (bi === 2 ? '#e8b088' : '#7f9fd0'), m.x + dx, m.y - 24 - hgt, 1, hgt);
       }
-      const oy = R(o.y - Math.sin(t * 2));
-      ctx.save();
-      ctx.translate(R(o.x), oy);
-      ctx.scale(-1, 1);
-      ctx.drawImage(A.ottNight.c, -A.ottNight.ax, -A.ottNight.ay);
-      const rf = A.rifleNight;                                  // the rifle, at his side
-      ctx.save(); ctx.translate(-11, -7); ctx.rotate(lerp(0.9, 1.5, o.arm));
-      ctx.drawImage(rf.c, -rf.ax, -rf.ay); ctx.restore();
+      // she faces the village she has just taken back
+      const mby = R(m.y + Math.sin(T * 1.2) * 2);
+      drawHer(ctx, L, {
+        x: m.x, y: mby, flip: true, rot: m.dip,
+        phase: T * 1.5, tailAmp: 0.10, flipperA: 2.45,
+        exp: T > KD.mother + 0.4 ? 'sad' : 'calm',
+        blink: (Math.floor(T * 1.7) & 7) === 3,
+      }, t);
+      // the water closing over her flank, so she sits IN the sea rather than
+      // on top of it, with a broken line of foam where she breaks the surface
+      const wl = mby + 17, vl = bi === 2 ? A.veilDawn : A.veilNight;
+      ctx.drawImage(vl.c, m.x - vl.ax, wl);
+      for (let dx = -96; dx <= 96; dx++) {
+        const px = m.x + dx;
+        const wob = R(Math.sin((px + T * 22) * 0.22) * 1.4);
+        if (bay(px, R(T * 7)) < 0.5) P(ctx, bi === 2 ? '#e8b088' : '#7f9fd0', px, wl + wob, 1, 1);
+      }
+      // the lantern hooked on her plate: the one warm thing on her, and it
+      // swings a little on its hook because she is moving under it
+      const lx = R(m.x + 40), ly = R(m.y - 20 + Math.sin(T * 1.2) * 2);
+      ctx.save(); ctx.translate(lx, ly - 18); ctx.rotate(Math.sin(T * 1.7) * 0.06);
+      ctx.drawImage(A.lamp.c, -A.lamp.ax, -A.lamp.ay + 18);
       ctx.restore();
-      // the hat: on his head, then off it, held against his chest
-      const h = A.hatNight;
-      if (o.hat <= 0) ctx.drawImage(h.c, o.x - h.ax, oy - 26 - h.ay);
-      else {
-        P(ctx, '#e8904c', o.x - 9, oy - 21, 3, 9);
-        P(ctx, BP.ink, o.x - 10, oy - 21, 1, 9);
-        const hx = R(lerp(o.x, o.x - 10, o.hat)), hy = R(lerp(oy - 26, oy - 13, o.hat));
-        ctx.save(); ctx.translate(hx, hy); ctx.rotate(lerp(0, -1.0, o.hat));
+      P(ctx, BP.ink, lx - 1, ly - 30, 2, 12);
+      const oy = R(o.y + Math.sin(T * 1.2) * 2 - Math.sin(t * 2));
+      drawHim(ctx, LO, {
+        x: o.x, y: oy, flip: true, bare: o.hat > 0.55,
+        arms: [lerp(-0.25, -1.15, o.arm), lerp(0.35, 0.1, o.arm)],
+        hold: o.arm < 0.5 ? A.rifleNight : null,
+        tail: Math.sin(t * 1.6) * 0.12,
+        headR: lerp(0, -0.16, o.hat),
+      });
+      // the hat: on his head until he takes it off, then held at his chest
+      const h = LO.hat;
+      if (o.hat > 0 && h) {
+        const hx = R(lerp(o.x - 2, o.x + 9, o.hat)), hy = R(lerp(oy - 24, oy - 6, o.hat));
+        ctx.save(); ctx.translate(hx, hy); ctx.scale(-MSC, MSC); ctx.rotate(lerp(0, 1.15, o.hat));
         ctx.drawImage(h.c, -h.ax, -h.ay); ctx.restore();
       }
     }
     FX.render(ctx, 0, 0);
-    this.vignette(ctx);
+    ctx.drawImage(A.vig, 0, 0);
     this.letterbox(ctx, 1);
     this.caption(ctx, LINES_D, T);
     if (T >= KD.ribbon) {
-      const ck = clamp((T - KD.ribbon) / 0.25, 0, 1);
+      const ck = slamK((T - KD.ribbon) / 0.28);
       const ox = this.slab(ctx, 40, 28, ck, 1, '#000000');
       P(ctx, BP.goldD, ox, 40, 640, 1);
       P(ctx, BP.goldD, ox, 67, 640, 1);
+      if (T < KD.ribbon + 0.10) P(ctx, '#fff0c0', ox, 40, 640, 28);
       pixelTextOutlined(ctx, 'THE VILLAGE CHIEF IS DEAD', 320 + ox, 46, 14, BP.gold, '#14141c', 'center');
-      if (ck >= 1) pixelText(ctx, 'THE BOATS WILL NOT FISH HERE AGAIN', 320, 74, 7, '#e8b078', 'center');
+      const sub = clamp((T - KD.ribbon - 0.26) / 0.3, 0, 1);
+      if (sub > 0) {
+        ctx.globalAlpha = qa(sub);
+        pixelText(ctx, 'THE BOATS WILL NOT FISH HERE AGAIN', 320, 74 - R((1 - sub) * 3), 7, '#e8b078', 'center');
+        ctx.globalAlpha = 1;
+      }
     }
   },
 
@@ -1702,17 +2139,21 @@ const BossCut = {
     if (!this.anchored) { this.drawMini(ctx, 320, 214, T); FX.render(ctx, 0, 0); }
     const lb = clamp(T / 0.12, 0, 1) * (T > KM.out ? clamp(1 - (T - KM.out) / 0.28, 0, 1) : 1);
     this.letterbox(ctx, lb * 0.6);
-    const ck = clamp((T - KM.card) / 0.16, 0, 1);
+    const ck = slamK((T - KM.card) / 0.20);
     if (ck <= 0) return;
     const out = T > KM.out ? clamp((T - KM.out) / 0.34, 0, 1) : 0;
     const fly = out * out * 760;
     const nameSize = this.fitSize(this.name, 560, 22);
     const topOx = this.slab(ctx, 54, 20, ck, -1, '#051820', -fly);
+    const botOx = this.slab(ctx, 74, 36, ck, 1, '#071f28', fly);
+    // the frame it lands on: the bands go hot for two, under the lettering
+    if (T > KM.card + 0.17 && T < KM.card + 0.22) {
+      P(ctx, BP.miniCyan[3], topOx, 54, 640, 20); P(ctx, BP.miniCyan[2], botOx, 74, 640, 36);
+    }
     P(ctx, BP.miniCyan[2], topOx, 53, 640, 1);
     P(ctx, BP.miniCyan[4], topOx, 72, 640, 2);
     P(ctx, BP.miniCyan[1], topOx, 74, 640, 1);
     pixelText(ctx, 'THE WATER MOVES WRONG', 320 + topOx, 59, 8, BP.miniCyan[5], 'center');
-    const botOx = this.slab(ctx, 74, 36, ck, 1, '#071f28', fly);
     pixelTextOutlined(ctx, this.name, 320 + botOx, 82, nameSize, BP.gold, '#062028', 'center');
     P(ctx, BP.miniCyan[4], botOx, 109, 640, 1);
     P(ctx, BP.miniCyan[2], botOx, 110, 640, 1);
@@ -1758,12 +2199,13 @@ const BossCut = {
     if (!this.anchored) { this.drawMiniBreak(ctx, 320, 214, T); FX.render(ctx, 0, 0); }
     const lb = clamp(T / 0.1, 0, 1) * (T > KX.out ? clamp(1 - (T - KX.out) / 0.26, 0, 1) : 1);
     this.letterbox(ctx, lb * 0.55);
-    const ck = clamp((T - KX.card) / 0.14, 0, 1);
+    const ck = slamK((T - KX.card) / 0.18);
     if (ck <= 0) return;
     const out = T > KX.out ? clamp((T - KX.out) / 0.34, 0, 1) : 0;
     const drop = R(out * out * 300);
     const nameSize = this.fitSize(this.name, 520, 18);
     const ox = this.slab(ctx, 58 + drop, 58, ck, -1, '#16070a');
+    if (T > KX.card + 0.15 && T < KX.card + 0.20) P(ctx, BP.miniRed[2], ox, 58 + drop, 640, 58);
     P(ctx, BP.miniRed[3], ox, 58 + drop, 640, 1);
     P(ctx, BP.miniRed[1], ox, 59 + drop, 640, 1);
     P(ctx, BP.miniRed[1], ox, 114 + drop, 640, 1);
@@ -1797,7 +2239,11 @@ const BossCut = {
       ctx.drawImage(rg.c, R(cx) - rg.ax, R(cy) - rg.ay);
       ctx.globalAlpha = 1;
     }
-    if (k < 1) P(ctx, rgbaq('#ffb04a', (1 - k) * 0.5), R(cx) - 90, R(cy) - 48, 180, 96);
+    // the blow itself: a dithered bloom, not a rectangle of tint
+    if (k < 1) {
+      const bl = A.blow[Math.min(A.blow.length - 1, Math.floor((1 - k) * A.blow.length))];
+      ctx.drawImage(bl.c, R(cx) - bl.ax, R(cy) - bl.ay);
+    }
   },
 };
 
@@ -1912,7 +2358,6 @@ function skyBand(ctx, y0, h, ramp, opt) {
     const base = Math.pow(y / (h - 1), opt.pow || 0.8) * (n - 1);
     for (let px = 0; px < 640; px++) {
       let fi = base + (hash2(px >> 3, y >> 1) - 0.5) * 0.09 * (n - 1);
-      if (opt.ember) fi += opt.ember * (n - 1) * Math.pow(opt.right ? px / 640 : 1 - px / 640, 1.4) * Math.pow(y / h, 2.0);
       if (fi < 0) fi = 0; else if (fi > n - 1) fi = n - 1;
       let i = Math.floor(fi);
       if (bay(px, y + y0) < fi - i) i++;
@@ -1956,13 +2401,15 @@ function seaBand(ctx, y0, h, ramp, chopRamp, opt) {
   const glows = opt.glows || [];
   for (const g of glows) {
     const gx = g[0], rmp = g[1].map(hexToRgb), reach = g[2] || 0.6, wid = g[3] || 26;
+    const base = g[4] === undefined ? 3 : g[4], dens = g[5] === undefined ? 0.92 : g[5];
+    const pw = g[6] === undefined ? 1 : g[6];
     for (let y = 0; y < h; y++) {
       const u = y / h; if (u > reach) break;
-      const sp = 3 + u * wid, len = 1 + R(u * 2), depth = 1 - u / reach;
+      const sp = base + u * wid, len = 1 + R(u * 2), depth = Math.pow(1 - u / reach, pw);
       for (let dx = -sp; dx <= sp; dx++) {
         const px = R(gx + dx); if (px < 0 || px > 639) continue;
         const fall = (1 - Math.abs(dx) / sp) * depth;
-        if (fall <= 0 || bay(px, y + y0) > fall * 0.92) continue;
+        if (fall <= 0 || bay(px, y + y0) > fall * dens) continue;
         let i = Math.floor(fall * rmp.length);
         if (i < 0) i = 0; else if (i > rmp.length - 1) i = rmp.length - 1;
         for (let d = 0; d < len; d++) pset(b, rmp[i], px + d, y);
@@ -2011,35 +2458,61 @@ const S = {};
 let SBUILT = false;
 
 // ---- 1. open water, the night they left ---------------------------------
+//  Nothing is burning.  The village is astern, standing, dark, with a couple
+//  of lamps still going on its pier; the moon is ahead of them and lays a
+//  road down the water they are swimming out along.
 function buildOpenNight() {
   const c = can(640, 360), x = cx2(c);
-  skyBand(x, 0, 190, BP.skyNight, { pow: 1.6, ember: 0.22, stars: 160 });
+  skyBand(x, 0, 190, BP.skyNight, { pow: 1.6, stars: 200 });
   for (let i = 0; i < 6; i++) {
     const cy = 46 + i * 21, cw = 64 + ((i * 71) % 118), cx0 = ((i * 173) % 700) - 50;
-    P(x, '#090e20', cx0, cy, cw, 3);
-    P(x, '#131936', cx0 + 5, cy - 2, R(cw * 0.7), 2);
+    P(x, '#070b1a', cx0, cy, cw, 3);
+    P(x, '#0f1630', cx0 + 5, cy - 2, R(cw * 0.7), 2);
     for (let px = 0; px < cw; px++) {
       const f = Math.sin((px / cw) * Math.PI);
-      if (bay(cx0 + px, cy) < f * 0.36) P(x, '#42203a', cx0 + px, cy + 3, 1, 1);
+      if (bay(cx0 + px, cy) < f * 0.40) P(x, '#2b3f74', cx0 + px, cy + 3, 1, 1);
     }
   }
-  // the village they just took apart, still going, a long way astern
-  P(x, '#04050b', 0, 180, 158, 10);
-  for (let i = 0; i < 8; i++) {
-    const hx = 2 + i * 19, hh = 10 + ((i * 7) % 11);
-    P(x, '#04050b', hx, 180 - hh, 13, hh);
-    tri(x, '#04050b', hx - 3, 180 - hh, hx + 16, 180 - hh, hx + 6, 180 - hh - 6);
+  // the village they just took back, a long way astern and still standing.
+  // Drawn as a ridge line rather than a bar: the huts step down to the water
+  // at the near end and thin out to a couple of stilts at the far one.
+  const VIL = '#04050b';
+  P(x, VIL, 0, 183, 150, 7);
+  for (let sx = 4; sx < 150; sx += 13) P(x, VIL, sx, 190, 2, 7 + ((sx * 5) % 6));
+  const HUTS = [[0, 15], [16, 11], [30, 17], [48, 9], [60, 14], [78, 20], [100, 12], [116, 16], [134, 8]];
+  for (const h of HUTS) {
+    const hx = h[0], hh = h[1], hw = 11 + (hh & 3);
+    P(x, VIL, hx, 183 - hh, hw, hh);
+    tri(x, VIL, hx - 3, 183 - hh, hx + hw + 3, 183 - hh, hx + hw / 2, 183 - hh - 5);
   }
-  glowPool(x, 58, 178, 46, 15, SPAL.torch, 0.50);
-  glowPool(x, 58, 176, 19, 7, BP.fire, 0.92);
+  P(x, VIL, 82, 132, 2, 51);                        // the chief's pole, empty now
+  P(x, VIL, 76, 132, 14, 2);
+  // a last outrigger drawn up beyond the end of it, so the village stops
+  // being a village instead of being cut off
+  P(x, VIL, 160, 186, 16, 3); P(x, VIL, 166, 176, 2, 10);
+  P(x, VIL, 186, 188, 10, 2);
+  // three lamps still lit along it, and their short reach on the water
+  for (const lx of [22, 96, 158]) {
+    glowPool(x, lx, 178, 8, 6, BP.torchGlow, 0.42);
+    P(x, BP.fire[3], lx, 177, 1, 2); P(x, BP.fire[4], lx, 178, 1, 1);
+  }
+  // the moon: their heading, and the only real light out here
   seaBand(x, 190, 170, BP.sea, BP.chopNight, {
-    glows: [[58, BP.emberGlow, 0.62, 74], [540, ['#0d1a31', '#152747', '#21406e', '#365e96'], 0.34, 40]],
+    glows: [[22, BP.torchGlow, 0.12, 14, 2, 0.5], [96, BP.torchGlow, 0.12, 14, 2, 0.5], [158, BP.torchGlow, 0.12, 14, 2, 0.5],
+            [508, BP.moonGlow, 1.0, 88, 10, 0.50, 0.34]],
   });
-  vigBake(x, 640, 360, '#02030a', 0.60);
-  // the moon, cold, and a long way from anything.  after the vignette: it is
-  // the one thing in the frame that should not be dithered into the dark.
-  disc(x, 540, 48, 10, '#3d4a70'); disc(x, 540, 48, 9, '#9aa8cc'); disc(x, 540, 48, 6, '#d4dcf4');
-  P(x, '#7b88ac', 537, 45, 3, 3); P(x, '#7b88ac', 543, 51, 3, 2);
+  vigBake(x, 640, 360, '#02030a', 0.44);
+  // after the vignette: it is the one thing in the frame that should not be
+  // dithered into the dark
+  for (let r = 22; r > 17; r--) {
+    for (let d = 0; d < 360; d += 3) {
+      const px = 508 + R(Math.cos(d * 0.01745) * r), py = 58 + R(Math.sin(d * 0.01745) * r);
+      if (bay(px, py) > (22 - r) / 5 * 0.4) continue;
+      P(x, '#1b2a52', px, py, 1, 1);
+    }
+  }
+  disc(x, 508, 58, 17, '#6b7ba6'); disc(x, 508, 58, 16, '#b8c4e2'); disc(x, 508, 58, 12, '#e6ecff');
+  P(x, '#94a2c8', 502, 53, 4, 4); P(x, '#94a2c8', 512, 63, 5, 3); P(x, '#94a2c8', 510, 49, 3, 2);
   return c;
 }
 
@@ -2120,7 +2593,8 @@ function buildManifest() {
     x.putImageData(img, 0, 0);
   }
   outlineIt(c, '#150e05');
-  return spr(rimLight(c, 1, 0, '#ffe0a8', '#c08a44', 2), W / 2, H / 2);
+  // the torch is off to the left, so that is the edge that takes the light
+  return spr(rimLight(c, -1, 0, '#ffe0a8', '#c08a44', 2), W / 2, H / 2);
 }
 
 // ---- 3. the cannery yard ------------------------------------------------
@@ -2233,9 +2707,11 @@ function buildCrate() {
   // claw marks, on the inside of the break
   for (let i = 0; i < 4; i++) LN(x, '#2d1d13', 90 + i * 5, 44, 97 + i * 5, 64, 1);
   outlineIt(c, '#08060a');
+  // the sodium lamp is up and away to the left, the vats are cold and green
+  // away to the right
   return spr(rimLight(rimLight(bounceLight(tintCanvas(c, '#0d1520', 0.30), '#2c4a44', 3, 0.7),
-                               1, 0, '#ffd884', '#b8762a', 2),
-                      -1, 0, '#1f7a52', null, 1), W / 2, H);
+                               -1, -1, '#ffd884', '#b8762a', 2),
+                      1, 0, '#1f7a52', null, 1), W / 2, H);
 }
 
 // ---- 4. the deck tank ---------------------------------------------------
@@ -2295,7 +2771,7 @@ function buildHulk() {
   LN(x, '#1f2937', 216, 10, 138, 34, 2);
   for (let i = 0; i < 4; i++) P(x, '#141b26', 150 + i * 20, 34 + i * 2, 2, 7 + i * 3);
   outlineIt(c, BP.ink);
-  return spr(rimLight(c, -1, 0, '#ffc888', '#b8623a', 2), 0, H);
+  return spr(rimLight(c, 1, 0, '#ffc888', '#b8623a', 2), 0, H);
 }
 function buildTank() {
   const W = 108, H = 74, c = can(W, H), x = cx2(c);
@@ -2331,7 +2807,7 @@ function buildTank() {
     x.putImageData(img, 0, 48);
   }
   outlineIt(c, BP.ink);
-  return spr(rimLight(c, -1, 0, '#ffc888', '#a8562e', 2), W / 2, H);
+  return spr(rimLight(c, 1, 0, '#ffc888', '#a8562e', 2), W / 2, H);
 }
 // the lid, thrown off and left where it landed
 function buildTankLid() {
@@ -2342,7 +2818,7 @@ function buildTankLid() {
   P(x, '#2c3949', 38, 0, 28, 7); P(x, '#6d8095', 38, 0, 28, 2);
   for (let i = 0; i < 26; i++) P(x, '#6d3a1e', R(hash2(i, 5) * 104), 8 + R(hash2(i, 9) * 14), 2, 1);
   outlineIt(c, BP.ink);
-  return spr(rimLight(c, -1, 1, '#ffc888', '#a8562e', 2), 52, 28);
+  return spr(rimLight(c, 1, -1, '#ffc888', '#a8562e', 2), 52, 28);
 }
 
 // ---- 5. the pens at Blackbone -------------------------------------------
@@ -2393,40 +2869,50 @@ function buildPenBars() {
   }
   P(x, '#0a0e14', 0, 44, 96, 11); P(x, '#2c3949', 0, 44, 96, 2);
   P(x, '#0a0e14', 0, 190, 96, 11); P(x, '#2c3949', 0, 190, 96, 2);
-  return spr(rimLight(c, -1, 0, '#6ad0bc', '#1d5f64', 1), 48, 0);
+  return spr(rimLight(c, 1, 0, '#6ad0bc', '#1d5f64', 1), 48, 0);
 }
-// the old bull in the next pen: bigger, older, and mostly scar
-function buildBull() {
-  const W = 200, H = 76;
-  const f = blobField(W, H, [
-    { x: 20, y: 40, rx: 18, ry: 9 },
-    { x: 40, y: 40, rx: 13, ry: 11 },
-    { x: 66, y: 40, rx: 24, ry: 20 },
-    { x: 100, y: 38, rx: 30, ry: 25 },
-    { x: 138, y: 38, rx: 26, ry: 22 },
-    { x: 165, y: 40, rx: 19, ry: 17 },
-    { x: 183, y: 43, rx: 11, ry: 11 },
-  ]);
-  const ramp = ['#221f26', '#33303a', '#494551', '#5f5b68', '#78737f'];
-  const body = shadeBlob(W, H, f, ramp, { outline: BP.ink, smooth: 3, lift: 0.16 });
+// Bake the cast's side-on animal into one sprite at an integer scale, so a
+// beat that only needs her shape can blit it instead of composing her.
+function bakeSide(scale, opt) {
+  opt = opt || {};
+  const S = CH.side;
+  const W = R(S.body.w * scale) + 48, H = R(S.body.h * scale) + 56;
   const c = can(W, H), x = cx2(c);
-  x.drawImage(body.c, 0, 0);
-  for (let y = 46; y < H - 1; y++) for (let px = 26; px < 194; px++) {
-    const i = y * W + px; if (f[i] <= 0.04) continue;
-    if (f[i + W] <= 0.04 || bay(px, y) < (y - 46) / 22) P(x, '#8a94a0', px, y, 1, 1);
+  drawHer(x, {
+    body: cast1x(opt.scarred ? S.bodyScar : S.body), fluke: cast1x(S.fluke),
+    flip: cast1x(S.flip), flipFar: cast1x(S.flipFar), belly: cast1x(S.belly),
+  }, { x: W / 2, y: H / 2, scale: scale, phase: opt.phase || 0,
+       tailAmp: opt.tailAmp === undefined ? 0.18 : opt.tailAmp,
+       flipperA: opt.flipperA, exp: opt.exp || 'calm', belly: opt.belly }, 0);
+  return { c: c, W: W, H: H, x: x };
+}
+// the old bull in the next pen: the same animal she is, three times over and
+// forty years further into it.  Same cast body, then everything the years did
+// to it painted on at the scale he is drawn — and clipped back to his own
+// silhouette, so nothing hangs off him.
+function buildBull() {
+  const k = 3, b = bakeSide(k, { exp: 'angry', tailAmp: 0.05, flipperA: 2.62 });
+  const x = b.x, W = b.W, H = b.H, cx0 = W / 2, cy0 = H / 2;
+  const mask = x.getImageData(0, 0, W, H).data.slice();
+  // propeller scars nobody stitched, running across the barrel
+  for (let i = 0; i < 6; i++) {
+    const sx = cx0 - 66 + i * 25;
+    LN(x, '#8d8896', sx, cy0 - 30 + (i & 3) * 7, sx + 20, cy0 - 14 + (i & 3) * 7, 1);
+    LN(x, '#4c4856', sx, cy0 - 29 + (i & 3) * 7, sx + 20, cy0 - 13 + (i & 3) * 7, 1);
   }
-  // forty years of propellers
-  for (let i = 0; i < 9; i++) LN(x, '#a8a2ae', 44 + i * 13, 16 + (i & 3) * 3, 58 + i * 13, 26 + (i & 3) * 3, 2);
-  for (let i = 0; i < 5; i++) LN(x, '#6a6472', 70 + i * 9, 50 + i, 82 + i * 9, 58 + i, 1);
-  // a length of old harpoon line still through the flipper
-  cap(x, ramp[1], 146, 54, 128, 68, 8);
-  P(x, '#3a2a1c', 124, 60, 26, 2);
-  cap(x, ramp[0], 26, 40, 8, 32, 5);
-  P(x, BP.ink, 176, 30, 4, 4); P(x, '#3a3a44', 177, 31, 2, 2);
-  P(x, '#c8c2ce', 177, 31, 1, 1);
-  P(x, ramp[0], 178, 44, 12, 2);
-  for (let i = 0; i < 5; i++) P(x, '#b0aab8', 186 + (i & 1) * 2, 38 + i * 2, 2, 1);
-  return spr(rimLight(rimLight(c, -1, 0, '#7ce4cc', '#1d5f64', 2), 1, 0, '#c07a2e', null, 1), 100, 40);
+  // a length of old harpoon line, still through the flipper
+  for (let i = 0; i < 3; i++) LN(x, '#5a4630', cx0 + 20 + i, cy0 + 14, cx0 - 26 + i, cy0 + 34, 1);
+  // clip everything back inside him
+  {
+    const img = x.getImageData(0, 0, W, H), d = img.data;
+    for (let i = 3; i < d.length; i += 4) if (mask[i] < 9) d[i] = 0;
+    x.putImageData(img, 0, 0);
+  }
+  // the one thing that is allowed to hang off him: the end of that line,
+  // trailing in the water behind his flipper
+  for (let i = 0; i < 4; i++) LN(x, '#4a3a26', cx0 - 26 - i * 2, cy0 + 34, cx0 - 44 - i * 2, cy0 + 40, 1);
+  P(x, '#7a6848', cx0 - 52, cy0 + 38, 8, 3);
+  return spr(x.canvas, cx0, cy0);
 }
 
 // ---- 6. the chart -------------------------------------------------------
@@ -2477,8 +2963,8 @@ function buildChartBg() {
   P(x, '#55627c', 440, 220, 106, 5); P(x, '#1e2634', 440, 236, 106, 6);
   for (let i = 0; i < 5; i++) { P(x, BP.ink, 450 + i * 22, 226, 6, 6); P(x, '#8b9ab2', 451 + i * 22, 227, 4, 4); }
   // the lamp, hooked on the plate, is the only warm thing in the frame
-  glowPool(x, 512, 202, 132, 96, SPAL.lamp, 0.24);
-  glowPool(x, 512, 200, 50, 34, SPAL.lamp, 0.52);
+  glowPool(x, 512, 202, 104, 72, SPAL.lamp, 0.17);
+  glowPool(x, 512, 200, 34, 24, SPAL.lamp, 0.40);
   vigBake(x, 640, 360, '#01030a', 0.66);
   return c;
 }
@@ -2517,8 +3003,23 @@ function buildChart() {
   for (let y = 10; y < H - 10; y += 4) P(x, L, 258, y, 1, 2);
   pixelText(x, 'CHART ENDS', 254, 14, 6, L, 'right', false);
   pixelText(x, BOAT + ' RUNS', 12, H - 14, 7, I, 'left', false);
+  // the lamp is hooked on her plate away to the right, so the paper falls off
+  // hard towards the far corner.  Without this the chart is the brightest
+  // thing in a night shot and reads as a light source.
+  {
+    const img = x.getImageData(0, 0, W, H), d = img.data;
+    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+      const i = (py * W + px) * 4; if (d[i + 3] < 9) continue;
+      const f = Math.pow(1 - px / (W - 1), 1.25) * 0.66 + Math.pow(1 - py / (H - 1), 1.5) * 0.20 + 0.10;
+      const q = bay(px, py) < 0.5 ? f : f * 0.86;
+      d[i] = R(d[i] * (1 - q) + 12 * q);
+      d[i + 1] = R(d[i + 1] * (1 - q) + 14 * q);
+      d[i + 2] = R(d[i + 2] * (1 - q) + 30 * q);
+    }
+    x.putImageData(img, 0, 0);
+  }
   outlineIt(c, '#150e05');
-  return { spr: spr(rimLight(c, -1, 0, '#ffe0a0', '#c08a44', 2), W / 2, H / 2), mark: MARK };
+  return { spr: spr(rimLight(c, 1, -1, '#ffe0a0', '#c08a44', 2), W / 2, H / 2), mark: MARK };
 }
 function buildPin() {
   const c = can(7, 7), x = cx2(c);
@@ -2580,7 +3081,7 @@ function buildCage() {
   for (const by of [12, 88, H - 18]) { P(fx, '#111b2a', 4, by, W - 8, 7); P(fx, '#2a3c56', 4, by, W - 8, 2); }
   LN(fx, '#111b2a', 36, 14, 94, 0, 4); LN(fx, '#111b2a', 160, 14, 102, 0, 4);
   outlineIt(fr, '#000208');
-  rimLight(fr, 0, 1, '#4a86c0', '#132a44', 2);
+  rimLight(fr, 0, -1, '#4a86c0', '#132a44', 2);
   const c = can(W, H), x = cx2(c);
   for (let y = 20; y < H - 20; y += 6) for (let px = 8; px < W - 8; px += 6) {
     P(x, '#071122', px, y, 5, 1); P(x, '#071122', px, y, 1, 5);
@@ -2590,36 +3091,18 @@ function buildCage() {
   return spr(c, W / 2, 0);
 }
 
-// him: smaller, thinner, and roped
+// him: the same animal, half her size, and roped.  He is a juvenile, so he
+// is the cast's own body drawn at one pixel per unit beside her two.
 function buildBrother() {
-  const W = 132, H = 52;
-  const f = blobField(W, H, [
-    { x: 12, y: 27, rx: 11, ry: 6 },
-    { x: 27, y: 27, rx: 9, ry: 8 },
-    { x: 44, y: 27, rx: 15, ry: 13 },
-    { x: 67, y: 26, rx: 19, ry: 16 },
-    { x: 90, y: 26, rx: 16, ry: 14 },
-    { x: 109, y: 27, rx: 12, ry: 11 },
-    { x: 121, y: 29, rx: 7, ry: 7 },
-  ]);
-  const ramp = ['#1b2230', '#28303f', '#3a4351', '#4d5664', '#626b79'];
-  const body = shadeBlob(W, H, f, ramp, { outline: BP.ink, smooth: 3, lift: 0.18 });
-  const c = can(W, H), x = cx2(c);
-  x.drawImage(body.c, 0, 0);
-  for (let y = 31; y < H - 1; y++) for (let px = 17; px < 127; px++) {
-    const i = y * W + px; if (f[i] <= 0.04) continue;
-    if (f[i + W] <= 0.04 || bay(px, y) < (y - 31) / 16) P(x, '#8496a8', px, y, 1, 1);
-  }
-  cap(x, ramp[1], 95, 36, 83, 47, 6);
-  // rope round the tail stock, and a tag hanging off it
-  for (let i = 0; i < 3; i++) P(x, '#5a4630', 25 + i * 5, 18, 2, 19);
-  P(x, '#8a7550', 22, 24, 18, 2);
-  P(x, '#c8bda0', 14, 32, 9, 6); P(x, BP.ink, 14, 32, 9, 1);
-  P(x, BP.ink, 116, 21, 5, 5); P(x, '#1d2a38', 117, 22, 3, 3);
-  P(x, '#e8f2ff', 117, 22, 2, 2);
-  P(x, ramp[0], 118, 32, 11, 2);
-  for (let i = 0; i < 4; i++) P(x, '#9aa4b0', 124 + (i & 1) * 2, 27 + i * 2, 2, 1);
-  return spr(c, 66, 27);
+  const b = bakeSide(1, { exp: 'sad', tailAmp: 0.04, flipperA: 2.45 });
+  const x = b.x, cx0 = b.W / 2, cy0 = b.H / 2;
+  // rope round the tail stock, and a lot tag hanging off it
+  for (let i = 0; i < 3; i++) P(x, '#5a4630', cx0 - 30 + i * 4, cy0 - 9, 2, 19);
+  P(x, '#8a7550', cx0 - 33, cy0 - 3, 16, 2);
+  P(x, BP.ink, cx0 - 42, cy0 + 4, 10, 7);
+  P(x, '#c8bda0', cx0 - 41, cy0 + 5, 8, 5);
+  P(x, '#5a4630', cx0 - 37, cy0 + 6, 3, 1);
+  return spr(x.canvas, cx0, cy0);
 }
 
 // =========================================================================
@@ -2628,11 +3111,11 @@ function buildBrother() {
 // [at, hold, text, voice]   voice: 0 narration, 1 otter, 2 somebody else
 const BEATS_DEF = [
   {
-    id: 'bro_trail', dur: 5.4, chapter: 0,
+    id: 'bro_trail', dur: 5.6, chapter: 0,
     lines: [
-      [0.30, 1.30, 'the village burned behind them.', 0],
-      [1.95, 1.30, 'he was not in it.', 0],
-      [3.45, 1.40, 'so we find the boat.', 1],
+      [0.30, 1.35, 'they left the village standing.', 0],
+      [2.00, 1.30, 'he was not in it.', 0],
+      [3.55, 1.50, 'so we find the boat.', 1],
     ],
   },
   {
@@ -2725,6 +3208,7 @@ const StoryCut = {
       const ch = buildChart();
       S.chart = ch.spr; S.chartMark = ch.mark;
       S.pin = buildPin();
+      S.penVeil = buildVeil(300, 44, '#0b1c26', '#050d16');
       S.deepBg = buildDeepBg();
       S.cage = buildCage();
       S.kid = buildBrother();
@@ -2732,38 +3216,66 @@ const StoryCut = {
       S.torchPool = poolSprite(46, 34, SPAL.torch, 0.55);
       S.lampPool = poolSprite(34, 26, SPAL.lamp, 0.62);
       S.sodPool = poolSprite(40, 30, SPAL.sodium, 0.58);
-      // lit copies of the two of them, one set per beat's key light
-      // darken first, then paint the light back on: a figure at night is not
-      // a daytime figure with a coloured edge
-      const lit = function (o, dirs, dark) {
-        let c = cloneSpr(o);
-        if (dark) c = tintCanvas(c, dark[0], dark[1]);
-        for (const d of dirs) c = rimLight(c, d[0], d[1], d[2], d[3], d[4] || 2);
-        return spr(c, o.ax, o.ay);
-      };
+      // lit copies of the two of them, one set per beat's key light.  Darken
+      // first, then paint the light back on: a figure at night is not a
+      // daytime figure with a coloured edge.  Directions POINT AT the light,
+      // in the sprite's own space — mirrored where the beat draws them
+      // mirrored, which is noted at each one.
       const NIGHT = ['#0b1226', 0.58], DIM = ['#101828', 0.40], WET = ['#08131c', 0.52];
-      S.manEmber = lit(A.man, [[1, 0, '#ff9a42', '#a8481a'], [-1, 1, '#6a80b8', null, 1]], NIGHT);
-      S.ottEmber = lit(A.ott, [[1, 0, '#ff9a42', '#a8481a'], [-1, 1, '#6a80b8', null, 1]], NIGHT);
-      S.manSod = lit(A.man, [[1, 0, '#ffd47a', '#a86c18'], [-1, 0, '#1f7a52', null, 1]], NIGHT);
-      // the otter on the deck is drawn mirrored, so his light is baked mirrored
-      S.ottSod = lit(A.ott, [[-1, 0, '#ffd47a', '#a86c18'], [1, 0, '#1f7a52', null, 1]], NIGHT);
-      S.manDawn = lit(A.man, [[1, 0, '#ffc888', '#b8623a'], [-1, 1, '#7a6ab0', null, 1]], DIM);
-      S.ottDawn = lit(A.ott, [[1, 0, '#ffc888', '#b8623a']], DIM);
-      S.manMerc = lit(A.man, [[1, 0, '#7ce4cc', '#1d5f64'], [-1, 0, '#c07a2e', null, 1]], WET);
-      S.ottMerc = lit(A.ott, [[1, 0, '#7ce4cc', '#1d5f64'], [-1, 0, '#c07a2e', null, 1]], WET);
-      S.bullLit = spr(tintCanvas(cloneSpr(S.bull), '#05121a', 0.66), S.bull.ax, S.bull.ay);
-      S.bullLit = spr(rimLight(rimLight(S.bullLit.c, -1, 0, '#7ce4cc', '#1d5f64', 2), 0, 1, '#4ea89c', null, 1), S.bull.ax, S.bull.ay);
-      S.ottLamp = lit(A.ott, [[1, 0, '#ffd67a', '#a8701c']], NIGHT);
-      S.manDeep = lit(A.man, [[0, 1, '#5c9ad0', '#1d4868'], [1, 0, '#ffb44a', '#8c5418', 2]], ['#061020', 0.62]);
-      S.ottDeep = lit(A.ott, [[0, 1, '#5c9ad0', '#1d4868'], [1, 0, '#ffc060', '#a86c20', 2]], ['#061020', 0.55]);
-      S.kidLit = spr(rimLight(rimLight(tintCanvas(cloneSpr(S.kid), '#071628', 0.50), 0, 1, '#9cd4ff', '#2d6490', 2),
-                              -1, 0, '#5c9ad0', null, 1), S.kid.ax, S.kid.ay);
+      // 1. open water: the moon is high and right, her own lantern is above
+      //    her back.  She swims to the right, unmirrored.
+      S.herNight = herLit({ dark: NIGHT, edge: '#03050e',
+                            dirs: [[1, -1, '#7d97cc', '#33507e'], [-1, 0, '#c9883c', null, 1]],
+                            far: [[1, -1, '#2c4670', null, 1]] });
+      S.himNight = himLit({ dark: NIGHT, edge: '#03050e',  exp: 'idle',
+                            dirs: [[1, -1, '#8aa4d8', '#3a5888'], [-1, 0, '#d8933c', null, 1]],
+                            far: [[1, -1, '#2c4670', null, 1]] });
+      // 3. the cannery: one sodium lamp up and to the left, the vats cold and
+      //    green away to the right.  She is unmirrored, he is mirrored.
+      S.herSod = herLit({ dark: NIGHT, edge: '#04060e',
+                          dirs: [[1, 0, '#1f7a52', null, 1], [-1, -1, '#c89a4c', '#7a4c10', 1]],
+                          far: [[-1, -1, '#7a4c10', null, 1]] });
+      S.himSod = himLit({ dark: NIGHT, edge: '#04060e', exp: 'idle',
+                          dirs: [[-1, 0, '#1f7a52', null, 1], [1, -1, '#e8b85c', '#8c5a14', 2]],
+                          far: [[1, -1, '#8c5a14', null, 1]] });
+      // 4. the deck at dawn: the sun is low and right of frame, and both of
+      //    them are mirrored, so in their own space it is off to the left.
+      S.herDawnS = herLit({ dark: DIM, edge: '#0b0916', dirs: [[-1, -1, '#ffc888', '#b8623a'], [1, 1, '#5a4e86', null, 1]],
+                            far: [[-1, -1, '#7a5a80', null, 1]] });
+      S.himDawnS = himLit({ dark: DIM, edge: '#0b0916', exp: 'idle', dirs: [[-1, -1, '#ffc888', '#b8623a']],
+                            far: [[-1, -1, '#7a5a80', null, 1]] });
+      // 5. the pens: a mercury lamp straight overhead, one warm bulb a long
+      //    way off to the left.  Both mirrored.
+      S.herMerc = herLit({ dark: WET, edge: '#03080d', dirs: [[0, -1, '#7ce4cc', '#1d5f64'], [1, 0, '#c07a2e', null, 1]],
+                           far: [[0, -1, '#1d5f64', null, 1]] });
+      S.himMerc = himLit({ dark: WET, edge: '#03080d', exp: 'idle', dirs: [[0, -1, '#7ce4cc', '#1d5f64'], [1, 0, '#c07a2e', null, 1]],
+                           far: [[0, -1, '#1d5f64', null, 1]] });
+      // 6. the chart: one hooded lamp, hooked on her plate to his right.
+      //    He is mirrored, so it is on his left.
+      S.himLamp = himLit({ dark: NIGHT, edge: '#04060e', exp: 'idle', dirs: [[-1, 0, '#ffd67a', '#a8701c']],
+                           far: [[-1, 0, '#a8701c', null, 1]] });
+      // 7. the deep: one shaft of cold coming down past them, her lantern
+      //    warm beside her.  Both mirrored.
+      const DEEP = ['#061020', 0.62];
+      S.herDeep = herLit({ dark: DEEP, edge: '#02040c', dirs: [[1, -1, '#5c9ad0', '#1d4868'], [-1, 0, '#ffb44a', '#8c5418', 2]],
+                           far: [[1, -1, '#1d4868', null, 1]] });
+      S.himDeep = himLit({ dark: ['#061020', 0.55], edge: '#02040c', exp: 'idle',
+                           dirs: [[1, -1, '#5c9ad0', '#1d4868'], [-1, 0, '#ffc060', '#a86c20', 2]],
+                           far: [[1, -1, '#1d4868', null, 1]] });
+      // the old bull: the mercury lamp is up and to his right, the far bulb
+      // is a scrap of warmth off to his left
+      S.bullLit = spr(rimLight(rimLight(darkEdge(tintCanvas(cloneSpr(S.bull), '#04101a', 0.80), '#02080e'),
+                                        1, -1, '#59c0b0', '#17505c', 2),
+                               -1, 0, '#8a5a24', null, 1), S.bull.ax, S.bull.ay);
+      // her brother, hanging in the shaft: lit from straight above, cold
+      S.kidLit = spr(rimLight(rimLight(tintCanvas(cloneSpr(S.kid), '#071628', 0.50), 0, -1, '#9cd4ff', '#2d6490', 2),
+                              1, 0, '#5c9ad0', null, 1), S.kid.ax, S.kid.ay);
       S.buf = can(640, 360); S.bufCtx = cx2(S.buf);
       const wc = cx2(can(8, 8));
       const warm = function (o) { if (!o) return; const c = o.c || o; if (c && c.width) wc.drawImage(c, 0, 0, c.width, c.height, 0, 0, 8, 8); };
       for (const k in S) { const v = S[k]; if (Array.isArray(v)) v.forEach(warm); else warm(v); }
       SBUILT = true;
-    } catch (e) { SBUILT = false; }
+    } catch (e) { SBUILT = false; if (typeof console !== 'undefined') console.error('StoryCut bake', e); }
   },
 
   // ---------------------------------------------------------------- start
@@ -2815,9 +3327,9 @@ const StoryCut = {
     const T = this.t, o = this._o;
     switch (this.id) {
       case 'bro_trail':
-        if (Math.random() < 6 * dt) FX.ember(58, 176, 1);
-        if (Math.random() < 9 * dt) FX.drop(rand(300, 520), 280, 1, 0.4, 10);
-        this.cue('go', 3.35, function () { Audio_.tone(108, 0.6, 'sawtooth', 0.14, -26); });
+        o.a = sstep(clamp((T - 0.2) / 5.0, 0, 1));       // the long pull out
+        if (Math.random() < 11 * dt) FX.drop(rand(120, 560), rand(276, 300), 1, 0.35, 12);
+        this.cue('go', 3.45, function () { Audio_.tone(108, 0.6, 'sawtooth', 0.14, -26); });
         break;
       case 'bro_manifest':
         o.a = clamp((T - 1.9) / 1.5, 0, 1);              // the ring goes round
@@ -2919,35 +3431,55 @@ const StoryCut = {
     ctx.drawImage(s.c, R(x) - s.ax, R(y) - s.ay);
     ctx.globalAlpha = 1;
   },
-  // the two of them, together, facing left unless told otherwise
-  pair(ctx, x, y, man, ott, t, flip, ride) {
-    ctx.save();
-    ctx.translate(R(x), R(y));
-    if (flip) ctx.scale(-1, 1);
-    ctx.drawImage(man.c, -man.ax, -man.ay);
-    ctx.restore();
-    if (!ott) return;
-    const oy = R(y - (ride === undefined ? 20 : ride) - Math.sin(t * 2));
-    ctx.save();
-    ctx.translate(R(x + (flip ? -14 : 14)), oy);
-    if (flip) ctx.scale(-1, 1);
-    ctx.drawImage(ott.c, -ott.ax, -ott.ay);
-    ctx.restore();
+  // the two of them, together: she out of the cast's own parts so her fluke
+  // still beats, him standing on her back.  o carries whatever the beat wants
+  // to say about the pose.
+  pair(ctx, x, y, her, him, t, flip, ride, o) {
+    o = o || {};
+    drawHer(ctx, her, {
+      x: x, y: y, flip: flip, rot: o.rot,
+      phase: (o.phase === undefined ? t * 1.4 : o.phase),
+      tailAmp: o.tailAmp === undefined ? 0.13 : o.tailAmp,
+      flipperA: o.flipperA, exp: o.exp || 'calm',
+      blink: (Math.floor(t * 1.9 + (o.seed || 0)) & 7) === 3,
+    }, t);
+    if (!him) return;
+    const oy = R(y - (ride === undefined ? 22 : ride) - Math.sin(t * 2));
+    drawHim(ctx, him, {
+      x: R(x + (flip ? -14 : 14)), y: oy, flip: flip,
+      arms: o.arms, hold: o.hold, headR: o.headR,
+      tail: Math.sin(t * 1.7 + (o.seed || 0)) * 0.12,
+    });
   },
 
   // ---- 1. leaving ---------------------------------------------------------
+  //  She swims out of the village's last light and into the moon's.  The
+  //  travel is the shot: she starts small against the pier and ends up on
+  //  the moon road with nothing behind her.
   drawTrail(ctx, T, t) {
     ctx.drawImage(S.open, 0, 0);
     BossCut.swell(ctx, T, A.swellNight);
-    const y = 272 + R(Math.sin(T * 1.1) * 3);
-    const x = R(lerp(352, 384, clamp(T / 5.4, 0, 1)));
-    // the wake she is pulling behind her
-    for (let i = 0; i < 26; i++) {
-      const wx = x - 82 - i * 7, f = 1 - i / 26;
-      if (bay(wx, y + 16) > f * 0.7) continue;
-      P(ctx, i < 9 ? BP.foam[2] : BP.foam[1], wx, y + 16 + R(Math.sin(T * 3 + i * 0.7) * 2), 3, 1);
+    const k = this._o.a;
+    const y = 286 + R(Math.sin(T * 1.05) * 3);
+    const x = R(lerp(158, 452, k));
+    // the wake she is pulling behind her, longer the further she has come
+    const wake = 12 + R(k * 22);
+    for (let i = 0; i < wake; i++) {
+      const wx = x - 88 - i * 8, f = 1 - i / wake;
+      if (wx < -8) break;
+      if (bay(wx, y + 18) > f * 0.72) continue;
+      P(ctx, i < 6 ? BP.foam[3] : i < 14 ? BP.foam[2] : BP.foam[1], wx, y + 18 + R(Math.sin(T * 3 + i * 0.7) * 2), 3 + (i < 8 ? 1 : 0), 1);
     }
-    this.pair(ctx, x, y, S.manEmber, S.ottEmber, t, false, 21);
+    // the moon road broken where she is standing in it
+    this.pair(ctx, x, y, S.herNight, S.himNight, t, false, 24,
+      { phase: T * 2.1, tailAmp: 0.20, exp: 'calm' });
+    // her lantern, hooked on the plate, and the little pool it throws
+    const lx = R(x - 34), ly = R(y - 20 + Math.sin(T * 1.05) * 3);
+    this.pool(ctx, S.lampPool, lx, ly - 10, t, 0.05, 0.34);
+    ctx.save(); ctx.translate(lx, ly - 18); ctx.rotate(Math.sin(T * 1.9) * 0.07);
+    ctx.drawImage(A.lamp.c, -A.lamp.ax, -A.lamp.ay + 18);
+    ctx.restore();
+    P(ctx, BP.ink, lx - 1, ly - 30, 2, 12);
     FX.render(ctx, 0, 0);
   },
 
@@ -2965,7 +3497,7 @@ const StoryCut = {
     const k = this._o.a;
     if (k > 0) {
       // row index 2 of the manifest: the one that is a live animal
-      const cx0 = 154 - s.ax, cy0 = 96 - s.ay, rx = 142, ry = 13;
+      const cx0 = 150 - s.ax, cy0 = 95 - s.ay, rx = 132, ry = 9;
       const n = Math.floor(k * 80);
       for (let i = 0; i < n; i++) {
         const a = -1.25 + (i / 80) * TAU * 1.08;
@@ -3029,12 +3561,13 @@ const StoryCut = {
     }
     // her, in the water, nose against the wood
     const my = 322 + R(Math.sin(T * 1.1) * 2);
-    this.pair(ctx, R(lerp(150, 176, k)), my, S.manSod, null, t, false);
+    this.pair(ctx, R(lerp(150, 176, k)), my, S.herSod, null, t, false, 22,
+      { phase: T * 1.2, tailAmp: 0.09, exp: 'angry' });
     // the otter up on the deck lip, looking down into it
     const oy = 244 + R(Math.sin(t * 2));
-    ctx.save(); ctx.translate(398, oy); ctx.scale(-1, 1);
-    ctx.drawImage(S.ottSod.c, -S.ottSod.ax, -S.ottSod.ay);
-    ctx.restore();
+    drawHim(ctx, S.himSod, { x: 398, y: oy, flip: true,
+      arms: [-0.9 + Math.sin(t * 1.3) * 0.06, 0.55], headR: 0.22,
+      tail: Math.sin(t * 1.5) * 0.10 });
     FX.render(ctx, 0, 0);
   },
 
@@ -3074,7 +3607,8 @@ const StoryCut = {
     ctx.restore();
     // her, alongside, up out of the water as far as she goes
     const my = 302 + R(Math.sin(T * 1.05) * 2);
-    this.pair(ctx, 548 + ox, my, S.manDawn, S.ottDawn, t, true, 21);
+    this.pair(ctx, 548 + ox, my, S.herDawnS, S.himDawnS, t, true, 22,
+      { phase: T * 1.1, tailAmp: 0.09, exp: 'sad', seed: 2 });
     FX.render(ctx, ox, oy);
   },
 
@@ -3082,28 +3616,31 @@ const StoryCut = {
   drawWitness(ctx, T, t) {
     ctx.drawImage(S.pens, 0, 0);
     this.pool(ctx, S.lampPool, 105, 74, t, 0.14, 0.58);
-    // the old bull, in the next pen, most of him under
-    const by = 300 + R(Math.sin(T * 0.7) * 3);
-    ctx.drawImage(S.bullLit.c, 146 - S.bullLit.ax, by - S.bullLit.ay);
+    // the old bull, in the next pen, most of him under: only his back and
+    // the top of his head are out of the water
+    const bx0 = 120, by = 312 + R(Math.sin(T * 0.7) * 3);
+    ctx.drawImage(S.bullLit.c, bx0 - S.bullLit.ax, by - S.bullLit.ay);
     // the water closing over his back
     for (let px = 0; px < 230; px++) {
       const gx = 32 + px, wy = 292 + R(Math.sin((gx + T * 22) * 0.07) * 2);
       if (bay(gx, wy) > 0.62) continue;
       P(ctx, bay(gx, wy) < 0.26 ? '#5aa89a' : '#1d4a48', gx, wy, 2, 1);
     }
-    for (let px = 0; px < 230; px++) {                 // and what is left of him in it
-      const gx = 32 + px;
-      for (let y = 294; y < 318; y++) {
-        if (hash2(gx * 3 + y, y) > 0.10) continue;
-        P(ctx, '#243840', gx, y, 1, 1);
-      }
-    }
+    // and the pen water closing over the rest of him: he is a shape under it,
+    // not an animal lying on top of it
+    ctx.drawImage(S.penVeil.c, 8, 294);
     // his eye comes up a little every time he says something
-    if (this._o.a) { P(ctx, '#9ceccf', 222, by - 10, 4, 4); P(ctx, '#e4fff4', 223, by - 9, 2, 2); }
+    {
+      const ex = bx0 + CH.side.eye[0] * 3, ey = by + CH.side.eye[1] * 3 - (this._o.a ? 3 : 0);
+      P(ctx, '#04101a', ex - 3, ey - 3, 9, 9);
+      P(ctx, this._o.a ? '#9ceccf' : '#2c5a5e', ex - 1, ey - 1, 5, 5);
+      if (this._o.a) P(ctx, '#e4fff4', ex, ey, 2, 2);
+    }
     ctx.drawImage(S.bars.c, 268 - S.bars.ax, 40);
     // her, on the far side of the bars
     const my = 296 + R(Math.sin(T * 1.0) * 2);
-    this.pair(ctx, 474, my, S.manMerc, S.ottMerc, t, true, 21);
+    this.pair(ctx, 474, my, S.herMerc, S.himMerc, t, true, 22,
+      { phase: T * 0.9, tailAmp: 0.07, exp: 'wide', seed: 5 });
     FX.render(ctx, 0, 0);
   },
 
@@ -3146,16 +3683,15 @@ const StoryCut = {
     }
     // him, hunched over it, with the lamp hooked on her plate beside him
     const oy = 220 + R(Math.sin(t * 1.7));
-    ctx.save(); ctx.translate(416, oy); ctx.scale(-1, 1);
-    ctx.drawImage(S.ottLamp.c, -S.ottLamp.ax, -S.ottLamp.ay);
+    drawHim(ctx, S.himLamp, { x: 416, y: oy, flip: true,
+      arms: [-1.15 + Math.sin(t * 5.2) * 0.13, 0.62], headR: 0.30,
+      tail: Math.sin(t * 1.4) * 0.09 });
+    // the same lamp she carries everywhere, hooked on the plate beside him
+    ctx.save(); ctx.translate(509, 178); ctx.rotate(Math.sin(t * 1.1) * 0.04); ctx.scale(2, 2);
+    ctx.drawImage(A.lamp.c, -A.lamp.ax, -A.lamp.ay + 18);
     ctx.restore();
-    P(ctx, BP.ink, 500, 188, 18, 26);
-    P(ctx, '#3a2a18', 501, 189, 16, 24);
-    P(ctx, '#ffe8a8', 503, 193, 12, 15);
-    P(ctx, '#fff8dc', 507, 197, 4, 8);
-    P(ctx, '#6d5a3a', 501, 189, 16, 3); P(ctx, '#6d5a3a', 501, 210, 16, 3);
-    P(ctx, BP.ink, 507, 182, 2, 7);
-    this.pool(ctx, S.lampPool, 510, 200, t, 0.05, 0.56);
+    P(ctx, BP.ink, 508, 172, 2, 8);
+    this.pool(ctx, S.lampPool, 509, 200, t, 0.05, 0.38);
     FX.render(ctx, 0, 0);
   },
 
@@ -3182,11 +3718,12 @@ const StoryCut = {
     const k = this._o.a, e = k * k * (3 - 2 * k);
     const my = R(lerp(444, 292, e)), mx = 372;
     this.pool(ctx, S.lampPool, mx + 26, my - 28, t, 0.05, 0.40);
-    this.pair(ctx, mx, my, S.manDeep, S.ottDeep, t, true, 21);
-    P(ctx, BP.ink, mx + 20, my - 36, 13, 18);
-    P(ctx, '#3a2a18', mx + 21, my - 35, 11, 16);
-    P(ctx, '#ffe8a8', mx + 23, my - 32, 7, 10);
-    P(ctx, '#fff8dc', mx + 25, my - 30, 3, 5);
+    this.pair(ctx, mx, my, S.herDeep, S.himDeep, t, true, 22,
+      { phase: T * 1.5, tailAmp: 0.17, exp: 'wide', seed: 3 });
+    ctx.save(); ctx.translate(mx + 26, my - 20); ctx.rotate(Math.sin(T * 1.4) * 0.07);
+    ctx.drawImage(A.lamp.c, -A.lamp.ax, -A.lamp.ay + 18);
+    ctx.restore();
+    P(ctx, BP.ink, mx + 25, my - 32, 2, 12);
     // marine snow drifting through the shaft
     for (let i = 0; i < 44; i++) {
       const sx = R(hash2(i, 9) * 460) + 90;
