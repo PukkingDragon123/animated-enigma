@@ -373,7 +373,7 @@
       // the fleet, from underneath: the real boats out of src/chars.js, in
       // silhouette. This is the same game seen from below, so the shapes
       // crossing the light overhead are the ones you sink down there.
-      for (const k of ['dinghy', 'trawler', 'netter']) {
+      for (const k of ['dinghy', 'netter', 'spotter']) {
         const b = this.boatShadow(k);
         this.hulls.push(b || this.buildHull(this.hulls.length));
       }
@@ -663,17 +663,20 @@
     boatShadow(key) {
       if (typeof SP === 'undefined' || !SP.boats || !SP.boats[key]) return null;
       const s = SP.boats[key];
-      const W = Math.ceil(s.w) + 4, H = Math.ceil(s.h) + 4;
-      const c = can(W, H + 6), x = c.getContext('2d');
-      x.drawImage(s.c, 2, 2);                       // the hi-res bridge sizes it
+      const W = Math.ceil(s.w) + 6, H = Math.ceil(s.h) + 6;
+      const c = can(W, H), x = c.getContext('2d');
+      x.drawImage(s.c, 3, 3);                       // the hi-res bridge sizes it
       x.globalCompositeOperation = 'source-atop';
-      x.fillStyle = 'rgba(5,22,30,0.90)';
+      x.fillStyle = 'rgba(6,26,34,0.82)';
       x.fillRect(0, 0, W, H);
       x.globalCompositeOperation = 'source-over';
-      // churn behind the screw
-      x.fillStyle = 'rgba(224,248,255,0.45)';
-      for (let i = 0; i < 12; i++) x.fillRect(2 + i * GR, 4 + ((i * 5) % 6), GR, GR);
-      return spr(c, W * 0.5, 2);
+      // the foam it drags, breaking white where the light gets under it
+      x.fillStyle = 'rgba(224,248,255,0.40)';
+      for (let i = 0; i < W / GR - 1; i++) {
+        if ((i * 7) % 3 === 0) x.fillRect(i * GR, (H - GR * 2) & ~1, GR, GR);
+        if ((i * 5) % 4 === 0) x.fillRect(i * GR, GR, GR, GR);
+      }
+      return spr(c, W * 0.5, Math.round(H * 0.55));
     },
 
     // a boat hull seen from below, crossing the surface
@@ -833,7 +836,7 @@
           const hx = ((T * sp + i * 260) % (per * 18)) - 110;
           if (hx > -100 && hx < 740) {
             q.globalAlpha = 0.9;
-            blit(q, this.hulls[i], hx, 9 + i);
+            blit(q, this.hulls[i], hx, 11 + i * 2);
             q.globalAlpha = 1;
           }
         }
@@ -875,9 +878,9 @@
 
     buildFish(k) {
       const L = [3, 5, 7][k], c = can(L + 2, 4), x = c.getContext('2d');
-      x.fillStyle = '#06222e';
+      x.fillStyle = '#072830';
       x.fillRect(1, 1, L, 2); x.fillRect(0, 0, 2, 1); x.fillRect(0, 3, 2, 1);
-      x.fillStyle = '#0d3a4a'; x.fillRect(2, 1, L - 2, 1);
+      x.fillStyle = '#10414a'; x.fillRect(2, 1, L - 2, 1);
       return spr(c, 0, 0);
     },
 
@@ -889,11 +892,11 @@
         const th = Math.round(1 + span * 12 - Math.abs(u) * 2);
         if (th <= 0) continue;
         const cy = Math.round(H / 2 + Math.abs(u) * 6 - 3);
-        x.fillStyle = '#061a26'; x.fillRect(i, cy - (th >> 1), 1, th);
-        x.fillStyle = '#0f3346'; x.fillRect(i, cy - (th >> 1), 1, 1);
+        x.fillStyle = '#07212a'; x.fillRect(i, cy - (th >> 1), 1, th);
+        x.fillStyle = '#123c46'; x.fillRect(i, cy - (th >> 1), 1, 1);
       }
       // tail
-      x.fillStyle = '#061a26';
+      x.fillStyle = '#07212a';
       for (let i = 0; i < 26; i++) x.fillRect(W / 2 - 1, H / 2 + 6 + i * 0, 1, 1);
       return spr(c, W / 2, H / 2);
     },
@@ -907,26 +910,26 @@
         let bot = Math.round(26 + 13 * Math.sin(Math.PI * Math.pow(u, 0.9)));
         if (u > 0.8) { const k = (u - 0.8) / 0.2; top = Math.round(top + k * 8); bot = Math.round(bot - k * 7); }
         if (bot <= top) bot = top + 1;
-        x.fillStyle = '#081a26'; x.fillRect(i, top, 1, bot - top);
-        x.fillStyle = '#123244'; x.fillRect(i, top, 1, 1);
-        if (u > 0.12 && u < 0.86) { x.fillStyle = '#0d2534'; x.fillRect(i, bot - 2, 1, 2); }
+        x.fillStyle = '#08232c'; x.fillRect(i, top, 1, bot - top);
+        x.fillStyle = '#154148'; x.fillRect(i, top, 1, 1);
+        if (u > 0.12 && u < 0.86) { x.fillStyle = '#0f2f38'; x.fillRect(i, bot - 2, 1, 2); }
       }
-      x.fillStyle = '#0b2130';
+      x.fillStyle = '#0c2a33';
       for (let i = 6; i < 60; i += 4) x.fillRect(i, 30 + Math.round(Math.sin(i * 0.2) * 2), 1, 7);
-      x.fillStyle = '#061520';
+      x.fillStyle = '#071c23';
       for (let i = 0; i < 26; i++) x.fillRect(42 + i, 34 + Math.round(i * 0.35), 1, Math.max(1, 9 - Math.round(i * 0.3)));
-      x.fillStyle = '#0d2534'; x.fillRect(96, 15, 9, 3); x.fillRect(99, 13, 5, 2);
-      x.fillStyle = '#20455c'; x.fillRect(11, 26, 2, 2);
+      x.fillStyle = '#0f2f38'; x.fillRect(96, 15, 9, 3); x.fillRect(99, 13, 5, 2);
+      x.fillStyle = '#246055'; x.fillRect(11, 26, 2, 2);
       return spr(c, 0, 26);
     },
     buildWhaleTail() {
       const c = can(30, 42), x = c.getContext('2d');
-      x.fillStyle = '#081a26';
+      x.fillStyle = '#08232c';
       for (let i = 0; i < 26; i++) {
         const k = i / 25, h = Math.round(4 + k * 34);
         x.fillRect(i, Math.round(21 - h / 2), 1, h);
       }
-      x.fillStyle = '#0d2534';
+      x.fillStyle = '#0f2f38';
       for (let i = 12; i < 26; i++) { const k = (i - 12) / 14; x.fillRect(i, Math.round(21 - (4 + k * 34) / 2), 1, 1); }
       return spr(c, 1, 21);
     },
@@ -1005,16 +1008,19 @@
       return spr(c2, (W + 30) / 2, hullBot + 15);
     },
 
+    // A lamp still burning in the hull. Four flat rings of light on the
+    // water's own grid — the play field adds its light in steps too, and
+    // there is not a dithered edge anywhere in it.
     buildGlow(r, rgb) {
-      const D = r * 2 + 1, c = can(D, D), x = c.getContext('2d');
-      for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) {
+      const D = r * 2 + GR, c = can(D, D), x = c.getContext('2d');
+      for (let yy = -r; yy <= r; yy += GR) for (let xx = -r; xx <= r; xx += GR) {
         const d = Math.sqrt(xx * xx + yy * yy) / r;
         if (d > 1) continue;
         const a = Math.pow(1 - d, 2.1);
-        const lv = Math.floor(a * 4 + bay(xx + r, yy + r) * 0.9);
+        const lv = a > 0.62 ? 4 : a > 0.34 ? 3 : a > 0.16 ? 2 : a > 0.05 ? 1 : 0;
         if (lv <= 0) continue;
-        x.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(0.06 * lv).toFixed(3)})`;
-        x.fillRect(xx + r, yy + r, 1, 1);
+        x.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(0.07 * lv).toFixed(3)})`;
+        x.fillRect(xx + r, yy + r, GR, GR);
       }
       return spr(c, r, r);
     },
@@ -1207,11 +1213,18 @@
         const k = 1 - Math.abs(i) / (rh + GR);
         const hw = Math.max(GR, Math.round(rw * Math.sqrt(Math.max(0.02, k)) / GR) * GR);
         const lit = i < -rh * 0.55 ? 3 : i < -rh * 0.2 ? 2 : 1;
-        ctx.fillStyle = OUT; ctx.fillRect(x - hw - GR, y + i, hw * 2 + GR * 2, GR);
+        // the edge only, so the outline reads as a line round the bell
+        ctx.fillStyle = OUT;
+        ctx.fillRect(x - hw - GR, y + i, GR, GR); ctx.fillRect(x + hw, y + i, GR, GR);
         ctx.fillStyle = P[lit]; ctx.fillRect(x - hw, y + i, hw * 2, GR);
-        if (i === -rh) { ctx.fillStyle = P[4]; ctx.fillRect(x - hw, y + i, hw, GR); }
+        if (i === -rh) {
+          ctx.fillStyle = OUT; ctx.fillRect(x - hw, y + i - GR, hw * 2, GR);
+          ctx.fillStyle = P[4]; ctx.fillRect(x - hw, y + i, Math.max(GR, hw), GR);
+        }
       }
-      ctx.fillStyle = OUT; ctx.fillRect(x - rw - GR, y, rw * 2 + GR * 2, GR);
+      // the rim band, and the dark under the bell
+      ctx.fillStyle = P[0]; ctx.fillRect(x - rw, y, rw * 2, GR);
+      ctx.fillStyle = OUT; ctx.fillRect(x - rw + GR, y + GR, rw * 2 - GR * 2, GR);
       ctx.fillStyle = '#e8ffff';
       ctx.fillRect(x - Math.round(rw * 0.5 / GR) * GR, y - Math.round(rh * 0.5 / GR) * GR, GR, GR);
       ctx.globalAlpha = 0.55;
