@@ -51,7 +51,7 @@ class Game {
     if (typeof Intro !== 'undefined' && Intro.reset) Intro.reset();
     this.firstRun = true; this.muted = false; this.bossBeaten = false; this.seenIntro = false;
     this.t = 0; this.last = performance.now(); this.fps = 60;
-    this.wipe = { t: 0, dur: 0.78, snap: null, sctx: null, seed: 0 };
+    this.wipe = { t: 0, dur: 1.05, snap: null, sctx: null, buf: null, bctx: null, bubbles: [], cache: new Map() };
     this._lastState = undefined;
     this.newRun();
     // progress from a previous session, if there is any and storage works
@@ -69,7 +69,8 @@ class Game {
     this.ocean = new Ocean(WORLD_W, WORLD_H, SHORE_Y);
     this.particles = new Particles(this.ocean);
     this.enemies = []; this.projectiles = []; this.pickups = []; this.wrecks = []; this.rocks = [];
-    this.boss = null; this.bossKey = null; this.buoy = null; this.holdFire = false; this.cutReturn = null; this.cutMod = null; this.pendingVictory = false; this.pendingStory = null; this.miniBosses = [];
+    this.boss = null; this.bossKey = null; this.buoy = null;
+    this.cineReset(); this.holdFire = false; this.cutReturn = null; this.cutMod = null; this.pendingVictory = false; this.pendingStory = null; this.miniBosses = [];
     this.stats = { kills: 0, shots: 0, absorbs: 0, damageDealt: 0, damageTaken: 0, scrapCollected: 0, bossCrashes: 0 };
     this.cam = { x: 0, y: 0 }; this.shakeAmt = 0; this.time = 0; this.endT = 0;
     this.pier = { x: WORLD_W / 2, y0: SHORE_Y - 24, y1: SHORE_Y + 130, w: 44 };
@@ -282,6 +283,7 @@ class Game {
     if (!(dt > 0)) dt = 0; else if (dt > 1 / 20) dt = 1 / 20;
     this.fps = lerp(this.fps, 1 / Math.max(dt, 1e-3), 0.05);
     this.update(dt);
+    this.updateCine(dt);
     if (this.state !== this._lastState) { this.beginWipe(this._lastState, this.state); this._lastState = this.state; }
     if (this.wipe.t > 0) this.wipe.t -= dt;
     this.render(); Input.endFrame();
@@ -482,7 +484,7 @@ class Game {
     // detailed art in the game and it was sitting under the HUD.
     const shoreBias = Math.max(0, (SHORE_Y + 260 - p.y)) * 0.95;
     const tx = p.x - (CROP_X + VIEW_W / 2) + p.vx * 0.12, ty = p.y - (CROP_Y + VIEW_H / 2) + p.vy * 0.12 - shoreBias;
-    const k = 1 - Math.pow(0.002, dt);
+    const k = this.cine.freeze ? 0 : 1 - Math.pow(0.002, dt);
     // the visible window is cam + CROP .. cam + CROP + VIEW, so clamp to that
     this.cam.x = lerp(this.cam.x, clamp(tx, -CROP_X, WORLD_W - CROP_X - VIEW_W), k);
     this.cam.y = lerp(this.cam.y, clamp(ty, -CROP_Y, WORLD_H - CROP_Y - VIEW_H), k);
@@ -491,8 +493,73 @@ class Game {
   }
   // ---------------------------------------------------------- render
   // screen (640x360 HUD space) <-> world, across the 2x crop
-  screenToWorld(sx, sy) { return { x: this.cam.x + CROP_X + sx * (VIEW_W / HUD_W), y: this.cam.y + CROP_Y + sy * (VIEW_H / HUD_H) }; }
-  worldToScreen(wx, wy) { return { x: (wx - this.cam.x - CROP_X) * (HUD_W / VIEW_W), y: (wy - this.cam.y - CROP_Y) * (HUD_H / VIEW_H) }; }
+  // where the zoom is centred, in 640x360 view units
+  cineFocusScreen() {
+    const c = this.cine;
+    const wx = c.fx !== null ? c.fx : this.player.x, wy = c.fy !== null ? c.fy : this.player.y;
+    return { x: clamp(wx - this.cam.x - CROP_X, 0, VIEW_W), y: clamp(wy - this.cam.y - CROP_Y, 0, VIEW_H) };
+  }
+  screenToWorld(sx, sy) {
+    const c = this.cine;
+    if (c.zoom > 1.001) {
+      const f = this.cineFocusScreen();
+      const vw = VIEW_W / c.zoom, vh = VIEW_H / c.zoom;
+      const ox = clamp(f.x - vw / 2, 0, VIEW_W - vw), oy = clamp(f.y - vh / 2, 0, VIEW_H - vh);
+      return { x: this.cam.x + CROP_X + ox + sx * (vw / HUD_W), y: this.cam.y + CROP_Y + oy + sy * (vh / HUD_H) };
+    }
+    return { x: this.cam.x + CROP_X + sx * (VIEW_W / HUD_W), y: this.cam.y + CROP_Y + sy * (VIEW_H / HUD_H) };
+  }
+  worldToScreen(wx, wy) {
+    const c = this.cine;
+    if (c.zoom > 1.001) {
+      const f = this.cineFocusScreen();
+      const vw = VIEW_W / c.zoom, vh = VIEW_H / c.zoom;
+      const ox = clamp(f.x - vw / 2, 0, VIEW_W - vw), oy = clamp(f.y - vh / 2, 0, VIEW_H - vh);
+      return { x: (wx - this.cam.x - CROP_X - ox) * (HUD_W / vw), y: (wy - this.cam.y - CROP_Y - oy) * (HUD_H / vh) };
+    }
+    return { x: (wx - this.cam.x - CROP_X) * (HUD_W / VIEW_W), y: (wy - this.cam.y - CROP_Y) * (HUD_H / VIEW_H) };
+  }
+
+  // ---------------------------------------------------------- cine camera
+  // A cinematic camera the scene files drive. It rides on top of the ordinary
+  // follow camera rather than replacing it, so gameplay keeps working
+  // underneath and a scene that forgets to release it cannot strand the view.
+  //   G.cineTo(x, y, zoom, secs)  ease toward a world point at a zoom
+  //   G.cineHold(x, y, zoom)      snap there
+  //   G.cineRelease(secs)         ease back to the player at zoom 1
+  //   G.cineBars(k)               0..1 letterbox
+  //   G.cineFreeze(on)            hold the follow camera still
+  cineTo(x, y, zoom, secs) {
+    const c = this.cine;
+    c.tx = x === null ? null : x; c.ty = y === null ? null : y;
+    c.tz = Math.max(1, zoom || 1);
+    c.rate = secs > 0 ? 1 / secs : 999;
+  }
+  cineHold(x, y, zoom) {
+    const c = this.cine;
+    c.fx = c.tx = x; c.fy = c.ty = y; c.zoom = c.tz = Math.max(1, zoom || 1); c.rate = 999;
+  }
+  cineRelease(secs) { this.cineTo(null, null, 1, secs === undefined ? 0.8 : secs); }
+  cineBars(k) { this.cine.bars = clamp(k, 0, 1); }
+  cineFreeze(on) { this.cine.freeze = !!on; }
+  cineReset() { this.cine = { zoom: 1, tz: 1, fx: null, fy: null, tx: null, ty: null, rate: 999, bars: 0, freeze: false }; }
+  updateCine(dt) {
+    const c = this.cine;
+    const k = Math.min(1, c.rate * dt * 2.2);
+    c.zoom += (c.tz - c.zoom) * k;
+    if (Math.abs(c.zoom - c.tz) < 0.004) c.zoom = c.tz;
+    const px = this.player ? this.player.x : 0, py = this.player ? this.player.y : 0;
+    const gx = c.tx === null ? px : c.tx, gy = c.ty === null ? py : c.ty;
+    if (c.fx === null) { c.fx = gx; c.fy = gy; }
+    c.fx += (gx - c.fx) * k; c.fy += (gy - c.fy) * k;
+    if (c.zoom === 1 && c.tx === null) { c.fx = null; c.fy = null; }
+  }
+  drawCineBars(ctx) {
+    const k = this.cine.bars; if (k <= 0.001) return;
+    const h = Math.round(46 * k);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 640, h); ctx.fillRect(0, 360 - h, 640, h);
+  }
 
   render() {
     const ctx = this.ctx, t = this.time;
@@ -563,9 +630,23 @@ class Game {
     W.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
     this.full(ctx);
-    ctx.drawImage(this.world, CROP_X * DETAIL, CROP_Y * DETAIL, VIEW_W * DETAIL, VIEW_H * DETAIL, 0, 0, OUT_W, OUT_H);
+    // The world layer is authored at DETAIL px per unit, so blitting a smaller
+    // sub-rect of it magnified to the full canvas IS a zoom, with no resampling
+    // at whole-number factors and no second render pass.
+    const cz = this.cine.zoom;
+    if (cz > 1.001) {
+      const sw = (VIEW_W * DETAIL) / cz, sh = (VIEW_H * DETAIL) / cz;
+      // the point the shot is built around, in layer pixels
+      const f = this.cineFocusScreen();
+      const sx = clamp(f.x * DETAIL - sw / 2, 0, VIEW_W * DETAIL - sw);
+      const sy = clamp(f.y * DETAIL - sh / 2, 0, VIEW_H * DETAIL - sh);
+      ctx.drawImage(this.world, Math.round(sx), Math.round(sy), Math.round(sw), Math.round(sh), 0, 0, OUT_W, OUT_H);
+    } else {
+      ctx.drawImage(this.world, CROP_X * DETAIL, CROP_Y * DETAIL, VIEW_W * DETAIL, VIEW_H * DETAIL, 0, 0, OUT_W, OUT_H);
+    }
     // every interface pass below draws in 640x360 logical units
     this.hud(ctx);
+    this.drawCineBars(ctx);
     // overlays
     if (this.state === 'dialogue') Dialogue.renderHUD(ctx);
     if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree' && this.state !== 'death' && this.state !== 'cut') UI.drawHUD(ctx, t);
@@ -630,9 +711,10 @@ class Game {
     pixelText(ctx, 'FISHER VILLAGE', Math.round(this.pier.x + ox), Math.round(SHORE_Y - 175 + oy), 8, '#ffe48f', 'center');
   }
   // ---------------------------------------------------------- transitions
-  // One bubble. It swells out of the bottom of the frame carrying the old
-  // scene away inside it, wobbling as a real bubble does, and pops into a
-  // ring of droplets. The new scene is behind it the whole time.
+  // The cartoon underwater wipe: a crowd of bubbles boils up and covers the
+  // whole frame, and once nothing of the old scene is left they drift off and
+  // pop, leaving the new one. The swap happens while the screen is full, so
+  // the cut itself is never seen.
   beginWipe(from, to) {
     if (from === undefined) return;               // the very first frame
     if (this.wipe.t > 0) return;                  // already mid-wipe
@@ -643,21 +725,75 @@ class Game {
       c.width = OUT_W; c.height = OUT_H;
       this.wipe.snap = c; this.wipe.sctx = c.getContext('2d');
       this.wipe.sctx.imageSmoothingEnabled = false;
+      // The foam is drawn once at 640x360 and blown up, not at full res: a
+      // hundred and seventy overlapping discs is four times the fill the frame
+      // can afford, and the chunkier pixels match the world layer anyway.
+      const f = document.createElement('canvas');
+      f.width = 640; f.height = 360;
+      this.wipe.buf = f; this.wipe.bctx = f.getContext('2d');
+      this.wipe.bctx.imageSmoothingEnabled = false;
     }
     this.wipe.sctx.setTransform(1, 0, 0, 1, 0, 0);
     this.wipe.sctx.clearRect(0, 0, OUT_W, OUT_H);
     this.wipe.sctx.drawImage(this.g, 0, 0);
-    this.wipe.seed = (this.time * 977) | 0;
-    this.wipe.dur = 0.78; this.wipe.t = this.wipe.dur;
-    Audio_.tone(150, 0.16, 'sine', 0.05, 430);
-    Audio_.tone(620, 0.05, 'triangle', 0.03, 1500);
+    // The cover has to be airtight: at the midpoint the scene underneath
+    // swaps, and any bald patch would show the cut. So the big bubbles are
+    // seeded on a jittered grid and each is given a radius that reaches its
+    // own cell's corners from the far end of its jitter -- coverage is then
+    // geometric, not luck. A scatter of small ones on top breaks up the grid.
+    const seed = (this.time * 977) | 0;
+    const B = this.wipe.bubbles; B.length = 0;
+    const COLS = 15, ROWS = 9, JIT = 9;
+    const X0 = -70, X1 = 710, Y0 = -60, Y1 = 420;
+    const cw = (X1 - X0) / (COLS - 1), ch = (Y1 - Y0) / ROWS;
+    const rmin = Math.hypot(cw / 2, ch / 2) + JIT + 8;    // + room for the bob
+    let i = 0;
+    for (let gy = 0; gy < ROWS; gy++) for (let gx = 0; gx < COLS; gx++, i++) {
+      const h1 = hash2(seed + i * 3, i * 7 + 3), h2 = hash2(i * 13 + 5, seed - i * 2), h3 = hash2(seed - i * 5, i * 11 + 1);
+      B.push({
+        x: X0 + cw * (gx + 0.5) - (gy & 1) * cw * 0.5 + (h1 - 0.5) * 2 * JIT,
+        y: Y0 + ch * (gy + 0.5) + (h2 - 0.5) * 2 * JIT,
+        r: rmin * (1 + h3 * 0.75),
+        tint: (i + (h2 * 3 | 0)) % 3,
+        launch: 200 + h2 * 260,                 // how far below it boils up from
+        inT: 0.06 + h1 * 0.24,                  // up and full by 0.46
+        outT: 0.53 + h3 * 0.26,                 // and they leave in another order
+        rise: 300 + h1 * 340,
+        drift: (h2 - 0.5) * 140,
+        wob: h3 * TAU, spin: 0.6 + h2 * 1.6,
+      });
+    }
+    for (let j = 0; j < 34; j++, i++) {
+      const h1 = hash2(seed + i * 5, i * 9 + 7), h2 = hash2(i * 17 + 2, seed - i * 3), h3 = hash2(seed - i * 7, i * 23 + 4);
+      B.push({
+        x: -50 + h1 * 740, y: -40 + h2 * 440,
+        r: 7 + h3 * 26,
+        tint: (j + (h1 * 3 | 0)) % 3,
+        launch: 180 + h1 * 300,
+        inT: 0.02 + h2 * 0.30,
+        outT: 0.52 + h1 * 0.30,
+        rise: 320 + h3 * 420,
+        drift: (h3 - 0.5) * 180,
+        wob: h1 * TAU, spin: 0.8 + h3 * 2.2,
+      });
+    }
+    // Shuffle so the overlaps do not all lean the same way -- drawn in grid
+    // order every bubble is tucked under the row below it and the lot reads
+    // as fish scales.
+    for (let j = B.length - 1; j > 0; j--) {
+      const m = (hash2(seed + j * 31, j * 17 + 9) * (j + 1)) | 0;
+      const tmp = B[j]; B[j] = B[m]; B[m] = tmp;
+    }
+    this.wipe.dur = 1.05; this.wipe.t = this.wipe.dur;
+    Audio_.tone(150, 0.20, 'sine', 0.05, 520);
+    Audio_.tone(430, 0.30, 'sine', 0.035, 980);
   }
-  // A hard-edged wobbling disc. ctx.arc + fill would antialias the mask edge,
-  // and a rim with soft pixels in a game with none reads as a mistake.
+  // A hard-edged wobbling disc. ctx.arc + fill would antialias the edge, and a
+  // soft rim in a game with none reads as a mistake.
   wipeBlob(ctx, cx, cy, r, wob, ph, step = 1) {
+    if (r <= 0) return;
     for (let y = -r; y <= r; y += step) {
       const f = y / r; if (f < -1 || f > 1) continue;
-      // radius varies with angle, so the outline breathes instead of being a circle
       const a = Math.asin(clamp(f, -1, 1));
       const rr = r * (1 + Math.sin(a * 3 + ph) * wob * 0.5 + Math.sin(a * 5 - ph * 1.7) * wob * 0.3);
       const w = Math.sqrt(Math.max(0, rr * rr - y * y));
@@ -665,75 +801,119 @@ class Game {
       ctx.fillRect(Math.round(cx - w), Math.round(cy + y), Math.round(w * 2), step);
     }
   }
+  // A bubble's face: dark rim, lit rim shifted up-left so the light lands on
+  // one side, body, brighter core, then the specks that say "glass". Kept in a
+  // map by size and tint -- there are only a few dozen distinct faces in a
+  // wipe, and each one is drawn once.
+  bubbleSprite(qr, tint) {
+    const key = tint * 4096 + qr;
+    let sp = this.wipe.cache.get(key);
+    if (sp) return sp;
+    const RIM_D = '#4f9ccd', RIM_L = '#f4feff';
+    const BODY = ['#c2eaff', '#a5daf6', '#dff5ff'], CORE = ['#dcf5ff', '#bfe8fc', '#f0fcff'];
+    const pad = 2, d = qr * 2 + pad * 2;
+    sp = document.createElement('canvas'); sp.width = d; sp.height = d;
+    const c = sp.getContext('2d'); c.imageSmoothingEnabled = false;
+    const cx = qr + pad, cy = qr + pad, st = qr > 26 ? 2 : 1, ph = 0.8;
+    c.fillStyle = RIM_D; this.wipeBlob(c, cx, cy, qr, 0.05, ph, st);
+    c.globalAlpha = 0.8; c.fillStyle = RIM_L;
+    this.wipeBlob(c, cx - qr * 0.02 - 1, cy - qr * 0.03 - 1, qr - 1.5, 0.05, ph, st);
+    c.globalAlpha = 1; c.fillStyle = BODY[tint];
+    this.wipeBlob(c, cx, cy, qr - (qr > 30 ? 4.5 : 2.5), 0.05, ph, st);
+    if (qr > 22) {
+      c.globalAlpha = 0.8; c.fillStyle = CORE[tint];
+      this.wipeBlob(c, cx + qr * 0.06, cy + qr * 0.09, qr - 7, 0.05, ph, st);
+    }
+    if (qr > 10) {
+      c.globalAlpha = 0.6; c.fillStyle = '#ffffff';
+      this.wipeBlob(c, Math.round(cx - qr * 0.44), Math.round(cy - qr * 0.44), Math.max(2, qr * 0.15), 0.12, ph, 1);
+      c.globalAlpha = 0.98;
+      this.wipeBlob(c, Math.round(cx - qr * 0.3), Math.round(cy - qr * 0.58), Math.max(1, qr * 0.06), 0, 0, 1);
+      c.globalAlpha = 0.5;
+      this.wipeBlob(c, Math.round(cx + qr * 0.34), Math.round(cy + qr * 0.46), Math.max(1, qr * 0.05), 0, 0, 1);
+    }
+    this.wipe.cache.set(key, sp);
+    return sp;
+  }
+  // Where a bubble is and how big, at a given point in the wipe. It boils up
+  // from below into its slot, sits there holding the frame shut, then swells
+  // away. While it holds, it stays put bar a small bob -- the coverage margin
+  // in beginWipe is what that bob is allowed to spend.
+  wipeAt(b, k) {
+    let s, off;
+    if (k < b.inT) { s = 0; off = b.launch; }
+    else if (k < b.inT + 0.16) {
+      const u = (k - b.inT) / 0.16;
+      s = u * u * (3 - 2 * u);
+      off = b.launch * (1 - u) * (1 - u);
+    } else if (k < b.outT) { s = 1; off = 0; }
+    else { const u = clamp((k - b.outT) / 0.30, 0, 1); s = 1 - u * u * (3 - 2 * u); off = -u * b.rise; }
+    return {
+      s,
+      x: b.x + Math.sin(b.wob + k * b.spin * 5) * 4 + b.drift * Math.max(0, k - b.outT),
+      y: b.y + off + Math.sin(b.wob * 1.7 + k * b.spin * 4) * 3,
+      r: b.r * s,
+    };
+  }
   drawWipe() {
     const w = this.wipe; if (w.t <= 0 || !w.snap) return;
-    const k = clamp(1 - w.t / w.dur, 0, 1);       // 0 -> 1 across the wipe
+    const k = clamp(1 - w.t / w.dur, 0, 1);
     const S = HUD_SCALE;
-    // smoothstep, so it starts slowly and you actually see it as a bubble
-    // before it fills the frame, instead of snapping open
-    const e = k * k * (3 - 2 * k);
-    const R = 12 + e * 640;
-    const cx = (320 + Math.sin(k * 4.1 + w.seed) * 30 * (1 - e)) * S;
-    const cy = (400 - k * 300) * S;              // the rise stays steady
-    const wob = 0.055 * (1 - e * 0.55);           // settles as it grows
-    const ph = k * 6.2 + w.seed;
+    // The scene underneath flips at the midpoint, when the bubbles have the
+    // frame completely covered, so the cut itself is never on screen. Before
+    // that the old scene is showing; after it, the new one already is.
+    if (k < 0.5) { this.full(this.ctx); this.ctx.drawImage(w.snap, 0, 0); }
 
-    // the OLD scene, with the bubble punched out of it, laid over the new one
-    const hole = this._wipeHole || (this._wipeHole = document.createElement('canvas'));
-    if (hole.width !== OUT_W) { hole.width = OUT_W; hole.height = OUT_H; }
-    const h = hole.getContext('2d');
-    h.setTransform(1, 0, 0, 1, 0, 0);
-    h.imageSmoothingEnabled = false;
-    h.globalCompositeOperation = 'source-over';
-    h.clearRect(0, 0, OUT_W, OUT_H);
-    h.drawImage(w.snap, 0, 0);
-    h.globalCompositeOperation = 'destination-out';
-    h.fillStyle = '#000';
-    this.wipeBlob(h, cx, cy, R * S, wob, ph, 2);
-    h.globalCompositeOperation = 'source-over';
-    this.full(this.ctx);
-    this.ctx.drawImage(hole, 0, 0);
-
-    // everything below is the bubble itself, in logical units
-    this.hud(this.ctx);
-    const c = this.ctx, bx = cx / S, by = cy / S, br = R;
-    // a thin skin of the old scene still clinging inside the rim, so the
-    // bubble reads as a surface rather than a hole
-    c.save();
-    c.globalAlpha = 0.16 * (1 - e);
-    c.fillStyle = '#cfefff';
-    this.wipeBlob(c, bx, by, br * 0.985, wob, ph, 1);
-    c.restore();
-    // the rim: sampled densely enough that it is a continuous skin at any
-    // size rather than a dotted line, bright where the light is
-    const RN = Math.max(64, Math.min(560, Math.round(br * 2.2)));
-    for (let i = 0; i < RN; i++) {
-      const a = (i / RN) * TAU;
-      const rr = br * (1 + Math.sin(a * 3 + ph) * wob * 0.5 + Math.sin(a * 5 - ph * 1.7) * wob * 0.3);
-      const lit = Math.cos(a + 2.5) * 0.5 + 0.5;          // light from upper-left
-      const px = Math.round(bx + Math.cos(a) * rr), py = Math.round(by + Math.sin(a) * rr);
-      c.fillStyle = lit > 0.62 ? 'rgba(236,252,255,0.95)' : lit > 0.3 ? 'rgba(178,228,248,0.70)' : 'rgba(140,196,226,0.52)';
-      c.fillRect(px - 1, py - 1, 3, 3);
-      if (lit > 0.75) { c.fillStyle = 'rgba(255,255,255,0.55)'; c.fillRect(px - 1, py - 2, 2, 2); }
+    const c = w.bctx;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, 640, 360);
+    // Coverage alone is not enough -- soap thin enough to see the old scene
+    // through would show the swap as a ghost. So the foam thickens as it
+    // closes over the frame and thins again once it is past.
+    const dense = 1 - clamp(Math.abs(k - 0.5) / 0.22, 0, 1);
+    // and a breath of soap under the lot, for the hairline where two bubble
+    // rims meet exactly
+    if (dense > 0) {
+      c.globalAlpha = dense * dense * dense;
+      c.fillStyle = '#cfeeff';
+      c.fillRect(0, 0, 640, 360);
+      c.globalAlpha = 1;
     }
-    // the two highlights every bubble has: a big soft one and a hard spark
-    if (br > 22) {
-      c.fillStyle = 'rgba(255,255,255,0.40)';
-      this.wipeBlob(c, Math.round(bx - br * 0.44), Math.round(by - br * 0.46), Math.max(3, br * 0.11), 0.10, ph * 0.6, 1);
-      c.fillStyle = 'rgba(255,255,255,0.85)';
-      this.wipeBlob(c, Math.round(bx - br * 0.30), Math.round(by - br * 0.58), Math.max(2, br * 0.045), 0, 0, 1);
+    // Each bubble is four hard-edged discs: a dark rim, a lit rim shifted
+    // up-left so the light lands on one side, the body, and a brighter core.
+    // Drawn as discs rather than a sampled outline the rim comes out solid --
+    // sampling a circumference this long left it dotted -- and the shading is
+    // what lets one bubble read against the next once the screen is all soap.
+    // One blit each. Drawn live this was fifty thousand fillRects a frame and
+    // the transition ran at half speed, so a bubble's face is rasterised once
+    // per size and tint and then stamped; the body is baked opaque and the
+    // glass comes from the alpha it is stamped with, which is also what shuts
+    // the frame at the midpoint.
+    const alpha = 0.78 + 0.22 * dense;
+    for (const b of w.bubbles) {
+      const p = this.wipeAt(b, k); if (p.s <= 0.02 || p.r < 1.5) continue;
+      const qr = p.r < 16 ? Math.ceil(p.r) : Math.ceil(p.r / 4) * 4;
+      const sp = this.bubbleSprite(qr, b.tint);
+      const d = sp.width * (p.r / qr);
+      c.globalAlpha = alpha * Math.min(1, p.s * 1.6);
+      c.drawImage(sp, Math.round(p.x - d / 2), Math.round(p.y - d / 2), Math.round(d), Math.round(d));
     }
-    // it pops: droplets thrown off the rim as it leaves the frame
-    if (k > 0.72) {
-      const pk = (k - 0.72) / 0.28;
-      for (let i = 0; i < 30; i++) {
-        const a = (i / 30) * TAU + w.seed;
-        const d = br * (1 + pk * 0.30) + pk * 40;
-        const s = Math.max(1, Math.round(4 * (1 - pk)));
-        c.fillStyle = `rgba(226,250,255,${(0.75 * (1 - pk)).toFixed(2)})`;
-        c.fillRect(Math.round(bx + Math.cos(a) * d), Math.round(by + Math.sin(a) * d * 0.92), s, s);
+    c.globalAlpha = 1;
+    // the ones that have just gone throw a ring of droplets
+    for (const b of w.bubbles) {
+      const pk = (k - b.outT) / 0.30;
+      if (pk <= 0.55 || pk >= 1.2) continue;
+      const p = this.wipeAt(b, b.outT);
+      const u = (pk - 0.55) / 0.65;
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * TAU + b.wob;
+        const d = b.r * (0.8 + u * 0.7);
+        c.fillStyle = `rgba(236,252,255,${(0.75 * (1 - u)).toFixed(2)})`;
+        c.fillRect(Math.round(p.x + Math.cos(a) * d), Math.round(p.y + Math.sin(a) * d), 2, 2);
       }
     }
+    this.hud(this.ctx);
+    this.ctx.drawImage(w.buf, 0, 0);
     this.full(this.ctx);
   }
 
