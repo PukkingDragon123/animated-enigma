@@ -757,7 +757,8 @@ class Game {
         tint: (i + (h2 * 3 | 0)) % 3,
         launch: 200 + h2 * 260,                 // how far below it boils up from
         inT: 0.06 + h1 * 0.24,                  // up and full by 0.46
-        outT: 0.53 + h3 * 0.26,                 // and they leave in another order
+        outT: 0.51 + h3 * 0.24,                 // and they leave in another order
+        pop: h1 > 0.45,                         // about half burst, the rest shrink away
         rise: 300 + h1 * 340,
         drift: (h2 - 0.5) * 140,
         wob: h3 * TAU, spin: 0.6 + h2 * 1.6,
@@ -771,7 +772,8 @@ class Game {
         tint: (j + (h1 * 3 | 0)) % 3,
         launch: 180 + h1 * 300,
         inT: 0.02 + h2 * 0.30,
-        outT: 0.52 + h1 * 0.30,
+        outT: 0.51 + h1 * 0.26,
+        pop: h2 > 0.4,
         rise: 320 + h3 * 420,
         drift: (h3 - 0.5) * 180,
         wob: h1 * TAU, spin: 0.8 + h3 * 2.2,
@@ -847,7 +849,12 @@ class Game {
       s = u * u * (3 - 2 * u);
       off = b.launch * (1 - u) * (1 - u);
     } else if (k < b.outT) { s = 1; off = 0; }
-    else { const u = clamp((k - b.outT) / 0.30, 0, 1); s = 1 - u * u * (3 - 2 * u); off = -u * b.rise; }
+    else {
+      const u = clamp((k - b.outT) / 0.26, 0, 1);
+      // a burst goes almost at once; the rest thin out and drift off
+      s = b.pop ? 1 - Math.pow(u, 0.35) : 1 - u * u * (3 - 2 * u);
+      off = -u * b.rise;
+    }
     return {
       s,
       x: b.x + Math.sin(b.wob + k * b.spin * 5) * 4 + b.drift * Math.max(0, k - b.outT),
@@ -901,10 +908,10 @@ class Game {
     c.globalAlpha = 1;
     // the ones that have just gone throw a ring of droplets
     for (const b of w.bubbles) {
-      const pk = (k - b.outT) / 0.30;
-      if (pk <= 0.55 || pk >= 1.2) continue;
+      const pk = (k - b.outT) / 0.26;
+      if (pk <= (b.pop ? 0.06 : 0.5) || pk >= 1.2) continue;
       const p = this.wipeAt(b, b.outT);
-      const u = (pk - 0.55) / 0.65;
+      const u = clamp((pk - (b.pop ? 0.06 : 0.5)) / 0.7, 0, 1);
       for (let i = 0; i < 10; i++) {
         const a = (i / 10) * TAU + b.wob;
         const d = b.r * (0.8 + u * 0.7);
