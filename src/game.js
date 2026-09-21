@@ -70,7 +70,7 @@ class Game {
     this.particles = new Particles(this.ocean);
     this.enemies = []; this.projectiles = []; this.pickups = []; this.wrecks = []; this.rocks = [];
     this.boss = null; this.bossKey = null; this.buoy = null;
-    this.cineReset(); this.holdFire = false; this.cutReturn = null; this.cutMod = null; this.pendingVictory = false; this.pendingStory = null; this.miniBosses = [];
+    this.cineReset(); this.holdFire = false; this.cutReturn = null; this.cutMod = null; this.cutWasWorld = false; this.sawBearing = false; this.pendingChapter = null; this.lastKill = null; this.pendingVictory = false; this.pendingStory = null; this.miniBosses = [];
     this.stats = { kills: 0, shots: 0, absorbs: 0, damageDealt: 0, damageTaken: 0, scrapCollected: 0, bossCrashes: 0 };
     this.cam = { x: 0, y: 0 }; this.shakeAmt = 0; this.time = 0; this.endT = 0;
     this.pier = { x: WORLD_W / 2, y0: SHORE_Y - 24, y1: SHORE_Y + 130, w: 44 };
@@ -193,6 +193,7 @@ class Game {
     mod.start(kind, opts || {});
     if (mod.done || !mod.active) return false;
     this.cutMod = mod;
+    this.cutWasWorld = !!(mod.world || mod.worldActive);
     this.cutReturn = this.state === 'cut' ? (this.cutReturn || 'play') : this.state;
     this.skipArm();
     this.state = 'cut';
@@ -239,6 +240,11 @@ class Game {
   // a wave is only over when every last boat is on the bottom
   onWaveCleared(idx) {
     const d = this.director;
+    // the first wave you ever finish, and the one that leaves only the Chief:
+    // often enough to land, rare enough not to wear out
+    if ((idx === 0 || d.lastWave) && this.lastKill) {
+      this.playCut('last_boat', { x: this.lastKill.x, y: this.lastKill.y, text: d.lastWave ? 'Nothing left but the Chief.' : '' });
+    }
     this.banner('WAVE CLEARED', '#6fd88e', 2.6, d.lastWave ? 'Nothing left but the Chief.' : 'Spend your salvage, then call the next one in.');
     Audio_.rampage();
     this.pickups.forEach(p => { p.life = Math.max(p.life, 30); });
@@ -246,7 +252,7 @@ class Game {
     this.autoTree = 2.4;
     this.persist();
   }
-  onEnemyKilled(e) { const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
+  onEnemyKilled(e) { this.lastKill = { x: e.x, y: e.y }; const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() {
     const nm = (this.boss && this.boss.name) || 'THE CHIEF';
     this.banner(nm + ' IS DOWN', '#ffe48f', 3); this.endT = 0;
@@ -327,13 +333,24 @@ class Game {
         const wa = WorldMap.action;
         if (wa) {
           WorldMap.consume();
-          if (wa === 'launch') { this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; }
+          if (wa === 'launch') {
+            this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; this.skipArm();
+            // the village introduces itself; every chapter after it gets a
+            // card of its own on the way in
+            const d = WorldMap.destinations && WorldMap.destinations[WorldMap.selected];
+            if (d && WorldMap.selected > 0) this.pendingChapter = { name: d.name, sub: d.chapter ? 'CHAPTER ' + d.chapter : '' };
+          }
           else if (wa === 'back') this.state = 'menu';
         }
         break;
       }
       case 'dialogue':
         Dialogue.update(dt); this.updateWorld(dt);
+        if (Dialogue.cinematic && this.updateSkip(dt) && Dialogue.skip) Dialogue.skip();
+        if (this.pendingChapter && !Dialogue.cinematic) {
+          const c = this.pendingChapter; this.pendingChapter = null;
+          this.playCut('chapter_in', { name: c.name, sub: c.sub, x: this.player.x, y: SHORE_Y + 90 });
+        }
         const tapOk = !(typeof MobileUI !== 'undefined' && MobileUI.enabled && MobileUI.consumedTouch(Input.mouse.x, Input.mouse.y));
         if (Dialogue.done && (Input.mouse.clicked || (typeof MobileUI !== 'undefined' && MobileUI.enabled && MobileUI.pressed('fire'))) && tapOk && this.fisherman && this.fisherman.alive && !Dialogue.shotFired) {
           Dialogue.shotFired = true; const p = this.player, f = this.fisherman;
@@ -346,6 +363,13 @@ class Game {
         break;
       case 'play':
         this.updateWorld(dt);
+        // Once a run, when a hull first bears down on her, the camera goes and
+        // looks at it. Held back until the second wave so the opening fight is
+        // not interrupted while you are still learning the controls.
+        if (!this.sawBearing && this.director && this.director.waveIdx >= 1 && !this.director.cleared) {
+          const near = this.enemies.find(e => !e.dead && dist(e.x, e.y, this.player.x, this.player.y) < 260);
+          if (near) { this.sawBearing = true; this.playCut('bearing_down', { x: near.x, y: near.y }); break; }
+        }
         if (Input.hit('Tab')) {
           if (this.upgradesOpen()) this.openTree('play');
           else { this.banner('FINISH THE WAVE FIRST', '#ff6161', 1.6, 'The skill tree only opens between waves.'); Audio_.deny(); }
@@ -649,7 +673,10 @@ class Game {
     this.drawCineBars(ctx);
     // overlays
     if (this.state === 'dialogue') Dialogue.renderHUD(ctx);
-    if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree' && this.state !== 'death' && this.state !== 'cut') UI.drawHUD(ctx, t);
+    // the arrival is a cinematic, letterbox and all, so the vitals panel and
+    // the clock have no business sitting on the top black bar through it
+    const staged = this.state === 'dialogue' && typeof Dialogue !== 'undefined' && Dialogue.cinematic;
+    if (this.state !== 'gameover' && this.state !== 'victory' && this.state !== 'tree' && this.state !== 'death' && this.state !== 'cut' && !staged) UI.drawHUD(ctx, t);
     if (this.state === 'tree') { if (typeof Upgrades !== 'undefined') Upgrades.render(ctx, t); else UI.drawTree(ctx, t); }
     if (this.state === 'paused') {
       ctx.fillStyle = 'rgba(2,8,18,0.78)'; ctx.fillRect(0, 0, 640, 360);
@@ -663,7 +690,7 @@ class Game {
     if (this.state === 'dead_wait') { ctx.fillStyle = `rgba(120,10,20,${Math.min(0.7, this.endT * 0.4).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
     if (this.state === 'death') DeathScene.renderScreen(ctx, this.time);
     if (this.state === 'cut' && this.cutMod) this.cutMod.renderScreen(ctx, this.time);
-    if (this.state === 'death' || this.state === 'cut') this.drawSkip(ctx);
+    if (this.state === 'death' || this.state === 'cut' || staged) this.drawSkip(ctx);
     if (this.state === 'dialogue' && !this.director.started) { /* controls hint in dialogue */ }
     if (typeof MobileUI !== 'undefined' && MobileUI.enabled && (this.state === 'play' || this.state === 'dialogue' || this.state === 'dead_wait' || this.state === 'victory_wait')) MobileUI.render(ctx, t);
     if (Audio_.muted) pixelText(ctx, 'MUTED [M]', 634, 350, 6, '#889', 'right');
@@ -720,6 +747,14 @@ class Game {
     if (this.wipe.t > 0) return;                  // already mid-wipe
     const quiet = { paused: 1, tree: 1 };         // a pause stays a cut
     if (quiet[from] && quiet[to]) return;
+    // A cinematic that plays inside the live world is the same scene carrying
+    // on, not a new one: a screenful of soap over the hand-off from the shot
+    // to the alarm throws away the continuity the beat is built on. Wipe only
+    // when the scene underneath actually changes.
+    const inWorld = { play: 1, dialogue: 1 };
+    const wasWorld = s => inWorld[s] || (s === 'cut' && this.cutWasWorld);
+    const nowWorld = s => inWorld[s] || (s === 'cut' && !!(this.cutMod && (this.cutMod.world || this.cutMod.worldActive)));
+    if (wasWorld(from) && nowWorld(to)) return;
     if (!this.wipe.snap) {
       const c = document.createElement('canvas');
       c.width = OUT_W; c.height = OUT_H;
