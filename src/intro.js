@@ -154,7 +154,7 @@ function buildCaustNet(seed, ph) {
       // the one thing the play field never does.
       const g = Math.max(0, (cv - 0.52) / 1.55) * 2.4 * fade;
       const gi = Math.floor(g), lv = Math.min(2, (g - gi) > bay(px, y) ? gi + 1 : gi);
-      let a = [0, 0.26, 0.50][lv < 0 ? 0 : lv];
+      let a = [0, 0.26, 0.50][lv];
       if (y < 22 && hash2(px, y + seed * 97) > 0.972) a = 0.72 * fade;           // crest glitter
       else if (dep > 0.55 && (px & 3) === 0 && (y & 3) === 0 && hash2(px >> 2, (y >> 2) + seed * 31) > 0.980) a = 0.28;
       a = qa(a);
@@ -612,7 +612,7 @@ function shiftHide(c, sh, inkRGB) {
 // The one hide tone her face needs, read back off the finished body: the
 // darkest grey on her that is not the ink, which is what chars.js draws her
 // brows and her shut lids with.
-function hideTones(c, inkRGB) {
+function darkTone(c, inkRGB) {
   const W = c.width, H = c.height, x = cx2(can(W, H));
   x.drawImage(c, 0, 0, W, H, 0, 0, W, H);
   const d = x.getImageData(0, 0, W, H).data;
@@ -626,7 +626,7 @@ function hideTones(c, inkRGB) {
     const L = r + g + b;
     if (L < dkL) { dkL = L; dk = [r, g, b]; }
   }
-  return [dk ? 'rgb(' + dk[0] + ',' + dk[1] + ',' + dk[2] + ')' : '#332f39'];
+  return dk ? 'rgb(' + dk[0] + ',' + dk[1] + ',' + dk[2] + ')' : '#332f39';
 }
 // ---- one family member -----------------------------------------------------
 function buildManatee(len, who) {
@@ -642,12 +642,12 @@ function buildManatee(len, who) {
     return r;
   };
   const body = part(S.body);
-  const tones = hideTones(body.c, inkRGB);
   return {
-    L: len, k: k, who: who, ink: ink, dark: tones[0],
-    // the eye box: three art pixels of pupil on the adults, one on the calf,
-    // so the face reads at every distance without ever going soft
-    ek: len > 74 ? 3 : len > 48 ? 2 : 1,
+    L: len, k: k, who: who, ink: ink, dark: darkTone(body.c, inkRGB),
+    // The eye box: the cast's own three art pixels of pupil on the adults,
+    // two on the calves.  The eye is the one thing on her that must not be
+    // resampled, so it is painted live at whichever size the body came out.
+    ek: len > 74 ? 3 : len > 34 ? 2 : 1,
     body: body, bodyScar: part(S.bodyScar),
     fluke: part(S.fluke), flip: part(S.flip), flipFar: part(S.flipFar),
     eye: [S.eye[0] * k, S.eye[1] * k], mouth: [S.mouth[0] * k, S.mouth[1] * k],
@@ -1459,9 +1459,9 @@ function backdrop(ctx, o) {
     const sh = !G || G.shaft === 'cold' ? LAY.shafts : G.shaft === 'red' ? LAY.shaftsRed : LAY.shaftsWarm;
     ctx.save(); ctx.globalAlpha = qa(o.shafts); tile(ctx, sh, s * 0.16, (o.surfY === undefined || o.surfY === null ? -40 : o.surfY)); ctx.restore();
   }
-  // the lit water itself: the ocean's own caustics, boiling and drifting
+  // The lit water itself: the ocean's own caustics, boiling and drifting.
   // Strong where the surface is in the shot and the light is coming through
-  // it; a fraction of that once the beat has left the surface behind.
+  // it, a fraction of that once the beat has left the surface behind.
   const deepShot = o.surfY === undefined || o.surfY === null;
   const ca = o.caust === undefined ? (deepShot ? 0.26 : 0.60) : o.caust;
   if (ca > 0 && LAY.caust) {
@@ -3002,7 +3002,7 @@ function drawCapOtter(ctx, o, t) {
     for (let i = 0; i < 4; i++) {
       const k = (t * 0.45 + i * 0.25) % 1;
       ctx.fillStyle = rgbaq('#b9b3ad', qa(0.30 * (1 - k)));
-      ctx.fillRect(R(17 + Math.sin(k * 6 + i) * 3), R(-2 - k * 20), 2 + R(k * 3), 2 + R(k * 3));
+      ctx.fillRect(R((9 + Math.sin(k * 6 + i) * 2) * D), R((-1 - k * 11) * D), (1 + R(k * 2)) * D, (1 + R(k * 2)) * D);
     }
   }
   ctx.restore();
