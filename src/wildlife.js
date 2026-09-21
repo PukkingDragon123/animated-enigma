@@ -270,11 +270,17 @@ const Wildlife = (function () {
         const px0 = bx0 + i, yy = colY[i], R = Math.ceil(h);
         for (let dy = -R; dy <= R; dy++) {
           if (Math.abs(dy) > h + 0.001) continue;
+          // Seen from straight above, a fish is a ROUNDED BACK: the ridge
+          // along its spine takes the light and the flanks fall away from it
+          // into the rim.  It used to be shaded flat-on-its-side -- one whole
+          // flank light, the other mid -- which from this camera is a painted
+          // racing stripe, and a painted stripe is what a sticker has.
           const a = Math.abs(dy) / Math.max(0.6, h);
           let col;
-          if (a > 0.78) col = pal.out;
-          else if (a < 0.24) col = pal.dorsal;
-          else col = dy < 0 ? pal.light : pal.mid;
+          if (a > 0.84) col = pal.out;
+          else if (a > 0.58) col = pal.dorsal;
+          else if (a > 0.28) col = dy < 0 ? pal.mid : pal.dark;
+          else col = pal.light;
           x.fillStyle = col; x.fillRect(px0, Math.round(yy + dy), 1, 1);
         }
       }
@@ -345,10 +351,48 @@ const Wildlife = (function () {
     // ====================================================================
     const DTIER = 6;                 // posterized depth layers, surface -> gloom
     const REEF_TIERS = 4;            // reef pickers never leave the shallows
-    // how much of the fish still survives the water at each layer: a hard
-    // ladder, not a curve, so the fog steps in bands like everything else
-    const VIS_STEP = [1.00, 0.84, 0.66, 0.50, 0.36, 0.24];
     function odOf(dp, z) { const d = dp * (0.30 + 0.70 * z); return d < 0 ? 0 : d > 1 ? 1 : d; }
+
+    // ---- how a fish is allowed to look at each layer ----------------------
+    //
+    // The old ladder started at 1.00: a fish in the shallows was drawn in its
+    // undiluted palette, black outline and all, while the reef RIGHT UNDER IT
+    // was never allowed past water.js's visLUT, which tops out at 0.50.  The
+    // bottom was half water and the fish was none, so the fish sat ON the sea
+    // instead of in it, and no amount of extra fog on top ever fixed that,
+    // because the fish was still the only thing in frame carrying its own
+    // black and its own white.
+    //
+    // A fish is now built the way the seabed is: it is the LOCAL SEA COLOUR,
+    // shaded.  Its value is squeezed into a window either side of the water it
+    // is seen through -- wide near the surface, nearly shut in the gloom -- so
+    // it can be dark or bright but never out of the water's range.  Only a
+    // fraction of its own hue survives on top of that, and that fraction is
+    // what tells a clownfish from a tang.
+    const WIN_LO = new Float32Array([0.38, 0.45, 0.55, 0.67, 0.77, 0.83]);
+    const WIN_HI = new Float32Array([1.09, 1.08, 1.06, 1.03, 1.01, 1.00]);
+    const IDENT = new Float32Array([0.31, 0.27, 0.21, 0.14, 0.09, 0.06]);
+    // the surface light water.js pours onto the seabed, as a multiplier on the
+    // value window; it dies out by band 10, which is tier 3 of ours
+    const CAUS_V = [0.30, 0.25, 0.14, 0, 0, 0];
+    function tuneLadder() {
+      const o = OC(); if (!o || !o.visLUT) return;
+      _AMB.length = 0;                          // rebake against the real sea
+      // water.js decides how much of the bottom the water lets through; the
+      // fish hangs above the bottom, so it keeps a little more of itself than
+      // that and not a scrap more.
+      for (let k = 0; k < DTIER; k++) {
+        const od = (k + 0.5) / DTIER;
+        const b = clamp(((od * 1.12) * 15.999) | 0, 0, 15);
+        const sea = clamp(o.visLUT[b] * (1.18 - od * 0.30), 0.10, 0.62);
+        IDENT[k] = clamp(sea * 0.54, 0.05, 0.33);
+        WIN_LO[k] = clamp(1 - sea * 1.05 - 0.02, 0.36, 0.86);
+        // A fish lit from above is DARKER than the water it hangs in; the only
+        // thing that lifts it over the water is a band of surface light
+        // crossing it, and that is the whole reason a shoal glitters.
+        WIN_HI[k] = clamp(1 + sea * 0.15, 1.00, 1.10);
+      }
+    }
 
     // water.js owns the real tables (waterRamp / absR|G|B / visLUT / shoalLUT).
     // This is only the fallback for the moment before an Ocean exists; the
@@ -360,10 +404,21 @@ const Wildlife = (function () {
       const o = OC();
       if (o && o.waterRamp && o.absR) return o;
       if (!WFB) {
-        WFB = { waterRamp: WRAMP, absR: new Float32Array(16), absG: new Float32Array(16), absB: new Float32Array(16) };
+        WFB = {
+          waterRamp: WRAMP, absR: new Float32Array(16), absG: new Float32Array(16), absB: new Float32Array(16),
+          visLUT: new Float32Array(16), sandPal: [],
+        };
+        // the same three sand ramps water.js blends across the shelf, so the
+        // creature art baked before an Ocean exists still lands on the colour
+        // the sea will actually be
+        const SA = [191, 169, 114], SB = [157, 146, 104], SC = [106, 116, 105];
         for (let b = 0; b < 16; b++) {
           const d = b / 15;
           WFB.absR[b] = 0.82 - d * 0.38; WFB.absG[b] = 0.98 - d * 0.28; WFB.absB[b] = 1.06 - d * 0.12;
+          WFB.visLUT[b] = Math.max(0.06, Math.round(clamp((0.92 - d) / 0.55, 0, 1) * 5) / 5 * 0.50);
+          const p = [], q = d < 0.5 ? d * 2 : (d - 0.5) * 2, u = d < 0.5 ? SA : SB, v2 = d < 0.5 ? SB : SC;
+          for (let i = 0; i < 5; i++) p.push([lerp(u[0], v2[0], q), lerp(u[1], v2[1], q), lerp(u[2], v2[2], q)]);
+          WFB.sandPal.push(p);
         }
       }
       return WFB;
@@ -373,36 +428,166 @@ const Wildlife = (function () {
     // blue, then what is left is mixed into the water's own colour by how much
     // of the fish still reaches the surface.  The result is snapped to the same
     // 5-unit ladder water.js posterizes its own water to.
-    function fogCol(c, dp, tier, mul) {
+    // What the sea actually LOOKS like at a band -- not the raw water ramp but
+    // the water ramp with as much of the absorbed seabed mixed back into it as
+    // water.js lets through.  In the shallows that is half sand, so the water
+    // over the reef is a green-gold teal, not the ramp's turquoise; fogging the
+    // fish toward the ramp alone left them reading blue against green water.
+    const _AMB = [];
+    function ambient(b) {
+      let a = _AMB[b]; if (a) return a;
+      const wt = waterTab(), w = wt.waterRamp[b];
+      const vis = wt.visLUT[b];
+      const s = wt.sandPal[b][2];
+      a = [w[0] + (s[0] * wt.absR[b] - w[0]) * vis,
+      w[1] + (s[1] * wt.absG[b] - w[1]) * vis,
+      w[2] + (s[2] * wt.absB[b] - w[2]) * vis];
+      _AMB[b] = a; return a;
+    }
+    const _LU = c => c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114;
+    // One colour of one fish at one depth layer.
+    //
+    //   rel   where this shade sits in the species' own light-to-dark ladder
+    //   k     the depth layer, which sets the value window and how much of the
+    //         fish's own hue is left
+    //   lit   whether the surface light is on it right now
+    //
+    // The value is the AMBIENT value stepped inside the window; the hue is the
+    // ambient hue with a little of the fish's own mixed back in.  Nothing here
+    // can produce a colour outside the water's own family, which is the whole
+    // point: that is the rule the seabed already plays by.
+    function seaRGB(c, dp, k, rel, mul, lit, idMul) {
       const wt = waterTab();
       let b = (dp * 15.999) | 0; b = b < 0 ? 0 : b > 15 ? 15 : b;
-      const w = wt.waterRamp[b], v = VIS_STEP[tier < 0 ? 0 : tier > 5 ? 5 : tier];
-      const m = mul === undefined ? 1 : mul;
-      const r = clamp(w[0] + (c[0] * m * wt.absR[b] - w[0]) * v, 0, 255);
-      const g = clamp(w[1] + (c[1] * m * wt.absG[b] - w[1]) * v, 0, 255);
-      const bl = clamp(w[2] + (c[2] * m * wt.absB[b] - w[2]) * v, 0, 255);
-      return 'rgb(' + ((r / 5 | 0) * 5) + ',' + ((g / 5 | 0) * 5) + ',' + ((bl / 5 | 0) * 5) + ')';
+      const amb = ambient(b);
+      const aL = _LU(amb) || 1;
+      const kk = k < 0 ? 0 : k > 5 ? 5 : k;
+      const lo = WIN_LO[kk], hi = WIN_HI[kk];
+      let vk = (lo + (hi - lo) * rel) * (mul === undefined ? 1 : mul);
+      if (lit) { vk *= 1 + CAUS_V[kk]; const cap = hi * 1.30; if (vk > cap) vk = cap; }
+      const tv = aL * vk;                       // the value this shade lands on
+      // the water's own colour carried to that value
+      let r = amb[0] / aL * tv, g = amb[1] / aL * tv, bl = amb[2] / aL * tv;
+      // ...and a fraction of the fish's real hue, absorbed like everything
+      // else down here and normalised so it tints without shifting the value
+      const id = clamp(IDENT[kk] * (idMul === undefined ? 1 : idMul), 0, 0.72);
+      if (id > 0.01) {
+        const orr = c[0] * wt.absR[b], og = c[1] * wt.absG[b], ob = c[2] * wt.absB[b];
+        const oL = _LU2(orr, og, ob);
+        if (oL > 1) {
+          const s2 = tv / oL;
+          r += (orr * s2 - r) * id; g += (og * s2 - g) * id; bl += (ob * s2 - bl) * id;
+        }
+      }
+      // the same 5-unit ladder water.js posterizes its own water to
+      _RGB[0] = (clamp(r, 0, 255) / 5 | 0) * 5;
+      _RGB[1] = (clamp(g, 0, 255) / 5 | 0) * 5;
+      _RGB[2] = (clamp(bl, 0, 255) / 5 | 0) * 5;
+      return _RGB;
+    }
+    const _RGB = [0, 0, 0];
+    function seaCol(c, dp, k, rel, mul, lit, idMul) {
+      const q = seaRGB(c, dp, k, rel, mul, lit, idMul);
+      return 'rgb(' + q[0] + ',' + q[1] + ',' + q[2] + ')';
+    }
+    function _LU2(r, g, b) { return r * 0.299 + g * 0.587 + b * 0.114; }
+
+    // ---- the same rule, for the big creatures -----------------------------
+    // Their art is one baked blob apiece, so they cannot carry a variant per
+    // depth layer; instead their whole ramp is built out of the sea at the
+    // depth that species lives at.  Before this a turtle was a BROWN shell and
+    // a squid was PINK on green-teal water, with a black outline on both, and
+    // no amount of care taken over the sardines survives a brown turtle
+    // floating past them.
+    const _H2 = v => { const q = clamp(Math.round(v), 0, 255).toString(16); return q.length < 2 ? '0' + q : q; };
+    function seaHex(c, k, rel, idMul) {
+      const q = seaRGB(c, clamp(((k + 0.5) / DTIER) * 1.12, 0, 1), k, rel, 1, false, idMul);
+      return '#' + _H2(q[0]) + _H2(q[1]) + _H2(q[2]);
+    }
+    // A finished creature sprite, put through the water column.  Every pixel
+    // it already has -- ramp, outline, eye dot, fin highlight -- is read for
+    // where it sits on the sprite's own light-to-dark ladder and rebuilt out
+    // of the sea at the depth that species lives at.  One pass over a few
+    // thousand pixels at build time; nothing at all per frame.
+    function submerge(cv, k, idMul) {
+      if (!cv || !cv.getContext) return cv;
+      const w = cv.width, h = cv.height;
+      const x = cv.getContext('2d');
+      let img; try { img = x.getImageData(0, 0, w, h); } catch (e) { return cv; }
+      const d = img.data;
+      let lo = 1e9, hi = -1e9;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 8) continue;
+        const L = _LU2(d[i], d[i + 1], d[i + 2]);
+        if (L < lo) lo = L; if (L > hi) hi = L;
+      }
+      if (hi <= lo + 0.5) return cv;
+      const sp2 = hi - lo, cache = new Map();
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 8) continue;
+        const key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+        let c = cache.get(key);
+        if (c === undefined) {
+          const q = seaRGB([d[i], d[i + 1], d[i + 2]], clamp(((k + 0.5) / DTIER) * 1.12, 0, 1), k,
+            (_LU2(d[i], d[i + 1], d[i + 2]) - lo) / sp2, 1, false, idMul);
+          c = [q[0], q[1], q[2]]; cache.set(key, c);
+        }
+        d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2];
+      }
+      x.putImageData(img, 0, 0);
+      return cv;
+    }
+    // walk whatever a build function handed back and submerge all of it: the
+    // canvases, and the loose colour strings the runtime draws tentacles with
+    function submergeAll(o, k, idMul, skip) {
+      if (!o) return o;
+      if (typeof o === 'string') return o[0] === '#' ? seaHex(hexToRgb(o), k, clamp(_LU(hexToRgb(o)) / 190, -0.12, 1.08), idMul) : o;
+      if (o.getContext) { submerge(o, k, idMul); return o; }
+      if (o.c && o.c.getContext) { submerge(o.c, k, idMul); return o; }
+      if (Array.isArray(o)) { for (let i = 0; i < o.length; i++) o[i] = submergeAll(o[i], k, idMul, skip); return o; }
+      if (typeof o === 'object') { for (const key in o) { if (skip && skip.indexOf(key) >= 0) continue; o[key] = submergeAll(o[key], k, idMul, skip); } return o; }
+      return o;
     }
 
-    // One species at one depth layer: fogged, and progressively stripped of
-    // shades and size until it is a two-tone silhouette a pixel shorter.
-    function depthVariant(o, k) {
+    // One species at one depth layer: built out of the sea it is seen in, and
+    // progressively stripped of shades and size until it is a silhouette a
+    // pixel shorter.
+    function depthVariant(o, k, lit) {
       const od = (k + 0.5) / DTIER;
       const dp = clamp(od * 1.12, 0, 1);        // the column that deep a fish sits under
       const P = o.pal;
-      const f = (hex, mul) => fogCol(hexToRgb(hex), dp, k, mul);
+      // where every shade of this species sits in its own light-to-dark ladder
+      if (!o._rel) {
+        const rel = {};
+        let lo = 1e9, hi = -1e9;
+        for (const key in P) { const v = _LU(hexToRgb(P[key])); rel[key] = v; if (v < lo) lo = v; if (v > hi) hi = v; }
+        const sp2 = Math.max(1, hi - lo);
+        for (const key in rel) rel[key] = (rel[key] - lo) / sp2;
+        o._rel = rel; o._lo = lo; o._sp = sp2;
+      }
+      const R = o._rel;
+      const f = (key, mul) => seaCol(hexToRgb(P[key]), dp, k, R[key], mul, lit);
+      // a marking is not shading: it keeps its own place on the ladder, read
+      // against the body it sits on, and more of its own colour
+      const fm = (hex, mul) => {
+        const c = hexToRgb(hex);
+        const rel = clamp((_LU(c) - o._lo) / o._sp, -0.15, 1.18);
+        return seaCol(c, dp, k, rel, mul, lit);
+      };
       const out = { L: o.L, B: o.B, pal: null };
       if (k <= 1) {
-        out.pal = { out: f(P.out), dark: f(P.dark), mid: f(P.mid), light: f(P.light), dorsal: f(P.dorsal), fin: f(P.fin), eye: f(P.eye) };
-        if (o.lat) out.lat = f(o.lat);
-        if (o.bars) { out.bars = o.bars.map(b => [b[0], f(b[1])]); out.barOut = f(o.barOut); }
+        out.pal = { out: f('out'), dark: f('dark'), mid: f('mid'), light: f('light'), dorsal: f('dorsal'), fin: f('fin'), eye: f('eye') };
+        // the flank only flashes when the light off the surface is actually on
+        // it -- a permanently painted shimmer line is what a toy has
+        if (o.lat && lit) out.lat = fm(o.lat, 1.06);
+        if (o.bars) { out.bars = o.bars.map(b => [b[0], fm(b[1])]); out.barOut = fm(o.barOut); }
       } else if (k === 2) {
         // the first shade to go is the specular top: no more shimmer line
-        out.pal = { out: f(P.out), dark: f(P.dark), mid: f(P.mid), light: f(P.mid, 1.14), dorsal: f(P.dorsal), fin: f(P.dark), eye: f(P.out) };
-        if (o.bars) { out.bars = o.bars.map(b => [b[0], f(b[1])]); out.barOut = f(P.out); }
+        out.pal = { out: f('out'), dark: f('dark'), mid: f('mid'), light: f('mid', 1.14), dorsal: f('dorsal'), fin: f('dark'), eye: f('out') };
+        if (o.bars) { out.bars = o.bars.map(b => [b[0], fm(b[1])]); out.barOut = fm(P.out); }
       } else {
         // down here it is a shape, not a fish: two tones and a size smaller
-        const body = f(P.dark, k >= 4 ? 1.08 : 0.98), edge = f(P.out, 0.86);
+        const body = f('dark', k >= 4 ? 1.02 : 0.99), edge = f('out', 0.94);
         out.L = Math.max(4, o.L - (k >= 5 ? 2 : 1));
         out.B = Math.max(2, o.B - (k >= 4 ? 1 : 0));
         out.pal = { out: edge, dark: body, mid: body, light: body, dorsal: edge, fin: body, eye: body };
@@ -410,17 +595,25 @@ const Wildlife = (function () {
       return out;
     }
 
-    // the whole bank: bank[species][depthLayer][flex][heading]
-    let bank = null;
+    // the whole bank: bank[species][depthLayer][flex][heading], plus a second
+    // copy of the shallow layers with the caustic light on them
+    let bank = null, bankLit = null;
+    // how deep the surface light still reaches: water.js kills its caustics at
+    // band 10, which is tier 3 of ours
+    const LIT_TIERS = 3;
     function buildBank() {
-      bank = {};
+      tuneLadder();
+      bank = {}; bankLit = {};
       for (const name in FISH) {
         const nT = SCHOOL_SPECIES.indexOf(name) >= 0 ? DTIER : REEF_TIERS;
-        const tiers = [];
+        const tiers = [], lits = [];
         // a silhouette does not read its own tail beat, so the deep layers
         // only keep one frame -- that is most of the bank paid back
-        for (let k = 0; k < nT; k++) tiers.push(makeFishSet(depthVariant(FISH[name], k), k <= 2 ? 3 : 1));
-        bank[name] = tiers;
+        for (let k = 0; k < nT; k++) {
+          tiers.push(makeFishSet(depthVariant(FISH[name], k, false), k <= 2 ? 3 : 1));
+          lits.push(k < LIT_TIERS ? makeFishSet(depthVariant(FISH[name], k, true), 3) : null);
+        }
+        bank[name] = tiers; bankLit[name] = lits;
       }
     }
     function ensureBank() { if (!bank) buildBank(); }
@@ -440,12 +633,42 @@ const Wildlife = (function () {
       _REF.y = clamp(wv * 1.6 + gy * 12, -6, 6);
       return _REF;
     }
+    // ---- the light coming down through the surface ------------------------
+    // water.js walks three warped sine fields across the seabed and posterizes
+    // them into four caustic levels.  This samples THE SAME field at a point,
+    // so the band of light crawling over the reef crawls over the fish above
+    // it on the same beat.  The sine table water.js builds is a script global;
+    // it does not exist until water.js has run, so it is fetched lazily.
+    let _OSC = null, _OSCtried = false;
+    function osTab() {
+      if (!_OSCtried) { _OSCtried = true; try { _OSC = (typeof _OS !== 'undefined') ? _OS : null; } catch (e) { _OSC = null; } }
+      return _OSC;
+    }
+    const CK = 2048 / TAU, CM = 2047;
+    function causticAt(x, y, t, band) {
+      const S2 = osTab();
+      let s1, s2, s3;
+      if (S2) {
+        s3 = S2[(((x * 0.031 - y * 0.027 + t * 0.55) * CK) | 0) & CM];
+        s1 = S2[((((x * 0.079 + y * 0.048 + t * 1.15) * CK) + s3 * 210) | 0) & CM];
+        s2 = S2[((((-x * 0.061 + y * 0.086 - t * 0.95) * CK) - s3 * 170) | 0) & CM];
+      } else {
+        s3 = Math.sin(x * 0.031 - y * 0.027 + t * 0.55);
+        s1 = Math.sin(x * 0.079 + y * 0.048 + t * 1.15 + s3 * 210 / CK);
+        s2 = Math.sin(-x * 0.061 + y * 0.086 - t * 0.95 - s3 * 170 / CK);
+      }
+      const cv = s1 + s2 + s3 * 0.55;
+      let cl = cv > 1.98 ? 3 : cv > 1.50 ? 2 : cv > 0.95 ? 1 : 0;
+      if (band >= 10) cl = 0; else if (band >= 7 && cl > 0) cl--;
+      return cl;
+    }
     // how much of the seabed shows through here: no visible bottom, no shadow
     function visAt(dp) { const o = OC(); return (o && o.visLUT) ? o.visLUT[clamp((dp * 15.999) | 0, 0, 15)] : 0.3; }
     function foamAt(x, y) { const o = OC(); return (o && o.foamOn && o.foam) ? o.sample(o.foam, x, y) : 0; }
 
     // scratch for the two-pass fish draw (shadows first, then the fish)
     const _PX = new Float32Array(192), _PY = new Float32Array(192), _PS = new Array(192), _PI = new Uint8Array(192);
+    const _PZ = new Float32Array(192);
     // above this optical depth a shoal draws in the under pass, so the wakes,
     // the drifting foam and the surface glitter all travel over the top of it
     const DEEP_CUT = 0.40;
@@ -1063,15 +1286,21 @@ const Wildlife = (function () {
       sp = {};
       // the fish bank is built lazily, once an Ocean exists, so every layer is
       // fogged with the water tables the sea is actually drawn with
-      bank = null;
-      sp.ray = buildRay();
-      sp.turtle = buildTurtle();
-      sp.jelly = buildJelly();
-      sp.squid = buildSquid();
-      sp.crab = buildCrab();
-      sp.shark = buildReefShark();
-      sp.dolphin = buildDolphin();
-      sp.whale = buildWhale();
+      bank = null; bankLit = null;
+      // ...and every big creature goes through the water column at the depth
+      // its species lives at.  A ray hugs the bottom, a turtle rows along near
+      // the light, a squid hangs in the middle of it; the number is which of
+      // the six layers it is normally seen through.  Gameplay animals (the
+      // dolphins that escort you, the whale you ride) keep more of their own
+      // colour than the scenery does, because you have to be able to find them.
+      sp.ray = submergeAll(buildRay(), 3, 1.0);
+      sp.turtle = submergeAll(buildTurtle(), 2, 1.15);
+      sp.jelly = submergeAll(buildJelly(), 1, 1.25);
+      sp.squid = submergeAll(buildSquid(), 3, 1.15);
+      sp.crab = submergeAll(buildCrab(), 3, 1.0);
+      sp.shark = submergeAll(buildReefShark(), 2, 1.0);
+      sp.dolphin = submergeAll(buildDolphin(), 1, 1.35);
+      sp.whale = submergeAll(buildWhale(), 1, 1.35, ['deep', 'deepFluke', 'len', 'half']);
       const T = buildTreasureArt();
       sp.chest = T.chest; sp.clam = T.clam; sp.wreck = T.wreck;
       sp.rare = buildRareIcons();
@@ -1302,6 +1531,10 @@ const Wildlife = (function () {
           ox: ox, oy: oy, tx: -oy / l, ty: ox / l,
           ph: rng.range(0, TAU), bf: rng.range(7, 13), side: (i & 1) ? 1 : -1,
           turn: rng.range(0.6, 1.5), dz: rng.range(-0.13, 0.13),
+          // every fish rides its own slow lift in the column, so the shoal is
+          // a cloud in three dimensions and not a sheet of stickers: this is
+          // what makes them brighten and dim and their shadows slide apart
+          zs: rng.range(0.20, 0.46), zp: rng.range(0, TAU), za: rng.range(0.07, 0.19),
         });
       }
       return sc;
@@ -1343,9 +1576,15 @@ const Wildlife = (function () {
       sc.z = approach(sc.z, wantZ, dt * 0.20 * (1 + sc.fear * 4));
       sc.dp = depthAt(sc.x, sc.y);
     }
-    function schoolDeep(sc) { return odOf(sc.dp, sc.z) > DEEP_CUT; }
+    // Anything that is not right up against the surface belongs in the under
+    // pass, where the rocks stand in front of it and the wakes, the drifting
+    // foam and the sun glitter all travel over the top of it.  Judging that on
+    // optical depth alone kept every shoal in the shallows ON TOP of the reef
+    // rocks it was swimming past; where it sits in the column decides it.
+    function schoolDeep(sc) { return sc.z > 0.32 || odOf(sc.dp, sc.z) > DEEP_CUT; }
     function drawSchool(ctx, cam, t, sc) {
       const tiers = bank && bank[sc.species]; if (!tiers) return;
+      const lits = bankLit && bankLit[sc.species];
       const dp = sc.dp, maxT = tiers.length - 1;
       // foam rides on the surface: it hazes what is underneath and, when it is
       // thick enough, the shoal is simply behind it
@@ -1360,6 +1599,7 @@ const Wildlife = (function () {
       const persp = 1 - baseOd * 0.26;
       const swirl = sc.swirl, spread = sc.spread * persp, split = sc.split * sc.r * 0.55 * persp;
       const beat = 1 + sc.fear * 1.4;
+      const band = clamp((dp * 15.999) | 0, 0, 15);
       const m = sc.m, n = m.length < 192 ? m.length : 192;
       let live = 0;
       for (let i = 0; i < n; i++) {
@@ -1367,7 +1607,8 @@ const Wildlife = (function () {
         const s1 = Math.sin(t * sc.swSp * (1 + sc.fear) + q.ph);
         const lx = (q.ox + q.tx * s1 * swirl * 3.4) * spread;
         const ly = (q.oy + q.ty * s1 * swirl * 3.4) * spread + q.side * split;
-        const z = clamp(sc.z + q.dz, 0, 1);
+        // where this one is hanging in the column right now
+        const z = clamp(sc.z + q.dz + Math.sin(t * q.zs + q.zp) * q.za, 0, 1);
         const od = odOf(dp, z);
         // the deeper it is, the more of the seabed's own refraction it takes
         const rk = 0.22 + 0.78 * od;
@@ -1376,21 +1617,33 @@ const Wildlife = (function () {
         if (px0 < -12 || py0 < -12 || px0 > VIEW_W + 12 || py0 > VIEW_H + 12) continue;
         let k = ((od * DTIER) | 0) + bias; if (k > maxT) k = maxT; else if (k < 0) k = 0;
         const ang = sc.a + Math.cos(t * sc.swSp + q.ph) * swirl * 0.22 * q.turn;
-        const set = tiers[k];
+        // the surface light, sampled where THIS fish is: neighbours a few
+        // pixels apart fall in and out of the same bands that light the reef
+        let set = tiers[k];
+        if (k < LIT_TIERS && lits && lits[k] && causticAt(bx + ca * lx - sa * ly + cam.x, by + sa * lx + ca * ly + cam.y, t, band) >= 2) set = lits[k];
         const fi = set.length > 1 ? FLEX_CYCLE[((t * q.bf * beat + q.ph) | 0) & 3] : 0;
         _PX[live] = px0; _PY[live] = py0; _PS[live] = set[fi]; _PI[live] = angIdx(ang);
+        _PZ[live] = z;
         live++;
       }
       if (!live) return;
       // --- the shadow they drag over the bottom --------------------------
-      // it lags further behind the fish the deeper the water gets, and it is
-      // gone entirely once the seabed stops showing through at all
+      // A shadow is cast on the SEABED, so it lives on the seabed's own
+      // two-unit grid, it slides further from the fish the higher in the
+      // column that fish is hanging, and it lies along the fish rather than
+      // being the same little dash whichever way the fish is pointing.
       const sv = visAt(dp);
       if (sv > 0.09) {
-        const sepx = Math.round(2 + dp * 8), sepy = Math.round(3 + dp * 9);
         const sl = Math.max(3, FISH[sc.species].L - 2);
-        ctx.fillStyle = 'rgba(6,18,44,' + (sv * (1 - baseOd * 0.45) * 0.62).toFixed(3) + ')';
-        for (let i = 0; i < live; i++) ctx.fillRect(Math.round(_PX[i]) - (sl >> 1) + sepx, Math.round(_PY[i]) + sepy, sl, 1);
+        const hor = (ca < 0 ? -ca : ca) >= (sa < 0 ? -sa : sa);
+        const sw = hor ? sl : 2, shh = hor ? 2 : sl;
+        const col = dp * 9 + 2;
+        ctx.fillStyle = 'rgba(6,18,44,' + (sv * (1 - baseOd * 0.42) * 0.55).toFixed(3) + ')';
+        for (let i = 0; i < live; i++) {
+          const h = 1 - _PZ[i];                 // how far it is off the bottom
+          const sep = col * h;
+          ctx.fillRect((((_PX[i] + sep * 0.66) >> 1) << 1) - (sw >> 1), (((_PY[i] + 2 + sep * 0.86) >> 1) << 1), sw, shh);
+        }
       }
       for (let i = 0; i < live; i++) blitStrip(ctx, _PS[i], _PI[i], _PX[i], _PY[i]);
       // --- the surface passing over them ---------------------------------
@@ -1459,35 +1712,42 @@ const Wildlife = (function () {
     }
     function drawReefGroup(ctx, cam, t, g) {
       const tiers = bank && bank[g.species]; if (!tiers) return;
+      const lits = bankLit && bankLit[g.species];
       const dp = g.dp, maxT = tiers.length - 1;
       const fv = foamAt(g.x, g.y);
       if (fv > 0.80) return;
       const bias = fv > 0.30 ? 1 : 0;
       const ref = refractAt(g.x, g.y, t, dp);
       const baseOd = odOf(dp, g.z);
+      const band = clamp((dp * 15.999) | 0, 0, 15);
       const m = g.m, n = m.length < 192 ? m.length : 192;
       let live = 0;
       for (let i = 0; i < n; i++) {
         const f = m[i];
-        const z = clamp(g.z + f.dz, 0, 1);
+        const z = clamp(g.z + f.dz + Math.sin(t * 0.7 + f.ph) * 0.05, 0, 1);
         const od = odOf(dp, z);
         const rk = 0.22 + 0.78 * od;
         const px0 = f.x - cam.x + ref.x * rk;
         const py0 = f.y - cam.y + Math.sin(t * 2.2 + f.ph) * 0.8 + ref.y * rk;
         if (px0 < -12 || py0 < -12 || px0 > VIEW_W + 12 || py0 > VIEW_H + 12) continue;
         let k = ((od * DTIER) | 0) + bias; if (k > maxT) k = maxT; else if (k < 0) k = 0;
-        const set = tiers[k];
+        let set = tiers[k];
+        if (k < LIT_TIERS && lits && lits[k] && causticAt(f.x, f.y, t, band) >= 2) set = lits[k];
         const fi = (f.peck > 0 || set.length < 2) ? 0 : FLEX_CYCLE[((t * f.bf * (1 + g.fear) + f.ph) | 0) & 3];
         _PX[live] = px0; _PY[live] = py0; _PS[live] = set[fi]; _PI[live] = angIdx(f.a);
+        _PZ[live] = z;
         live++;
       }
       if (!live) return;
-      // pickers sit right on the coral, so their shadow is tight underneath
+      // pickers sit right on the coral, so their shadow is tight underneath;
+      // it only walks away from them when one lifts off the reef
       const sv = visAt(dp);
       if (sv > 0.09) {
-        const sepy = Math.round(2 + dp * 5);
-        ctx.fillStyle = 'rgba(6,18,44,' + (sv * (1 - baseOd * 0.4) * 0.70).toFixed(3) + ')';
-        for (let i = 0; i < live; i++) ctx.fillRect(Math.round(_PX[i]) - 2 + (dp * 4 | 0), Math.round(_PY[i]) + sepy, 5, 1);
+        ctx.fillStyle = 'rgba(6,18,44,' + (sv * (1 - baseOd * 0.4) * 0.62).toFixed(3) + ')';
+        for (let i = 0; i < live; i++) {
+          const sep = (1 - _PZ[i]) * (dp * 10 + 4);
+          ctx.fillRect((((_PX[i] + sep * 0.66) >> 1) << 1) - 2, (((_PY[i] + 2 + sep * 0.86) >> 1) << 1), 5, 2);
+        }
       }
       for (let i = 0; i < live; i++) blitStrip(ctx, _PS[i], _PI[i], _PX[i], _PY[i]);
     }

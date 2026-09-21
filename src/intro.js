@@ -119,6 +119,49 @@ function buildWater(ramp, w, h, opt) {
   return c;
 }
 
+// ============================================================ CAUSTIC NET ==
+//  The play field's ocean lights its water with three warped sine fields,
+//  posterized into four steps and ADDED over the depth ramp, plus specular
+//  glitter on the crests and plankton glints in the gloom (src/water.js does
+//  all of it per pixel per frame).  Without it the cinematic's water is a
+//  clean vertical ramp and reads like a painted backdrop next to the bay you
+//  actually play in.  A wide shot cannot afford the shader, so the same three
+//  fields are baked into a tile here at three phases and cycled -- two
+//  drawImage calls a frame, and the beat's own grade recolours it, exactly
+//  the way the sun shafts and the motes are already handled.
+const CAUST_H = 300;
+function buildCaustNet(seed, ph) {
+  const c = can(LW, CAUST_H), x = cx2(c);
+  const img = x.createImageData(LW, CAUST_H), d = img.data;
+  for (let y = 0; y < CAUST_H; y++) {
+    const dep = y / (CAUST_H - 1);
+    const fade = Math.max(0, 1 - dep * 1.22);        // gone by four fifths down
+    for (let px = 0; px < LW; px++) {
+      // the same three fields, stretched along the swell so the net reads as
+      // light on water rather than as noise
+      const q3 = Math.sin(px * 0.020 - y * 0.038 + ph * 0.55);
+      const s1 = Math.sin(px * 0.042 + y * 0.062 + ph * 1.15 + q3 * 2.1);
+      const s2 = Math.sin(-px * 0.033 + y * 0.104 - ph * 0.95 - q3 * 1.7);
+      const cv = s1 + s2 + q3 * 0.55;
+      // Two hard steps of light with an ordered dither between them -- the
+      // same posterize-then-Bayer the water ramps and the colour grades in
+      // this file are built with.  A smooth wash would read as blur, which is
+      // the one thing the play field never does.
+      const g = Math.max(0, (cv - 0.52) / 1.55) * 2.4 * fade;
+      const gi = Math.floor(g), lv = Math.min(2, (g - gi) > bay(px, y) ? gi + 1 : gi);
+      let a = [0, 0.26, 0.50][lv < 0 ? 0 : lv];
+      if (y < 22 && hash2(px, y + seed * 97) > 0.972) a = 0.72 * fade;           // crest glitter
+      else if (dep > 0.55 && (px & 3) === 0 && (y & 3) === 0 && hash2(px >> 2, (y >> 2) + seed * 31) > 0.980) a = 0.28;
+      a = qa(a);
+      if (a <= 0.02) continue;
+      const q = (y * LW + px) * 4;
+      d[q] = 226; d[q + 1] = 250; d[q + 2] = 255; d[q + 3] = R(a * 255);
+    }
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+
 // ============================================================== SUN SHAFTS ==
 function buildShafts(w, h, tint) {
   const c = can(w, h), x = cx2(c);
@@ -445,230 +488,198 @@ function buildSurfaceUnder(seed, foamCol, waterCol) {
 }
 
 // ================================================================ MANATEES ==
-const MAN_RAMP = {
-  dad: ['#2b2327', '#443939', '#5b4e4c', '#776864', '#93837c'],
-  mom: ['#352b2b', '#4f4342', '#6a5a57', '#877470', '#a28e88'],
-  you: ['#312a29', '#494040', '#645755', '#80706c', '#9a8a84'],
-  bro: ['#3a302b', '#544740', '#706057', '#8c7a6f', '#a79489'],
+//  Nobody in this cinematic is drawn here any more.  Every manatee in the
+//  opening IS the cast's own side-on manatee — CH.side out of src/chars.js,
+//  the same sprite set src/death.js and src/scenes.js compose — so when she
+//  is rebuilt the whole opening moves with her.
+//
+//  The family are variations ON her, not four different animals: the same
+//  raster, reduced to each body's length on the cast's own most-opaque-wins
+//  filter, re-inked round the silhouette with her own outline, and put
+//  through a hide shift that leaves the ink, the eye, the algae, the bone
+//  and the blood exactly where she left them.
+//
+//  One grid.  The cast's side-on art is one art pixel per world unit, which
+//  is what every baked layer in this file already is, and the game's 2x
+//  presentation turns that into a square 2x2 block of screen pixels.
+//  Nothing here is drawn at a fractional scale.
+// Each family member is her hide put through a multiply and a lift.  Small
+// numbers: they are her mother, her father and her brother.
+const MAN_SHIFT = {
+  you: null,                                        // the hero: the cast, as built
+  dad: { m: [0.80, 0.81, 0.86], a: [2, 1, 6] },     // older, heavier, colder
+  mom: { m: [1.00, 0.97, 0.95], a: [6, 3, 1] },     // a shade warmer
+  bro: { m: [1.04, 1.05, 1.09], a: [5, 6, 10] },    // young: paler and bluer
 };
-function buildManateeBodyCan(L, ramp, opt) {
-  opt = opt || {};
-  const W = R(L) + 8, H = R(L * 0.56) + 8, cy = H / 2;
-  const U = u => 4 + u * L, V = v => cy + v * L;
-  const lobes = [
-    { x: U(0.030), y: V(0.004), rx: L * 0.075, ry: L * 0.058 },
-    { x: U(0.120), y: V(0.006), rx: L * 0.090, ry: L * 0.095 },
-    { x: U(0.225), y: V(0.010), rx: L * 0.105, ry: L * 0.148 },
-    { x: U(0.345), y: V(0.014), rx: L * 0.125, ry: L * 0.190 },
-    { x: U(0.470), y: V(0.016), rx: L * 0.135, ry: L * 0.208 },
-    { x: U(0.590), y: V(0.012), rx: L * 0.130, ry: L * 0.203 },
-    { x: U(0.700), y: V(0.004), rx: L * 0.118, ry: L * 0.180 },
-    { x: U(0.795), y: V(-0.008), rx: L * 0.100, ry: L * 0.148 },
-    { x: U(0.875), y: V(-0.018), rx: L * 0.082, ry: L * 0.118 },
-    { x: U(0.938), y: V(-0.010), rx: L * 0.062, ry: L * 0.092 },
-    { x: U(0.982), y: V(0.014), rx: L * 0.042, ry: L * 0.066 },
-  ];
-  const f = blobField(W, H, lobes);
-  const o = shadeBlob(W, H, f, ramp, { outline: IP.ink, lx: -0.22, ly: -0.92, contrast: 0.86, lift: 0.24, smooth: 3 });
-  const ctx = o.ctx;
-  const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
-  // ---- pale belly: recolour the lowest quarter of every column
-  const belly = ['#6c7887', '#87939f', '#a3aeb8'];
-  for (let x = 0; x < W; x++) {
-    let y0 = -1, y1 = -1;
-    for (let y = 0; y < H; y++) if (f[y * W + x] > 0) { if (y0 < 0) y0 = y; y1 = y; }
-    if (y0 < 0 || y1 - y0 < 4) continue;
-    const hgt = y1 - y0;
-    for (let y = y0 + 1; y < y1; y++) {
-      const k = (y - y0) / hgt;
-      if (k < 0.58) continue;
-      const edge = !inside(x, y + 1) || !inside(x - 1, y) || !inside(x + 1, y);
-      if (edge && y >= y1 - 1) continue;
-      const g = (k - 0.58) / 0.42 * 3;
-      let gi = Math.floor(g); const gf = g - gi;
-      if (gf > bay(x, y)) gi++;
-      if (gi <= 0) continue;
-      P(ctx, belly[Math.min(2, gi - 1)], x, y);
+
+// ---- one reduction, the cast's own ----------------------------------------
+// The most opaque sample in each source block wins, so nothing thin falls out
+// of a smaller body.  Same filter chars.js bakes CH.manatee with and
+// src/scenes.js reduces the side set with.
+function shrinkSpr(s, k) {
+  const SW = s.c.width, SH = s.c.height;
+  const W = Math.max(1, R(SW * k)), H = Math.max(1, R(SH * k));
+  const src = cx2(can(SW, SH));
+  src.drawImage(s.c, 0, 0, SW, SH, 0, 0, SW, SH);        // 8-arg: no hi-res bridge
+  if (W === SW && H === SH) return spr(src.canvas, s.ax, s.ay);
+  const d = src.getImageData(0, 0, SW, SH).data;
+  const c = can(W, H), x = cx2(c), img = x.createImageData(W, H), o = img.data;
+  const bw = SW / W, bh = SH / H;
+  for (let y = 0; y < H; y++) for (let px = 0; px < W; px++) {
+    let best = -1, bi = 0;
+    const x0 = Math.floor(px * bw), x1 = Math.max(x0 + 1, Math.ceil((px + 1) * bw));
+    const y0 = Math.floor(y * bh), y1 = Math.max(y0 + 1, Math.ceil((y + 1) * bh));
+    for (let sy = y0; sy < y1 && sy < SH; sy++) for (let sx = x0; sx < x1 && sx < SW; sx++) {
+      const q = (sy * SW + sx) * 4;
+      if (d[q + 3] > best) { best = d[q + 3]; bi = q; }
     }
-  }
-  // ---- transverse skin folds
-  for (const u of [0.33, 0.60]) {
-    const fx = R(U(u));
-    for (let y = 0; y < H; y++) {
-      const k = (y - cy) / (L * 0.21);
-      if (k > 0.55) continue;
-      const bend = R(Math.sin(k * 1.1) * L * 0.026);
-      const x = fx + bend;
-      if (!inside(x, y) || !inside(x, y + 1) || !inside(x - 1, y) || !inside(x + 1, y)) continue;
-      P(ctx, ramp[1], x, y);
-    }
-  }
-  // ---- algae & barnacle speckle on the back
-  for (let y = 2; y < H - 2; y++) for (let x = 6; x < W - 6; x++) {
-    if (!inside(x, y) || !inside(x, y - 1)) continue;
-    const k = (y - cy) / (L * 0.2);
-    if (k > -0.2) continue;
-    if (hash2(x * 7, y * 13) > 0.975) P(ctx, '#3f6b4c', x, y, 1 + (x & 1), 1);
-    else if (hash2(x * 11, y * 5) > 0.991) { P(ctx, ramp[4], x, y); P(ctx, ramp[0], x, y + 1); }
-  }
-  // ---- flipper socket crease
-  const sx = R(U(0.71)), sy = R(V(0.085));
-  for (let i = 0; i < R(L * 0.07); i++) if (inside(sx + i, sy + R(i * 0.4))) P(ctx, ramp[0], sx + i, sy + R(i * 0.4));
-  // ---- snout: nostril, mouth crease, whiskers
-  const nx = R(U(0.975)), ny = R(V(-0.048));
-  P(ctx, IP.ink, nx, ny, Math.max(1, R(L * 0.022)), Math.max(1, R(L * 0.02)));
-  const mx = R(U(0.955)), my = R(V(0.040));
-  const wk = Math.max(1, R(L / 42));
-  for (let i = 0; i < 4; i++) {
-    P(ctx, ramp[4], R(U(0.99)) - (i & 1), my - 2 - i * wk);
-    P(ctx, ramp[4], R(U(0.985)) - (i & 1), my + 2 + i * wk);
-  }
-  // ---- peduncle ridge
-  for (let i = 0; i < R(L * 0.16); i++) {
-    const x = R(U(0.06)) + i, y = R(V(-0.035));
-    if (inside(x, y)) P(ctx, ramp[4], x, y);
-  }
-  if (opt.scars) {
-    for (let i = 0; i < 4; i++) for (let j = 0; j < R(L * 0.09); j++) {
-      const x = R(U(0.34 + i * 0.07)) + j, y = R(V(-0.10)) + j;
-      if (inside(x, y)) P(ctx, i % 2 ? ramp[4] : belly[2], x, y);
-    }
-  }
-  return { c: o.c, f: f, W: W, H: H, cy: cy, ax: 4 + L * 0.5, ay: cy, U: U, V: V };
-}
-function addPropGash(b, L) {
-  // three raw parallel cuts across the back, plus torn edges
-  const ctx = cx2(b.c), f = b.f, W = b.W;
-  const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < b.H && f[y * W + x] > 0;
-  for (let i = 0; i < 3; i++) {
-    const x0 = R(b.U(0.34 + i * 0.10)), y0 = R(b.V(-0.20));
-    const len = R(L * 0.13);
-    for (let j = 0; j < len; j++) {
-      const x = x0 + R(j * 0.55), y = y0 + j;
-      if (!inside(x, y)) continue;
-      P(ctx, IP.blood[1], x, y, Math.max(1, R(L * 0.030)), 1);
-      P(ctx, IP.blood[3], x, y, Math.max(1, R(L * 0.018)), 1);
-      P(ctx, IP.blood[0], x - 1, y, 1, 1);
-      if ((j & 2) === 0) P(ctx, IP.blood[4], x + 1, y);
-    }
-  }
-  return b;
-}
-function buildFluke(L, ramp) {
-  const W = R(L * 0.48) + 4, H = R(L * 0.36) + 4, cy = H / 2;
-  const f = blobField(W, H, [
-    { x: W * 0.99, y: cy, rx: W * 0.10, ry: H * 0.13 },
-    { x: W * 0.86, y: cy, rx: W * 0.12, ry: H * 0.15 },
-    { x: W * 0.72, y: cy, rx: W * 0.13, ry: H * 0.19 },
-    { x: W * 0.56, y: cy, rx: W * 0.15, ry: H * 0.27 },
-    { x: W * 0.36, y: cy, rx: W * 0.19, ry: H * 0.39 },
-    { x: W * 0.19, y: cy, rx: W * 0.17, ry: H * 0.45 },
-    { x: W * 0.09, y: cy, rx: W * 0.10, ry: H * 0.36 },
-  ]);
-  const o = shadeBlob(W, H, f, ramp, { outline: IP.ink, lx: -0.3, ly: -0.85, lift: 0.16, smooth: 2 });
-  for (let i = -2; i <= 2; i++) {
-    if (!i) continue;
-    for (let x = 3; x < W * 0.7; x++) {
-      const y = R(cy + i * H * 0.10 + (W * 0.7 - x) * i * 0.035);
-      if (y > 0 && y < H && f[y * W + x] > 0.06 && ((x + i) & 1) === 0) P(o.ctx, ramp[1], x, y);
-    }
-  }
-  return spr(o.c, W - 2, cy);
-}
-function buildFlipper(L, ramp) {
-  const W = R(L * 0.30) + 3, H = R(L * 0.115) + 3, cy = H / 2;
-  const f = blobField(W, H, [
-    { x: W * 0.10, y: cy, rx: W * 0.16, ry: H * 0.44 },
-    { x: W * 0.32, y: cy + H * 0.04, rx: W * 0.20, ry: H * 0.42 },
-    { x: W * 0.55, y: cy + H * 0.08, rx: W * 0.20, ry: H * 0.36 },
-    { x: W * 0.76, y: cy + H * 0.12, rx: W * 0.17, ry: H * 0.28 },
-    { x: W * 0.90, y: cy + H * 0.14, rx: W * 0.10, ry: H * 0.20 },
-  ]);
-  const o = shadeBlob(W, H, f, ramp, { outline: IP.ink, lift: 0.08, smooth: 1 });
-  for (let i = 0; i < 3; i++) P(o.ctx, ramp[4], R(W * 0.84) + i, R(cy + H * 0.06) + i);
-  return spr(o.c, 2, cy);
-}
-// A one-pixel warm rim along the top edge and a cool bounce along the bottom,
-// baked into the hide.  Complementary light is what stops a grey animal
-// reading as a grey blob; the per-beat grade then recolours it.
-function edgeLight(cv, warm, cool) {
-  const x = cx2(cv), img = x.getImageData(0, 0, cv.width, cv.height), d = img.data;
-  const W = cv.width, H = cv.height;
-  const w = hexToRgb(warm), c = hexToRgb(cool);
-  const put = (px, y, col) => { const q = (y * W + px) * 4; if (d[q + 3] < 200) return; d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; };
-  for (let px = 0; px < W; px++) {
-    let top = -1, bot = -1;
-    for (let y = 0; y < H; y++) if (d[(y * W + px) * 4 + 3] > 180) { top = y; break; }
-    for (let y = H - 1; y >= 0; y--) if (d[(y * W + px) * 4 + 3] > 180) { bot = y; break; }
-    if (top < 0 || bot - top < 4) continue;
-    put(px, top + 1, w);
-    put(px, bot - 1, c);
+    const q = (y * W + px) * 4;
+    o[q] = d[bi]; o[q + 1] = d[bi + 1]; o[q + 2] = d[bi + 2]; o[q + 3] = d[bi + 3];
   }
   x.putImageData(img, 0, 0);
-  return cv;
+  return spr(c, s.ax * k, s.ay * k);
 }
-function buildManatee(L, who, opt) {
-  opt = opt || {};
-  const ramp = MAN_RAMP[who] || MAN_RAMP.you;
-  const b = buildManateeBodyCan(L, ramp, opt);
-  edgeLight(b.c, mix(ramp[4], '#ffeccc', 0.62), mix(ramp[1], '#4fb0d8', 0.45));
-  const body = spr(b.c, b.ax, b.ay);
-  const scarCan = can(b.W, b.H); cx2(scarCan).drawImage(b.c, 0, 0);
-  const bs = { c: scarCan, f: b.f, W: b.W, H: b.H, U: b.U, V: b.V };
-  addPropGash(bs, L);
-  const bodyScar = spr(scarCan, b.ax, b.ay);
-  const k = Math.max(1, R(L / 30));
+// Re-ink the outermost opaque pixel all the way round.  A reduced body
+// otherwise keeps a chewed edge where the filter dropped an outline pixel,
+// and a manatee with no line round her is the one thing the play field never
+// is.  Same pass src/scenes.js puts back after it darkens a part.  Her bone
+// whites -- the barnacles and the whiskers standing off her snout -- are let
+// through, because they are meant to sit outside the line.
+function inkEdge(c, col) {
+  const x = cx2(c), w = c.width, h = c.height;
+  const img = x.getImageData(0, 0, w, h), d = img.data;
+  const op = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) op[i] = d[i * 4 + 3] > 8 ? 1 : 0;
+  const C = hexToRgb(col);
+  for (let y = 0; y < h; y++) for (let px = 0; px < w; px++) {
+    const i = y * w + px;
+    if (!op[i]) continue;
+    if (px > 0 && op[i - 1] && px < w - 1 && op[i + 1] && y > 0 && op[i - w] && y < h - 1 && op[i + w]) continue;
+    const q = i * 4;
+    if (d[q] > 200 && d[q + 1] > 190 && d[q + 2] > 165) continue;
+    d[q] = C[0]; d[q + 1] = C[1]; d[q + 2] = C[2]; d[q + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+// Read the cast's own outline colour off her raster instead of naming it
+// here: shadeBlob paints every silhouette pixel with it, so the first opaque
+// pixel down any column of her body IS the ink.
+let CAST_INK = null;
+function castInk() {
+  if (CAST_INK) return CAST_INK;
+  CAST_INK = IP.ink;
+  const b = CH && CH.side && CH.side.body;
+  if (!b) return CAST_INK;
+  const W = b.c.width, H = b.c.height, x = cx2(can(W, H));
+  x.drawImage(b.c, 0, 0, W, H, 0, 0, W, H);
+  const d = x.getImageData(0, 0, W, H).data, mid = W >> 1;
+  for (let y = 0; y < H; y++) {
+    const q = (y * W + mid) * 4;
+    if (d[q + 3] > 200) { CAST_INK = 'rgb(' + d[q] + ',' + d[q + 1] + ',' + d[q + 2] + ')'; break; }
+  }
+  return CAST_INK;
+}
+// The hide shift.  Every distinct colour on her goes through it EXCEPT the
+// ink (which holds the silhouette), the greens (algae), the reds (what the
+// propeller did) and the near-whites (barnacle, whisker, eye shine) — those
+// are hers and read the same on all four of them.
+function shiftHide(c, sh, inkRGB) {
+  if (!sh) return c;
+  const x = cx2(c), W = c.width, H = c.height;
+  const img = x.getImageData(0, 0, W, H), d = img.data;
+  const M = sh.m, A = sh.a;
+  for (let i = 0, n = W * H; i < n; i++) {
+    const q = i * 4;
+    if (d[q + 3] < 8) continue;
+    const r = d[q], g = d[q + 1], b = d[q + 2];
+    if (r === inkRGB[0] && g === inkRGB[1] && b === inkRGB[2]) continue;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mx - mn > 30) continue;                       // algae, blood: hers
+    if (mn > 210) continue;                           // bone, shine: hers
+    d[q] = Math.min(255, (r * M[0] + A[0]) | 0);
+    d[q + 1] = Math.min(255, (g * M[1] + A[1]) | 0);
+    d[q + 2] = Math.min(255, (b * M[2] + A[2]) | 0);
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+// The one hide tone her face needs, read back off the finished body: the
+// darkest grey on her that is not the ink, which is what chars.js draws her
+// brows and her shut lids with.
+function hideTones(c, inkRGB) {
+  const W = c.width, H = c.height, x = cx2(can(W, H));
+  x.drawImage(c, 0, 0, W, H, 0, 0, W, H);
+  const d = x.getImageData(0, 0, W, H).data;
+  let dk = null, dkL = 1e9;
+  for (let i = 0, n = W * H; i < n; i++) {
+    const q = i * 4;
+    if (d[q + 3] < 200) continue;
+    const r = d[q], g = d[q + 1], b = d[q + 2];
+    if (r === inkRGB[0] && g === inkRGB[1] && b === inkRGB[2]) continue;
+    if (Math.max(r, g, b) - Math.min(r, g, b) > 30) continue;
+    const L = r + g + b;
+    if (L < dkL) { dkL = L; dk = [r, g, b]; }
+  }
+  return [dk ? 'rgb(' + dk[0] + ',' + dk[1] + ',' + dk[2] + ')' : '#332f39'];
+}
+// ---- one family member -----------------------------------------------------
+function buildManatee(len, who) {
+  const S = CH.side;
+  const k = len / S.len;
+  const ink = castInk(), inkRGB = hexToRgb(ink), sh = MAN_SHIFT[who] || null;
+  // At her own length nothing is resampled, so nothing needs re-inking and
+  // she comes out of here pixel for pixel the sprite the cast handed over.
+  const part = (s) => {
+    const r = shrinkSpr(s, k);
+    shiftHide(r.c, sh, inkRGB);
+    if (k < 0.999) inkEdge(r.c, ink);
+    return r;
+  };
+  const body = part(S.body);
+  const tones = hideTones(body.c, inkRGB);
   return {
-    L: L, k: k, who: who,
-    body: body, bodyScar: bodyScar,
-    fluke: buildFluke(L, ramp),
-    flip: buildFlipper(L, ramp),
-    flipFar: buildFlipper(L * 0.80, [ramp[0], ramp[0], ramp[1], ramp[1], ramp[2]]),
-    ramp: ramp,
-    eye: [b.U(0.876) - b.ax, b.V(-0.062) - b.ay],
-    mouth: [b.U(0.958) - b.ax, b.V(0.046) - b.ay],
-    tailX: -L * 0.245, shoX: L * 0.175, shoY: L * 0.080,
+    L: len, k: k, who: who, ink: ink, dark: tones[0],
+    // the eye box: three art pixels of pupil on the adults, one on the calf,
+    // so the face reads at every distance without ever going soft
+    ek: len > 74 ? 3 : len > 48 ? 2 : 1,
+    body: body, bodyScar: part(S.bodyScar),
+    fluke: part(S.fluke), flip: part(S.flip), flipFar: part(S.flipFar),
+    eye: [S.eye[0] * k, S.eye[1] * k], mouth: [S.mouth[0] * k, S.mouth[1] * k],
+    tailX: S.tailX * k, shoX: S.shoX * k, shoY: S.shoY * k,
   };
 }
-// ---- live, expressive face -------------------------------------------------
+// ---- her face, live, at the member's own anchors ---------------------------
+// The cast paints this in chars.js (CH.sideFace) at one size only; this is the
+// same recipe — same boxes, same order, her ink and her hide tones — opened
+// out so a calf can carry it too.
 function manateeFace(ctx, M, exp, blink, t) {
-  const k = M.k, ex = R(M.eye[0]), ey = R(M.eye[1]), mx = R(M.mouth[0]), my = R(M.mouth[1]);
-  const ink = IP.ink, dark = '#0b0b10', white = '#e9f0f4', sh = '#ffffff';
-  const shut = blink && exp !== 'dead' && exp !== 'pain' && exp !== 'wide';
+  const e = M.ek, ex = R(M.eye[0]), ey = R(M.eye[1]);
+  const mx = R(M.mouth[0]), my = R(M.mouth[1]);
+  const O = M.ink, mw = Math.max(3, R(6 * M.k)), mh = Math.max(1, R(M.k));
+  const shut = blink && exp !== 'dead' && exp !== 'wide';
   if (exp === 'pain' || shut) {
-    P(ctx, ink, ex - 1, ey, k + 3, 1);
-    P(ctx, ink, ex - 2, ey - 1, 1, 1); P(ctx, ink, ex + k + 2, ey - 1, 1, 1);
-    if (exp === 'pain') { P(ctx, M.ramp[0], ex - 2, ey - 2 - k, k + 4, 1); P(ctx, M.ramp[0], ex - 1, ey - 3 - k, k + 2, 1); }
+    P(ctx, O, ex - 1, ey, e + 2, mh); P(ctx, M.dark, ex - 1, ey - 2, e + 2, mh);
   } else if (exp === 'dead') {
-    P(ctx, ink, ex - 1, ey - 1, k + 3, k + 2);
-    P(ctx, '#575160', ex, ey, k, k);
-  } else if (exp === 'wide') {
-    P(ctx, ink, ex - 2, ey - 2, k + 3, k + 3);
-    P(ctx, white, ex - 1, ey - 1, k + 1, k + 1);
-    P(ctx, dark, ex, ey, Math.max(1, k - 1), Math.max(1, k - 1));
-    P(ctx, sh, ex, ey, 1, 1);
-    P(ctx, M.ramp[0], ex - 2, ey - 4, k + 3, 1);
+    P(ctx, O, ex - 1, ey - 1, e + 2, e + 2); P(ctx, '#5c5668', ex, ey, e, e);
   } else {
-    P(ctx, ink, ex - 1, ey - 1, k + 2, k + 2);
-    P(ctx, dark, ex, ey, k, k);
-    P(ctx, sh, ex + k - 1, ey, 1, 1);
-    if (exp === 'angry') { P(ctx, M.ramp[0], ex - 2, ey - 2, k + 3, 1); P(ctx, M.ramp[0], ex + 1, ey - 3, k + 1, 1); P(ctx, ink, ex - 1, ey - 1, k + 2, 1); }
-    else if (exp === 'sad') { P(ctx, M.ramp[0], ex - 2, ey - 3, k + 2, 1); P(ctx, M.ramp[0], ex - 3, ey - 2, 2, 1); }
-    else P(ctx, M.ramp[1], ex - 1, ey - 2, k + 2, 1);
+    const big = exp === 'wide' ? 1 : 0;
+    P(ctx, O, ex - 1 - big, ey - 1 - big, e + 2 + big * 2, e + 2 + big * 2);
+    P(ctx, '#241a12', ex - big, ey - big, e + big * 2, e + big * 2);
+    P(ctx, '#ffffff', ex + (e > 1 ? 1 : 0), ey, 1, 1);
+    if (exp === 'angry') { P(ctx, M.dark, ex - 2, ey - 2, e + 3, mh); P(ctx, M.dark, ex + 1, ey - 3, e + 1, mh); }
+    else if (exp === 'sad') { P(ctx, M.dark, ex - 3, ey - 3, e + 2, mh); }
   }
-  // mouth
   const open = exp === 'wide' || exp === 'pain' || (exp === 'talk' && (Math.floor(t * 7) & 1));
-  if (open) {
-    P(ctx, ink, mx - 1, my - 1, 2 * k, R(1.6 * k) + 1);
-    P(ctx, '#2a1218', mx, my, Math.max(1, 2 * k - 2), Math.max(1, R(1.6 * k) - 1));
-  } else {
-    P(ctx, ink, mx - 1, my, 2 * k, 1);
-    if (exp === 'sad') P(ctx, ink, mx - 2, my - 1, 1, 1);
-  }
+  if (open) { P(ctx, O, mx - 2, my - 1, mw, mh * 3 + 1); P(ctx, '#2a1218', mx - 1, my, mw - 2, mh * 2); }
+  else P(ctx, O, mx - 2, my, mw, mh);
 }
 // ---- draw a manatee actor --------------------------------------------------
+// Composed in chars.js's own order, at chars.js's own offsets, scaled to the
+// member: far flipper, fluke, body, near flipper, face.
 function drawManatee(ctx, m, t) {
   const M = m.set; if (!M) return;
+  const k = M.k;
   ctx.save();
   ctx.translate(R(m.x), R(m.y));
   ctx.rotate(m.rot || 0);
@@ -676,14 +687,11 @@ function drawManatee(ctx, m, t) {
   ctx.scale(fx * (m.sx || 1), m.sy || 1);
   const ph = m.phase || 0;
   const amp = m.tailAmp === undefined ? 0.26 : m.tailAmp;
-  // far flipper first
-  const fa = (m.flipperA === undefined ? 2.12 : m.flipperA) + Math.sin(ph + 0.9) * 0.26;
-  ctx.save(); ctx.translate(M.shoX - 6, M.shoY - 4); ctx.rotate(fa - 0.22);
+  const fa = (m.flipperA === undefined ? 2.15 : m.flipperA) + Math.sin(ph + 0.9) * 0.24;
+  ctx.save(); ctx.translate(M.shoX - 5 * k, M.shoY - 4 * k); ctx.rotate(fa - 0.22);
   ctx.drawImage(M.flipFar.c, -M.flipFar.ax, -M.flipFar.ay); ctx.restore();
-  // tail
   ctx.save(); ctx.translate(M.tailX, 0); ctx.rotate(Math.sin(ph) * amp);
   const fl = M.fluke; ctx.drawImage(fl.c, -fl.ax, -fl.ay); ctx.restore();
-  // body
   const b = m.scarred ? M.bodyScar : M.body;
   ctx.drawImage(b.c, -b.ax, -b.ay);
   if (m.flash > 0) {
@@ -692,120 +700,9 @@ function drawManatee(ctx, m, t) {
     ctx.fillStyle = '#ffffff'; ctx.fillRect(-b.ax, -b.ay, b.w, b.h);
     ctx.restore();
   }
-  // near flipper
   ctx.save(); ctx.translate(M.shoX, M.shoY); ctx.rotate(fa);
   ctx.drawImage(M.flip.c, -M.flip.ax, -M.flip.ay); ctx.restore();
-  // face
   manateeFace(ctx, M, m.exp || 'calm', m.blink, t);
-  ctx.restore();
-}
-
-// ============================================================== SEA  OTTER ==
-function buildOtterParts() {
-  const F = ['#5d2d14', '#84431f', '#a95c2c', '#c8784a', '#e0a070'];
-  // ---- gaunt, hunched body
-  const W = 36, H = 30;
-  const f = blobField(W, H, [
-    { x: 7, y: 21, rx: 5.4, ry: 5.6 },
-    { x: 13, y: 18, rx: 6.6, ry: 7.8 },
-    { x: 19, y: 15, rx: 6.8, ry: 8.4 },
-    { x: 25, y: 13, rx: 5.6, ry: 7.0 },
-    { x: 30, y: 12, rx: 3.6, ry: 4.6 },
-  ]);
-  const o = shadeBlob(W, H, f, F, { outline: IP.ink, lift: 0.20, smooth: 2 });
-  for (let x = 3; x < W - 3; x++) {
-    let y0 = -1, y1 = -1;
-    for (let y = 0; y < H; y++) if (f[y * W + x] > 0) { if (y0 < 0) y0 = y; y1 = y; }
-    if (y0 < 0 || y1 - y0 < 4) continue;
-    for (let y = y0; y < y1; y++) { const k = (y - y0) / (y1 - y0); if (k > 0.74) P(o.ctx, k > 0.88 ? '#e8d3ae' : '#c9ae87', x, y); }
-  }
-  for (let i = 0; i < 4; i++) {
-    const rx = 14 + i * 4;
-    for (let y = 8; y < 22; y++) if (f[y * W + rx] > 0.16) { P(o.ctx, F[0], rx, y); if ((y & 1) === 0) P(o.ctx, F[3], rx + 1, y); }
-  }
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) P(o.ctx, '#e8d3ae', 17 + i * 5 + j, 8 + j);
-  const body = spr(o.c, 17, 15);
-  // ---- head: big round skull, blunt muzzle, real ears
-  const HW = 28, HH = 26;
-  const hf = blobField(HW, HH, [
-    { x: 11, y: 15, rx: 8.4, ry: 8.0 },
-    { x: 17, y: 17, rx: 6.0, ry: 5.2 },
-    { x: 22, y: 18, rx: 3.6, ry: 3.2 },
-  ]);
-  const ho = shadeBlob(HW, HH, hf, F, { outline: IP.ink, lift: 0.24, smooth: 2 });
-  const hx = ho.ctx;
-  P(hx, IP.ink, 4, 7, 7, 7); P(hx, F[1], 5, 8, 5, 5); P(hx, F[0], 6, 9, 3, 3);
-  P(hx, IP.ink, 15, 15, 9, 7); P(hx, '#e8d3ae', 15, 16, 8, 5); P(hx, '#c9ae87', 15, 20, 8, 1);
-  for (let i = 0; i < 6; i++) P(hx, '#f0e0bd', 8 + i, 7 + i);
-  // crude half-made tricorn
-  const HAT = { k: IP.ink, h: '#3d4767', x: '#28314c', H: '#586590', X: '#7684ad' };
-  stamp(hx, [
-    '...kkkkkkkkk...',
-    '.kkxxxxxxxxxkk.',
-    'kxxhhhhhhhhhxxk',
-    'kxhhhhHHHhhhhxk',
-    'kxhhhhhhhhhhhxk',
-    'kkxxhhhhhhhxxkk',
-    '.kkxxxxxxxxxkk.',
-    '..kkkkkkkkkkk..',
-  ], 0, 0, HAT);
-  P(hx, '#9aa4ab', 1, 6, 13, 1);
-  P(hx, IP.ink, 13, 0, 2, 3); P(hx, '#7684ad', 12, 1, 3, 2);
-  P(hx, IP.ink, 0, 2, 2, 4);
-  P(hx, '#c4202c', 3, 4, 4, 1);
-  const head = spr(ho.c, 11, 16);
-  // ---- arm
-  const AW = 15, AH = 8;
-  const af = blobField(AW, AH, [{ x: 3, y: 4, rx: 3.4, ry: 3.4 }, { x: 8, y: 4.2, rx: 3.6, ry: 2.8 }, { x: 12.5, y: 4.6, rx: 2.6, ry: 2.4 }]);
-  const ao = shadeBlob(AW, AH, af, F, { outline: IP.ink, lift: 0.16, smooth: 1 });
-  P(ao.ctx, '#e8d3ae', 11, 3, 3, 3);
-  const arm = spr(ao.c, 2, 4);
-  // ---- tail
-  const TW = 22, TH = 12;
-  const tf = blobField(TW, TH, [{ x: 4, y: 6, rx: 5.4, ry: 5.4 }, { x: 10, y: 6, rx: 5.4, ry: 4.4 }, { x: 16, y: 6, rx: 4.4, ry: 3.0 }, { x: 20, y: 6, rx: 2.8, ry: 1.8 }]);
-  const to = shadeBlob(TW, TH, tf, F, { outline: IP.ink, lift: 0.16, smooth: 1 });
-  const tail = spr(to.c, 2, 6);
-  return { body: body, head: head, arm: arm, tail: tail, F: F, ex: -11 + 8, ey: -16 + 11, nx: -11 + 21, ny: -16 + 18 };
-}
-function otterFace(ctx, exp, blink, t) {
-  const ink = IP.ink, O = OT;
-  const ex = O.ex, ey = O.ey, nx = O.nx, ny = O.ny;
-  if (blink || exp === 'sly') { P(ctx, ink, ex - 1, ey + 1, 5, 1); P(ctx, ink, ex + 7, ey + 1, 5, 1); }
-  else {
-    for (const dx of [0, 8]) {
-      P(ctx, ink, ex + dx - 1, ey - 1, 6, 6);
-      P(ctx, '#e9f0f4', ex + dx, ey, 4, 4);
-      P(ctx, '#0b0b10', ex + dx + (exp === 'plot' ? 2 : 1), ey + 1, 2, 3);
-      P(ctx, '#ffffff', ex + dx + 1, ey + 1, 1, 1);
-    }
-  }
-  if (exp === 'angry' || exp === 'plot') { P(ctx, O.F[0], ex - 2, ey - 3, 6, 2); P(ctx, O.F[0], ex + 7, ey - 3, 6, 2); P(ctx, ink, ex, ey - 2, 5, 1); P(ctx, ink, ex + 8, ey - 2, 4, 1); }
-  P(ctx, ink, nx - 1, ny - 1, 4, 3); P(ctx, '#2a1a10', nx, ny - 1, 2, 1);
-  const talk = exp === 'talk' && (Math.floor(t * 8) & 1);
-  if (talk) { P(ctx, ink, nx - 3, ny + 3, 6, 4); P(ctx, '#4a1420', nx - 2, ny + 4, 4, 2); }
-  else if (exp === 'grin' || exp === 'sly') { P(ctx, ink, nx - 5, ny + 3, 8, 1); P(ctx, ink, nx + 3, ny + 2, 1, 1); P(ctx, '#e9f0f4', nx - 4, ny + 4, 6, 1); P(ctx, ink, nx - 4, ny + 5, 6, 1); }
-  else P(ctx, ink, nx - 4, ny + 3, 6, 1);
-  P(ctx, '#f0e0bd', nx + 2, ny - 2, 5, 1); P(ctx, '#f0e0bd', nx + 2, ny + 1, 5, 1);
-}
-function drawOtter(ctx, o, t) {
-  const O = OT;
-  ctx.save(); ctx.translate(R(o.x), R(o.y));
-  if (o.flip) ctx.scale(-1, 1);
-  ctx.rotate(o.rot || 0);
-  const s = o.s || 1; ctx.scale(s, s);
-  const ph = o.phase || 0;
-  ctx.save(); ctx.translate(-12, 7); ctx.rotate(2.75 + Math.sin(ph) * 0.22);
-  ctx.drawImage(O.tail.c, -O.tail.ax, -O.tail.ay); ctx.restore();
-  ctx.save(); ctx.translate(8, 8); ctx.rotate((o.armFar === undefined ? 0.7 : o.armFar));
-  ctx.drawImage(O.arm.c, -O.arm.ax, -O.arm.ay); ctx.restore();
-  ctx.drawImage(O.body.c, -O.body.ax, -O.body.ay);
-  ctx.save(); ctx.translate(12, 6); ctx.rotate((o.armNear === undefined ? 0.35 : o.armNear) + Math.sin(ph * 1.3) * 0.12);
-  ctx.drawImage(O.arm.c, -O.arm.ax, -O.arm.ay); ctx.restore();
-  ctx.save(); ctx.translate(16 + (o.headX || 0), -14 + (o.headY || 0) + Math.sin(ph * 0.8) * 0.6);
-  ctx.rotate(o.headR || 0);
-  ctx.drawImage(O.head.c, -O.head.ax, -O.head.ay);
-  otterFace(ctx, o.exp || 'idle', o.blink, t);
-  ctx.restore();
   ctx.restore();
 }
 
@@ -1324,7 +1221,7 @@ function drawNet(ctx, o) {
 
 // ============================================================ ASSET STORE ==
 const WATER = {}, LAY = {}, MAN = {};
-let OT = null, BIZ = null, CR = null, BOAT = null, YAC = null, HARP = null;
+let BIZ = null, CR = null, BOAT = null, YAC = null, HARP = null;
 let FISHSPR = [], FISHDEAD = [], BUILT = false;
 
 function buildNearClutter(seed, kramp) {
@@ -1351,6 +1248,9 @@ function buildFarRidge(seed, tint) {
 function buildIntroArt() {
   if (BUILT) return;
   if (typeof blobField !== 'function' || typeof shadeBlob !== 'function') return;
+  // the whole cast comes out of chars.js now, so nothing is baked until it is
+  // there; Intro.reset() comes back through here once buildCharacters() has run
+  if (typeof CH === 'undefined' || !CH.side || !CH.otterStandHi || !CH.headWithFace) return;
   WATER.shallow = buildWater(IP.shallow, 640, 360, { pow: 1.05 });
   WATER.open = buildWater(IP.open, 640, 360, { pow: 1.0 });
   WATER.deep = buildWater(IP.deep, 640, 360, { pow: 0.9 });
@@ -1363,6 +1263,7 @@ function buildIntroArt() {
   for (const k in GRADE_SPEC) { GRADE[k] = buildGrade(GRADE_SPEC[k].bg); GLOW[k] = buildGrade(GRADE_SPEC[k].fg, 16); }
   for (const k in SKYMODE) skyCan(k);      // every sky baked up front, never mid-cinematic
   LAY.deckLight = buildGrade([[0, '#eafaff', 0.10], [0.36, '#ffe6a0', 0.04], [0.54, '#123a6c', 0.26], [0.60, '#ffd68a', 0.06], [0.82, '#ffb85e', 0.14], [1, '#ff8e3a', 0.26]], 26);
+  LAY.caust = [buildCaustNet(0, 0), buildCaustNet(1, 2.09), buildCaustNet(2, 4.19)];
   LAY.shafts = buildShafts(LW, 300, '#d4f8ff');
   LAY.shaftsWarm = buildShafts(LW, 300, '#ffe2a0');
   LAY.shaftsRed = buildShafts(LW, 300, '#ff9a72');
@@ -1377,13 +1278,16 @@ function buildIntroArt() {
   LAY.farD = buildFarRidge(888, '#071a2c');
   LAY.surfS = buildSurfaceUnder(11, IP.foam, '#48ad9e');
   LAY.surfD = buildSurfaceUnder(12, ['#9dbdd4', '#cfe4f0', '#eef8ff'], '#2d74ab');
-  MAN.dad = buildManatee(98, 'dad', { scars: true });
-  MAN.mom = buildManatee(86, 'mom');
-  MAN.you = buildManatee(54, 'you');
-  MAN.bro = buildManatee(40, 'bro');
-  MAN.youBig = buildManatee(96, 'you');
-  MAN.broBig = buildManatee(58, 'bro');
-  OT = buildOtterParts();
+  // the family, off the cast's own side-on body: her father at her full
+  // length, her mother six sevenths of it, and the two calves at four
+  // sevenths and a clean half.  Same animal, four ages.
+  MAN.dad = buildManatee(98, 'dad');
+  MAN.mom = buildManatee(84, 'mom');
+  MAN.you = buildManatee(56, 'you');
+  MAN.bro = buildManatee(49, 'bro');
+  MAN.youBig = buildManatee(98, 'you');
+  MAN.broBig = buildManatee(56, 'bro');
+  capOtter();
   BIZ = buildBiz();
   CR = buildCrane();
   BOAT = buildFishingBoat();
@@ -1549,6 +1453,12 @@ function backdrop(ctx, o) {
   if (o.shafts) {
     const sh = !G || G.shaft === 'cold' ? LAY.shafts : G.shaft === 'red' ? LAY.shaftsRed : LAY.shaftsWarm;
     ctx.save(); ctx.globalAlpha = qa(o.shafts); tile(ctx, sh, s * 0.16, (o.surfY === undefined || o.surfY === null ? -40 : o.surfY)); ctx.restore();
+  }
+  // the lit water itself: the ocean's own caustics, boiling and drifting
+  const ca = o.caust === undefined ? 0.62 : o.caust;
+  if (ca > 0 && LAY.caust) {
+    const top = (o.surfY === undefined || o.surfY === null ? -34 : o.surfY) - 6;
+    tile(ctx, LAY.caust[Math.floor(t * 6) % 3], s * 0.22 + t * 7, top, ca);
   }
   const set = o.set === 'D' ? 'D' : 'S';
   if (o.bedY !== undefined && o.bedY !== null) {
@@ -2995,55 +2905,92 @@ function holdArt() {
   HOLD.tool = buildTool();
   return HOLD;
 }
-// ---- the in-game Captain Otter, reused so the two match --------------------
-const CAP = {};
-function capOtter() {
-  if (CAP.ready) return CAP;
-  if (typeof CH === 'undefined' || !CH.otterTorso || !CH.otterHead) return null;
-  // a rougher, hungrier copy of the same torso: grime, salt, a torn cape hem
-  const t = CH.otterTorso, c = can(t.w, t.h), x = cx2(c);
-  x.drawImage(t.c, 0, 0);
-  const img = x.getImageData(0, 0, t.w, t.h), d = img.data;
-  for (let y = 0; y < t.h; y++) for (let px2 = 0; px2 < t.w; px2++) {
-    const i = (y * t.w + px2) * 4;
+// ============================================================== SEA  OTTER ==
+//  He is the cast's otter too: CH.otterStand on his feet, CH.otterTorso when
+//  he is riding her, his own arm, his own tail and his live head, composed at
+//  chars.js's own offsets.  Only the fortnight in a fish hold is new.
+//
+//  chars.js rasterizes him at DETAIL art pixels per world unit and scales
+//  those canvases down on the way out; here every part is copied at its own
+//  raster size and drawn 1:1, so one of HIS art pixels is one logical unit —
+//  exactly like one of hers.  That is the whole point: before this, his head
+//  and sleeves came out of the hi-res bridge twice as fine as the hide of the
+//  animal he was standing on, and his torso was scaled by 1.7 on top of that.
+const CAP = { ready: false };
+// his raster, at its own resolution, with the world anchors brought with it
+function rawSpr(s) {
+  const W = s.c.width, H = s.c.height;
+  const c = can(W, H);
+  cx2(c).drawImage(s.c, 0, 0, W, H, 0, 0, W, H);       // 8-arg: no hi-res bridge
+  const k = W / Math.max(1, R(s.w));
+  return { c: c, w: W, h: H, ax: s.ax * k, ay: s.ay * k, k: k };
+}
+// salt, grime and a bleached patch or two, in his own art pixels
+function grimeSpr(sp, seed) {
+  const x = cx2(sp.c), W = sp.c.width, H = sp.c.height;
+  const img = x.getImageData(0, 0, W, H), d = img.data;
+  for (let y = 0; y < H; y++) for (let px = 0; px < W; px++) {
+    const i = (y * W + px) * 4;
     if (d[i + 3] < 40) continue;
-    if (hash2(px2 * 5, y * 7) > 0.90) { d[i] = (d[i] * 0.55) | 0; d[i + 1] = (d[i + 1] * 0.55) | 0; d[i + 2] = (d[i + 2] * 0.5) | 0; }
-    else if (hash2(px2 * 11, y * 3) > 0.965) { d[i] = 232; d[i + 1] = 228; d[i + 2] = 216; }
+    if (hash2(px * 5 + seed, y * 7) > 0.90) { d[i] = (d[i] * 0.58) | 0; d[i + 1] = (d[i + 1] * 0.58) | 0; d[i + 2] = (d[i + 2] * 0.52) | 0; }
+    else if (hash2(px * 11, y * 3 + seed) > 0.968) { d[i] = 232; d[i + 1] = 228; d[i + 2] = 216; }
   }
   x.putImageData(img, 0, 0);
-  for (let i = 0; i < 4; i++) P(x, '#e8e4d8', 8 + i, 12 + i);
-  CAP.torso = spr(c, t.ax, t.ay);
-  CAP.arm = CH.otterArm; CAP.tail = CH.otterTail; CAP.ready = true;
+  return sp;
+}
+function capOtter() {
+  if (CAP.ready) return CAP;
+  if (typeof CH === 'undefined' || !CH.otterStandHi || !CH.otterHead || !CH.otterArm || !CH.otterTail) return null;
+  CAP.stand = grimeSpr(rawSpr(CH.otterStandHi), 0);
+  CAP.arm = grimeSpr(rawSpr(CH.otterArm), 7);
+  CAP.tail = grimeSpr(rawSpr(CH.otterTail), 13);
+  CAP.ride = grimeSpr(rawSpr(CH.otterTorso), 3);
+  CAP.cigar = rawSpr(CH.cigar);
+  CAP.hk = (CH.headBuf ? CH.headBuf.width : CH.otterHead.c.width) / Math.max(1, R(CH.otterHead.w));
+  CAP.hax = CH.otterHead.ax * CAP.hk; CAP.hay = CH.otterHead.ay * CAP.hk;
+  CAP.ready = true;
   return CAP;
 }
+// the cinematic's moods, said in the cast's own vocabulary
+const OEXP = { plot: 'angry', sly: 'idle', grin: 'happy', shout: 'angry' };
 function drawCapOtter(ctx, o, t) {
-  const C = capOtter();
-  if (!C) { drawOtter(ctx, o, t); return; }
+  const C = capOtter(); if (!C) return;
+  const D = C.stand.k;                       // his art pixels per world unit
   ctx.save();
   ctx.translate(R(o.x), R(o.y));
   if (o.flip) ctx.scale(-1, 1);
   ctx.rotate(o.rot || 0);
-  const s = o.s === undefined ? 1 : o.s;
-  ctx.scale(s, s);
+  // NOTE: no per-beat scale.  He is one size, on her grid, all the way
+  // through, which is the only way his pixels stay the size of hers.
   const ph = o.phase || 0;
-  ctx.save(); ctx.translate(-10, 5); ctx.rotate(2.45 + Math.sin(ph) * 0.12);
+  const ride = !!o.ride;
+  const arms = [o.armNear === undefined ? (ride ? 0.9 : -0.25) : o.armNear,
+                o.armFar === undefined ? (ride ? -0.9 : 0.35) : o.armFar];
+  const body = ride ? C.ride : C.stand;
+  // tail, far arm, body, near arm + whatever is in his paw, head
+  ctx.save();
+  ctx.translate(ride ? -7 * D : -6 * D, (ride ? 3 : 4) * D);
+  ctx.rotate((ride ? 2.5 : 2.9) + Math.sin(ph) * 0.10 + (o.tail || 0));
   ctx.drawImage(C.tail.c, -C.tail.ax, -C.tail.ay); ctx.restore();
-  ctx.save(); ctx.translate(-2, 2); ctx.rotate(o.armFar === undefined ? 1.15 : o.armFar);
+  ctx.save(); ctx.translate(D, (ride ? 4 : -1) * D); ctx.rotate(arms[1]);
   ctx.drawImage(C.arm.c, -C.arm.ax, -C.arm.ay); ctx.restore();
-  const torso = o.rough === false ? CH.otterTorso : C.torso;
-  ctx.drawImage(torso.c, -torso.ax, -torso.ay);
-  ctx.save(); ctx.translate(2, 3); ctx.rotate(o.armNear === undefined ? 0.7 : o.armNear);
+  ctx.drawImage(body.c, -body.ax, -body.ay);
+  ctx.save(); ctx.translate(2 * D, (ride ? -4 : -2) * D); ctx.rotate(arms[0] + Math.sin(ph * 1.3) * 0.08);
   ctx.drawImage(C.arm.c, -C.arm.ax, -C.arm.ay);
-  if (o.tool) { ctx.translate(C.arm.w - 3, 0); ctx.rotate(o.toolR || 0); ctx.drawImage(HOLD.tool.c, -HOLD.tool.ax, -HOLD.tool.ay); }
+  if (o.tool && typeof HOLD !== 'undefined' && HOLD.tool) {
+    ctx.save(); ctx.translate(C.arm.w - C.arm.ax, 0); ctx.rotate(o.toolR || 0);
+    ctx.drawImage(HOLD.tool.c, -HOLD.tool.ax, -HOLD.tool.ay); ctx.restore();
+  }
   ctx.restore();
   ctx.save();
-  ctx.translate(o.headX || 0, -9 + (o.headY || 0) + Math.sin(ph * 0.8) * 0.5);
+  ctx.translate((o.headX || 0) + (ride ? 0 : D), (ride ? -7 : -11) * D + (o.headY || 0) + R(Math.sin(ph * 0.8) * 0.8));
   ctx.rotate(o.headR || 0);
-  const hd = otterHeadWithFace(o.exp || 'idle', o.blink, t, false);
-  ctx.drawImage(hd, -CH.otterHead.ax, -CH.otterHead.ay);
-  if (o.rough !== false) { for (let i = 0; i < 4; i++) P(ctx, '#e8e4d8', -CH.otterHead.ax + 4 + i, -CH.otterHead.ay + 8 + i); }
+  const ex = OEXP[o.exp] || o.exp || 'idle';
+  const hd = CH.headWithFace(ex, !!o.blink, t, false);
+  ctx.drawImage(hd, 0, 0, hd.width, hd.height, -C.hax, -C.hay, hd.width, hd.height);
+  if (o.rough !== false) for (let i = 0; i < 4; i++) P(ctx, '#e8e4d8', -C.hax + 8 + i, -C.hay + 16 + i, 1, 1);
   if (o.cigar !== false) {
-    ctx.drawImage(CH.cigar.c, 6, -1);
+    ctx.drawImage(C.cigar.c, 2 * D, D);
     for (let i = 0; i < 4; i++) {
       const k = (t * 0.45 + i * 0.25) % 1;
       ctx.fillStyle = rgbaq('#b9b3ad', qa(0.30 * (1 - k)));
@@ -3492,7 +3439,7 @@ BEATS.push({
         const H = holdArt();
         ctx.save(); ctx.translate(R(A.you.x - 4), R(A.you.y - 9)); ctx.rotate(A.you.rot);
         ctx.drawImage(H.plate.c, -H.plate.ax, -H.plate.ay); ctx.restore();
-        drawCapOtter(ctx, Object.assign({}, SC.ot, { x: A.you.x - 22, y: A.you.y - 26, rot: A.you.rot, flip: false, tool: false, exp: 'angry' }), Intro.t);
+        drawCapOtter(ctx, Object.assign({}, SC.ot, { x: A.you.x - 20, y: A.you.y - 20, rot: A.you.rot, flip: false, ride: true, tool: false, exp: 'angry' }), Intro.t);
       } else {
         const k = clamp((bt - 7.6) / 4.4, 0, 1);
         ctx.save(); ctx.translate(R(520 - k * 460), R(64)); ctx.scale(0.5 - k * 0.3, 0.5 - k * 0.3);
@@ -3502,7 +3449,7 @@ BEATS.push({
         const H = holdArt();
         ctx.save(); ctx.translate(R(A.you.x - 4), R(A.you.y - 9)); ctx.rotate(A.you.rot);
         ctx.drawImage(H.plate.c, -H.plate.ax, -H.plate.ay); ctx.restore();
-        drawCapOtter(ctx, Object.assign({}, SC.ot, { x: A.you.x - 14, y: A.you.y - 28, rot: A.you.rot, s: 1.2, flip: false, tool: false, exp: 'happy' }), Intro.t);
+        drawCapOtter(ctx, Object.assign({}, SC.ot, { x: A.you.x - 12, y: A.you.y - 22, rot: A.you.rot, flip: false, ride: true, tool: false, exp: 'happy' }), Intro.t);
         speedLines(ctx, A.you.x - 90, A.you.y, 16, 64, -1, 'rgba(190,225,245,0.32)', 7);
       }
       FX.render(ctx);
@@ -3589,5 +3536,5 @@ try { if (typeof document !== 'undefined' && document.createElement) buildIntroA
 
 global.Intro = Intro;
 global.IntroBeats = BEATS;
-global.__introDebug = { MAN: MAN, drawManatee: drawManatee, drawOtter: drawOtter, drawBiz: drawBiz, figure: figure, drawCrane: drawCrane, drawNet: drawNet, get HARP() { return HARP; }, get BOAT() { return BOAT; }, get YAC() { return YAC; }, get HOLD() { return HOLD; }, get CATCH() { return CATCH; }, drawCapOtter: drawCapOtter, holdArt: holdArt };
+global.__introDebug = { MAN: MAN, drawManatee: drawManatee, drawBiz: drawBiz, figure: figure, drawCrane: drawCrane, drawNet: drawNet, get HARP() { return HARP; }, get BOAT() { return BOAT; }, get YAC() { return YAC; }, get HOLD() { return HOLD; }, get CATCH() { return CATCH; }, drawCapOtter: drawCapOtter, holdArt: holdArt };
 })(typeof window !== 'undefined' ? window : this);

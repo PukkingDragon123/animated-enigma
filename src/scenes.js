@@ -2,38 +2,220 @@
 // The intro cinematic now lives in src/intro.js, which defines the global
 // `Intro`. A top-level `const Intro` here would shadow it, so it is gone.
 
+// G is a top-level `let` in entities.js and may not be initialised while this
+// file is being evaluated, so every access from out here goes through this.
+function sceneG() { try { return G; } catch (e) { return null; } }
+
+// =========================================================================
+//  THE ARRIVAL — staged in the LIVE WORLD, not drawn as a plate.
+//
+//  The real village out of src/village.js, the real pier, the real player,
+//  the real lookout.  Every beat below is the game itself with the cine
+//  camera and the letterbox doing the work; the only thing drawn here is the
+//  night that goes over the top of it, the lamps the village has lit, and
+//  the marks and bubbles that hang off a world position.
+//
+//    0.0  IN THE DARK   she comes up the channel at night, low in the water,
+//                       the village asleep across the top of the frame
+//    3.0  SPOTTED       the camera pushes onto the lookout on the pier head
+//    3.6  THE SHOUT     he yells, and the bay has half a second to hear it
+//    5.4  THE ANSWER    the prompt comes up; the player fires; the camera
+//                       snaps onto him on the bang and starts pulling out
+//     ->  the alarm, the Chief's order and the fleet carry straight on in
+//         BossCut's in-world 'village_alarm', queued from here
+//
+//  game.js owns the kill (Dialogue.done + a click -> a real projectile at
+//  G.fisherman -> G.onFishermanShot), so all of this is staged AROUND that
+//  handshake instead of replacing it.  If the arrival is cut short from
+//  outside -- the test harnesses set Dialogue.done straight to true -- the
+//  staging drops out, the camera goes back, and the plain bubble is what is
+//  left.  Nothing here can strand the view: the snap onto the lookout sets
+//  its own slow release on the same frame, so even a dropped timer recovers.
+// =========================================================================
 const Dialogue = {
-  t: 0, text: 'Oh, a manatee! Free meat for tonight!', done: false, shotFired: false,
-  reset() { this.t = 0; this.done = false; this.shotFired = false; },
-  update(dt) { this.t += dt; if (this.t > 3) this.done = true; },
-  renderWorld(ctx, cam) { /* the bubble is drawn in HUD space so the text stays crisp */ },
-  renderHUD(ctx) {
-    const f = G.fisherman; if (!f || !f.alive) return;
-    // anchor the bubble to his screen position through the zoom
-    if (this.t > 0.6) {
-      const sp = G.worldToScreen(f.x, f.y - 34);
-      const sx = Math.round(sp.x), sy = Math.round(sp.y);
-      const n = Math.min(this.text.length, Math.floor((this.t - 0.6) * 30));
-      const w = Math.max(70, textWidth(this.text, 7) + 20);
-      const bx = clamp(sx - w / 2, 6, 634 - w), by = clamp(sy - 26, 44, 300);
-      UIKit.panel(ctx, bx, by, w, 24, 'parchment');
-      ctx.fillStyle = '#e8dcc0';
-      ctx.beginPath(); ctx.moveTo(sx - 6, by + 23); ctx.lineTo(sx + 6, by + 23); ctx.lineTo(sx, by + 33); ctx.fill();
-      ctx.fillStyle = '#2a2016';
-      ctx.beginPath(); ctx.moveTo(sx - 7, by + 24); ctx.lineTo(sx - 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(sx + 7, by + 24); ctx.lineTo(sx + 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
-      pixelText(ctx, this.text.slice(0, n), bx + 10, by + 8, 7, '#2a2016', 'left', false);
+  // ---- the handshake game.js drives.  Do not rename.
+  t: 0, text: 'OI! SOMETHING IN THE WATER!', done: false, shotFired: false,
+  // ---- the beats, in seconds
+  K: { dive: 2.25, spot: 2.90, shout: 3.45, ready: 5.10 },
+  _nat: false, _bail: false, _shot: -1, _queued: false, _timer: 0,
+  _flash: 0, _cut: 1e9, _hit: null,
+
+  reset() {
+    this.t = 0; this.done = false; this.shotFired = false;
+    this._nat = false; this._bail = false; this._shot = -1; this._queued = false;
+    this._flash = 0; this._cut = 1e9; this._hit = {};
+    if (this._timer) { clearTimeout(this._timer); this._timer = 0; }
+    if (typeof WorldCine !== 'undefined') WorldCine.begin();
+  },
+  wc() { return (typeof WorldCine !== 'undefined' && WorldCine.ok()) ? WorldCine : null; },
+  // everything the staging needs to exist before it will take the camera
+  staged() {
+    const g = sceneG();
+    return !!(!this._bail && this.wc() && g && g.player && g.fisherman && g.cineTo && g.pier);
+  },
+  once(k) { if (!this._hit) this._hit = {}; if (this._hit[k]) return false; return this._hit[k] = true; },
+  sfx(fn) { try { if (typeof Audio_ !== 'undefined') fn(); } catch (e) { } },
+
+  update(dt) {
+    if (dt > 1 / 20) dt = 1 / 20;
+    // somebody outside pushed us to the end (the boot harnesses do exactly
+    // this): give the camera and the night straight back and fall through to
+    // the plain bubble, so nothing that drives the game from outside changes
+    if (this.done && !this._nat && !this._bail) this.bail();
+    if (!this.staged()) { this.t += dt; if (this.t > 3) this.done = true; return; }
+
+    const g = sceneG(), W = this.wc(), K = this.K;
+    const f = g.fisherman, p = g.player;
+    this.t += dt;
+    const T = this.t;
+    this._flash = Math.max(0, this._flash - dt * 8);
+    W.night = Math.min(1, W.night + dt * 3.2);
+    W.lamp = Math.min(1, W.lamp + dt * 0.8);
+    g.cineBars(W.eo3(Math.min(1, T / 0.8)));
+
+    // ---- she comes up the channel.  DRIVEN, not steered: the player's own
+    // update runs immediately after this one, so the position is written
+    // again every frame and whatever the sticks did is overwritten before it
+    // can accumulate.  The velocity is handed over too, so the wake, the
+    // swim cycle and the camera lead all read the move as a real one.
+    if (this._shot < 0 && !p.dead) {
+      const u = W.eo3(clamp(T / (K.spot + 0.55), 0, 1));
+      const nx = lerp(f.x + 152, f.x + 6, u), ny = lerp(f.y + 268, f.y + 62, u);
+      const iv = 1 / Math.max(dt, 1e-3);
+      p.vx = clamp((nx - p.x) * iv, -170, 170); p.vy = clamp((ny - p.y) * iv, -170, 170);
+      p.x = nx; p.y = ny;
+      p.aim = angleTo(p.x, p.y, f.x, f.y - 8);
+      p.facing = p.x > f.x ? -1 : 1;
+      // she comes up the channel UNDER it.  The dive flag is the game's own,
+      // so she is the same half-alpha shadow the ability makes her, and the
+      // camera, the shadow and the wake all already know what it means.
+      if (T < K.dive) { p.dive.active = true; p.dive.t = 0; p.dive.cd = 0; }
     }
-    if (!this.done) return;
+    // and breaks the surface.  This is WHY he looks up.
+    if (T >= K.dive && this.once('surface')) {
+      p.dive.active = false; p.dive.t = 0; p.dive.cd = 0;
+      if (g.particles) { g.particles.splash(p.x, p.y, 2.0); g.particles.bubbles(p.x, p.y, 10); }
+      this.sfx(() => Audio_.splash(1.4));
+    }
+
+    // ---- he clocks them
+    if (T >= K.spot && this.once('spot')) {
+      g.cineTo(f.x, f.y - 6, 2.5, 0.85);
+      this.sfx(() => { Audio_.tone(300, 0.10, 'square', 0.16, 150); Audio_.tone(450, 0.08, 'square', 0.10, 120); });
+    }
+    // ---- and yells.  The pier hears it before the village does.
+    if (T >= K.shout && this.once('shout')) {
+      this.sfx(() => { Audio_.tone(430, 0.18, 'square', 0.20, -170); Audio_.tone(300, 0.26, 'sawtooth', 0.13, -110); });
+      if (typeof Village !== 'undefined' && Village.panicNear) Village.panicNear(f.x, f.y, 160);
+    }
+    // ---- the prompt.  Pull to a two-shot: the shot has to be legible.
+    if (T >= K.ready && !this.done) {
+      this.done = true; this._nat = true;
+      g.cineTo((f.x + p.x) / 2, (f.y + p.y) / 2 - 2, 1.85, 0.7);
+    }
+
+    // ---- the otter answers.  game.js sets shotFired on the click; the frame
+    // after, the camera snaps onto him and the rest of the raid is queued.
+    if (this.shotFired && this._shot < 0) {
+      this._shot = T; this._flash = 1;
+      this._cut = Math.max(4, Math.floor((T - K.shout) * 44) - 3);   // the line is cut off mid-word
+      g.cineHold(f.x, f.y - 6, 2.9);
+      // and a slow release set on the SAME frame, so a dropped timer or a
+      // lost cut can never leave the player parked in a close-up
+      g.cineTo(null, null, 1, 2.4);
+      g.shake(9);
+      this.queueAlarm(f.x, f.y);
+    }
+  },
+
+  // The alarm cannot be started from here directly: game.js flips to 'play'
+  // the instant the projectile lands, which would clobber a cut started
+  // before it.  So this waits for the body to actually drop and then hands
+  // over, with a hard deadline that gives the camera back if it never does.
+  queueAlarm(x, y) {
+    if (this._queued) return;
+    this._queued = true;
+    const nat = this._nat, self = this;
+    const step = (tries) => {
+      self._timer = 0;
+      const g = sceneG();
+      if (!g) return;
+      if (nat && g.fisherman && !g.fisherman.alive && g.state === 'play' && g.playCut) {
+        if (g.playCut('village_alarm', { x: x, y: y })) return;
+      }
+      if (tries > 0) { self._timer = setTimeout(() => step(tries - 1), 45); return; }
+      if (typeof WorldCine !== 'undefined') WorldCine.release(0.5);
+    };
+    this._timer = setTimeout(() => step(nat ? 28 : 0), 45);
+  },
+
+  // drop the staging and hand everything back, whatever state it was in
+  bail() {
+    this._bail = true; this._queued = true;
+    if (this._timer) { clearTimeout(this._timer); this._timer = 0; }
+    if (typeof WorldCine !== 'undefined') WorldCine.release(0.25);
+  },
+  // game.js has no hold-to-skip wired into the dialogue state yet; if it ever
+  // gets one, this is what it drives, and it leaves nothing behind.
+  skip() { this.done = true; this._nat = false; this.bail(); },
+
+  renderWorld(ctx, cam) { /* everything is anchored through the camera in HUD space */ },
+
+  renderHUD(ctx) {
+    const g = sceneG(); if (!g) return;
+    const f = g.fisherman;
+    const bars = g.cine ? g.cine.bars : 0;
+    const barH = Math.round(46 * bars);
+    const W = this.wc(), on = this.staged();
+
+    // ---- the night, the lamps the village has lit, and the muzzle flash
+    if (W && on) {
+      W.veil(ctx, W.night, barH);
+      W.lamps(ctx, W.night * W.lamp, barH, this.t);
+      if (f && f.alive) W.pool(ctx, f.x - 9, f.y - 1, W.night, barH, 1.15, '#ffd67a');
+      if (this._flash > 0.02) W.wash(ctx, '#ffffff', Math.min(0.78, this._flash), barH);
+    }
+
+    // ---- what he says, anchored to him through the zoom
+    if (f && f.alive) {
+      if (on) {
+        const K = this.K;
+        if (this.t > K.spot + 0.10 && this.t < K.shout + 0.55)
+          W.mark(ctx, f.x, f.y - 21, clamp((this.t - K.spot - 0.10) / 0.20, 0, 1), '#ffe48f');
+        const n = Math.min(this._cut, Math.floor((this.t - K.shout) * 44) + 1);
+        if (this.t > K.shout && n > 0) W.bubble(ctx, f.x, f.y - 30, this.text, n, false);
+      } else if (this.t > 0.6) {
+        W2bubble(ctx, g, f, this.text, Math.floor((this.t - 0.6) * 30));
+      }
+    }
+
+    if (!this.done || this.shotFired) return;
     const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
-    UIKit.panel(ctx, 60, 298, 520, 40, 'dark');
+    const py = on ? 266 : 298;
+    UIKit.panel(ctx, 150, py, 340, 34, 'dark');
     pixelTextOutlined(ctx, touch ? 'TAP FIRE. LET THE OTTER ANSWER.' : 'LEFT CLICK. LET THE OTTER ANSWER.',
-      320, 304, 10, Math.floor(this.t * 2) % 2 ? '#ffe48f' : '#ffffff', '#14141c', 'center');
+      320, py + 6, 10, Math.floor(this.t * 2) % 2 ? '#ffe48f' : '#ffffff', '#14141c', 'center');
     pixelText(ctx, touch ? 'Helm to swim   SHIELD to parry   ROLL to dash'
                          : 'WASD swim   SPACE roll   E / right-click shield   TAB skill tree',
-      320, 320, 6, '#9ab0c0', 'center');
+      320, py + 22, 6, on ? '#8fa6b8' : '#9ab0c0', 'center');
   },
 };
+// the plain, un-staged bubble: exactly the one that was here before, kept so
+// anything that drives the game past the arrival still looks the way it did
+function W2bubble(ctx, g, f, text, n) {
+  const sp = g.worldToScreen(f.x, f.y - 34);
+  const sx = Math.round(sp.x), sy = Math.round(sp.y);
+  n = Math.min(text.length, n);
+  const w = Math.max(70, textWidth(text, 7) + 20);
+  const bx = clamp(sx - w / 2, 6, 634 - w), by = clamp(sy - 26, 44, 300);
+  UIKit.panel(ctx, bx, by, w, 24, 'parchment');
+  ctx.fillStyle = '#e8dcc0';
+  ctx.beginPath(); ctx.moveTo(sx - 6, by + 23); ctx.lineTo(sx + 6, by + 23); ctx.lineTo(sx, by + 33); ctx.fill();
+  ctx.fillStyle = '#2a2016';
+  ctx.beginPath(); ctx.moveTo(sx - 7, by + 24); ctx.lineTo(sx - 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(sx + 7, by + 24); ctx.lineTo(sx + 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
+  pixelText(ctx, text.slice(0, n), bx + 10, by + 8, 7, '#2a2016', 'left', false);
+}
 
 function drawEndScreen(ctx, t, win) {
   ctx.fillStyle = win ? 'rgba(6,26,20,0.88)' : 'rgba(30,5,10,0.88)';
@@ -1289,6 +1471,233 @@ const FX = {
 };
 
 // =========================================================================
+//  IN-WORLD CINEMATICS — the kit the arrival and the short beats share.
+//
+//  None of these scenes draws a plate.  They are staged in the live game
+//  world with the real camera (G.cineTo / cineHold / cineBars), and this is
+//  only what goes over the top of it: the night wash, the lamps the village
+//  has lit, the alarm pulse, and the marks and bubbles that hang off a world
+//  position and stay stuck to it through a zoom.
+//
+//  Per frame that costs: ONE baked 640x360 blit for the night, two small
+//  baked discs per visible lamp anchor, and a handful of rectangles.  Nothing
+//  in here is written a pixel at a time at run time.
+// =========================================================================
+function gg() { try { return G; } catch (e) { return null; } }
+
+// a baked pool of light, centred, for blitting over the wash
+function poolSpr(rx, ry, ramp, bias) {
+  const c = can(rx * 2 + 1, ry * 2 + 1), x = cx2(c);
+  glowPool(x, rx, ry, rx, ry, ramp, bias === undefined ? 0.9 : bias);
+  return spr(c, rx, ry);
+}
+// The wash that turns the bay into the middle of the night.  Two blues on an
+// ordered dither with the alpha snapped onto fifteen levels, so it stays a
+// posterized filter and never becomes a gradient.  Heaviest at the top of the
+// frame, where the land is and nothing is burning, thinning out over the open
+// water the moon is on.
+function buildNightVeil() {
+  const c = can(640, 360), x = cx2(c);
+  const img = x.createImageData(640, 360), d = img.data;
+  const C1 = hexToRgb('#050c28'), C2 = hexToRgb('#02040f');
+  for (let y = 0; y < 360; y++) {
+    const u = 1 - y / 359;
+    const base = 0.78 + u * u * 0.12;
+    for (let px = 0; px < 640; px++) {
+      let a = base + (bay(px, y) < 0.5 ? 0.05 : -0.03) + (hash2(px >> 2, y >> 1) - 0.5) * 0.04;
+      if (a < 0) a = 0; else if (a > 1) a = 1;
+      const col = bay(px + 2, y + 1) < 0.30 ? C2 : C1;
+      const q = (y * 640 + px) * 4;
+      d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2];
+      d[q + 3] = Math.round(a * 255 / 17) * 17;
+    }
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+
+const WorldCine = {
+  built: false, fail: false,
+  night: 0, lamp: 0, red: 0,
+  _spots: null, _key: '',
+  eo3: eo3, eo2: eo2, slam: slamK,
+
+  build() {
+    if (this.built) return true;
+    if (this.fail) return false;
+    try {
+      A.wcVeil = buildNightVeil();
+      A.wcPool = poolSpr(26, 13, BP.torchGlow, 0.55);
+      A.wcCore = poolSpr(9, 5, BP.fire, 0.95);
+      const wc = cx2(can(8, 8));
+      wc.drawImage(A.wcVeil, 0, 0, 640, 360, 0, 0, 8, 8);
+      wc.drawImage(A.wcPool.c, 0, 0, A.wcPool.c.width, A.wcPool.c.height, 0, 0, 8, 8);
+      this.built = true;
+    } catch (e) { this.fail = true; if (typeof console !== 'undefined') console.error('WorldCine bake', e); }
+    return this.built;
+  },
+  ok() { return this.build(); },
+  begin() { this.night = 0; this.lamp = 0; this.red = 0; this._spots = null; this._key = ''; this.build(); },
+
+  // These beats are a CONTINUATION of the shot already on screen, not a
+  // change of scene, so the game's bubble transition has no business over
+  // them.  game.js's own `quiet` list in beginWipe is the right home for
+  // that; until it has them, the wipe is dropped from here, on the way in
+  // (from the beat's own update, the frame after it starts) and on the way
+  // out (on the tick after the state flips back).
+  noWipe() {
+    const g = gg(); if (!g || !g.wipe) return;
+    g.wipe.t = 0;
+    for (let i = 0; i < 3; i++) setTimeout(() => { const q = gg(); if (q && q.wipe) q.wipe.t = 0; }, i * 22);
+  },
+
+  // Hand the camera back, whatever happened.  Every scene ends here, and so
+  // does every skip: zoom back to 1 on the player, no bars, no freeze.
+  release(secs) {
+    const g = gg();
+    this.night = 0; this.lamp = 0; this.red = 0;
+    if (!g) return;
+    if (g.cineRelease) g.cineRelease(secs === undefined ? 0.8 : secs);
+    if (g.cineBars) g.cineBars(0);
+    if (g.cineFreeze) g.cineFreeze(false);
+  },
+
+  // ---- the lamp anchors, read off the village that is actually standing ---
+  // Recomputed only when the village is rebuilt, never per frame.
+  spots() {
+    const V = typeof Village !== 'undefined' ? Village : null;
+    if (!V || !V.built) return [];
+    const key = V.pierX + ':' + V.structures.length + ':' + V.decks.length;
+    if (this._spots && this._key === key) return this._spots;
+    const X = V.pierX, out = [];
+    for (let i = 0; i < V.decks.length; i++) {
+      const d = V.decks[i], cx0 = (d.x0 + d.x1) * 0.5;
+      if (Math.abs(cx0 - X) > 1100) continue;
+      out.push([R(cx0), R((d.y0 + d.y1) * 0.5), 1, hash2(R(cx0), 7) * 6.28]);
+      if (d.x1 - d.x0 > 140) out.push([R(d.x0 + 34), R(d.y0 + 5), 0.8, hash2(R(d.x0), 13) * 6.28]);
+    }
+    for (let i = 0; i < V.structures.length; i++) {
+      const s = V.structures[i];
+      if (s.kind !== 'house') continue;
+      const cx0 = s.x + (s.bx || 0) + (s.bw || 0) * 0.5;
+      if (Math.abs(cx0 - X) > 1100) continue;
+      out.push([R(cx0), R(s.y - 7), 1.15, hash2(R(cx0), 19) * 6.28]);
+    }
+    out.push([R(X), R(V.shoreY - 3), 1.3, 0.7]);
+    this._key = key;
+    return this._spots = out;
+  },
+
+  // ---- the passes -------------------------------------------------------
+  // everything clips to the frame BETWEEN the letterbox bars, so nothing the
+  // night does ever spills onto them
+  clip(ctx, barH) {
+    ctx.save();
+    if (barH > 0) { ctx.beginPath(); ctx.rect(0, barH, 640, Math.max(0, 360 - barH * 2)); ctx.clip(); }
+  },
+  veil(ctx, k, barH) {
+    if (!this.built || k <= 0.015) return;
+    this.clip(ctx, barH);
+    ctx.globalAlpha = qa(k);
+    ctx.drawImage(A.wcVeil, 0, 0);
+    ctx.restore();
+  },
+  wash(ctx, col, a, barH) {
+    if (a <= 0.01) return;
+    ctx.fillStyle = rgbaq(col, Math.min(1, a));
+    ctx.fillRect(0, barH, 640, Math.max(0, 360 - barH * 2));
+  },
+  // One lamp, at a world point, drawn over the wash so the light survives it.
+  // The zoom is rounded to a whole number before it scales the disc, so a
+  // baked pixel pool never lands on a fractional grid.
+  pool(ctx, wx, wy, k, barH, mul, coreCol) {
+    if (!this.built || k <= 0.02) return;
+    const g = gg(); if (!g || !g.worldToScreen) return;
+    this.clip(ctx, barH);
+    this.blit(ctx, g, wx, wy, k, mul === undefined ? 1 : mul, coreCol);
+    ctx.restore();
+  },
+  blit(ctx, g, wx, wy, k, mul, coreCol) {
+    const sp = g.worldToScreen(wx, wy);
+    const sx = R(sp.x), sy = R(sp.y);
+    if (sx < -90 || sx > 730 || sy < -70 || sy > 430) return;
+    const z = Math.max(1, Math.min(3, R(g.cine ? g.cine.zoom : 1)));
+    const P0 = A.wcPool, P1 = A.wcCore;
+    ctx.globalAlpha = qa(Math.min(1, k * 0.8 * mul));
+    ctx.drawImage(P0.c, sx - P0.ax * z, sy - P0.ay * z, P0.c.width * z, P0.c.height * z);
+    ctx.globalAlpha = qa(Math.min(1, k * mul));
+    if (coreCol) { ctx.fillStyle = coreCol; ctx.fillRect(sx - z, sy - z, z * 2, z * 2); }
+    ctx.drawImage(P1.c, sx - P1.ax * z, sy - P1.ay * z, P1.c.width * z, P1.c.height * z);
+  },
+  // every lamp the village has, with a slow flicker on each one
+  lamps(ctx, k, barH, t) {
+    if (!this.built || k <= 0.02) return;
+    const g = gg(); if (!g || !g.worldToScreen) return;
+    const list = this.spots(); if (!list.length) return;
+    this.clip(ctx, barH);
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
+      const fl = 0.86 + Math.sin(t * 5.1 + s[3]) * 0.07 + Math.sin(t * 11.3 + s[3] * 2) * 0.05;
+      this.blit(ctx, g, s[0], s[1], k, s[2] * fl, null);
+    }
+    ctx.restore();
+  },
+
+  // ---- marks that hang off a world position -----------------------------
+  // a chunky exclamation that pops up over a head and settles
+  mark(ctx, wx, wy, k, col) {
+    if (k <= 0.01 || !this.built) return;
+    const g = gg(); if (!g || !g.worldToScreen) return;
+    const sp = g.worldToScreen(wx, wy);
+    const e = slamK(clamp(k, 0, 1));
+    const s = Math.max(1, Math.min(3, R(g.cine ? g.cine.zoom : 1)));
+    const x0 = R(sp.x), y0 = R(sp.y) - R(e * 7);
+    if (x0 < -20 || x0 > 660 || y0 < -20 || y0 > 380) return;
+    const put = (dx, dy, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x0 + dx * s, y0 + dy * s, w * s, h * s); };
+    put(-2, -8, 4, 7, '#14141c'); put(-2, 0, 4, 4, '#14141c');
+    put(-1, -7, 2, 5, col || '#ffe48f'); put(-1, 1, 2, 2, col || '#ffe48f');
+  },
+  // a speech bubble stuck to a world point, drawn in interface space so the
+  // letters stay crisp no matter what the zoom is doing
+  bubble(ctx, wx, wy, str, n, hot) {
+    const g = gg(); if (!g || !g.worldToScreen || typeof UIKit === 'undefined') return;
+    const sp = g.worldToScreen(wx, wy);
+    const sx = clamp(R(sp.x), 44, 596), sy = clamp(R(sp.y), 58, 318);
+    const w = Math.max(70, textWidth(str, 7) + 20);
+    const bx = clamp(sx - w / 2, 8, 632 - w), by = clamp(sy - 26, 54, 296);
+    UIKit.panel(ctx, bx, by, w, 24, 'parchment');
+    const face = '#e8dcc0', ink = hot ? '#8c1a1c' : '#2a2016';
+    // the tail: three hard steps, never a stroked triangle
+    for (let i = 0; i < 9; i++) {
+      const hw = 6 - R(i * 0.66);
+      P(ctx, i < 8 ? face : ink, sx - hw, by + 23 + i, hw * 2, 1);
+      P(ctx, ink, sx - hw - 1, by + 23 + i, 1, 1); P(ctx, ink, sx + hw, by + 23 + i, 1, 1);
+    }
+    pixelText(ctx, str.slice(0, Math.max(0, Math.min(str.length, n))), bx + 10, by + 8, 7, ink, 'left', false);
+  },
+  // the caption line, in the bottom bar where the letterbox already is
+  cap(ctx, str, a, n) {
+    if (!str || a <= 0.02) return;
+    ctx.globalAlpha = qa(Math.min(1, a));
+    const shown = n === undefined ? str : str.slice(0, Math.max(0, Math.min(str.length, n)));
+    pixelTextOutlined(ctx, shown, 320, 336, 8, '#e8eef4', '#000000', 'center');
+    ctx.globalAlpha = 1;
+  },
+};
+global.WorldCine = WorldCine;
+
+// ---- the in-world beats, and what happens when ---------------------------
+// the raid going loud: the body, the bell, the Chief, and the fleet
+const KV = { body: 0.00, bell: 0.60, spread: 1.75, chief: 2.60, order: 3.05, fleet: 4.15, end: 5.50 };
+// a boat picks her out and comes for her
+const KB = { snap: 0.00, creep: 0.50, whip: 1.10, out: 1.50, end: 2.05 };
+// the last hull of a wave, burning
+const KL = { push: 0.00, hold: 1.15, out: 1.70, end: 2.45 };
+// somewhere new, seen from the water
+const KC = { in: 0.00, card: 0.50, sub: 1.10, out: 2.30, end: 3.30 };
+const WORLD_KINDS = { village_alarm: 1, bearing_down: 1, last_boat: 1, chapter_in: 1 };
+
+// =========================================================================
 //  TIMING TABLES
 // =========================================================================
 // the Chief arrives
@@ -1319,6 +1728,8 @@ const BossCut = {
   kind: null, name: 'MINI-BOSS', active: false, worldActive: false, done: true,
   t: 0, shake: 0, flash: 0, fade: 0,
   ax: 0, ay: 0, anchored: false,
+  // the in-world beats: staged in the live game rather than on a baked plate
+  world: false, wx: 0, wy: 0, wname: '', wsub: '', cap: null, capT: 0, _w: null,
   _fired: null, _man: null, _ott: null, _shk: null, _chf: null,
 
   // ----------------------------------------------------------------- init
@@ -1506,11 +1917,15 @@ const BossCut = {
     this.t = 0; this.shake = 0; this.flash = 0; this.fade = 0;
     this._fired = {};
     FX.clear();
-    const known = kind === 'chief_intro' || kind === 'chief_defeat' || kind === 'mini_intro' || kind === 'mini_defeat';
-    if (!BUILT || !known) {                       // never throw, never hang
-      this.active = false; this.done = true; this.worldActive = true; this.kind = null; return;
+    // the in-world beats need none of the baked plates, only the camera and
+    // the night kit, so they are allowed to run even if the bake fell over
+    this.world = !!WORLD_KINDS[kind];
+    const known = this.world || kind === 'chief_intro' || kind === 'chief_defeat' || kind === 'mini_intro' || kind === 'mini_defeat';
+    if (!known || (this.world ? !WorldCine.ok() : !BUILT)) {   // never throw, never hang
+      this.active = false; this.done = true; this.worldActive = true; this.kind = null; this.world = false; return;
     }
     this.active = true; this.done = false;
+    if (this.world) { this.startWorld(kind, opts); return; }
     const mini = kind === 'mini_intro' || kind === 'mini_defeat';
     // the minis play over live gameplay; the Chief's two get the frame to
     // themselves until the last half second, when the world fades back in
@@ -1534,11 +1949,14 @@ const BossCut = {
     }
   },
 
-  // jump to the very end: nothing left on screen, the world back underneath
+  // jump to the very end: nothing left on screen, the world back underneath,
+  // and — for the in-world beats — the camera handed straight back
   skip() {
+    const w = this.world;
     this.active = false; this.done = true; this.worldActive = true;
-    this.fade = 0; this.flash = 0; this.shake = 0; this.kind = null;
+    this.fade = 0; this.flash = 0; this.shake = 0; this.kind = null; this.world = false;
     FX.clear();
+    if (w) { WorldCine.release(0); WorldCine.noWipe(); }
   },
 
   sfx(fn) { try { if (typeof Audio_ !== 'undefined') fn(); } catch (e) { } },
@@ -1556,7 +1974,8 @@ const BossCut = {
     this.flash = Math.max(0, this.flash - dt * 6);
     FX.update(dt);
     const T = this.t;
-    if (this.kind === 'chief_intro') this.updIntro(dt, T);
+    if (this.world) this.updWorld(dt, T);
+    else if (this.kind === 'chief_intro') this.updIntro(dt, T);
     else if (this.kind === 'chief_defeat') this.updDefeat(dt, T);
     else if (this.kind === 'mini_intro') { if (T > KM.end) this.finish(); }
     else if (this.kind === 'mini_defeat') {
@@ -1568,7 +1987,246 @@ const BossCut = {
     }
   },
 
-  finish() { this.active = false; this.done = true; this.worldActive = true; this.kind = null; FX.clear(); },
+  finish() {
+    const w = this.world;
+    this.active = false; this.done = true; this.worldActive = true; this.kind = null; this.world = false;
+    FX.clear();
+    if (w) { WorldCine.release(0.7); WorldCine.noWipe(); }
+  },
+
+  // =======================================================================
+  //  THE IN-WORLD BEATS
+  //
+  //  Staged in the live world: the camera is the game's camera, the village
+  //  is the village, the boats are the boats.  All these methods do is drive
+  //  G.cineTo / cineHold / cineBars on a clock and hang a caption or a
+  //  bubble off something that is really there.
+  //
+  //    'village_alarm'  ~5.5s  the raid goes loud.  the body goes off the
+  //                            pier, the bell starts, the village lights
+  //                            every lamp it owns, the Chief gives the order
+  //                            and the camera pulls back onto open water
+  //                            with the fleet already coming out.
+  //    'bearing_down'   ~2.1s  one hull picks her out and comes for her:
+  //                            snap onto it, creep in, whip back to her.
+  //    'last_boat'      ~2.5s  the last hull of a wave, burning.  push in,
+  //                            hold on it, drift back out.
+  //    'chapter_in'     ~3.3s  somewhere new, seen from the water: a slow
+  //                            push toward the shore under a stamped card.
+  // =======================================================================
+  startWorld(kind, opts) {
+    const g = gg();
+    this.worldActive = true; this.anchored = false;
+    this.shake = 0; this.flash = 0; this.fade = 0;
+    this.cap = null; this.capT = 0;
+    const w = this._w = { bell: 0, bn: 0, chief: null, X: 0, SY: 0 };
+    if (!g || !g.cineTo) { this.finish(); return; }
+    const p = g.player;
+    this.wx = opts.x === undefined ? (p ? p.x : 0) : opts.x;
+    this.wy = opts.y === undefined ? (p ? p.y : 0) : opts.y;
+    this.wname = String(opts.name || '').toUpperCase();
+    this.wsub = opts.sub || '';
+    const V = (typeof Village !== 'undefined' && Village.built) ? Village : null;
+    w.X = V ? V.pierX : (g.pier ? g.pier.x : this.wx);
+    w.SY = V ? V.shoreY : (g.pier ? g.pier.y0 + 24 : this.wy);
+
+    if (kind === 'village_alarm') {
+      WorldCine.night = 1; WorldCine.lamp = 0.5; WorldCine.red = 0;
+      g.cineBars(1);
+      g.cineHold(this.wx, this.wy - 4, 2.8);
+      // pin the man who is going to give the order before the panic that is
+      // already running carries him off down the boardwalk
+      if (V) {
+        for (let i = 0; i < V.villagers.length; i++) {
+          const v = V.villagers[i];
+          if (v.build === 'boss' && !v.dead && !v.gone) { w.chief = v; break; }
+        }
+        // The cine camera can only look inside the follow camera's own
+        // window, and the follow camera is pinned to a player who is sitting
+        // still in the channel -- so anybody this beat wants to SHOW has to
+        // be held where the shot can reach them.  The Chief comes out to the
+        // head of his own pier and stays there; the crowd stays on the decks
+        // instead of bolting up the beach, which is what the village's alarm
+        // would otherwise have all of them doing by the second beat.
+        if (w.chief) {
+          w.cx = w.X; w.cy = w.SY - 8;
+          w.chief.x = w.cx; w.chief.y = w.cy; w.chief.alerted = true; w.chief.panicked = true;
+          w.chief.onJetty = true;
+          if (w.chief.setState) w.chief.setState('notice');
+        }
+        w.crowd = [];
+        for (let i = 0; i < V.villagers.length && w.crowd.length < 14; i++) {
+          const v = V.villagers[i];
+          if (v.dead || v.gone || v === w.chief) continue;
+          if (Math.abs(v.x - w.X) > 440 || v.y > w.SY + 70) continue;
+          w.crowd.push({ v: v, x: v.x, y: v.y });
+          v.alerted = true; v.panicked = true;
+          if (v.notice) v.notice();
+        }
+      }
+      this.sfx(() => { Audio_.tone(70, 0.6, 'square', 0.22, -34); Audio_.noise(0.4, 0.12, 520, 60); });
+    } else if (kind === 'bearing_down') {
+      if (opts.x === undefined && g.enemies && g.enemies.length && p) {
+        let best = null, bd = 1e9;
+        for (const e of g.enemies) { if (e.dead) continue; const d = dist(e.x, e.y, p.x, p.y); if (d < bd) { bd = d; best = e; } }
+        if (best) { this.wx = best.x; this.wy = best.y; w.tgt = best; }
+      }
+      g.cineBars(0); g.cineHold(this.wx, this.wy, 2.3);
+      this.cap = 'they have seen her.'; this.capT = 0;
+      this.sfx(() => { Audio_.tone(118, 0.5, 'sawtooth', 0.22, -60); Audio_.noise(0.42, 0.14, 700, 80); });
+    } else if (kind === 'last_boat') {
+      g.cineBars(0); g.cineHold(this.wx, this.wy, 1.5); g.cineTo(this.wx, this.wy, 2.7, 0.5);
+      this.cap = opts.text || 'that was the last of them.'; this.capT = 0;
+      this.sfx(() => { Audio_.explosion(0.9); Audio_.tone(150, 0.5, 'sine', 0.14, -60); });
+    } else {                                     // chapter_in
+      const ax = this.wx, ay = this.wy;
+      g.cineBars(0); g.cineHold(ax, ay, 1.0); g.cineTo(ax, ay - 110, 1.6, 2.6);
+      this.sfx(() => { Audio_.tone(150, 1.0, 'sine', 0.16, 40); Audio_.tone(225, 1.1, 'triangle', 0.08, 30); });
+    }
+  },
+
+  updWorld(dt, T) {
+    const g = gg(); if (!g || !g.cineTo) { this.finish(); return; }
+    if (T < 0.3) WorldCine.noWipe();
+    const k = this.kind;
+    if (k === 'village_alarm') this.updAlarm(dt, T, g);
+    else if (k === 'bearing_down') this.updBearing(dt, T, g);
+    else if (k === 'last_boat') this.updLast(dt, T, g);
+    else this.updChapter(dt, T, g);
+  },
+
+  // ---- the raid goes loud -------------------------------------------------
+  updAlarm(dt, T, g) {
+    const w = this._w, V = (typeof Village !== 'undefined' && Village.built) ? Village : null;
+    // the bell, struck on a two-note alternation for as long as it matters
+    if (T > KV.bell && T < KV.fleet + 0.7) {
+      w.bell -= dt;
+      if (w.bell <= 0) {
+        w.bell = 0.44; w.bn++; w.hit = 1;
+        const hi = (w.bn & 1) === 1;
+        this.sfx(() => { Audio_.tone(hi ? 784 : 588, 0.45, 'triangle', 0.17, -50); Audio_.tone(hi ? 392 : 294, 0.55, 'sine', 0.10); });
+      }
+      w.hit = Math.max(0, (w.hit || 0) - dt * 3.4);
+      WorldCine.red = w.hit * 0.21;
+    } else WorldCine.red = 0;
+    // the man who is about to give the order, and the crowd behind him, stay
+    // exactly where the shot can see them
+    if (w.chief && !w.chief.dead && !w.chief.gone) {
+      const c = w.chief;
+      c.x = w.cx; c.y = w.cy; c.tx = w.cx; c.ty = w.cy; c.panicked = true;
+      c.face = g.player && g.player.x < c.x ? -1 : 1;
+    }
+    if (w.crowd) {
+      for (let i = 0; i < w.crowd.length; i++) {
+        const q = w.crowd[i], v = q.v;
+        if (v.dead || v.gone) continue;
+        v.x = q.x; v.y = q.y; v.tx = q.x; v.ty = q.y; v.panicked = true;
+      }
+      w.shout = (w.shout === undefined ? 0.5 : w.shout) - dt;
+      if (w.shout <= 0 && w.crowd.length) {
+        w.shout = 0.34;
+        const q = w.crowd[(Math.random() * w.crowd.length) | 0];
+        if (q && !q.v.dead && !q.v.speech && q.v.say) q.v.say('!', 1.0, '#ffd9d9');
+      }
+    }
+    // the lamps come on across the village while the alarm runs
+    WorldCine.lamp = Math.min(1, WorldCine.lamp + dt * (T > KV.bell ? 0.9 : 0.2));
+
+    if (this.cue('pull', KV.bell, () => { })) {
+      g.cineTo(w.X, w.SY + 40, 1.45, 0.8);
+      this.cap = 'THE BELL.'; this.capT = T;
+      if (V && V.panicNear) V.panicNear(w.X, w.SY, 460);
+    }
+    if (this.cue('pan', KV.spread, () => { Audio_.tone(196, 0.5, 'square', 0.10); })) {
+      g.cineTo(w.X - 210, w.SY + 16, 1.28, 1.0);
+      this.cap = 'every lamp in the bay, all at once.'; this.capT = T;
+      if (V && V.panicAll) V.panicAll();
+    }
+    if (this.cue('chief', KV.chief, () => { Audio_.tone(92, 0.8, 'sawtooth', 0.24, -22); })) {
+      const c = w.chief;
+      if (c && !c.dead && !c.gone) { if (c.notice) c.notice(); c.panicked = true; g.cineTo(c.x, c.y - 6, 2.6, 0.55); }
+      else g.cineTo(w.X, w.SY - 10, 2.6, 0.55);
+      this.cap = null;
+    }
+    if (this.cue('order', KV.order, () => { Audio_.roar(); Audio_.tone(110, 0.7, 'square', 0.2, -30); })) g.shake(6);
+    if (this.cue('fleet', KV.fleet, () => { Audio_.tone(196, 0.9, 'square', 0.13); Audio_.splash(2.2); })) {
+      g.cineRelease(1.15);
+      this.cap = 'the whole bay put out at once.'; this.capT = T;
+      if (w.crowd) for (const q of w.crowd) { if (q.v.dead || q.v.gone) continue; q.v.panicked = false; if (q.v.panic) q.v.panic(); }
+      if (w.chief && !w.chief.dead && !w.chief.gone) { w.chief.panicked = false; if (w.chief.panic) w.chief.panic(); }
+      if (V) for (const v of V.villagers) if (!v.dead && !v.gone && Math.random() < 0.55) v.panic();
+    }
+    // and the night lifts as the harbour lights itself, so the fight starts
+    // in the light it is played in rather than cutting back to it
+    if (T > KV.fleet - 0.5) WorldCine.night = Math.max(0, 1 - (T - (KV.fleet - 0.5)) / 1.45);
+    g.cineBars(T > KV.end - 0.8 ? eo3(clamp((KV.end - T) / 0.8, 0, 1)) : 1);
+    if (T > KV.end) this.finish();
+  },
+
+  // ---- a hull picks her out ----------------------------------------------
+  updBearing(dt, T, g) {
+    const w = this._w, e = w.tgt;
+    if (e && !e.dead) { this.wx = e.x; this.wy = e.y; }
+    g.cineBars(T < KB.out ? eo3(T / 0.2) : eo3(clamp((KB.end - T) / 0.35, 0, 1)));
+    if (this.cue('creep', KB.creep, () => { })) g.cineTo(this.wx, this.wy, 2.9, 0.62);
+    else if (T > KB.creep && T < KB.whip) g.cineTo(this.wx, this.wy, 2.9, 0.62);
+    if (this.cue('whip', KB.whip, () => { Audio_.tone(260, 0.2, 'square', 0.16, -160); })) {
+      const p = g.player; g.cineTo(p.x, p.y, 1.9, 0.3);
+      this.cap = null;
+    }
+    if (this.cue('out', KB.out, () => { })) g.cineRelease(0.55);
+    if (T > KB.end) this.finish();
+  },
+
+  // ---- the last hull of a wave -------------------------------------------
+  updLast(dt, T, g) {
+    if (T > KL.push && T < KL.hold && Math.random() < 22 * dt && g.particles)
+      g.particles.spray(this.wx + rand(-9, 9), this.wy + rand(-7, 7), -1.6 + rand(-0.4, 0.4), 1, 40);
+    g.cineBars(T < KL.out ? eo3(T / 0.25) : eo3(clamp((KL.end - T) / 0.4, 0, 1)));
+    if (this.cue('drift', KL.hold, () => { Audio_.tone(90, 0.7, 'sine', 0.14, -30); })) g.cineTo(this.wx, this.wy - 10, 2.3, 0.9);
+    if (this.cue('out', KL.out, () => { })) g.cineRelease(0.8);
+    if (T > KL.end) this.finish();
+  },
+
+  // ---- somewhere new, seen from the water --------------------------------
+  updChapter(dt, T, g) {
+    g.cineBars(T < KC.out ? eo3(T / 0.35) : eo3(clamp((KC.end - T) / 0.5, 0, 1)));
+    this.cue('card', KC.card, () => { Audio_.tone(120, 0.3, 'square', 0.2, -50); Audio_.noise(0.2, 0.16, 900, 120); });
+    this.cue('sub', KC.sub, () => Audio_.tone(330, 0.3, 'triangle', 0.10, 60));
+    if (this.cue('out', KC.out, () => { })) g.cineRelease(1.0);
+    if (T > KC.end) this.finish();
+  },
+
+  // ---- what goes over the top of the live frame --------------------------
+  drawWorld(ctx, T, t) {
+    const g = gg(); if (!g) return;
+    const W = WorldCine, barH = R(46 * (g.cine ? g.cine.bars : 0));
+    ctx.imageSmoothingEnabled = false;
+    if (W.night > 0.015) { W.veil(ctx, W.night, barH); W.lamps(ctx, W.night * W.lamp, barH, t); }
+    if (this.kind === 'village_alarm' && W.night > 0.015)
+      W.pool(ctx, this.wx - 9, this.wy - 1, W.night, barH, 1.15, '#ffd67a');   // his lantern, still going
+    if (W.red > 0.01) W.wash(ctx, '#b8202a', W.red, barH);
+    if (this.kind === 'village_alarm') {
+      const c = this._w.chief;
+      if (T > KV.chief + 0.16 && T < KV.fleet + 0.15 && c && !c.dead && !c.gone) {
+        W.mark(ctx, c.x, c.y - 19, clamp((T - KV.chief - 0.16) / 0.2, 0, 1), '#ff6161');
+        if (T > KV.order) W.bubble(ctx, c.x, c.y - 28, 'EVERY BOAT IN THE WATER!', Math.floor((T - KV.order) * 38), true);
+      }
+    } else if (this.kind === 'chapter_in') {
+      if (T > KC.card && this.wname) {
+        const k = slamK(clamp((T - KC.card) / 0.26, 0, 1));
+        ctx.globalAlpha = qa(Math.min(1, clamp((KC.end - T) / 0.5, 0, 1)));
+        UIKit.ribbon(ctx, 320, 96 - R((1 - k) * 26), this.wname, 'gold');
+        if (T > KC.sub && this.wsub)
+          pixelTextOutlined(ctx, this.wsub, 320, 126, 7, '#cfe0ec', '#08101c', 'center');
+        ctx.globalAlpha = 1;
+      }
+    }
+    if (this.cap) {
+      const a = clamp((T - this.capT) / 0.22, 0, 1) * clamp((this.capT + 2.6 - T) / 0.45, 0, 1);
+      W.cap(ctx, this.cap, a, Math.floor((T - this.capT) * 40));
+    }
+  },
 
   // ---- the Chief arrives --------------------------------------------------
   updIntro(dt, T) {
@@ -1672,7 +2330,8 @@ const BossCut = {
   //  RENDER — everything in 640x360 logical screen space
   // =======================================================================
   renderScreen(ctx, t) {
-    if (this.done || !this.kind || !BUILT) return;
+    if (this.done || !this.kind) return;
+    if (!BUILT && !this.world) return;
     // the Chief's two cuts own the whole frame, so they hand back to the game
     // by fading THEMSELVES out over the live world.  Only then do we pay for
     // the extra buffer, and only for the last half second.
@@ -1692,6 +2351,10 @@ const BossCut = {
     this.paint(ctx, t);
   },
   paint(ctx, t) {
+    // the in-world beats never shake the interface layer: the world under it
+    // is already being shaken by the game's own camera, and a wash that moves
+    // off its own frame shows an edge
+    if (this.world) { this.drawWorld(ctx, this.t, t); return; }
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     const sh = this.shake;
