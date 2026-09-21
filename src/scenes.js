@@ -136,17 +136,22 @@ const Dialogue = {
     if (this._queued) return;
     this._queued = true;
     const nat = this._nat, self = this;
-    const step = (tries) => {
+    let left = nat ? 100 : 0;
+    // polled on the frame clock rather than a timer, so the hand-off lands on
+    // the very next frame after the body drops instead of a tenth of a second
+    // later with the interface flashing back on in between
+    const step = () => {
       self._timer = 0;
       const g = sceneG();
       if (!g) return;
       if (nat && g.fisherman && !g.fisherman.alive && g.state === 'play' && g.playCut) {
         if (g.playCut('village_alarm', { x: x, y: y })) return;
       }
-      if (tries > 0) { self._timer = setTimeout(() => step(tries - 1), 45); return; }
+      if (left-- > 0) { requestAnimationFrame(step); self._timer = setTimeout(step, 400); return; }
       if (typeof WorldCine !== 'undefined') WorldCine.release(0.5);
     };
-    this._timer = setTimeout(() => step(nat ? 28 : 0), 45);
+    requestAnimationFrame(step);
+    this._timer = setTimeout(step, 400);
   },
 
   // drop the staging and hand everything back, whatever state it was in
@@ -161,6 +166,25 @@ const Dialogue = {
 
   renderWorld(ctx, cam) { /* everything is anchored through the camera in HUD space */ },
 
+  // the plain, un-staged bubble: exactly the one that was here before, kept
+  // so anything that drives the game straight past the arrival still looks
+  // the way it always did
+  plainBubble(ctx, g, f, n) {
+    const text = this.text;
+    const sp = g.worldToScreen(f.x, f.y - 34);
+    const sx = Math.round(sp.x), sy = Math.round(sp.y);
+    n = Math.min(text.length, n);
+    const w = Math.max(70, textWidth(text, 7) + 20);
+    const bx = clamp(sx - w / 2, 6, 634 - w), by = clamp(sy - 26, 44, 300);
+    UIKit.panel(ctx, bx, by, w, 24, 'parchment');
+    ctx.fillStyle = '#e8dcc0';
+    ctx.beginPath(); ctx.moveTo(sx - 6, by + 23); ctx.lineTo(sx + 6, by + 23); ctx.lineTo(sx, by + 33); ctx.fill();
+    ctx.fillStyle = '#2a2016';
+    ctx.beginPath(); ctx.moveTo(sx - 7, by + 24); ctx.lineTo(sx - 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(sx + 7, by + 24); ctx.lineTo(sx + 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
+    pixelText(ctx, text.slice(0, n), bx + 10, by + 8, 7, '#2a2016', 'left', false);
+  },
+
   renderHUD(ctx) {
     const g = sceneG(); if (!g) return;
     const f = g.fisherman;
@@ -170,6 +194,11 @@ const Dialogue = {
 
     // ---- the night, the lamps the village has lit, and the muzzle flash
     if (W && on) {
+      // where we are and what time it is, in the bar the letterbox already
+      // put there.  One line; the bubble carries the rest.
+      if (this.t < 3.1 && this._shot < 0)
+        W.cap(ctx, 'fisher village.  two hours before dawn.',
+          clamp((this.t - 0.45) / 0.3, 0, 1) * clamp((3.1 - this.t) / 0.45, 0, 1), Math.floor((this.t - 0.45) * 38));
       W.veil(ctx, W.night, barH);
       W.lamps(ctx, W.night * W.lamp, barH, this.t);
       if (f && f.alive) W.pool(ctx, f.x - 9, f.y - 1, W.night, barH, 1.15, '#ffd67a');
@@ -185,7 +214,7 @@ const Dialogue = {
         const n = Math.min(this._cut, Math.floor((this.t - K.shout) * 44) + 1);
         if (this.t > K.shout && n > 0) W.bubble(ctx, f.x, f.y - 30, this.text, n, false);
       } else if (this.t > 0.6) {
-        W2bubble(ctx, g, f, this.text, Math.floor((this.t - 0.6) * 30));
+        this.plainBubble(ctx, g, f, Math.floor((this.t - 0.6) * 30));
       }
     }
 
@@ -200,61 +229,6 @@ const Dialogue = {
       320, py + 22, 6, on ? '#8fa6b8' : '#9ab0c0', 'center');
   },
 };
-// the plain, un-staged bubble: exactly the one that was here before, kept so
-// anything that drives the game past the arrival still looks the way it did
-function W2bubble(ctx, g, f, text, n) {
-  const sp = g.worldToScreen(f.x, f.y - 34);
-  const sx = Math.round(sp.x), sy = Math.round(sp.y);
-  n = Math.min(text.length, n);
-  const w = Math.max(70, textWidth(text, 7) + 20);
-  const bx = clamp(sx - w / 2, 6, 634 - w), by = clamp(sy - 26, 44, 300);
-  UIKit.panel(ctx, bx, by, w, 24, 'parchment');
-  ctx.fillStyle = '#e8dcc0';
-  ctx.beginPath(); ctx.moveTo(sx - 6, by + 23); ctx.lineTo(sx + 6, by + 23); ctx.lineTo(sx, by + 33); ctx.fill();
-  ctx.fillStyle = '#2a2016';
-  ctx.beginPath(); ctx.moveTo(sx - 7, by + 24); ctx.lineTo(sx - 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(sx + 7, by + 24); ctx.lineTo(sx + 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
-  pixelText(ctx, text.slice(0, n), bx + 10, by + 8, 7, '#2a2016', 'left', false);
-}
-
-function drawEndScreen(ctx, t, win) {
-  ctx.fillStyle = win ? 'rgba(6,26,20,0.88)' : 'rgba(30,5,10,0.88)';
-  ctx.fillRect(0, 0, 640, 360);
-  const s = G.stats;
-  UIKit.ribbon(ctx, 320, 18, win ? 'VILLAGE LIBERATED' : 'THE SEA TAKES ANOTHER', win ? 'gold' : 'dark');
-  if (win) {
-    pixelTextOutlined(ctx, 'The Chief sank with his shark.', 320, 48, 7, '#ffffff', '#14141c', 'center');
-    pixelTextOutlined(ctx, 'The boats will not fish here again.', 320, 58, 7, '#ffffff', '#14141c', 'center');
-    pixelText(ctx, 'NEXT DESTINATION: THE CANNERY', 320, 72, 6, '#8ac6ff', 'center');
-  } else {
-    pixelTextOutlined(ctx, 'The otter drags you back to the reef.', 320, 48, 7, '#ffffff', '#14141c', 'center');
-    pixelText(ctx, 'Your scrap and upgrades are kept. Spend them better.', 320, 60, 6, '#ffe48f', 'center');
-    pixelText(ctx, 'Strategy, not luck.', 320, 72, 6, '#9ab0c0', 'center');
-  }
-  const rows = [
-    ['Time survived', fmtTime(G.director.time)],
-    ['Boats sunk', s.kills],
-    ['Attacks absorbed', s.absorbs],
-    ['Boss crashes into rock', s.bossCrashes],
-    ['Damage dealt', Math.round(s.damageDealt)],
-    ['Damage taken', Math.round(s.damageTaken)],
-    ['Scrap collected', s.scrapCollected],
-    ['Upgrades taken', G.tree.unlocked.size + '/' + SKILL_NODES.length],
-  ];
-  UIKit.panel(ctx, 150, 88, 340, 196, 'dark');
-  rows.forEach(([k, v], i) => {
-    const y = 102 + i * 21;
-    pixelText(ctx, k, 300, y, 7, '#9ab0c0', 'right');
-    pixelTextOutlined(ctx, v + '', 316, y, 8, '#ffffff', '#14141c', 'left');
-    if (i < rows.length - 1) UIKit.divider(ctx, 166, y + 13, 308);
-  });
-  const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
-  UIKit.panel(ctx, 100, 296, 440, 34, 'dark');
-  pixelTextOutlined(ctx, touch ? 'TAP TO FIGHT AGAIN' : '[R] FIGHT AGAIN        [TAB] SKILL TREE',
-    320, 302, 10, Math.floor(t * 2) % 2 ? '#ffffff' : '#ffe48f', '#14141c', 'center');
-  pixelText(ctx, (win ? 'Your build carries over.' : 'Everything you unlocked carries over.') + '   [ESC] title screen', 320, 317, 6, '#9ab0c0', 'center');
-}
-
 // ===========================================================================
 //  BOSS CUTSCENES — short cinematic punches around a boss arriving and dying
 //
@@ -1956,7 +1930,7 @@ const BossCut = {
     this.active = false; this.done = true; this.worldActive = true;
     this.fade = 0; this.flash = 0; this.shake = 0; this.kind = null; this.world = false;
     FX.clear();
-    if (w) { WorldCine.release(0); WorldCine.noWipe(); }
+    if (w) { this.releaseCrowd(); WorldCine.release(0); WorldCine.noWipe(); }
   },
 
   sfx(fn) { try { if (typeof Audio_ !== 'undefined') fn(); } catch (e) { } },
@@ -1987,11 +1961,21 @@ const BossCut = {
     }
   },
 
+  // the alarm holds the Chief and a dozen villagers on their decks; they get
+  // handed back whether the beat ran out or was skipped out of
+  releaseCrowd() {
+    const w = this._w; if (!w) return;
+    const free = v => { if (!v || v.dead || v.gone) return; v.panicked = false; if (v.panic) v.panic(); };
+    if (w.crowd) for (let i = 0; i < w.crowd.length; i++) free(w.crowd[i].v);
+    free(w.chief);
+    w.crowd = null; w.chief = null;
+  },
+
   finish() {
     const w = this.world;
     this.active = false; this.done = true; this.worldActive = true; this.kind = null; this.world = false;
     FX.clear();
-    if (w) { WorldCine.release(0.7); WorldCine.noWipe(); }
+    if (w) { this.releaseCrowd(); WorldCine.release(0.7); WorldCine.noWipe(); }
   },
 
   // =======================================================================
@@ -2064,6 +2048,7 @@ const BossCut = {
           if (v.notice) v.notice();
         }
       }
+      g.shake(7);
       this.sfx(() => { Audio_.tone(70, 0.6, 'square', 0.22, -34); Audio_.noise(0.4, 0.12, 520, 60); });
     } else if (kind === 'bearing_down') {
       if (opts.x === undefined && g.enemies && g.enemies.length && p) {
@@ -2152,13 +2137,11 @@ const BossCut = {
     if (this.cue('fleet', KV.fleet, () => { Audio_.tone(196, 0.9, 'square', 0.13); Audio_.splash(2.2); })) {
       g.cineRelease(1.15);
       this.cap = 'the whole bay put out at once.'; this.capT = T;
-      if (w.crowd) for (const q of w.crowd) { if (q.v.dead || q.v.gone) continue; q.v.panicked = false; if (q.v.panic) q.v.panic(); }
-      if (w.chief && !w.chief.dead && !w.chief.gone) { w.chief.panicked = false; if (w.chief.panic) w.chief.panic(); }
       if (V) for (const v of V.villagers) if (!v.dead && !v.gone && Math.random() < 0.55) v.panic();
     }
     // and the night lifts as the harbour lights itself, so the fight starts
     // in the light it is played in rather than cutting back to it
-    if (T > KV.fleet - 0.5) WorldCine.night = Math.max(0, 1 - (T - (KV.fleet - 0.5)) / 1.45);
+    if (T > KV.order) WorldCine.night = Math.max(0, 1 - (T - KV.order) / 2.15);
     g.cineBars(T > KV.end - 0.8 ? eo3(clamp((KV.end - T) / 0.8, 0, 1)) : 1);
     if (T > KV.end) this.finish();
   },
@@ -2168,8 +2151,9 @@ const BossCut = {
     const w = this._w, e = w.tgt;
     if (e && !e.dead) { this.wx = e.x; this.wy = e.y; }
     g.cineBars(T < KB.out ? eo3(T / 0.2) : eo3(clamp((KB.end - T) / 0.35, 0, 1)));
-    if (this.cue('creep', KB.creep, () => { })) g.cineTo(this.wx, this.wy, 2.9, 0.62);
-    else if (T > KB.creep && T < KB.whip) g.cineTo(this.wx, this.wy, 2.9, 0.62);
+    // re-aimed every frame between the two marks, so a hull that is actually
+    // moving stays in the middle of its own close-up
+    if (T > KB.creep && T < KB.whip) g.cineTo(this.wx, this.wy, 2.9, 0.62);
     if (this.cue('whip', KB.whip, () => { Audio_.tone(260, 0.2, 'square', 0.16, -160); })) {
       const p = g.player; g.cineTo(p.x, p.y, 1.9, 0.3);
       this.cap = null;
@@ -2203,14 +2187,22 @@ const BossCut = {
     const W = WorldCine, barH = R(46 * (g.cine ? g.cine.bars : 0));
     ctx.imageSmoothingEnabled = false;
     if (W.night > 0.015) { W.veil(ctx, W.night, barH); W.lamps(ctx, W.night * W.lamp, barH, t); }
-    if (this.kind === 'village_alarm' && W.night > 0.015)
-      W.pool(ctx, this.wx - 9, this.wy - 1, W.night, barH, 1.15, '#ffd67a');   // his lantern, still going
+    if (this.kind === 'village_alarm') {
+      // his lantern, still going on the planks beside him
+      if (W.night > 0.015) W.pool(ctx, this.wx - 9, this.wy - 1, W.night, barH, 1.15, '#ffd67a');
+      // and the last of the muzzle flash, carried over the hand-off from the
+      // dialogue state so the bang is one event and not two
+      if (T < 0.34) W.wash(ctx, '#ffffff', (1 - T / 0.34) * 0.40, barH);
+    }
     if (W.red > 0.01) W.wash(ctx, '#b8202a', W.red, barH);
     if (this.kind === 'village_alarm') {
       const c = this._w.chief;
-      if (T > KV.chief + 0.16 && T < KV.fleet + 0.15 && c && !c.dead && !c.gone) {
-        W.mark(ctx, c.x, c.y - 19, clamp((T - KV.chief - 0.16) / 0.2, 0, 1), '#ff6161');
-        if (T > KV.order) W.bubble(ctx, c.x, c.y - 28, 'EVERY BOAT IN THE WATER!', Math.floor((T - KV.order) * 38), true);
+      if (c && !c.dead && !c.gone) {
+        // the mark gets out of the way before the bubble lands on top of it
+        if (T > KV.chief + 0.14 && T < KV.order)
+          W.mark(ctx, c.x, c.y - 19, clamp((T - KV.chief - 0.14) / 0.2, 0, 1), '#ff6161');
+        if (T > KV.order && T < KV.fleet + 0.35)
+          W.bubble(ctx, c.x, c.y - 28, 'EVERY BOAT IN THE WATER!', Math.floor((T - KV.order) * 38) + 1, true);
       }
     } else if (this.kind === 'chapter_in') {
       if (T > KC.card && this.wname) {

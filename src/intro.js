@@ -55,7 +55,10 @@ function rgbaq(hex, a) { const c = hexToRgb(hex); return 'rgba(' + c[0] + ',' + 
 
 // ----------------------------------------------------------------- palette
 const IP = {
-  ink: '#101018', ink2: '#1d1b28',
+  // The one ink.  chars.js inks the whole cast with CPAL.out; the boats, the
+  // crates and the reef in here are inked with the same value, so a hull and
+  // a manatee are drawn with the same pen.
+  ink: '#1a1220', ink2: '#2c2436',
   // water ramps, surface -> depths
   shallow: ['#6fd0b4', '#48ad9e', '#2f8a88', '#1f6a72', '#15505e', '#0e3a4a', '#0a2a38'],
   open:    ['#4aa0cf', '#3480b4', '#246394', '#1a4b78', '#12365c', '#0c2544', '#081a32'],
@@ -137,11 +140,13 @@ function buildCaustNet(seed, ph) {
     const dep = y / (CAUST_H - 1);
     const fade = Math.max(0, 1 - dep * 1.22);        // gone by four fifths down
     for (let px = 0; px < LW; px++) {
-      // the same three fields, stretched along the swell so the net reads as
-      // light on water rather than as noise
-      const q3 = Math.sin(px * 0.020 - y * 0.038 + ph * 0.55);
-      const s1 = Math.sin(px * 0.042 + y * 0.062 + ph * 1.15 + q3 * 2.1);
-      const s2 = Math.sin(-px * 0.033 + y * 0.104 - ph * 0.95 - q3 * 1.7);
+      // src/water.js's own three frequencies, taken down together by a bit so
+      // the cells come out the size of a cinematic instead of the size of a
+      // play field.  The ratios between them are what turns three gratings
+      // into a net, so they are not touched.
+      const q3 = Math.sin(px * 0.019 - y * 0.016 + ph * 0.55);
+      const s1 = Math.sin(px * 0.047 + y * 0.029 + ph * 1.15 + q3 * 2.1);
+      const s2 = Math.sin(-px * 0.037 + y * 0.052 - ph * 0.95 - q3 * 1.7);
       const cv = s1 + s2 + q3 * 0.55;
       // Two hard steps of light with an ordered dither between them -- the
       // same posterize-then-Bayer the water ramps and the colour grades in
@@ -1455,9 +1460,12 @@ function backdrop(ctx, o) {
     ctx.save(); ctx.globalAlpha = qa(o.shafts); tile(ctx, sh, s * 0.16, (o.surfY === undefined || o.surfY === null ? -40 : o.surfY)); ctx.restore();
   }
   // the lit water itself: the ocean's own caustics, boiling and drifting
-  const ca = o.caust === undefined ? 0.62 : o.caust;
+  // Strong where the surface is in the shot and the light is coming through
+  // it; a fraction of that once the beat has left the surface behind.
+  const deepShot = o.surfY === undefined || o.surfY === null;
+  const ca = o.caust === undefined ? (deepShot ? 0.26 : 0.60) : o.caust;
   if (ca > 0 && LAY.caust) {
-    const top = (o.surfY === undefined || o.surfY === null ? -34 : o.surfY) - 6;
+    const top = (deepShot ? -34 : o.surfY) - 6;
     tile(ctx, LAY.caust[Math.floor(t * 6) % 3], s * 0.22 + t * 7, top, ca);
   }
   const set = o.set === 'D' ? 'D' : 'S';
@@ -1519,8 +1527,8 @@ function narrate(ctx, text, prog) {
   if (!text) return;
   const n = Math.max(0, Math.min(text.length, Math.floor(prog * 44)));
   const shown = text.slice(0, n);
-  pixelTextOutlined(ctx, shown, 320, 345, 8, '#e8eef4', '#000000', 'center');
-  if (n < text.length && (Math.floor(prog * 8) & 1)) P(ctx, '#e8eef4', 320 + R(textWidth(shown, 8) / 2) + 2, 346, 4, 7);
+  pixelTextOutlined(ctx, shown, 320, 344, 8, '#e8eef4', '#000000', 'center');
+  if (n < text.length && (Math.floor(prog * 8) & 1)) P(ctx, '#e8eef4', 320 + R(textWidth(shown, 8) / 2) + 2, 345, 4, 7);
 }
 function bubble(ctx, x, y, text, dir, style, prog) {
   const size = 7;
@@ -3439,7 +3447,7 @@ BEATS.push({
         const H = holdArt();
         ctx.save(); ctx.translate(R(A.you.x - 4), R(A.you.y - 9)); ctx.rotate(A.you.rot);
         ctx.drawImage(H.plate.c, -H.plate.ax, -H.plate.ay); ctx.restore();
-        drawCapOtter(ctx, Object.assign({}, SC.ot, { x: A.you.x - 20, y: A.you.y - 20, rot: A.you.rot, flip: false, ride: true, tool: false, exp: 'angry' }), Intro.t);
+        drawCapOtter(ctx, Object.assign({}, SC.ot, { x: A.you.x - 16, y: A.you.y - 14, rot: A.you.rot, flip: false, ride: true, tool: false, exp: 'angry' }), Intro.t);
       } else {
         const k = clamp((bt - 7.6) / 4.4, 0, 1);
         ctx.save(); ctx.translate(R(520 - k * 460), R(64)); ctx.scale(0.5 - k * 0.3, 0.5 - k * 0.3);
@@ -3449,7 +3457,7 @@ BEATS.push({
         const H = holdArt();
         ctx.save(); ctx.translate(R(A.you.x - 4), R(A.you.y - 9)); ctx.rotate(A.you.rot);
         ctx.drawImage(H.plate.c, -H.plate.ax, -H.plate.ay); ctx.restore();
-        drawCapOtter(ctx, Object.assign({}, SC.ot, { x: A.you.x - 12, y: A.you.y - 22, rot: A.you.rot, flip: false, ride: true, tool: false, exp: 'happy' }), Intro.t);
+        drawCapOtter(ctx, Object.assign({}, SC.ot, { x: A.you.x - 10, y: A.you.y - 14, rot: A.you.rot, flip: false, ride: true, tool: false, exp: 'happy' }), Intro.t);
         speedLines(ctx, A.you.x - 90, A.you.y, 16, 64, -1, 'rgba(190,225,245,0.32)', 7);
       }
       FX.render(ctx);

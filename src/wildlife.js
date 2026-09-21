@@ -386,11 +386,14 @@ const Wildlife = (function () {
         const b = clamp(((od * 1.12) * 15.999) | 0, 0, 15);
         const sea = clamp(o.visLUT[b] * (1.18 - od * 0.30), 0.10, 0.62);
         IDENT[k] = clamp(sea * 0.54, 0.05, 0.33);
-        WIN_LO[k] = clamp(1 - sea * 1.05 - 0.02, 0.36, 0.86);
         // A fish lit from above is DARKER than the water it hangs in; the only
         // thing that lifts it over the water is a band of surface light
-        // crossing it, and that is the whole reason a shoal glitters.
-        WIN_HI[k] = clamp(1 + sea * 0.15, 1.00, 1.10);
+        // crossing it, and that is the whole reason a shoal glitters.  The
+        // further down it is the less light reaches it at all, so the whole
+        // window slides under the water's own value as well as closing up.
+        const sink = (0.62 - sea) * 0.34;
+        WIN_LO[k] = clamp(1 - sea * 1.05 - 0.02 - sink, 0.30, 0.80);
+        WIN_HI[k] = clamp(1 + sea * 0.15 - sink, 0.80, 1.10);
       }
     }
 
@@ -1293,12 +1296,12 @@ const Wildlife = (function () {
       // the six layers it is normally seen through.  Gameplay animals (the
       // dolphins that escort you, the whale you ride) keep more of their own
       // colour than the scenery does, because you have to be able to find them.
-      sp.ray = submergeAll(buildRay(), 3, 1.0);
-      sp.turtle = submergeAll(buildTurtle(), 2, 1.15);
+      sp.ray = submergeAll(buildRay(), 2, 1.0);
+      sp.turtle = submergeAll(buildTurtle(), 1, 1.25);
       sp.jelly = submergeAll(buildJelly(), 1, 1.25);
-      sp.squid = submergeAll(buildSquid(), 3, 1.15);
-      sp.crab = submergeAll(buildCrab(), 3, 1.0);
-      sp.shark = submergeAll(buildReefShark(), 2, 1.0);
+      sp.squid = submergeAll(buildSquid(), 2, 1.2);
+      sp.crab = submergeAll(buildCrab(), 1, 1.1);
+      sp.shark = submergeAll(buildReefShark(), 2, 1.1);
       sp.dolphin = submergeAll(buildDolphin(), 1, 1.35);
       sp.whale = submergeAll(buildWhale(), 1, 1.35, ['deep', 'deepFluke', 'len', 'half']);
       const T = buildTreasureArt();
