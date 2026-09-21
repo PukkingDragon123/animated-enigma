@@ -51,7 +51,7 @@ class Game {
     if (typeof Intro !== 'undefined' && Intro.reset) Intro.reset();
     this.firstRun = true; this.muted = false; this.bossBeaten = false; this.seenIntro = false;
     this.t = 0; this.last = performance.now(); this.fps = 60;
-    this.wipe = { t: 0, dur: 0.62, snap: null, sctx: null, bubbles: [] };
+    this.wipe = { t: 0, dur: 0.78, snap: null, sctx: null, seed: 0 };
     this._lastState = undefined;
     this.newRun();
     // progress from a previous session, if there is any and storage works
@@ -630,13 +630,13 @@ class Game {
     pixelText(ctx, 'FISHER VILLAGE', Math.round(this.pier.x + ox), Math.round(SHORE_Y - 175 + oy), 8, '#ffe48f', 'center');
   }
   // ---------------------------------------------------------- transitions
-  // The old scene is kept as a still and then eaten away by a shoal of cartoon
-  // bubbles swelling up through it, revealing the new one. Nothing has to
-  // defer its state change for this to work.
+  // One bubble. It swells out of the bottom of the frame carrying the old
+  // scene away inside it, wobbling as a real bubble does, and pops into a
+  // ring of droplets. The new scene is behind it the whole time.
   beginWipe(from, to) {
     if (from === undefined) return;               // the very first frame
     if (this.wipe.t > 0) return;                  // already mid-wipe
-    const quiet = { paused: 1, tree: 1 };         // not for a pause or the tree
+    const quiet = { paused: 1, tree: 1 };         // a pause stays a cut
     if (quiet[from] && quiet[to]) return;
     if (!this.wipe.snap) {
       const c = document.createElement('canvas');
@@ -647,31 +647,38 @@ class Game {
     this.wipe.sctx.setTransform(1, 0, 0, 1, 0, 0);
     this.wipe.sctx.clearRect(0, 0, OUT_W, OUT_H);
     this.wipe.sctx.drawImage(this.g, 0, 0);
-    const seed = (this.time * 977) | 0;
-    this.wipe.bubbles.length = 0;
-    for (let i = 0; i < 26; i++) {
-      const h1 = hash2(seed + i, i * 7 + 3), h2 = hash2(i * 13 + 5, seed - i);
-      this.wipe.bubbles.push({
-        x: 30 + h1 * 580, y: 400 - h2 * 120, r: 40 + h2 * 90,
-        delay: h1 * 0.20 + (i / 26) * 0.16, rise: 150 + h2 * 200, wob: h1 * TAU,
-      });
-    }
-    this.wipe.dur = 0.62; this.wipe.t = this.wipe.dur;
-    Audio_.tone(180 + Math.random() * 60, 0.18, 'sine', 0.05, 520);
+    this.wipe.seed = (this.time * 977) | 0;
+    this.wipe.dur = 0.78; this.wipe.t = this.wipe.dur;
+    Audio_.tone(150, 0.16, 'sine', 0.05, 430);
+    Audio_.tone(620, 0.05, 'triangle', 0.03, 1500);
   }
-  // a hard-edged disc: ctx.arc + fill would antialias the mask edge
-  wipeDisc(ctx, cx, cy, r) {
-    const r2 = r * r;
-    for (let y = -r; y <= r; y += 2) {
-      const w = Math.sqrt(Math.max(0, r2 - y * y));
-      ctx.fillRect(Math.round(cx - w), Math.round(cy + y), Math.round(w * 2), 2);
+  // A hard-edged wobbling disc. ctx.arc + fill would antialias the mask edge,
+  // and a rim with soft pixels in a game with none reads as a mistake.
+  wipeBlob(ctx, cx, cy, r, wob, ph, step = 1) {
+    for (let y = -r; y <= r; y += step) {
+      const f = y / r; if (f < -1 || f > 1) continue;
+      // radius varies with angle, so the outline breathes instead of being a circle
+      const a = Math.asin(clamp(f, -1, 1));
+      const rr = r * (1 + Math.sin(a * 3 + ph) * wob * 0.5 + Math.sin(a * 5 - ph * 1.7) * wob * 0.3);
+      const w = Math.sqrt(Math.max(0, rr * rr - y * y));
+      if (w <= 0) continue;
+      ctx.fillRect(Math.round(cx - w), Math.round(cy + y), Math.round(w * 2), step);
     }
   }
   drawWipe() {
     const w = this.wipe; if (w.t <= 0 || !w.snap) return;
-    const k = 1 - w.t / w.dur;                    // 0 -> 1 across the wipe
-    // a scratch copy of the OLD frame with the bubbles punched out of it, laid
-    // over the NEW one. w.snap is never touched after it is taken.
+    const k = clamp(1 - w.t / w.dur, 0, 1);       // 0 -> 1 across the wipe
+    const S = HUD_SCALE;
+    // smoothstep, so it starts slowly and you actually see it as a bubble
+    // before it fills the frame, instead of snapping open
+    const e = k * k * (3 - 2 * k);
+    const R = 12 + e * 640;
+    const cx = (320 + Math.sin(k * 4.1 + w.seed) * 30 * (1 - e)) * S;
+    const cy = (400 - k * 300) * S;              // the rise stays steady
+    const wob = 0.055 * (1 - e * 0.55);           // settles as it grows
+    const ph = k * 6.2 + w.seed;
+
+    // the OLD scene, with the bubble punched out of it, laid over the new one
     const hole = this._wipeHole || (this._wipeHole = document.createElement('canvas'));
     if (hole.width !== OUT_W) { hole.width = OUT_W; hole.height = OUT_H; }
     const h = hole.getContext('2d');
@@ -682,38 +689,54 @@ class Game {
     h.drawImage(w.snap, 0, 0);
     h.globalCompositeOperation = 'destination-out';
     h.fillStyle = '#000';
-    for (const b of w.bubbles) {
-      const kk = clamp((k - b.delay) / (1 - b.delay), 0, 1);
-      if (kk <= 0) continue;
-      const e = kk * kk * (3 - 2 * kk);           // smoothstep, so they swell
-      this.wipeDisc(h, (b.x + Math.sin(b.wob + k * 5) * 10) * HUD_SCALE,
-        (b.y - b.rise * e) * HUD_SCALE, b.r * e * 2.6 * HUD_SCALE);
-    }
+    this.wipeBlob(h, cx, cy, R * S, wob, ph, 2);
     h.globalCompositeOperation = 'source-over';
     this.full(this.ctx);
     this.ctx.drawImage(hole, 0, 0);
-    // a bright rim and the highlight every cartoon bubble has, over the lot
+
+    // everything below is the bubble itself, in logical units
     this.hud(this.ctx);
-    const c = this.ctx;
-    for (const b of w.bubbles) {
-      const kk = clamp((k - b.delay) / (1 - b.delay), 0, 1);
-      if (kk <= 0 || kk >= 0.98) continue;
-      const e = kk * kk * (3 - 2 * kk), rr = b.r * e * 2.6;
-      const bx = b.x + Math.sin(b.wob + k * 5) * 10, by = b.y - b.rise * e;
-      c.fillStyle = kk > 0.5 ? 'rgba(190,240,255,0.30)' : 'rgba(226,250,255,0.62)';
-      for (let i = 0; i < 34; i++) {
-        const a = (i / 34) * TAU;
-        c.fillRect(Math.round(bx + Math.cos(a) * rr) - 1, Math.round(by + Math.sin(a) * rr) - 1, 3, 3);
-      }
-      // the highlight is a small round blob, not a square: a square here reads
-      // as a rendering artefact rather than as light on a bubble
-      if (rr > 26) {
-        c.fillStyle = 'rgba(255,255,255,0.55)';
-        this.wipeDisc(c, Math.round(bx - rr * 0.40), Math.round(by - rr * 0.44), Math.max(2, Math.min(7, rr * 0.09)));
+    const c = this.ctx, bx = cx / S, by = cy / S, br = R;
+    // a thin skin of the old scene still clinging inside the rim, so the
+    // bubble reads as a surface rather than a hole
+    c.save();
+    c.globalAlpha = 0.16 * (1 - e);
+    c.fillStyle = '#cfefff';
+    this.wipeBlob(c, bx, by, br * 0.985, wob, ph, 1);
+    c.restore();
+    // the rim: sampled densely enough that it is a continuous skin at any
+    // size rather than a dotted line, bright where the light is
+    const RN = Math.max(64, Math.min(560, Math.round(br * 2.2)));
+    for (let i = 0; i < RN; i++) {
+      const a = (i / RN) * TAU;
+      const rr = br * (1 + Math.sin(a * 3 + ph) * wob * 0.5 + Math.sin(a * 5 - ph * 1.7) * wob * 0.3);
+      const lit = Math.cos(a + 2.5) * 0.5 + 0.5;          // light from upper-left
+      const px = Math.round(bx + Math.cos(a) * rr), py = Math.round(by + Math.sin(a) * rr);
+      c.fillStyle = lit > 0.62 ? 'rgba(236,252,255,0.95)' : lit > 0.3 ? 'rgba(178,228,248,0.70)' : 'rgba(140,196,226,0.52)';
+      c.fillRect(px - 1, py - 1, 3, 3);
+      if (lit > 0.75) { c.fillStyle = 'rgba(255,255,255,0.55)'; c.fillRect(px - 1, py - 2, 2, 2); }
+    }
+    // the two highlights every bubble has: a big soft one and a hard spark
+    if (br > 22) {
+      c.fillStyle = 'rgba(255,255,255,0.40)';
+      this.wipeBlob(c, Math.round(bx - br * 0.44), Math.round(by - br * 0.46), Math.max(3, br * 0.11), 0.10, ph * 0.6, 1);
+      c.fillStyle = 'rgba(255,255,255,0.85)';
+      this.wipeBlob(c, Math.round(bx - br * 0.30), Math.round(by - br * 0.58), Math.max(2, br * 0.045), 0, 0, 1);
+    }
+    // it pops: droplets thrown off the rim as it leaves the frame
+    if (k > 0.72) {
+      const pk = (k - 0.72) / 0.28;
+      for (let i = 0; i < 30; i++) {
+        const a = (i / 30) * TAU + w.seed;
+        const d = br * (1 + pk * 0.30) + pk * 40;
+        const s = Math.max(1, Math.round(4 * (1 - pk)));
+        c.fillStyle = `rgba(226,250,255,${(0.75 * (1 - pk)).toFixed(2)})`;
+        c.fillRect(Math.round(bx + Math.cos(a) * d), Math.round(by + Math.sin(a) * d * 0.92), s, s);
       }
     }
     this.full(this.ctx);
   }
+
   blit() {
     if (this.wipe.t > 0) this.drawWipe();
     this.dctx.imageSmoothingEnabled = false;
