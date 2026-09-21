@@ -15,11 +15,12 @@ function sceneG() { try { return G; } catch (e) { return null; } }
 //  night that goes over the top of it, the lamps the village has lit, and
 //  the marks and bubbles that hang off a world position.
 //
-//    0.0  IN THE DARK   she comes up the channel at night, low in the water,
-//                       the village asleep across the top of the frame
-//    3.0  SPOTTED       the camera pushes onto the lookout on the pier head
-//    3.6  THE SHOUT     he yells, and the bay has half a second to hear it
-//    5.4  THE ANSWER    the prompt comes up; the player fires; the camera
+//    0.0  IN THE DARK   she comes up the channel UNDER the water, the
+//                       village asleep across the top of the frame
+//    2.3  SURFACED      she breaks it, and that is what he looks up at
+//    2.9  SPOTTED       the camera pushes onto the lookout on the pier head
+//    3.5  THE SHOUT     he yells, and the bay has half a second to hear it
+//    5.1  THE ANSWER    the prompt comes up; the player fires; the camera
 //                       snaps onto him on the bang and starts pulling out
 //     ->  the alarm, the Chief's order and the fleet carry straight on in
 //         BossCut's in-world 'village_alarm', queued from here
@@ -35,6 +36,12 @@ function sceneG() { try { return G; } catch (e) { return null; } }
 const Dialogue = {
   // ---- the handshake game.js drives.  Do not rename.
   t: 0, text: 'OI! SOMETHING IN THE WATER!', done: false, shotFired: false,
+  // True for exactly as long as the arrival is running as a cinematic, so
+  // game.js can hold the interface off the letterbox while it does:
+  //   ... && !(this.state === 'dialogue' && Dialogue.cinematic)) UI.drawHUD(...)
+  // It is false the moment the staging drops out or the shot is fired, and
+  // false for the whole beat on anything that skips straight to the bubble.
+  cinematic: false,
   // ---- the beats, in seconds
   K: { dive: 2.25, spot: 2.90, shout: 3.45, ready: 5.10 },
   _nat: false, _bail: false, _shot: -1, _queued: false, _timer: 0,
@@ -43,7 +50,7 @@ const Dialogue = {
   reset() {
     this.t = 0; this.done = false; this.shotFired = false;
     this._nat = false; this._bail = false; this._shot = -1; this._queued = false;
-    this._flash = 0; this._cut = 1e9; this._hit = {};
+    this._flash = 0; this._cut = 1e9; this._hit = {}; this.cinematic = false;
     if (this._timer) { clearTimeout(this._timer); this._timer = 0; }
     if (typeof WorldCine !== 'undefined') WorldCine.begin();
   },
@@ -62,7 +69,8 @@ const Dialogue = {
     // this): give the camera and the night straight back and fall through to
     // the plain bubble, so nothing that drives the game from outside changes
     if (this.done && !this._nat && !this._bail) this.bail();
-    if (!this.staged()) { this.t += dt; if (this.t > 3) this.done = true; return; }
+    if (!this.staged()) { this.cinematic = false; this.t += dt; if (this.t > 3) this.done = true; return; }
+    this.cinematic = !this.shotFired;
 
     const g = sceneG(), W = this.wc(), K = this.K;
     const f = g.fisherman, p = g.player;
@@ -118,7 +126,7 @@ const Dialogue = {
     // after, the camera snaps onto him and the rest of the raid is queued.
     if (this.shotFired && this._shot < 0) {
       this._shot = T; this._flash = 1;
-      this._cut = Math.max(4, Math.floor((T - K.shout) * 44) - 3);   // the line is cut off mid-word
+      this._cut = Math.max(4, Math.floor((T - K.shout) * 44));     // whatever he got out, he got out
       g.cineHold(f.x, f.y - 6, 2.9);
       // and a slow release set on the SAME frame, so a dropped timer or a
       // lost cut can never leave the player parked in a close-up
@@ -136,27 +144,36 @@ const Dialogue = {
     if (this._queued) return;
     this._queued = true;
     const nat = this._nat, self = this;
-    let left = nat ? 100 : 0;
-    // polled on the frame clock rather than a timer, so the hand-off lands on
-    // the very next frame after the body drops instead of a tenth of a second
-    // later with the interface flashing back on in between
+    let left = nat ? 150 : 0, over = false;
+    const stop = () => { over = true; if (self._timer) { clearTimeout(self._timer); self._timer = 0; } };
+    // ONE chain, polled on the frame clock rather than a timer, so the hand-off
+    // lands on the very next frame after the body drops instead of a tenth of
+    // a second later with the interface flashing back on in between
     const step = () => {
-      self._timer = 0;
+      if (over) return;
       const g = sceneG();
-      if (!g) return;
-      if (nat && g.fisherman && !g.fisherman.alive && g.state === 'play' && g.playCut) {
-        if (g.playCut('village_alarm', { x: x, y: y })) return;
-      }
-      if (left-- > 0) { requestAnimationFrame(step); self._timer = setTimeout(step, 400); return; }
+      if (!g || self._bail) { stop(); return; }
+      if (nat && g.fisherman && !g.fisherman.alive && g.state === 'play' && g.playCut &&
+          g.playCut('village_alarm', { x: x, y: y })) { stop(); return; }
+      if (left-- > 0) { requestAnimationFrame(step); return; }
+      stop();
       if (typeof WorldCine !== 'undefined') WorldCine.release(0.5);
     };
     requestAnimationFrame(step);
-    this._timer = setTimeout(step, 400);
+    // and one watchdog, for a frame clock that has stopped -- a hidden tab
+    // pauses requestAnimationFrame, and the camera is not being left parked
+    // in a close-up while it does
+    this._timer = setTimeout(() => {
+      self._timer = 0;
+      if (over) return;
+      over = true;
+      if (typeof WorldCine !== 'undefined') WorldCine.release(0.5);
+    }, 4000);
   },
 
   // drop the staging and hand everything back, whatever state it was in
   bail() {
-    this._bail = true; this._queued = true;
+    this._bail = true; this._queued = true; this.cinematic = false;
     if (this._timer) { clearTimeout(this._timer); this._timer = 0; }
     if (typeof WorldCine !== 'undefined') WorldCine.release(0.25);
   },
@@ -192,24 +209,25 @@ const Dialogue = {
     const barH = Math.round(46 * bars);
     const W = this.wc(), on = this.staged();
 
-    // ---- the night, the lamps the village has lit, and the muzzle flash
+    // ---- the night, then the lamps the village has lit punching back
+    // through it, then the muzzle flash over the lot
     if (W && on) {
-      // where we are and what time it is, in the bar the letterbox already
-      // put there.  One line; the bubble carries the rest.
-      if (this.t < 3.1 && this._shot < 0)
-        W.cap(ctx, 'fisher village.  two hours before dawn.',
-          clamp((this.t - 0.45) / 0.3, 0, 1) * clamp((3.1 - this.t) / 0.45, 0, 1), Math.floor((this.t - 0.45) * 38));
       W.veil(ctx, W.night, barH);
       W.lamps(ctx, W.night * W.lamp, barH, this.t);
       if (f && f.alive) W.pool(ctx, f.x - 9, f.y - 1, W.night, barH, 1.15, '#ffd67a');
       if (this._flash > 0.02) W.wash(ctx, '#ffffff', Math.min(0.78, this._flash), barH);
+      // where we are and what hour it is, in the bar the letterbox already put
+      // there.  One line; the bubble carries the rest.
+      if (this.t < 3.1 && this._shot < 0)
+        W.cap(ctx, 'fisher village.  two hours before dawn.',
+          clamp((this.t - 0.45) / 0.3, 0, 1) * clamp((3.1 - this.t) / 0.45, 0, 1), Math.floor((this.t - 0.45) * 38));
     }
 
     // ---- what he says, anchored to him through the zoom
     if (f && f.alive) {
       if (on) {
         const K = this.K;
-        if (this.t > K.spot + 0.10 && this.t < K.shout + 0.55)
+        if (this.t > K.spot + 0.10 && this.t < K.shout)   // out of the way before the bubble lands
           W.mark(ctx, f.x, f.y - 21, clamp((this.t - K.spot - 0.10) / 0.20, 0, 1), '#ffe48f');
         const n = Math.min(this._cut, Math.floor((this.t - K.shout) * 44) + 1);
         if (this.t > K.shout && n > 0) W.bubble(ctx, f.x, f.y - 30, this.text, n, false);
@@ -1519,9 +1537,11 @@ const WorldCine = {
   // that; until it has them, the wipe is dropped from here, on the way in
   // (from the beat's own update, the frame after it starts) and on the way
   // out (on the tick after the state flips back).
-  noWipe() {
-    const g = gg(); if (!g || !g.wipe) return;
-    g.wipe.t = 0;
+  noWipe() { const g = gg(); if (g && g.wipe) g.wipe.t = 0; },
+  // on the way out the state flips AFTER this file has stopped being called
+  // for the frame, so the wipe has to be caught on the tick that follows
+  noWipeSoon() {
+    this.noWipe();
     for (let i = 0; i < 3; i++) setTimeout(() => { const q = gg(); if (q && q.wipe) q.wipe.t = 0; }, i * 22);
   },
 
@@ -1930,7 +1950,7 @@ const BossCut = {
     this.active = false; this.done = true; this.worldActive = true;
     this.fade = 0; this.flash = 0; this.shake = 0; this.kind = null; this.world = false;
     FX.clear();
-    if (w) { this.releaseCrowd(); WorldCine.release(0); WorldCine.noWipe(); }
+    if (w) { this.releaseCrowd(); WorldCine.release(0); WorldCine.noWipeSoon(); }
   },
 
   sfx(fn) { try { if (typeof Audio_ !== 'undefined') fn(); } catch (e) { } },
@@ -1975,7 +1995,7 @@ const BossCut = {
     const w = this.world;
     this.active = false; this.done = true; this.worldActive = true; this.kind = null; this.world = false;
     FX.clear();
-    if (w) { this.releaseCrowd(); WorldCine.release(0.7); WorldCine.noWipe(); }
+    if (w) { this.releaseCrowd(); WorldCine.release(0.7); WorldCine.noWipeSoon(); }
   },
 
   // =======================================================================
@@ -2141,7 +2161,7 @@ const BossCut = {
     }
     // and the night lifts as the harbour lights itself, so the fight starts
     // in the light it is played in rather than cutting back to it
-    if (T > KV.order) WorldCine.night = Math.max(0, 1 - (T - KV.order) / 2.15);
+    if (T > KV.order + 0.6) WorldCine.night = Math.max(0, 1 - (T - KV.order - 0.6) / (KV.end - KV.order - 0.6));
     g.cineBars(T > KV.end - 0.8 ? eo3(clamp((KV.end - T) / 0.8, 0, 1)) : 1);
     if (T > KV.end) this.finish();
   },

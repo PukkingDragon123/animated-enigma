@@ -375,9 +375,21 @@ const Wildlife = (function () {
     // the surface light water.js pours onto the seabed, as a multiplier on the
     // value window; it dies out by band 10, which is tier 3 of ours
     const CAUS_V = [0.30, 0.25, 0.14, 0, 0, 0];
+    // the colour a passing crest puts on a fish, per depth band, in two steps
+    const GLARE = new Array(32).fill('#bfe8f2');
     function tuneLadder() {
       const o = OC(); if (!o || !o.visLUT) return;
       _AMB.length = 0;                          // rebake against the real sea
+      // the crest's own colour at each band: the sea, two shades up
+      for (let b = 0; b < 16; b++) {
+        const amb = ambient(b);
+        for (let j = 0; j < 2; j++) {
+          const v = 1.34 + j * 0.30;
+          GLARE[b * 2 + j] = 'rgb(' + ((clamp(amb[0] * v, 0, 255) / 5 | 0) * 5) + ','
+            + ((clamp(amb[1] * v, 0, 255) / 5 | 0) * 5) + ','
+            + ((clamp(amb[2] * v, 0, 255) / 5 | 0) * 5) + ')';
+        }
+      }
       // water.js decides how much of the bottom the water lets through; the
       // fish hangs above the bottom, so it keeps a little more of itself than
       // that and not a scrap more.
@@ -1650,13 +1662,16 @@ const Wildlife = (function () {
       }
       for (let i = 0; i < live; i++) blitStrip(ctx, _PS[i], _PI[i], _PX[i], _PY[i]);
       // --- the surface passing over them ---------------------------------
-      // when a crest rolls through, the glare off it lands on top of the fish
+      // When a crest rolls over the shoal the glare off it lands on the fish.
+      // It used to be near-white, which put the one pixel of pure white in the
+      // whole sea on the back of a sardine; it is now the crest's own colour
+      // at that band -- the same tone the water beside it is wearing.
       if (baseOd < 0.52) {
         const wv = ref.w;                       // the crest height refractAt already worked out
         if (wv > 0.74) {
-          ctx.fillStyle = wv > 0.92 ? '#e6fbff' : '#b9e6f4';
+          ctx.fillStyle = GLARE[band * 2 + (wv > 0.92 ? 1 : 0)];
           const gt = (t * 7) | 0;
-          for (let i = 0; i < live; i++) if (((i + gt) & 3) === 0) ctx.fillRect(Math.round(_PX[i]) - 1, Math.round(_PY[i]) - 2, 2, 1);
+          for (let i = 0; i < live; i++) if (((i + gt) & 3) === 0) ctx.fillRect(Math.round(_PX[i]) - 1, Math.round(_PY[i]) - 1, 2, 1);
         }
       }
     }
