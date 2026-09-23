@@ -167,7 +167,7 @@ const Banter = {
     if (this.cur && pri <= this.pri) return false;
     if (!this.cur && this.cool > 0 && pri < 3) return false;
     this.last[kind] = this.t;
-    this.pri = pri;
+    this.pri = pri; this.kind = kind; this.topic = topic;
     this.queue = topic.slice(1);
     this.start(topic[0], opts.delay || 0);
     this.idleT = 0;
@@ -203,11 +203,11 @@ const Banter = {
     // minute later in the middle of something else.
     const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
     if (this._rt && now - this._rt > 0.75) {
-      const wonIt = !!this.cur && G.director && G.director.cleared;
+      // the beats worth hearing in full get said again on the other side of
+      // whatever interrupted them; everything smaller is simply dropped
+      const again = this.cur && (this.kind === 'wave' || this.kind === 'cleared' || this.kind === 'last') ? { kind: this.kind, topic: this.topic } : null;
       this.cur = null; this.queue.length = 0; this.pri = -1; this.cool = 0.6;
-      // they were talking about the wave they had just won and the shop cut
-      // them off: let them finish it over the quiet water instead
-      if (wonIt) { this.last.cleared = null; this.last.last = null; this.say(G.director.lastWave ? 'last' : 'cleared', { delay: 0.8 }); }
+      if (again) { this.last[again.kind] = null; this.say(again.kind, { lines: again.topic, delay: 0.8 }); }
     }
     this._rt = now;
     this.t += dt;
@@ -367,7 +367,8 @@ const UI = {
         roundFill(ctx, '#14141c', ax, ay, w, 14, 3);
         roundFill(ctx, k >= 1 ? '#2b3a4a' : '#1b222c', ax + 1, ay + 1, w - 2, 12, 2);
         pixelText(ctx, key, ax + Math.round(w / 2), ay + 2, 5, k >= 1 ? col : '#5d6f80', 'center');
-        ctx.fillStyle = k >= 1 ? col : '#3d4b58'; ctx.fillRect(ax + 2, ay + 10, Math.round((w - 4) * clamp(k, 0, 1)), 2);
+        ctx.fillStyle = '#0d1018'; ctx.fillRect(ax + 2, ay + 10, w - 4, 2);
+        ctx.fillStyle = k >= 1 ? col : '#7d8fa0'; ctx.fillRect(ax + 2, ay + 10, Math.round((w - 4) * clamp(k, 0, 1)), 2);
         ax += w + 3;
       }
     }
@@ -540,7 +541,7 @@ const UI = {
   // them: a wound, a good parry, a net, the meter coming up
   watch(dt, t) {
     const p = G.player; if (!p) return;
-    const s = this._w || (this._w = { hp: 1, abs: 0, kills: 0, buy: false, ramp: false, ready: false, run: false });
+    const s = this._w || (this._w = { hp: 1, abs: 0, kills: 0, buy: false, ramp: false, ready: false });
     const hpk = clamp(p.hp / p.stats.maxHp, 0, 1);
     // before the fight there is nothing to talk about, and it is the natural
     // place to wipe the slate so a second run hears the same lines again
@@ -555,12 +556,21 @@ const UI = {
     if (G.stats.absorbs > s.abs) { s.abs = G.stats.absorbs; Banter.say('parry'); }
     if (G.stats.kills > s.kills) { if (s.kills === 0 && G.stats.kills === 1) Banter.say('firstkill'); s.kills = G.stats.kills; }
     if (p.slowed > 0.1 && !s.net) { s.net = true; Banter.say('netted'); } else if (p.slowed <= 0) s.net = false;
+    // the wave that spawns a big one already says so; this is for the moment
+    // it actually reaches them, which is a different feeling entirely
+    const mb = (G.miniBosses || []).find(m => !m.dead);
+    if (mb !== s.mini) { s.mini = mb; s.miniSaid = false; }
+    // keep asking until they actually get a word in, it is worth saying
+    if (mb && !s.miniSaid && Math.abs(mb.x - p.x) < 260 && Math.abs(mb.y - p.y) < 200) s.miniSaid = Banter.say('big');
     const full = p.rampage.meter >= 100 && !p.rampage.active;
-    if (full && !s.ready) Banter.say('ready'); s.ready = full;
-    if (p.rampage.active && !s.ramp) Banter.say('rampage'); s.ramp = p.rampage.active;
+    if (full && !s.ready) Banter.say('ready');
+    s.ready = full;
+    if (p.rampage.active && !s.ramp) Banter.say('rampage');
+    s.ramp = p.rampage.active;
     if (t % 1 < dt) {                                   // the shop check is not cheap; once a second is plenty
       const canBuy = SKILL_NODES.some(n => !G.tree.has(n.id) && G.tree.available(n) && G.tree.canAfford(n));
-      if (canBuy && !s.buy) Banter.say('shop'); s.buy = canBuy;
+      if (canBuy && !s.buy) Banter.say('shop');
+      s.buy = canBuy;
     }
     // nothing has happened for a while: let them be fond of each other
     if (Banter.idleT > 26 && G.director.state === 'fighting') Banter.say('idle');

@@ -133,7 +133,9 @@ class Director {
     if (typeof G.spawnMiniBoss !== 'function') return;
     const pos = this.spawnPos();
     const m = G.spawnMiniBoss(null, pos.x, pos.y, this.difficulty);
-    if (m) { this.objTarget = m; this.chat('big', { delay: 0.4 }); }
+    // the HUD notices it has surfaced and lets the pair remark on it once the
+    // wave's own line has landed
+    if (m) this.objTarget = m;
   }
 
   next() {

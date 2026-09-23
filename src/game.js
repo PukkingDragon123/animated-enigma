@@ -97,7 +97,7 @@ class Game {
     this.fisherman = this.firstRun ? new Fisherman(this.pier.x, this.pier.y1 - 6) : null;
     this.cam.x = this.player.x - (CROP_X + VIEW_W / 2); this.cam.y = this.player.y - (CROP_Y + VIEW_H / 2);
     UI.banner = null;
-    if (!this.firstRun) { this.director.begin(); this.banner('REMATCH', '#ffe48f', 2, 'The village heard you were coming.'); }
+    if (!this.firstRun) { this.director.begin(); this.banner('REMATCH', '#ffe48f', 2); }
   }
   // ---------------------------------------------------------- skipping
   // A cutscene is never skipped by a stray tap. You hold the button down and
@@ -215,7 +215,14 @@ class Game {
     this.boss = (typeof makeBoss === 'function' ? makeBoss(k, bx, by, this.director.difficulty) : null) || new Boss(bx, by);
     Audio_.roar(); this.shake(10);
     for (let i = 0; i < 6; i++) this.particles.splash(this.boss.x + rand(-40, 40), this.boss.y + rand(-20, 20), 2);
-    // the Chief has his own cinematic; the animals get the mini-boss card
+    // These used to open a cinematic. With those gone the arrival would land
+    // on nothing, so the pair call it instead -- which is what the user asked
+    // the cutscenes be replaced with.
+    if (typeof UI !== 'undefined' && UI.banterEvent) {
+      UI.banterEvent('big', k === 'chief'
+        ? { lines: [['o', "That's him. That's the Chief."], ['m', 'I know.']], pri: 9 }
+        : { lines: [['o', 'Something big!'], ['m', 'I see it.']], pri: 8 });
+    }
     if (k === 'chief') this.playCut('chief_intro');
     else this.playCut('mini_intro', { name: this.boss.name || 'SOMETHING BIG' });
   }
@@ -252,7 +259,7 @@ class Game {
   // a wave is only over when every last boat is on the bottom
   onWaveCleared(idx) {
     const d = this.director;
-    this.banner('WAVE CLEARED', '#6fd88e', 2.6, d.lastWave ? 'Nothing left but the Chief.' : 'Spend your salvage, then call the next one in.');
+    this.banner('WAVE CLEARED', '#6fd88e', 2.6);
     Audio_.rampage();
     this.pickups.forEach(p => { p.life = Math.max(p.life, 30); });
     // the tree comes up on its own once the banner has had its moment
@@ -358,7 +365,7 @@ class Game {
         this.updateWorld(dt);
         if (Input.hit('Tab')) {
           if (this.upgradesOpen()) this.openTree('play');
-          else { this.banner('FINISH THE WAVE FIRST', '#ff6161', 1.6, 'The skill tree only opens between waves.'); Audio_.deny(); }
+          else { this.banner('FINISH THE WAVE FIRST', '#ff6161', 1.6); Audio_.deny(); }
         }
         else if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'paused';
         if (this.director.cleared && !this.director.lastWave) {
