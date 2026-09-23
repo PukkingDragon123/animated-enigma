@@ -195,6 +195,22 @@ function stamp(ctx, rows, x, y, map) {
   }
 }
 function px(ctx, col, x, y, w = 1, h = 1) { ctx.fillStyle = col; ctx.fillRect(x | 0, y | 0, w, h); }
+// stamp(), but one fillRect per RUN of like characters instead of one per
+// character. Same output; a quarter of the calls on the shapes that are laid
+// down every frame (the live face).
+function stampRuns(ctx, rows, x, y, map) {
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    let q = 0;
+    while (q < row.length) {
+      const ch = row[q]; let e = q + 1;
+      while (e < row.length && row[e] === ch) e++;
+      const col = map[ch];
+      if (col) { ctx.fillStyle = col; ctx.fillRect(x + q, y + r, e - q, 1); }
+      q = e;
+    }
+  }
+}
 // ---- detail passes -------------------------------------------------------
 // For the machinery — the boats, the shark, the chief. The hero pair below
 // does its shading by hand: a probabilistic grain reads as texture on a
@@ -501,7 +517,7 @@ function buildManateeBody(armored) {
   for (let y = cyy - 9; y <= cyy + 9; y++) if (deep(125, y, 2)) px(ctx, HD.mm, 125, y);
   // ---- blush. LAST, over the pad, because the cheek is where the pad ends
   //      and everything else up here would paint over it. Two bands and a
-  //      stipple, kept four pixels inboard of the sheer so it is a warm cheek
+  //      stipple, kept five pixels inboard of the sheer so it is a warm cheek
   //      and never a coloured edge, and small: it has to say "soft animal" at
   //      a glance from across the bay without turning into a wound.
   for (const s2 of [-1, 1]) for (let y = 11; y <= 18; y++) for (let x = 117; x <= 130; x++) {
@@ -945,18 +961,16 @@ function drawOtterFace(ctx, exp, blink, t) {
     // trick. Eight across where it was six, and it has to live between the
     // hat band (y 10-11) and the muzzle pad (y 20), so eight tall is the
     // most the head has room for.
-    if (exp === 'surprised') stamp(ctx, EYE_WIDE, ex - 1, 12, EYEMAP);
-    else stamp(ctx, EYE_BEAD, ex, 12, EYEMAP);
+    if (exp === 'surprised') stampRuns(ctx, EYE_WIDE, ex - 1, 12, EYEMAP);
+    else stampRuns(ctx, EYE_BEAD, ex, 12, EYEMAP);
   }
   // ---- blush: one warm patch on each cheek, in the gap between the muzzle
   //      pad and the jowl, stippled so it reads as a flush in the fur rather
   //      than a sticker on top of it.
-  for (const bx of [8, 28]) for (let y = 19; y <= 24; y++) for (let x = bx - 3; x <= bx + 3; x++) {
-    const u = (x - bx) / 2.9, v = (y - 21.5) / 2.1;
-    const r2 = u * u + v * v;
-    if (r2 > 1) continue;
-    if (hash2(x * 7, y * 11 + 3) < 0.30) continue;
-    px(ctx, r2 < 0.34 ? CPAL.blushFL : CPAL.blushF, x, y);
+  for (const bx of [6, 26]) {
+    px(ctx, CPAL.blushF, bx + 1, 20, 3, 1);
+    px(ctx, CPAL.blushFL, bx, 21, 5, 1);
+    px(ctx, CPAL.blushF, bx + 1, 22, 3, 1);
   }
   // brows say the mood at this size more than the eyes do
   if (exp === 'angry') {
@@ -1498,6 +1512,7 @@ function buildCharacters() {
   // head canvas we redraw the face onto each frame (hi-res, like its source)
   CH.headBuf = newCanHi(CH.otterHead.w, CH.otterHead.h);
   CH.headBufCtx = CH.headBuf.getContext('2d');
+  _headKey = '';
   // ---- the side-on set every cinematic shares ----------------------------
   CH.side = buildManateeSideSet();
   CH.otterStandHi = buildOtterStand();
@@ -1513,11 +1528,25 @@ function buildCharacters() {
 }
 
 // ---- live head with expression --------------------------------------------
+// The face is a few hundred fillRects, and it was being laid down again on
+// every single frame even though it only has five things that can change:
+// the expression, the blink, the rage tint, and — for the three expressions
+// that flap — which half of the flap it is on. Key the buffer on exactly
+// those and the head is free on the frames where none of them moved, which
+// is most of them. (The buffer is copied out immediately by every caller
+// that keeps one, so handing the same canvas back twice is safe.)
+let _headKey = '';
 function otterHeadWithFace(exp, blink, t, rage) {
+  const e = exp || 'idle';
+  const flap = e === 'talk' ? (Math.floor(t * 9) & 1)
+    : (e === 'drown' || e === 'pain') ? (Math.floor(t * 4) & 1) : 0;
+  const key = e + (blink ? 'B' : '') + (rage ? 'R' : '') + flap;
+  if (key === _headKey) return CH.headBuf;
+  _headKey = key;
   const ctx = CH.headBufCtx;
   ctx.clearRect(0, 0, CH.headBuf.width, CH.headBuf.height);
   drawRaw(ctx, (rage ? CH.headRage : CH.otterHeadHi).c, 0, 0);
-  drawOtterFace(ctx, exp, blink, t);
+  drawOtterFace(ctx, e, blink, t);
   return CH.headBuf;
 }
 
@@ -1655,6 +1684,7 @@ const Rig = {
   _oface: 1, _oflip: 1,       // the same for the otter's own left/right flip
   _warn: 0,                   // how near a mirror is, read off the heading
   _pinch: 1, _oPinch: 1,      // the widths those flips are drawn at, eased
+  _gunRoll: 1,                // the gun rolling over as the aim crosses vertical
   _rollPh: 0, _rolling: 0, _rollSeen: 0, _rollAge: 0,
   _lean: { x: 0, v: 0 },      // otter thrown fore/aft by her acceleration
   _sway: { x: 0, v: 0 },      // otter rolled into her turns
@@ -1677,7 +1707,7 @@ const Rig = {
     this._headAim = this._gunAim = this._aim.x;
     this._spd = s.speed || 0; this._acc = 0;
     this._face = s.facing || 1; this._flip = 1; this._oface = 1; this._oflip = 1;
-    this._warn = 0; this._pinch = 1; this._oPinch = 1;
+    this._warn = 0; this._pinch = 1; this._oPinch = 1; this._gunRoll = 1;
     this._lean.x = this._lean.v = 0; this._sway.x = this._sway.v = 0;
     this._fluke.x = this._fluke.v = 0; this._kick.x = this._kick.v = 0;
     this._hurtHot = 0; this._hurtCd = 0; this._recoil = s.recoil || 0;
@@ -1810,7 +1840,7 @@ const Rig = {
   },
 
   draw(ctx, x, y, s) {
-    this._advance(s);
+    const dt = this._advance(s);
     const t = s.t, facing = s.facing || 1;
     const ph = s.swimPhase || 0;
     const spd = this._spd;
@@ -1850,9 +1880,10 @@ const Rig = {
 
     const wag = _stroke(ph, 0.45) * (0.032 + Math.min(0.05, spd / 3400));
 
-    // The facing flip is the one place a 2D rig always snaps. Pinch her to a
-    // sliver on the frame it happens and let her widen back out: the mirror
-    // becomes a pivot through edge-on, with a yaw that unwinds behind it.
+    // The facing flip is the one place a 2D rig always snaps. She is pinched
+    // toward edge-on across it and widens back out, so the mirror reads as a
+    // pivot with a yaw unwinding behind it. The pinch itself is eased and
+    // anticipated up in _advance — read the note there before changing it.
     const fu = this._flip;
     const pinch = this._pinch;
     const flipYaw = Math.sin(Math.PI * fu) * 0.16 * facing;
@@ -1980,7 +2011,15 @@ const Rig = {
       const gun = s.gunSprite;
       if (gun) {
         ctx.save();
-        const flipY = Math.cos(localAim) < 0 ? -1 : 1; ctx.scale(1, flipY);
+        // The gun is kept grip-down by mirroring it in Y once the aim passes
+        // vertical, and that mirror used to happen between two frames: sight,
+        // grip and hammer all jumped to the other side at once. Roll it over
+        // instead — ease the sign through zero and hold it off the degenerate
+        // scale, so the weapon turns over in his paws the way a real one
+        // would. It is scoped to the gun and its flash; the paws do not move.
+        this._gunRoll = _lp(this._gunRoll, Math.cos(localAim) < 0 ? -1 : 1, 0.05, dt);
+        const r0 = this._gunRoll;
+        ctx.scale(1, Math.abs(r0) < 0.04 ? (r0 < 0 ? -0.04 : 0.04) : r0);
         ctx.drawImage(gun.c, 4, -gun.ay);
         if (s.flash > 0) { const m = s.bigFlash ? SP.muzzleBig : SP.muzzle; ctx.drawImage(m.c, 4 + gun.w, -m.ay); }
         ctx.restore();
