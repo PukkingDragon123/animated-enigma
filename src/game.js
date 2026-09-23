@@ -70,7 +70,7 @@ class Game {
     this.particles = new Particles(this.ocean);
     this.enemies = []; this.projectiles = []; this.pickups = []; this.wrecks = []; this.rocks = [];
     this.boss = null; this.bossKey = null; this.buoy = null;
-    this.cineReset(); this.holdFire = false; this.cutReturn = null; this.cutMod = null; this.cutWasWorld = false; this.sawBearing = false; this.pendingChapter = null; this.lastKill = null; this.pendingVictory = false; this.pendingStory = null; this.miniBosses = [];
+    this.cineReset(); this.holdFire = false; this.cutReturn = null; this.cutMod = null; this.cutWasWorld = false; this.cutsEnabled = false; this.lastKill = null; this.pendingVictory = false; this.pendingStory = null; this.miniBosses = [];
     this.stats = { kills: 0, shots: 0, absorbs: 0, damageDealt: 0, damageTaken: 0, scrapCollected: 0, bossCrashes: 0 };
     this.cam = { x: 0, y: 0 }; this.shakeAmt = 0; this.time = 0; this.endT = 0;
     this.pier = { x: WORLD_W / 2, y0: SHORE_Y - 24, y1: SHORE_Y + 130, w: 44 };
@@ -189,6 +189,13 @@ class Game {
     return this.playStory(StoryCut.forChapter(n));
   }
   runCut(mod, kind, opts) {
+    // The intro is the only cinematic the game plays. Every other beat --
+    // the boss arrivals and defeats, the chapter story beats -- is held here
+    // rather than unpicked from its call sites, so all of it is one flag away
+    // from coming back. Callers all cope with a refusal: onBossKilled has
+    // already set victory_wait, which times out to the victory screen on its
+    // own, and the intro falls through to the chart.
+    if (!this.cutsEnabled) return false;
     if (!mod || !mod.start) return false;
     mod.start(kind, opts || {});
     if (mod.done || !mod.active) return false;
@@ -220,15 +227,20 @@ class Game {
   }
   banner(text, color, dur = 2, sub = null) { UI.banner = { text, color, dur, sub, t: 0 }; }
   shake(n) { this.shakeAmt = Math.min(20, Math.max(this.shakeAmt, n)); }
-  onFishermanShot() {
+  // The one way into a run. The arrival hands straight here when the pair
+  // have finished talking.
+  startRun() {
+    if (this.runActive && this.state === 'play') return;
     this.holdFire = false;
     if (typeof Village !== 'undefined') Village.panicAll();
-    this.banner('FISHER VILLAGE', '#ff6161', 2.6, 'The otter has spoken. FIGHT!');
-    setTimeout(() => { if (this.director && !this.director.started) this.director.begin(); }, 1200);
+    if (this.director && !this.director.started) this.director.begin();
     this.runActive = true;
     this.autoTree = 0;
     this.state = 'play';
   }
+  // kept because entities.js still calls it if the lookout is ever shot in
+  // ordinary play -- it is no longer how a run begins
+  onFishermanShot() { this.startRun(); }
   // one way in to the skill tree, so every caller gets the same setup
   openTree(prev) {
     this.persist();
@@ -240,11 +252,6 @@ class Game {
   // a wave is only over when every last boat is on the bottom
   onWaveCleared(idx) {
     const d = this.director;
-    // the first wave you ever finish, and the one that leaves only the Chief:
-    // often enough to land, rare enough not to wear out
-    if ((idx === 0 || d.lastWave) && this.lastKill) {
-      this.playCut('last_boat', { x: this.lastKill.x, y: this.lastKill.y, text: d.lastWave ? 'Nothing left but the Chief.' : '' });
-    }
     this.banner('WAVE CLEARED', '#6fd88e', 2.6, d.lastWave ? 'Nothing left but the Chief.' : 'Spend your salvage, then call the next one in.');
     Audio_.rampage();
     this.pickups.forEach(p => { p.life = Math.max(p.life, 30); });
@@ -333,13 +340,7 @@ class Game {
         const wa = WorldMap.action;
         if (wa) {
           WorldMap.consume();
-          if (wa === 'launch') {
-            this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; this.skipArm();
-            // the village introduces itself; every chapter after it gets a
-            // card of its own on the way in
-            const d = WorldMap.destinations && WorldMap.destinations[WorldMap.selected];
-            if (d && WorldMap.selected > 0) this.pendingChapter = { name: d.name, sub: d.chapter ? 'CHAPTER ' + d.chapter : '' };
-          }
+          if (wa === 'launch') { this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; this.skipArm(); }
           else if (wa === 'back') this.state = 'menu';
         }
         break;
@@ -347,29 +348,14 @@ class Game {
       case 'dialogue':
         Dialogue.update(dt); this.updateWorld(dt);
         if (Dialogue.cinematic && this.updateSkip(dt) && Dialogue.skip) Dialogue.skip();
-        if (this.pendingChapter && !Dialogue.cinematic) {
-          const c = this.pendingChapter; this.pendingChapter = null;
-          this.playCut('chapter_in', { name: c.name, sub: c.sub, x: this.player.x, y: SHORE_Y + 90 });
-        }
-        const tapOk = !(typeof MobileUI !== 'undefined' && MobileUI.enabled && MobileUI.consumedTouch(Input.mouse.x, Input.mouse.y));
-        if (Dialogue.done && (Input.mouse.clicked || (typeof MobileUI !== 'undefined' && MobileUI.enabled && MobileUI.pressed('fire'))) && tapOk && this.fisherman && this.fisherman.alive && !Dialogue.shotFired) {
-          Dialogue.shotFired = true; const p = this.player, f = this.fisherman;
-          const a = angleTo(p.x, p.y, f.x, f.y - 8), d = dist(p.x, p.y, f.x, f.y - 8);
-          p.aim = a; p.recoil.primary = 0.12; p.flash.primary = 0.08; Audio_.shot('revolver'); this.shake(4);
-          this.projectiles.push(new Projectile({ x: p.x + Math.cos(a) * 10, y: p.y - 5 + Math.sin(a) * 10, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520, life: d / 520 + 0.5, dmg: 999, owner: 'player', sprite: SP.bulletBig, size: 4, trail: true }));
-          this.particles.shell(p.x, p.y - 6, a);
-        }
+        // The two of them say their piece and the fight starts. It used to
+        // wait here for you to click and shoot the lookout dead; nothing is
+        // gated on killing anyone now, and he lives.
+        if (Dialogue.done) this.startRun();
         if (Input.hit('Tab')) this.openTree(this.state);
         break;
       case 'play':
         this.updateWorld(dt);
-        // Once a run, when a hull first bears down on her, the camera goes and
-        // looks at it. Held back until the second wave so the opening fight is
-        // not interrupted while you are still learning the controls.
-        if (!this.sawBearing && this.director && this.director.waveIdx >= 1 && !this.director.cleared) {
-          const near = this.enemies.find(e => !e.dead && dist(e.x, e.y, this.player.x, this.player.y) < 260);
-          if (near) { this.sawBearing = true; this.playCut('bearing_down', { x: near.x, y: near.y }); break; }
-        }
         if (Input.hit('Tab')) {
           if (this.upgradesOpen()) this.openTree('play');
           else { this.banner('FINISH THE WAVE FIRST', '#ff6161', 1.6, 'The skill tree only opens between waves.'); Audio_.deny(); }
@@ -685,8 +671,8 @@ class Game {
       pixelText(ctx, '[ESC] resume    [TAB] skill tree    [M] mute', 320, 106, 7, '#ffe48f', 'center');
       this.drawControls(ctx, 126);
     }
-    if (this.state === 'gameover') drawEndScreen(ctx, t, false);
-    if (this.state === 'victory') drawEndScreen(ctx, t, true);
+    if (this.state === 'gameover') this.drawEndScreen(ctx, t, false);
+    if (this.state === 'victory') this.drawEndScreen(ctx, t, true);
     if (this.state === 'dead_wait') { ctx.fillStyle = `rgba(120,10,20,${Math.min(0.7, this.endT * 0.4).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
     if (this.state === 'death') DeathScene.renderScreen(ctx, this.time);
     if (this.state === 'cut' && this.cutMod) this.cutMod.renderScreen(ctx, this.time);
@@ -957,6 +943,31 @@ class Game {
     this.hud(this.ctx);
     this.ctx.drawImage(w.buf, 0, 0);
     this.full(this.ctx);
+  }
+
+  // The end card. It lived in scenes.js and was deleted there in a refactor
+  // without game.js being told, so winning or dying threw instead of drawing
+  // anything. It lives here now, beside the two states that call it, and is
+  // cut down to the three numbers actually worth reading.
+  drawEndScreen(ctx, t, win) {
+    ctx.fillStyle = win ? 'rgba(6,26,20,0.88)' : 'rgba(30,5,10,0.88)';
+    ctx.fillRect(0, 0, 640, 360);
+    const s = this.stats || {};
+    UIKit.ribbon(ctx, 320, 30, win ? 'THE BOATS ARE GONE' : 'SHE GOES BACK TO THE REEF', win ? 'gold' : 'dark');
+    const rows = [
+      ['Boats sunk', (s.kills | 0) + ''],
+      ['Time', fmtTime((this.director && this.director.time) || 0)],
+      ['Scrap', (s.scrapCollected | 0) + ''],
+    ];
+    UIKit.panel(ctx, 190, 96, 260, 106, 'dark');
+    rows.forEach(([k, v], i) => {
+      const y = 112 + i * 30;
+      pixelText(ctx, k, 316, y + 1, 7, '#9ab0c0', 'right');
+      pixelTextOutlined(ctx, v, 332, y, 9, '#ffffff', '#14141c', 'left');
+    });
+    const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+    pixelTextOutlined(ctx, touch ? 'TAP TO GO AGAIN' : '[R] AGAIN    [TAB] SKILL TREE    [ESC] TITLE',
+      320, 288, 9, Math.floor(t * 2) % 2 ? '#ffffff' : '#ffe48f', '#14141c', 'center');
   }
 
   blit() {
