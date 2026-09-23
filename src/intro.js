@@ -55,7 +55,24 @@ function tri(ctx, col, ax, ay, bx, by, cx, cy) {
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 function bay(x, y) { return (BAYER[((y & 3) << 2) | (x & 3)] + 0.5) / 16; }
 function qa(a) { return Math.max(0, Math.min(1, Math.round(a * 12) / 12)); }   // quantized alpha
-function rgbaq(hex, a) { const c = hexToRgb(hex); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + qa(a) + ')'; }
+// Every alpha in this file is quantized to twelfths and every colour in it is
+// one of a few dozen hex strings, so there are only ever a few hundred
+// distinct fill strings in the whole cinematic.  Building them fresh meant
+// three string allocations per particle per frame -- a few thousand a frame
+// once the water is full of blood, which is pure garbage for the collector.
+// They are built once and looked up after that.
+const _RGBA = new Map();
+function rgbaq(hex, a) {
+  const q = a > 0.99999 ? 12 : a < 0 ? 0 : Math.round(a * 12);
+  const key = hex + q;
+  let out = _RGBA.get(key);
+  if (out === undefined) {
+    const c = hexToRgb(hex);
+    out = 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (q / 12) + ')';
+    _RGBA.set(key, out);
+  }
+  return out;
+}
 
 // ----------------------------------------------------------------- palette
 const IP = {
@@ -1253,7 +1270,7 @@ function buildIntroArt() {
 const FX = {
   list: [],
   clear() { this.list.length = 0; },
-  add(o) { if (this.list.length < 460) this.list.push(o); return o; },
+  add(o) { if (this.list.length < 380) this.list.push(o); return o; },
   bubble(x, y, n, spd) {
     for (let i = 0; i < n; i++) this.add({ k: 'b', x: x + rand(-8, 8), y: y + rand(-6, 6), vx: rand(-8, 8), vy: -rand(14, 40) * (spd || 1), r: randi(1, 3), life: rand(1.2, 3.4), ph: rand(0, TAU) });
   },
@@ -1382,24 +1399,29 @@ const FX = {
           // Every row is bitten in from BOTH sides by a different amount, off
           // the cloud's own seed, so the silhouette comes out lumpy and
           // lopsided.  A perfect disc is the one thing blood in water is not.
-          for (let dy = -r; dy <= r; dy++) {
+          // Rows are two pixels tall on anything bigger than a speck -- half
+          // the fills, and still a hard two-pixel edge rather than a ramp.
+          const st = r >= 5 ? 2 : 1;
+          for (let dy = -r; dy <= r; dy += st) {
             const w = Math.sqrt(Math.max(0, r * r - dy * dy));
             if (w <= 0.5) continue;
             const l = R(w - hash2(sd + dy * 7, sd * 3) * r * 0.55);
             const rr = R(w - hash2(sd * 5 - dy * 3, sd + 11) * r * 0.55);
             if (l + rr <= 0) continue;
-            ctx.fillRect(cx - l, cy + dy, l + rr, 1);
+            ctx.fillRect(cx - l, cy + dy, l + rr, st);
           }
-          // a denser heart to it, one band further down the ramp and off centre
-          const r2 = R(r * 0.58), ox = R(r * 0.14);
+          // A denser heart to it, one band further down the ramp and off
+          // centre.  Only on the big ones: on a four-pixel cloud it is
+          // invisible and it is the second row loop that costs.
+          const r2 = r >= 7 ? R(r * 0.58) : 0, ox = R(r * 0.14);
           ctx.fillStyle = rgbaq(IP.blood[k > 0.6 ? 2 : 0], Math.min(0.38, (k * 0.38 + 0.05) * thin));
-          for (let dy = -r2; dy <= r2; dy++) {
+          for (let dy = -r2; dy <= r2; dy += 2) {
             const w = Math.sqrt(Math.max(0, r2 * r2 - dy * dy));
             if (w <= 0.5) continue;
             const l = R(w - hash2(sd * 7 + dy, sd) * r2 * 0.7);
             const rr = R(w - hash2(sd - dy * 5, sd * 9) * r2 * 0.7);
             if (l + rr <= 0) continue;
-            ctx.fillRect(cx - l + ox, cy + dy, l + rr, 1);
+            ctx.fillRect(cx - l + ox, cy + dy, l + rr, 2);
           }
           // and a speckled fringe that thins out into the water
           ctx.fillStyle = rgbaq(IP.blood[4], Math.min(0.30, k * 0.30 * thin));
@@ -2143,7 +2165,7 @@ BEATS.push({
           T.flash = 1; T.exp = 'pain'; T.tailAmp = 0.55; T.dying = 1;
           FX.spurt(h.x, h.y, h.a + Math.PI + rand(-0.5, 0.5), 14, 1.0);
           FX.spurt(h.x, h.y, h.a + rand(-0.4, 0.4), 8, 0.7);
-          FX.blood(h.x, h.y, 22, 1.2);
+          FX.blood(h.x, h.y, 14, 1.7);
           FX.gib(h.x, h.y, 7, 1.0);
           Intro.shake = 9;
           if (typeof Audio_ !== 'undefined') { Audio_.hit(); Audio_.hurt(); }
@@ -2166,9 +2188,9 @@ BEATS.push({
           T.rot = Math.sin(e * 17) * 0.42;
           T.x += Math.sin(e * 21) * 46 * dt;
           T.exp = 'pain';
-          if (Math.random() < 34 * dt) FX.blood(wp[0], wp[1], 1, 0.75);
-          if (Math.random() < 9 * dt) FX.spurt(wp[0], wp[1], rand(0, TAU), 3, 0.45);
-          if (Math.random() < 26 * dt) FX.bubble(T.x, T.y, 1, 2.2);
+          if (Math.random() < 15 * dt) FX.blood(wp[0], wp[1], 1, 1.15);
+          if (Math.random() < 7 * dt) FX.spurt(wp[0], wp[1], rand(0, TAU), 3, 0.45);
+          if (Math.random() < 16 * dt) FX.bubble(T.x, T.y, 1, 2.2);
         } else {
           // dead, and wound up on the wire, bleeding all the way
           const k = clamp((e - 1.20) / 3.2, 0, 1);
@@ -2179,8 +2201,8 @@ BEATS.push({
           T.beat = lerp(T.beat, 0.20, dt * 2);
           T.tailAmp = lerp(T.tailAmp, 0.05, dt * 2);
           T.flipperA = lerp(T.flipperA, 2.4, dt * 2);
-          if (Math.random() < 9 * dt) FX.blood(wp[0] + rand(-2, 10), wp[1] + rand(6, 20), 1, 0.55);
-          if (Math.random() < 5 * dt) FX.blood(wp[0], wp[1] + rand(16, 46), 1, 0.4);
+          if (Math.random() < 5 * dt) FX.blood(wp[0] + rand(-2, 10), wp[1] + rand(6, 20), 1, 0.9);
+          if (Math.random() < 3 * dt) FX.blood(wp[0], wp[1] + rand(16, 46), 1, 0.7);
         }
       }
     }
@@ -2196,7 +2218,7 @@ BEATS.push({
     A.you.flipperA = 0.45 - smooth(A.you.reach || 0, bt > 3.3 && bt < 5.4 ? 1 : 0, 4.5, dt) * 2.1;
     A.you.reach = smooth(A.you.reach || 0, bt > 3.3 && bt < 5.4 ? 1 : 0, 4.5, dt);
     A.you.exp = talking('you') ? 'talk' : bt > 5.6 ? 'pain' : 'wide';
-    if (bt > 5.7 && A.you.wounds && Math.random() < 11 * dt) {
+    if (bt > 5.7 && A.you.wounds && Math.random() < 6 * dt) {
       const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
       FX.blood(wp[0], wp[1], 1, 0.5);
     }
@@ -2295,9 +2317,9 @@ BEATS.push({
     A.you.rot = smooth(A.you.rot, bt > 3.2 ? -0.06 : 0.10 * (1 - sink) + 0.03, 3, dt);
     A.you.exp = bt > 2.72 ? 'wide' : 'pain';
     // she is still running: the flank has not stopped since the last beat
-    if (Math.random() < 8 * dt) {
+    if (Math.random() < 4.5 * dt) {
       const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
-      FX.blood(wp[0], wp[1], 1, 0.42);
+      FX.blood(wp[0], wp[1], 1, 0.7);
     }
     if (bt > 1.15 && bt < 2.5 && Math.random() < 1.3 * dt) FX.bubble(A.you.x + 30, A.you.y - 10, 1, 0.35);
     if (!SC.splash && bt >= 2.62) {
@@ -2386,9 +2408,9 @@ BEATS.push({
     A.you.y = 226 + Math.sin(bt * 0.66) * 4;
     A.you.rot = smooth(A.you.rot, bt > 6.4 ? -0.10 : 0.04, 3, dt);
     A.you.exp = talking('you') ? 'talk' : bt > 6.2 ? 'angry' : bt > 2.1 ? 'angry' : 'pain';
-    if (Math.random() < 6 * dt) {
+    if (Math.random() < 3.5 * dt) {
       const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
-      FX.blood(wp[0], wp[1], 1, 0.38);
+      FX.blood(wp[0], wp[1], 1, 0.62);
     }
     // he never holds still: a slow figure of eight with two errands in it
     const offer = clamp((bt - 1.60) / 0.55, 0, 1);            // blade out to her
@@ -2502,9 +2524,9 @@ BEATS.push({
     if (SC.spd > 90 && Math.random() < 34 * dt) FX.bubble(A.you.x - 48, A.you.y + rand(-8, 10), 1, 2.4);
     // she is still open, and at this speed it comes off her in a ribbon
     FX.flow(-SC.spd * 0.85, dt);
-    if (Math.random() < (5 + SC.spd * 0.03) * dt) {
+    if (Math.random() < (3 + SC.spd * 0.018) * dt) {
       const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
-      FX.blood(wp[0] - rand(2, 14), wp[1] + rand(-3, 3), 1, 0.30);
+      FX.blood(wp[0] - rand(2, 14), wp[1] + rand(-3, 3), 1, 0.55);
     }
     // out on a red bloom, not a warm one: what they are riding into is a war
     if (bt > 4.85) { Intro.fadeCol = '#8d1420'; Intro.fade = ss(clamp((bt - 4.85) / 1.0, 0, 1)); }

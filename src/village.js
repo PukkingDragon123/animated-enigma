@@ -158,7 +158,7 @@
   P.keg = prop(7, 6, (c, rng, w, h) => barrelBody(c, rng, w, h, false));
 
   // --- crates / fish boxes ------------------------------------------------
-  function crateBody(c, rng, w, h, fishy) {
+  function crateBody(c, rng, w, h, spill) {
     R(c, 0, 0, w, h, W.ink);
     R(c, 1, 1, w - 2, h - 2, W.deck2);
     for (let y = 1; y < h - 1; y += 3) { R(c, 1, y, w - 2, 1, W.deck3); R(c, 1, y + 2, w - 2, 1, W.deck1); }
@@ -169,31 +169,15 @@
     fleck(c, rng, 1, 1, w - 2, h - 2, Math.round(w * 0.4), [W.deck0, W.deck4]);
     // nail heads
     for (const nx of [2, w - 3]) for (let y = 2; y < h - 2; y += 4) R(c, nx, y, 1, 1, W.met2);
-    if (fishy) { // ice + a tail sticking out
-      R(c, 2, 1, w - 4, 2, '#cfe4ee');
-      fleck(c, rng, 2, 1, w - 4, 2, 4, ['#ffffff', '#a9c6d4']);
-      R(c, Math.round(w * 0.55), 0, 3, 2, W.met3); R(c, Math.round(w * 0.55) + 1, 0, 1, 1, W.ink);
+    if (spill) { // lid off, and what is inside coming over the edge
+      R(c, 2, 1, w - 4, 2, W.char1);
+      for (let i = 2; i < w - 2; i++) if (rng.next() < 0.7) R(c, i, 1 - (rng.next() < 0.4 ? 1 : 0), 1, 1, rng.next() < 0.45 ? W.gold2 : W.gold1);
+      R(c, Math.round(w * 0.55), 0, 2, 1, W.gold3);
     }
   }
   P.crate = prop(10, 9, (c, rng, w, h) => crateBody(c, rng, w, h, false));
   P.crateSm = prop(7, 6, (c, rng, w, h) => crateBody(c, rng, w, h, false));
-  P.fishBox = prop(11, 6, (c, rng, w, h) => crateBody(c, rng, w, h, true));
-
-  // --- crab / lobster pot -------------------------------------------------
-  P.crabPot = prop(11, 8, (c, rng, w, h) => {
-    // domed wicker cage: ribs + mesh, a dark mouth in the side
-    for (let i = 0; i < w; i++) {
-      const k = i / (w - 1);
-      const top = Math.round(h - 2 - Math.sin(k * Math.PI) * (h - 3));
-      R(c, i, top, 1, h - 1 - top, W.ink);
-      R(c, i, top + 1, 1, h - 2 - top, i % 3 === 0 ? W.rope0 : W.rope1);
-      if (rng.next() < 0.3) R(c, i, top + 1 + Math.floor(rng.next() * Math.max(1, h - 3 - top)), 1, 1, W.rope2);
-    }
-    for (let y = 2; y < h - 1; y += 2) R(c, 1, y, w - 2, 1, 'rgba(26,16,21,0.45)');
-    R(c, Math.round(w * 0.42), h - 5, 3, 3, W.ink);
-    R(c, 0, h - 2, w, 2, W.ink);
-    R(c, 1, h - 2, w - 2, 1, W.post1);
-  });
+  P.lootBox = prop(11, 6, (c, rng, w, h) => crateBody(c, rng, w, h, true));
 
   // --- rope coil ----------------------------------------------------------
   P.ropeCoil = prop(10, 7, (c, rng, w, h) => {
@@ -237,25 +221,6 @@
     void rng;
   });
 
-  // --- fish ---------------------------------------------------------------
-  function fishBody(c, rng, w, h, fat) {
-    const cy = h / 2;
-    for (let i = 0; i < w - uw(2); i++) {
-      const k = i / (w - uw(2));
-      const r = Math.max(1, Math.round(Math.sin(Math.pow(k, 0.7) * Math.PI) * (fat ? h * 0.5 : h * 0.4)));
-      R(c, i, Math.round(cy - r), 1, r * 2, W.ink);
-      R(c, i, Math.round(cy - r) + 1, 1, Math.max(1, r * 2 - 2), k < 0.45 ? W.met3 : W.met2);
-      R(c, i, Math.round(cy - r) + 1, 1, 1, '#e8f4fb');
-      if (rng.next() < 0.3) R(c, i, Math.round(cy) + (rng.next() < 0.5 ? 0 : 1), 1, 1, W.met1);
-    }
-    // tail
-    const tx = w - uw(2);
-    for (let i = 0; i < uw(2); i++) { const r = 1 + i; R(c, tx + i, Math.round(cy - r), 1, r * 2, W.ink); R(c, tx + i, Math.round(cy - r) + 1, 1, Math.max(1, r * 2 - 2), W.met2); }
-    R(c, 1, Math.round(cy) - 1, 1, 1, '#ffffff'); R(c, 2, Math.round(cy) - 1, 1, 1, W.ink);  // eye
-  }
-  P.fish = prop(9, 5, (c, rng, w, h) => fishBody(c, rng, w, h, false), { ay: 2.5 });
-  P.fishFat = prop(11, 6, (c, rng, w, h) => fishBody(c, rng, w, h, true), { ay: 3 });
-
   // --- anchor / bucket / pot / sack ---------------------------------------
   P.anchor = prop(7, 11, (c, rng, w, h) => {
     const cx = (w >> 1);
@@ -290,15 +255,15 @@
     R(c, Math.round(w / 2) - 1, 0, 2, 2, W.rope0);
     fleck(c, rng, 1, 2, w - 2, h - 3, 4, [W.rope0, W.rope2]);
   });
-  P.tyre = prop(6, 6, (c, rng, w, h) => {
+  // a tarred rope fender hung over the edge to take the rub of a hull
+  P.fender = prop(6, 6, (c, rng, w, h) => {
     const cx = w / 2 - 0.5, cy = h / 2 - 0.5, r = Math.min(cx, cy) + 0.5;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const d = Math.hypot(x - cx, y - cy);
-      if (d > r) continue;
-      if (d < r * 0.45) continue;
-      R(c, x, y, 1, 1, d > r * 0.85 ? '#100c0e' : ((x + y) & 1 ? '#2a2226' : '#211b1e'));
+      if (d > r || d < r * 0.45) continue;
+      R(c, x, y, 1, 1, d > r * 0.85 ? W.ink : ((x + y) & 1 ? W.rope0 : shade(W.rope0, 0.72)));
     }
-    void rng;
+    if (rng.next() < 0.6) R(c, 1, 1, 1, 1, W.rope1);
   });
 
   // --- lanterns -----------------------------------------------------------
@@ -721,26 +686,6 @@
     Kit.bloodBoards(c, x - uw(1), y - uw(2), w + uw(2), uw(2), rng, 1.2);
   };
 
-  // -- a fish hung head-down on a drying line -------------------------------
-  Kit.hangFish = function (c, x, y, len, rng) {
-    const w = uw(1.5) + (rng.next() < 0.4 ? 1 : 0);
-    // tail, tied to the line
-    R(c, x, y, 1, uw(1), W.ink);
-    R(c, x - 1, y + uw(0.5), uw(1.5) + 1, uw(1), W.met1);
-    for (let i = 0; i < len; i++) {
-      const k = i / len;
-      const ww = Math.max(1, Math.round(w * Math.sin(Math.min(1, 0.25 + k) * Math.PI * 0.85)));
-      const xx = x - (ww >> 1);
-      R(c, xx - 1, y + uw(1) + i, ww + 2, 1, W.ink);
-      R(c, xx, y + uw(1) + i, ww, 1, k < 0.55 ? W.met2 : W.met1);
-      R(c, xx, y + uw(1) + i, 1, 1, k < 0.7 ? W.met3 : W.met2);
-      if (rng.next() < 0.18) R(c, xx + Math.floor(rng.next() * ww), y + uw(1) + i, 1, 1, '#e8f4fb');
-    }
-    // split belly + head
-    R(c, x, y + uw(2), 1, len - uw(2), '#b46a63');
-    R(c, x - 1, y + uw(1) + len - 1, uw(1.5) + 1, 1, W.ink);
-  };
-
   // -- mooring bollard (post with a rope turn) ------------------------------
   Kit.bollard = function (c, x, y, rng, o) {
     o = o || {};
@@ -795,14 +740,15 @@
     R(c, hx - 1, hy, uw(1.5), uw(2), W.ink); R(c, hx, hy + 1, 1, uw(1), W.met3);
     for (let i = 0; i < uw(4); i++) R(c, hx, hy + uw(2) + i, 1, 1, i % 2 ? W.met1 : W.met2);
     R(c, hx - 1, hy + uw(6), uw(2), 1, W.met2);
-    void rng;
-  };
-
-  // -- stack of crab pots ---------------------------------------------------
-  Kit.crabPots = function (c, x, y, n, rng) {
-    for (let i = 0; i < n; i++) {
-      const px2 = x + Math.round(rng.range(-uw(1), uw(1)));
-      c.drawImage(P.crabPot.c, px2, y - P.crabPot.h * (i + 1) + i * uw(1));
+    // and what is usually left swinging on it
+    if (rng.next() < 0.55) {
+      const cw = uw(4), chh = uw(7), cy2 = hy + uw(7);
+      R(c, hx - (cw >> 1) - 1, cy2 - 1, cw + 2, chh + 2, W.ink);
+      R(c, hx - (cw >> 1), cy2, cw, chh, '#241b20');
+      R(c, hx - uw(1), cy2 + uw(1), uw(2), uw(1.5), SKIN[Math.floor(rng.next() * SKIN.length)]);
+      R(c, hx - uw(1.5), cy2 + uw(2.5), uw(3), uw(3), '#2e2730');
+      for (let i = 0; i < chh; i += uw(2)) R(c, hx - (cw >> 1), cy2 + i, cw, 1, W.met1);
+      for (let q = 0; q < cw; q += uw(1.5)) R(c, hx - (cw >> 1) + q, cy2, 1, chh, W.met0);
     }
   };
 
@@ -1011,7 +957,10 @@
         // a gun kept under cover, run back off its port
         Kit.cannon(c, ox2 + uw(2), y - uw(1), rng, 1);
         for (const rx of [ox2 + uw(1), ox2 + ow - uw(2)]) R(c, rx, y - uw(1), uw(1), uw(1), W.post2);
-        lights.push({ x: ox2 + uw(1), y: y - uw(3), w: ow - uw(2), h: uw(2), ph: rng.range(0, TAU), k: 0.35 });
+        // one lamp hung at the back of the gun room, not a lit floor
+        R(c, ox2 + ow - uw(4), y - oh + uw(1), 1, uw(1), W.rope0);
+        c.drawImage(P.lantern.c, ox2 + ow - uw(5), y - oh + uw(2));
+        lights.push({ x: ox2 + ow - uw(5), y: y - oh + uw(4), w: uw(2.5), h: uw(2.5), ph: rng.range(0, TAU), k: 1.1, lantern: true });
       } else if (kind === 'tavern') {
         // a bar, a wall of kegs, and a lamp kept burning at both ends
         R(c, ox2, y - uw(5), ow, uw(2), W.deck1);
@@ -1354,7 +1303,7 @@
     const step = w / (n + 1);
     for (let i = 0; i < n; i++) {
       const hx = Math.round(x + step * (i + 1));
-      if (rng.next() < 0.22) {                 // an empty noose, waiting
+      if (i > 0 && rng.next() < 0.18) {        // an empty noose, waiting
         const rl = Math.round(rng.range(uw(4), uw(7)));
         for (let q = 0; q < rl; q++) R(c, hx, y - hgt + q, 1, 1, q % 3 ? W.rope1 : W.rope0);
         R(c, hx - 1, y - hgt + rl, uw(1.5), uw(1.5), W.rope0);
@@ -3192,7 +3141,7 @@
           if (this.catchT > 0) A(fx - th(2), fy + th(0.4), th(4), 1, 'rgba(235,250,255,0.8)');
         }
       } else if (this.item === 'crate' || this.item === 'box') {
-        const spr = this.item === 'box' ? P.fishBox : P.crateSm;
+        const spr = this.item === 'box' ? P.lootBox : P.crateSm;
         T(this, h1x + 2.2, h1y + 2.2);
         ctx.drawImage(spr.c, (Math.round(_tx) - (spr.w >> 1)) / K, (Math.round(_ty) - (spr.h >> 1)) / K, spr.w / K, spr.h / K);
       } else if (this.item === 'hammer') {
@@ -3306,13 +3255,13 @@
       R(c, L - uw(1), D + uw(4.5) + 1, wb + uw(2), 1, W.ink);
       // ---- deck surface, and what has soaked into it
       Kit.deck(c, L, D, wb, rng);
-      Kit.bloodBoards(c, L, D, wb, uw(2.5), rng, 1.3 + (job === 'plunder' || job === 'gallows' ? 1.1 : 0));
+      Kit.bloodBoards(c, L, D, wb, uw(2.5), rng, 0.9 + (job === 'plunder' || job === 'gallows' ? 0.5 : 0));
       // ---- things hung off the edge, over the water
       let hx = uw(4);
       while (hx < wb - uw(12)) {
         const r = rng.next();
         if (r < 0.20) { Kit.net(c, L + hx, D + uw(6), uw(9) + Math.floor(rng.next() * uw(6)), uw(5) + Math.floor(rng.next() * uw(4)), rng, { sag: uw(1.5) }); hx += uw(17); }
-        else if (r < 0.32) { c.drawImage(P.tyre.c, L + hx, D + uw(5)); R(c, L + hx + uw(1), D + uw(3), 1, uw(2.5), W.rope0); hx += uw(8); }
+        else if (r < 0.32) { c.drawImage(P.fender.c, L + hx, D + uw(5)); R(c, L + hx + uw(1), D + uw(3), 1, uw(2.5), W.rope0); hx += uw(8); }
         else if (r < 0.46) { Kit.hangBody(c, L + hx, D + uw(3), Math.floor(rng.range(uw(2), uw(6))), rng, { crow: true }); hx += uw(12); }
         else if (r < 0.54) { Kit.gibbet(c, L + hx, D + uw(1), uw(12), rng, rng.next() < 0.5 ? 1 : -1); hx += uw(16); }
         else hx += uw(7) + Math.floor(rng.next() * uw(10));
@@ -3392,7 +3341,12 @@
           const wt = (pc.j[job] || 1) + 0.5;
           bag.push([pc, wt]); total += wt;
         }
-        if (!bag.length) break;
+        if (!bag.length) {
+          // the bag is empty because everything has had its turn, not because
+          // the deck is full -- deal a fresh hand and keep going
+          if (Object.keys(used).length) { for (const k in used) delete used[k]; continue; }
+          break;
+        }
         let pickv = rng.next() * total, chosen = bag[bag.length - 1][0];
         for (const [pc, wt] of bag) { pickv -= wt; if (pickv <= 0) { chosen = pc; break; } }
         chosen.f(L + cx2);
@@ -3401,6 +3355,7 @@
         cx2 += uw(chosen.w) + Math.floor(rng.next() * uw(5));
       }
       if (o.davit) Kit.davit(c, L + uw(o.davit), D, rng, o.davitDir || 1);
+      wash(c, '#1b1018', 0.10);      // tar, soot and salt over the whole thing
       return { lights, haze: o.haze ? ['#bcd8ea', o.haze] : null };
     };
     const d = new Destructible({
@@ -3515,6 +3470,7 @@
         else if (r < 0.92) { Kit.bloodBoards(c, L + uw(3), y, wa - uw(6), uw(5), rng, 2.0); }
         y += uw(4) + Math.floor(rng.next() * uw(7));
       }
+      wash(c, '#1b1018', 0.10);
       // a ladder down the side into the water
       if (o.sideLadder) {
         const lx = o.sideLadder > 0 ? L + wa + 1 : L - uw(4);
@@ -3584,6 +3540,26 @@
     });
   }
 
+  // ---- bake: a hull burnt to the waterline and left where it grounded -----
+  function makeWreck(o) {
+    const len = o.len || 44, pad = 8, topPad = 22;
+    const draw = (c, rng) => {
+      Kit.burntHull(c, uw(pad), uw(topPad), uw(len), rng);
+      // a drowned spar and some of the crew still tangled in the rigging
+      for (let i = 0; i < uw(16); i++) R(c, uw(pad) + Math.floor(rng.next() * uw(len)), uw(topPad) + Math.floor(rng.next() * uw(2)), 1, 1, rng.next() < 0.5 ? W.char0 : 'rgba(10,26,44,0.45)');
+      if (rng.next() < 0.6) c.drawImage(P.bones.c, uw(pad + 4), uw(topPad) - P.bones.h);
+      if (rng.next() < 0.5) Kit.spikeHead(c, uw(pad + len - 8), uw(topPad), uw(7), rng);
+      return {};
+    };
+    return new Destructible({
+      kind: 'boat', x: o.x, y: o.y, seed: o.seed,
+      cw: len + pad * 2, ch: topPad + 8, ox: -pad, oy: -topPad,
+      bx: 0, by: -16, bw: len, bh: 18,
+      hp: 80, waterY: o.y - 2, ruinKeep: 0, leaveRuin: false, bob: 0.6,
+      draw,
+    });
+  }
+
   // ---- bake: a slipway with a hull in a cradle ----------------------------
   function makeSlip(o) {
     const pad = 10, topPad = 30;
@@ -3591,11 +3567,16 @@
     const draw = (c, rng) => {
       const L = uw(pad), D = uw(topPad), wa = uw(o.w);
       Kit.slipway(c, L, D, wa, uw(len), rng);
-      // a hull hauled up the slip, propped in its cradle, half re-planked
-      Kit.cradleHull(c, L + uw(4), D + uw(16), wa - uw(9), rng);
+      // a prize hauled up the slip: either being stripped, or burnt where it
+      // was dragged ashore and left
+      if (rng.next() < 0.45) Kit.burntHull(c, L + uw(5), D + uw(20), wa - uw(11), rng);
+      else Kit.cradleHull(c, L + uw(4), D + uw(16), wa - uw(9), rng);
       Kit.winch(c, L + uw(2), D + uw(2), rng);
-      c.drawImage(P.barrel.c, L + wa - uw(8), D + uw(2) - P.barrel.h);
+      c.drawImage(P.rumBarrel.c, L + wa - uw(8), D + uw(2) - P.rumBarrel.h);
       c.drawImage(P.ropeCoil.c, L + wa - uw(13), D + uw(3) - P.ropeCoil.h);
+      c.drawImage(P.bones.c, L + uw(6), D + uw(30) - P.bones.h);
+      Kit.bloodBoards(c, L + uw(2), D + uw(24), wa - uw(4), uw(10), rng, 1.6);
+      for (let i = 0; i < 2; i++) Kit.spikeHead(c, L + uw(3) + i * uw(5), D + uw(6), uw(9), rng);
       // the hauling wire running from the winch down to the cradle
       for (let i = 0; i < uw(14); i++) R(c, L + uw(4) + i, D + uw(2) + Math.round(i * 0.75), 1, 1, i % 3 ? W.met1 : W.met2);
       return {};
@@ -3793,7 +3774,7 @@
       // colours over the whole port. This is the silhouette the shore is read
       // by, so it goes in as its own structure rather than deck furniture.
       for (const side of [-1, 1]) {
-        const gx = X + side * rng.range(96, 150);
+        const gx = X + side * rng.range(62, 104);
         this.add(makeGibbetRow({ x: gx, y: rowM.deckY - 1, seed: seed++, side }), 1);
       }
       for (let i = 0; i < 9; i++) {
@@ -3842,6 +3823,12 @@
       this.decks.push({ x0: X - jw / 2, x1: X + jw / 2, y0: S - 22, y1: jEnd });
       this.add(makeBoat({ x: X - 46, y: S + 96, len: 28, seed: seed++ }), 5);
       this.add(makeBoat({ x: X + 26, y: S + 60, len: 24, seed: seed++ }), 5);
+      // ---- wrecks along the waterline: prizes that did not come in whole
+      for (let i = 0; i < 5; i++) {
+        const wx = X + (i === 0 ? rng.range(-150, -90) : rng.range(-1700, 1700));
+        if (Math.abs(wx - X) < 60) continue;
+        this.add(makeWreck({ x: wx, y: rowM.waterY + rng.range(-3, 10), len: rng.int(34, 52), seed: seed++ }), 4);
+      }
       for (let i = 0; i < 18; i++) this.props.push({ s: P.buoyProp, x: X + rng.range(-2200, 2200), y: S + rng.range(30, 150), ph: rng.range(0, TAU), amp: 1.8 });
       for (let i = 0; i < 14; i++) this.props.push({ s: P.buoyBall, x: X + rng.range(-2300, 2300), y: S + rng.range(20, 120), ph: rng.range(0, TAU), amp: 1.4 });
 

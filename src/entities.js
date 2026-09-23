@@ -465,13 +465,13 @@ let _maxHullA = 0;
 function fleetMaxHull() {
   if (_maxHullA) return _maxHullA;
   if (typeof SP === 'undefined' || !SP.boats) return 1200;
-  for (const k in SP.boats) { const q = SP.boats[k]; if (q) { const a = q.w * q.h; if (a > _maxHullA) _maxHullA = a; } }
+  for (const k in SP.boats) { const q = SP.boats[k]; if (q) { const a = hullArea(q); if (a > _maxHullA) _maxHullA = a; } }
   return _maxHullA || 1200;
 }
 // Deck area rather than length alone, so a beamy barge counts as a ship and
 // a long thin runabout does not -- and so the mini-boss hulls, which nothing
 // in this file sizes, land on the right side of it too.
-function hullIsShip(spr) { return !!spr && spr.w * spr.h >= fleetMaxHull() * 0.42; }
+function hullIsShip(spr) { return !!spr && hullArea(spr) >= fleetMaxHull() * 0.42; }
 
 // ---- the darkening ladder, posterized into two hard steps ---------------
 // The ladder is hung on the fragment sprite itself, and the fragments are
@@ -1768,6 +1768,235 @@ const EXTRA_BOAT_PAINT = {
     for (let i = 0; i < 3; i++) HPX(ctx, '#c08054', Math.round(X0 + L * 0.3) + i * 6, cy - 5, 4, 11); // spoil chutes
   },
 };
+// ============================ PIRATES ==================================
+// src/chars.js draws a FISHING fleet: working boats with nets, derricks,
+// crate stacks and a man at the wheel. This is what takes it off them --
+// and not one line of that file is touched to do it. Each finished hull is
+// REPAINTED here, once, at load: black colours at the masthead, guns run
+// out both sides, a lantern burning at the stern, and somebody on deck with
+// a cutlass. What was a trawler is now something that comes alongside.
+//
+// WHY REPAINT RATHER THAN REBUILD: the hulls are the fleet's whole tuning.
+// Every collision radius, every hit ellipse, the ship/boat split that
+// decides how a hull breaks -- all of it is DERIVED from hull geometry, so
+// rebuilding the hulls would re-tune the fight as a side effect. Repainting
+// cannot: the hull is drawn into a bigger canvas untouched, the flag flies
+// in the new margin, and the ORIGINAL length and beam are recorded on the
+// sprite so hullSize() keeps reporting the boat she has always been.
+//
+// A flag needs somewhere to fly, so the canvas grows by the flag's own
+// depth -- per hull, so a dinghy does not carry a trawler's margin.
+const PIRATE = {
+  flagK: 0.30,        // flag depth as a fraction of the half-beam
+  flagMin: 6, flagMax: 14,
+  gunBeam: 15,        // half-beam (art px) below which she carries no guns
+};
+// the hull's outline, read off its own alpha: the first and last opaque row
+// in each column. That is the rail, and it is where a gun barrel goes out.
+function hullAlphaMap(c) {
+  try {
+    const w = c.width | 0, h = c.height | 0;
+    if (w < 2 || h < 2 || w * h > 400000) return null;
+    const d = c.getContext('2d').getImageData(0, 0, w, h).data;
+    const top = new Int16Array(w), bot = new Int16Array(w);
+    top.fill(-1); bot.fill(-1);
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) {
+        if (d[((y * w + x) << 2) + 3] > 40) { if (top[x] < 0) top[x] = y; bot[x] = y; }
+      }
+    }
+    return { top, bot, w, h };
+  } catch (e) { return null; }
+}
+function _keyHash(k) { let h = 2166136261; for (let i = 0; i < k.length; i++) { h ^= k.charCodeAt(i); h = (h * 16777619) >>> 0; } return h; }
+
+// the jolly roger's skull, white on the black field. Two sizes, because a
+// dinghy's colours are half a trawler's and a seven-pixel skull on a
+// five-pixel flag is a grey smudge.
+function skullMark(ctx, sx, sy, big) {
+  const W = '#f4f7fb', K = '#14141c', S = '#b9c2cd';
+  if (big) {
+    HPX(ctx, W, sx + 1, sy, 5, 1);
+    HPX(ctx, W, sx, sy + 1, 7, 3);
+    HPX(ctx, K, sx + 1, sy + 2, 2, 2);
+    HPX(ctx, K, sx + 4, sy + 2, 2, 2);
+    HPX(ctx, S, sx, sy + 4, 7, 1);
+    HPX(ctx, W, sx + 1, sy + 5, 5, 2);
+    HPX(ctx, K, sx + 2, sy + 6, 1, 1);
+    HPX(ctx, K, sx + 4, sy + 6, 1, 1);
+  } else {
+    HPX(ctx, W, sx, sy, 5, 2);
+    HPX(ctx, K, sx + 1, sy + 1, 1, 1);
+    HPX(ctx, K, sx + 3, sy + 1, 1, 1);
+    HPX(ctx, S, sx, sy + 2, 5, 1);
+    HPX(ctx, W, sx + 1, sy + 3, 3, 1);
+    HPX(ctx, K, sx + 2, sy + 3, 1, 1);
+  }
+}
+
+// One hull, repainted. Returns a NEW sprite (the original is left alone, so
+// nothing that cached it is broken) or null if anything at all goes wrong,
+// in which case she simply sails on as a fishing boat.
+function piratize(spr, key) {
+  if (!spr || !spr.c || !RAWP || typeof newCan !== 'function' || typeof spriteFromHi !== 'function') return null;
+  const hs = hullSize(spr);
+  if (!hs) return null;
+  const map = hullAlphaMap(spr.c);
+  if (!map) return null;
+  const A = Math.max(1, Math.round(spr.c.width / (spr.w || spr.c.width)));
+  const src = spr.c, W0 = src.width, H0 = src.height;
+  const L = hs.len * A, B = hs.beam * A, X0 = 2 * A;
+  const fh = clamp(Math.round(B * PIRATE.flagK), PIRATE.flagMin, PIRATE.flagMax);
+  const fl = Math.round(fh * 1.8);
+  const PADY = fh + 5, PADX = 4;
+  const W = W0 + PADX * 2, H = H0 + PADY * 2;
+  const c = newCan(W, H), x = c.getContext('2d');
+  RAWP(x, src, PADX, PADY);
+  const cy = PADY + Math.round(H0 / 2);
+  const rng = new SeededRandom(_keyHash(key) || 7);
+  // the rail, in the new canvas's coordinates
+  const top = q => { const i = q - PADX; if (i < 0 || i >= map.w) return -1; const v = map.top[i]; return v < 0 ? -1 : v + PADY; };
+  const bot = q => { const i = q - PADX; if (i < 0 || i >= map.w) return -1; const v = map.bot[i]; return v < 0 ? -1 : v + PADY; };
+  const F = X0 + PADX;                       // the stem of the hull, padded
+
+  // ---- guns run out. A broadside is the one silhouette that says pirate
+  //      from directly above, so it is drawn OUTSIDE the rail where it
+  //      breaks her outline instead of tucked inboard where it would not.
+  if (B >= PIRATE.gunBeam) {
+    const n = B >= 30 ? 3 : 2;
+    for (let i = 0; i < n; i++) {
+      const gx = F + Math.round(L * (0.28 + i * (B >= 30 ? 0.17 : 0.22)));
+      for (let s = -1; s <= 1; s += 2) {
+        const ry = s < 0 ? top(gx) : bot(gx);
+        if (ry < 2 || ry > H - 3) continue;
+        const inb = s < 0 ? ry + 1 : ry - 4;          // the carriage, inboard
+        HPX(x, '#14141c', gx - 2, inb, 5, 4);
+        HPX(x, '#3a2413', gx - 1, inb + 1, 3, 2);
+        const b0 = s < 0 ? ry - 5 : ry;               // and the barrel, out
+        HPX(x, '#14141c', gx, b0, 2, 7);
+        HPX(x, '#4a515a', gx, b0 + (s < 0 ? 1 : 1), 1, 5);
+        HPX(x, '#0a0d12', gx, s < 0 ? b0 : b0 + 6, 2, 1);
+      }
+    }
+  }
+
+  // ---- somebody on deck, and it is not a fisherman: a tricorne, a red
+  //      coat and a cutlass already out
+  {
+    const mxs = B >= 22 ? [0.50, 0.66] : [0.54];
+    for (const f of mxs) {
+      const hx = F + Math.round(L * f);
+      const yt = top(hx), yb = bot(hx);
+      if (yt < 0 || yb - yt < 15) continue;
+      const hy = Math.round(yt + (yb - yt) * (rng.next() < 0.5 ? 0.30 : 0.66));
+      HPX(x, '#14141c', hx - 3, hy, 7, 3);                 // the brim of the hat
+      HPX(x, '#2a2f38', hx - 2, hy + 1, 5, 1);
+      HPX(x, '#14141c', hx - 1, hy - 1, 3, 1);
+      HPX(x, '#e9b78c', hx, hy + 3, 2, 2);                 // his face under it
+      HPX(x, '#14141c', hx - 1, hy + 5, 4, 2);             // shoulders
+      HPX(x, '#5a1f26', hx - 1, hy + 5, 4, 1);
+      HPX(x, '#14141c', hx + 3, hy + 3, 1, 2);             // and the cutlass
+      HPX(x, '#cdd8e6', hx + 4, hy + 3, 4, 1);
+      HPX(x, '#eef4fb', hx + 4, hy + 3, 2, 1);
+    }
+  }
+
+  // ---- a rack of boarding steel on the foredeck of anything big enough
+  if (B >= 20) {
+    const rx = F + Math.round(L * 0.78);
+    const yt = top(rx), yb = bot(rx);
+    if (yt >= 0 && yb - yt > 16) {
+      const y0 = Math.round(yt + (yb - yt) * 0.5) - 5;
+      HPX(x, '#14141c', rx - 1, y0 - 1, 3, 12);
+      for (let i = 0; i < 4; i++) {
+        HPX(x, '#cdd8e6', rx, y0 + i * 3, 1, 2);
+        HPX(x, '#8a5a33', rx - 1, y0 + i * 3, 1, 2);
+      }
+    }
+  }
+
+  // ---- a lantern burning at the stern quarter
+  {
+    const lx = F + Math.round(L * 0.12);
+    const yt = top(lx), yb = bot(lx);
+    if (yt >= 0 && yb - yt > 9) {
+      const ly = Math.round(yt + (yb - yt) * 0.28);
+      HPX(x, '#14141c', lx - 1, ly - 1, 4, 6);
+      HPX(x, '#8a5a33', lx - 1, ly - 2, 4, 1);
+      HPX(x, '#f2c744', lx, ly, 2, 3);
+      HPX(x, '#fff3cf', lx, ly, 2, 1);
+      HPX(x, '#7a5a1e', lx, ly + 3, 2, 1);
+    }
+  }
+
+  // ---- and the colours. The staff stands where a working boat steps her
+  //      mast; the flag streams AFT and outboard, which is where a flag
+  //      goes on a boat under way, and it flies clear of the rail so it
+  //      breaks her silhouette against the water instead of hiding her deck.
+  {
+    const mx = F + Math.round(L * 0.34);
+    const rt = top(mx);
+    const base = rt < 0 ? cy - B : rt;
+    const fy = clamp(base - fh - 3, 1, H - fh - 2);
+    HPX(x, '#14141c', mx - 1, cy - 3, 3, 7);               // the staff, on deck
+    HPX(x, '#8f6a3a', mx, cy - 2, 1, 5);
+    HPX(x, '#cdd8e6', mx, cy - 3, 1, 1);
+    // the halyard, out to the hoist
+    const hy0 = fy + fh - 1;
+    const dy = cy - hy0, dx2 = 3;
+    for (let i = 0; i <= dy; i += 2) HPX(x, '#5d5b4c', mx - 1 - Math.round(i / Math.max(1, dy) * dx2), cy - i, 1, 1);
+    // the field: black, with a fold catching the light and a ragged fly
+    for (let i = 0; i < fl; i++) {
+      const u = i / fl;
+      const wob = Math.round(Math.sin(u * 4.4 + 0.8) * (1 + fh * 0.09));
+      let hh = Math.round(fh * (1 - u * 0.14));
+      if (u > 0.82) hh -= Math.round((u - 0.82) * fh * (rng.next() < 0.5 ? 2.4 : 1.4));   // torn
+      if (hh < 2) continue;
+      const px0 = mx - 2 - i;
+      if (px0 < 1) break;
+      HPX(x, '#14141c', px0, fy + wob, 1, hh);
+      HPX(x, '#282833', px0, fy + wob + hh - 2, 1, 1);
+      if ((i & 7) === 3) HPX(x, '#23232e', px0, fy + wob + 1, 1, 1);
+    }
+    const big = fh >= 10;
+    const sx0 = mx - 3 - Math.round(fl * (big ? 0.30 : 0.34));
+    const sy0 = fy + Math.round(Math.sin(0.25 * 4.4 + 0.8) * (1 + fh * 0.09)) + Math.round((fh - (big ? 7 : 4)) * 0.5);
+    skullMark(x, sx0 - (big ? 3 : 2), sy0, big);
+  }
+
+  const out = spriteFromHi(c, W / 2, H / 2);
+  // THE FLEET IS STILL THE FLEET. Length and beam are carried across from
+  // the hull we were given, so every radius, hit ellipse and ship/boat test
+  // downstream reads the boat she was before the flag went up.
+  out.hullLen = hs.len; out.hullBeam = hs.beam;
+  return out;
+}
+
+let _piratized = false;
+function piratizeFleet() {
+  if (_piratized) return;
+  if (typeof SP === 'undefined' || !SP.boats || !SP.boats.dinghy) return;
+  _piratized = true;
+  const done = new Map();                 // one hull may fly under two names
+  for (const k in SP.boats) {
+    const spr = SP.boats[k];
+    if (!spr || !spr.c) continue;
+    if (done.has(spr.c)) { const d = done.get(spr.c); SP.boats[k] = d.s; SP.boatsHurt[k] = d.h; continue; }
+    let out = null;
+    try { out = piratize(spr, k); } catch (e) { out = null; }
+    if (!out) continue;
+    SP.boats[k] = out;
+    let hurt = SP.boatsHurt[k];
+    try {
+      hurt = (typeof tintHi === 'function' && out.hi) ? tintHi(out, '#ffffff', 0.8) : tintSprite(out, '#ffffff', 0.8);
+      SP.boatsHurt[k] = hurt;
+    } catch (e) { /* she just does not flash white */ }
+    done.set(spr.c, { s: out, h: hurt });
+  }
+  // the hulls changed size, so anything measured off them is measured again
+  _maxHullA = 0;
+}
+
 // ---- keeping step with the fleet ---------------------------------------
 // src/chars.js owns the hull dimensions and is free to rescale the whole
 // fleet; this file must never be the reason a hitbox is wrong afterwards.
@@ -1785,7 +2014,20 @@ const HULL_PAD_L = 4, HULL_PAD_B = 6;
 const TURN_REF = 17;
 function hullSize(spr) {
   if (!spr || !spr.w) return null;
+  // A hull that has been repainted (see piratize) sits in a bigger canvas so
+  // her colours have somewhere to fly, and carries the dimensions she was
+  // built at. Read those first: the fleet must not grow a hitbox because
+  // somebody ran a flag up.
+  if (spr.hullLen) return { len: spr.hullLen, beam: spr.hullBeam };
   return { len: Math.max(4, spr.w - HULL_PAD_L), beam: Math.max(1.5, (spr.h - HULL_PAD_B) / 2) };
+}
+// The deck area a hull WOULD have as a bare canvas -- the measure the
+// ship/boat split was tuned against, so a repainted hull lands on the same
+// side of it as the hull it was painted from.
+function hullArea(spr) {
+  const h = hullSize(spr);
+  if (!h) return spr && spr.w ? spr.w * spr.h : 0;
+  return (h.len + HULL_PAD_L) * (h.beam * 2 + HULL_PAD_B);
 }
 // The lengths the twelve original hulls were drawn at when this fleet was
 // tuned. They are reference marks only: what matters is the RATIO between
@@ -1877,8 +2119,18 @@ function ensureExtraBoats() {
     SP.boats[k] = spr;
     SP.boatsHurt[k] = (typeof tintHi === 'function' && spr.hi) ? tintHi(spr, '#ffffff', 0.8) : tintSprite(spr, '#ffffff', 0.8);
   }
+  piratizeFleet();
   tuneFleet();
 }
+// chars.js builds the hulls inside the Game constructor, so this file cannot
+// simply run at load: there is no fleet yet. Poll for one instead, and the
+// first moment it exists the extra hulls are built and the whole fleet runs
+// up its colours -- before anything draws a boat, rather than on the frame
+// the first one spawns. The Enemy constructor still calls this as a backstop.
+(function awaitFleet(n) {
+  if (typeof SP !== 'undefined' && SP.boats && SP.boats.dinghy) { try { ensureExtraBoats(); } catch (e) { } return; }
+  if (n > 0 && typeof setTimeout === 'function') setTimeout(() => awaitFleet(n - 1), 120);
+})(80);
 
 
 class Enemy {
