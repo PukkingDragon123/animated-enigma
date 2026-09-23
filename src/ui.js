@@ -100,12 +100,12 @@ const BANTER = {
     [['o', 'Water is ours!', 'spark'], ['m', 'For now.']],
     [['o', 'That is the lot.'], ['m', 'Rest a moment.']],
     [['o', 'Easy!'], ['m', 'It was not.', 'note']],
-    [['o', 'Good turning back there.'], ['m', 'Good shooting.', 'heart']],
+    [['o', 'Nice turning.'], ['m', 'Nice shooting.', 'heart']],
   ],
   last: [[['o', 'Only the Chief left.'], ['m', 'Breathe first.']]],
   big: [
     [['o', 'That is a BIG one!', 'bang'], ['m', 'I see it.']],
-    [['o', 'Look at the size of it!'], ['m', 'Aim small.']],
+    [['o', 'Look at the size!'], ['m', 'Aim small.']],
   ],
   objdone: [
     [['o', 'That is it! Done!', 'spark'], ['m', 'They are running.']],
@@ -133,18 +133,18 @@ const BANTER = {
     [['o', 'One down!'], ['m', 'Good.']],
   ],
   shop: [
-    [['o', 'We can afford something!', 'spark'], ['m', 'After.']],
+    [['o', 'We can buy something!', 'spark'], ['m', 'After.']],
   ],
   idle: [
-    [['o', 'You are still my favourite boat.', 'heart'], ['m', 'Not a boat.']],
+    [['o', 'My favourite boat.', 'heart'], ['m', 'Not a boat.']],
     [['o', 'Nice day for it.'], ['m', 'Mm.', 'note']],
     [['o', 'You smell like kelp.'], ['m', 'You too.', 'heart']],
-    [['o', 'Wake me if it gets hard.'], ['m', 'It is hard.']],
+    [['o', 'Any more of them?'], ['m', 'Many more.']],
   ],
 };
-// how loudly each topic asks to be heard, and how long before it may repeat
-// the start of a wave and a net around the fluke are the two things that get
-// to cut somebody off mid-sentence
+// How loudly each topic asks to be heard, and how long before it may repeat.
+// The start of a wave and a net round the fluke are the two things allowed to
+// cut somebody off mid-sentence.
 const BANTER_PRI = { netted: 6, wave: 5, hurt: 4, rampage: 4, big: 4, cleared: 4, last: 4, objdone: 3, firstkill: 2, ready: 2, parry: 1, shop: 1, idle: 0 };
 const BANTER_GAP = { netted: 12, hurt: 18, rampage: 20, big: 8, wave: 0, cleared: 0, last: 0, objdone: 0, firstkill: 999, parry: 22, ready: 45, shop: 90, idle: 34 };
 
@@ -190,14 +190,26 @@ const Banter = {
     this.layout(this.cur);
   },
   layout(b) {
-    const lines = wrapText(null, b.text, 112, 6);
+    const lines = wrapText(null, b.text, 134, 6);
     b.lines = lines.slice(0, 2);
     b.full = b.lines.join(' ').length;
     let tw = 0; for (const l of b.lines) tw = Math.max(tw, textWidth(l, 6));
-    b.w = clamp(tw + 22, 44, 148);
+    b.w = clamp(tw + 22, 44, 158);
     b.h = b.lines.length * 9 + 9;
   },
   update(dt) {
+    // Real time, not game time. The HUD stops being drawn in the skill tree,
+    // in a cutscene and on pause, and half an exchange should not wake up a
+    // minute later in the middle of something else.
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+    if (this._rt && now - this._rt > 0.75) {
+      const wonIt = !!this.cur && G.director && G.director.cleared;
+      this.cur = null; this.queue.length = 0; this.pri = -1; this.cool = 0.6;
+      // they were talking about the wave they had just won and the shop cut
+      // them off: let them finish it over the quiet water instead
+      if (wonIt) { this.last.cleared = null; this.last.last = null; this.say(G.director.lastWave ? 'last' : 'cleared', { delay: 0.8 }); }
+    }
+    this._rt = now;
     this.t += dt;
     if (this.cool > 0) this.cool -= dt;
     const b = this.cur;
@@ -244,7 +256,7 @@ const Banter = {
     if (k < 0.995) return;                       // words only once it has settled
     // who is talking, as a face and not a name
     const f = FACE_SP[b.who];
-    ctx.drawImage(f.c, x + 3, y + Math.round((H - 8) / 2));
+    ctx.drawImage(f.c, x + 3, b.lines.length > 1 ? y + 4 : y + Math.round((H - 8) / 2));
     let shown = Math.floor(b.chars), tx = x + 14;
     for (let i = 0; i < b.lines.length; i++) {
       const l = b.lines[i];
@@ -478,10 +490,11 @@ const UI = {
       const pulse = Math.floor(t * 2) % 2;
       const label = touch ? 'TAP FOR THE NEXT WAVE' : '[ENTER] NEXT WAVE';
       const cw = textWidth(label, 8) + 28, cx = Math.round(320 - cw / 2);
-      roundFill(ctx, '#14141c', cx, 262, cw, 22, 4);
-      roundFill(ctx, pulse ? '#ffe48f' : '#e0b45c', cx + 1, 263, cw - 2, 20, 3);
-      roundFill(ctx, '#2a2014', cx + 3, 265, cw - 6, 16, 3);
-      pixelTextOutlined(ctx, label, 320, 268, 8, pulse ? '#ffffff' : '#ffe48f', '#14141c', 'center');
+      // low enough to keep off the pair, who are usually sitting mid-screen
+      roundFill(ctx, '#14141c', cx, 302, cw, 22, 4);
+      roundFill(ctx, pulse ? '#ffe48f' : '#e0b45c', cx + 1, 303, cw - 2, 20, 3);
+      roundFill(ctx, '#2a2014', cx + 3, 305, cw - 6, 16, 3);
+      pixelTextOutlined(ctx, label, 320, 308, 8, pulse ? '#ffffff' : '#ffe48f', '#14141c', 'center');
     }
 
     if (hpk < 0.3) { ctx.fillStyle = `rgba(200,20,20,${(0.12 + Math.sin(t * 6) * 0.08).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
@@ -529,7 +542,13 @@ const UI = {
     const p = G.player; if (!p) return;
     const s = this._w || (this._w = { hp: 1, abs: 0, kills: 0, buy: false, ramp: false, ready: false, run: false });
     const hpk = clamp(p.hp / p.stats.maxHp, 0, 1);
-    if (!G.director.started) { s.hp = hpk; s.abs = G.stats.absorbs; s.kills = G.stats.kills; return; }
+    // before the fight there is nothing to talk about, and it is the natural
+    // place to wipe the slate so a second run hears the same lines again
+    if (!G.director.started) {
+      s.hp = hpk; s.abs = G.stats.absorbs; s.kills = G.stats.kills; s.net = false; s.buy = false; s.ready = false; s.ramp = false;
+      if (Banter.t > 0) Banter.reset();
+      return;
+    }
     if (hpk < 0.34 && s.hp >= 0.34) Banter.say('hurt');
     else if (s.hp - hpk > 0.16) Banter.say('hurt');
     s.hp = hpk;

@@ -13,7 +13,7 @@
 // it starts and what the manatee answers, in as few words as they can manage.
 // obj.text survives as the objective's short name, not as a line of teaching.
 const WAVES = [
-  { chat: [['o', 'Two boats. Watch this.', 'spark'], ['m', 'Careful.']],
+  { chat: [['o', 'Hold the trigger!', 'spark'], ['m', 'Two boats. Careful.']],
     obj: { kind: 'clear', text: 'Sink the dinghies' },
     pool: { dinghy: 1 }, count: 4, interval: 3.0, max: 2, burst: [['dinghy', 2]] },
 
@@ -21,7 +21,7 @@ const WAVES = [
     obj: { kind: 'clear', text: 'Sink them' },
     pool: { dinghy: 1 }, count: 6, interval: 2.6, max: 3, burst: [['dinghy', 2]] },
 
-  { chat: [['o', 'Nets! Slap one back at them.'], ['m', 'I will turn.']],
+  { chat: [['o', 'Nets! Parry one back!'], ['m', 'I will turn.']],
     obj: { kind: 'clear', text: 'Sink the netters' },
     pool: { dinghy: 1.6, netter: 1.2 }, count: 8, interval: 2.4, max: 4, burst: [['netter', 2]] },
 
@@ -29,7 +29,7 @@ const WAVES = [
     obj: { kind: 'clear', text: 'Sink the harpooners' },
     pool: { dinghy: 1.6, netter: 1, harpooner: 1.2 }, count: 10, interval: 2.2, max: 5, burst: [['harpooner', 2]] },
 
-  { chat: [['o', 'That one is pointing at us!', 'bang'], ['m', 'Him first.']],
+  { chat: [['o', 'He is pointing at us!', 'bang'], ['m', 'Him first.']],
     obj: { kind: 'hunt', target: 'spotter', text: 'Kill the Spotter' },
     pool: { dinghy: 1.4, netter: 1, harpooner: 1, spotter: 0.9 }, count: 11, interval: 2.0, max: 5, burst: [['spotter', 1], ['dinghy', 2]] },
 
@@ -50,16 +50,16 @@ const WAVES = [
     obj: { kind: 'clear', text: 'Clear the hooks and pots' },
     pool: { netter: 1, harpooner: 1, longliner: 1.6, crabber: 1.5, jetski: 0.8, twin: 0.9, sub: 0.7 }, count: 16, interval: 1.5, max: 8, burst: [['longliner', 2], ['crabber', 2]] },
 
-  { chat: [['o', 'Dynamite. Take all of it.'], ['m', 'Gently.']],
+  { chat: [['o', 'Dynamite. Take it all.'], ['m', 'Gently.']],
     obj: { kind: 'salvage', amount: 30, text: 'Strip their salvage' },
     pool: { netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1.8, tug: 0.7, grappler: 0.8, courier: 0.5 }, count: 17, interval: 1.45, max: 8, burst: [['dynaboat', 3]] },
 
-  { chat: [['o', 'The Trawler. That is the one.'], ['m', 'I remember it.']],
+  { chat: [['o', 'The Trawler. That one.'], ['m', 'I remember it.']],
     obj: { kind: 'hunt', target: 'trawler', text: 'Sink the Trawler' },
     pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, tug: 0.8, trawler: 0.5, ironclad: 0.5, sub: 0.6 },
     count: 18, interval: 1.4, max: 9, burst: [['trawler', 1], ['dinghy', 3]] },
 
-  { chat: [['o', 'They let something loose.'], ['m', 'Good.']],
+  { chat: [['o', 'Something got loose.'], ['m', 'Good.']],
     obj: { kind: 'hunt', mini: true, text: 'Break their champion' },
     mini: true,
     pool: { harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, crabber: 1, tug: 1, bulwark: 0.6, minelayer: 0.7 }, count: 15, interval: 1.5, max: 8 },
@@ -117,7 +117,8 @@ class Director {
     // Only a boss gets a ribbon across the screen. An ordinary wave announces
     // itself by the otter saying something and the manatee answering him.
     if (w.boss) G.banner(this.waveName(i), '#ff6161', 2.2);
-    this.chat(w.boss ? 'wave' : 'wave', { lines: w.chat, delay: w.boss ? 1.6 : 0.5 });
+    // the boss keeps his ribbon, so the pair wait until it has faded
+    this.chat('wave', { lines: w.chat, delay: w.boss ? 2.4 : 0.5 });
     if (typeof Hazards !== 'undefined') {
       Hazards.difficulty = this.difficulty;
       if (Hazards.applyWaveScaling) Hazards.applyWaveScaling(this.waveIdx, this.difficulty);
@@ -225,7 +226,7 @@ class Director {
     this.state = 'cleared'; this.clearedAt = this.time; this.wavesCleared++;
     G.onWaveCleared(this.waveIdx);
     // let the ribbon land first, then let them talk over the quiet water
-    this.chat(this.lastWave ? 'last' : 'cleared', { delay: 1.5 });
+    this.chat(this.lastWave ? 'last' : 'cleared', { delay: 0.35 });
   }
 
   // the director's one line to the pair. Safe if the HUD is not loaded.

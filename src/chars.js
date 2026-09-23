@@ -1114,22 +1114,52 @@ function buildManateeBelly(src) {
 //  SIDE-ON MANATEE — facing RIGHT. The cinematics' hero.
 // ===========================================================================
 const MSIDE_W = 98, MSIDE_H = 40, MSIDE_CX = 49, MSIDE_CY = 20;
+// Her side-on dot eye, one art pixel per world unit. The BAKED one and the
+// LIVE one (manateeSideFace) have to be the same size or the live pass leaves
+// a ring of the baked one showing round it.
+const SIDE_EYE = [
+  '.kkkkk.',
+  'kkeeekk',
+  'keeeeek',
+  'keeeeek',
+  'keeeeek',
+  'kkeeekk',
+  '.kkkkk.',
+];
+const SIDE_EYE_W = [
+  '..kkkkk..',
+  '.kkeeekk.',
+  'kkeeeeekk',
+  'keeeeeeek',
+  'keeeeeeek',
+  'keeeeeeek',
+  'kkeeeeekk',
+  '.kkeeekk.',
+  '..kkkkk..',
+];
 function buildManateeSideBody(scarred) {
   const W = MSIDE_W, H = MSIDE_H, cy = MSIDE_CY;
+  // The head end used to shed a third of its depth over the last twenty-five
+  // pixels, which read as a snout on a barrel. It now carries its depth to
+  // within four pixels of the muzzle and rounds off in one step: the same
+  // animal, the same anchors, with a head you could cup in two hands. The
+  // eye, the mouth, the shoulder and the tail anchors below are unchanged
+  // and every one of them is still well inside the new form.
   const lobes = [
-    { x: 8,  y: cy,     rx: 4.5,  ry: 4.0 },
-    { x: 16, y: cy,     rx: 6.5,  ry: 6.4 },
-    { x: 26, y: cy,     rx: 8.5,  ry: 9.2 },
-    { x: 38, y: cy,     rx: 11.0, ry: 12.0 },
+    { x: 8,  y: cy,     rx: 4.5,  ry: 4.2 },
+    { x: 16, y: cy,     rx: 6.5,  ry: 6.6 },
+    { x: 26, y: cy,     rx: 8.5,  ry: 9.4 },
+    { x: 38, y: cy,     rx: 11.0, ry: 12.2 },
     { x: 52, y: cy,     rx: 12.0, ry: 13.0 },
-    { x: 64, y: cy - 1, rx: 11.0, ry: 12.0 },
-    { x: 74, y: cy - 2, rx: 9.0,  ry: 10.2 },
-    { x: 83, y: cy - 2, rx: 7.0,  ry: 8.2 },
-    { x: 90, y: cy - 1, rx: 5.0,  ry: 6.2 },
+    { x: 64, y: cy - 1, rx: 11.5, ry: 12.6 },
+    { x: 74, y: cy - 2, rx: 10.5, ry: 11.6 },
+    { x: 83, y: cy - 2, rx: 9.0,  ry: 10.2 },
+    { x: 90, y: cy - 2, rx: 6.5,  ry: 7.8 },
+    { x: 94, y: cy - 1, rx: 3.6,  ry: 5.2 },
   ];
   const f = blobField(W, H, lobes);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man, CPAL.manL],
-    { outline: CPAL.out, lx: -0.25, ly: -0.92, contrast: 0.74, lift: 0.26, smooth: 2 });
+  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man, CPAL.manL, CPAL.manLL],
+    { outline: CPAL.out, lx: -0.25, ly: -0.92, contrast: 0.74, lift: 0.30, smooth: 2 });
   const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
   // ---- pale belly: the bottom third of every column, in two bands
   for (let x = 0; x < W; x++) {
@@ -1140,30 +1170,51 @@ function buildManateeSideBody(scarred) {
     for (let y = y0 + 1; y < y1; y++) {
       const k = (y - y0) / hgt;
       if (k < 0.66) continue;
-      px(ctx, k > 0.82 ? '#b2c0cf' : CPAL.belly, x, y);
+      px(ctx, k > 0.82 ? CPAL.bellyL : CPAL.belly, x, y);
     }
     px(ctx, CPAL.manL, x, y0 + 1);          // lit back
     px(ctx, CPAL.out2, x, y1);              // dark keel
   }
-  // ---- three transverse folds, bowed with the barrel
-  for (const fx of [34, 48, 62]) for (let y = 2; y < H - 2; y++) {
-    const x = fx + Math.round(Math.sin((y - cy) / 14) * 2);
-    if (!inside(x, y) || !inside(x, y + 1) || !inside(x - 2, y)) continue;
-    px(ctx, CPAL.manDD, x, y);
+  // ---- transverse folds. Three of them, cut a full band down and run from
+  //      her back clean to her keel, segmented her like a grub. Two now, over
+  //      the upper flank only, half a band down: a soft body that bends.
+  for (const fx of [44, 62]) for (let y = cy - 10; y <= cy + 1; y++) {
+    if (((y - cy) & 3) === 2) continue;                    // broken, not ruled
+    const x = fx + Math.round(Math.sin((y - cy) / 10) * 2);
+    if (!inside(x, y) || !inside(x, y + 3) || !inside(x - 2, y)) continue;
+    px(ctx, CPAL.manD, x, y);
   }
-  // ---- algae on the back, barnacles on the shoulder
-  for (const [bx, by] of [[44, 10], [58, 9], [30, 13]]) {
-    px(ctx, '#3f6b4c', bx, by, 3, 1); px(ctx, '#2d4f38', bx + 1, by + 1, 2, 1);
+  // ---- pale dapples along her lit back, where the algae and the barnacles
+  //      used to be. Same three placements, softened into freckles.
+  for (const [bx, by] of [[44, 10], [58, 9], [30, 13], [68, 12], [40, 15]]) {
+    px(ctx, CPAL.manLL, bx, by, 3, 1); px(ctx, CPAL.manL, bx + 1, by + 1, 2, 1);
   }
-  for (const [bx, by] of [[68, 12], [40, 14]]) { px(ctx, CPAL.manDD, bx, by, 3, 3); px(ctx, CPAL.bone, bx + 1, by + 1, 2, 2); }
   // ---- flipper socket crease
-  for (let i = 0; i < 6; i++) px(ctx, CPAL.manDD, 72 + i, 24 + (i >> 1));
-  // ---- head: the DOT eye, the nostril and the mouth crease
-  px(ctx, CPAL.out, 81, 13, 4, 4); px(ctx, CPAL.eye, 81, 13, 3, 3); px(ctx, CPAL.shine, 82, 14);
-  px(ctx, CPAL.manL, 81, 12, 4, 1);
-  px(ctx, CPAL.out, 92, 15, 2, 2);                          // nostril
-  px(ctx, CPAL.manL, 88, 20, 6, 1);                         // lit whisker pad
-  px(ctx, CPAL.out2, 88, 23, 6, 1);                         // mouth crease
+  for (let i = 0; i < 6; i++) px(ctx, CPAL.manD, 72 + i, 24 + (i >> 1));
+  // ---- head: the DOT eye, the nostril and the mouth crease. The bead is
+  //      seven across instead of four, rounded at the corners, with a pale
+  //      socket under it and a two-pixel catchlight in it — still one dot,
+  //      still no anatomy, just a dot you can actually see her with.
+  for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) {
+    if (x * x + y * y > 18) continue;
+    if (!inside(82 + x, 14 + y)) continue;
+    px(ctx, y < 0 ? CPAL.manLL : CPAL.manL, 82 + x, 14 + y);
+  }
+  stamp(ctx, SIDE_EYE, 79, 11, { k: CPAL.out, e: CPAL.eye });
+  px(ctx, CPAL.shine, 80, 12, 2, 2);
+  px(ctx, CPAL.manLL, 84, 16);
+  // ---- blush, on the cheek behind the whisker pad
+  //      At this size a stipple only ever comes out as a squiggle, so it is
+  //      three clean rows: a lit top, a core, and one row of falloff.
+  for (const [bx, by, bw, col] of [[76, 17, 5, CPAL.blushL], [75, 18, 7, CPAL.blush],
+                                   [77, 19, 4, CPAL.blush]]) {
+    for (let i = 0; i < bw; i++) if (inside(bx + i, by) && inside(bx + i, by + 3)) px(ctx, col, bx + i, by);
+  }
+  px(ctx, CPAL.manDD, 92, 15, 2, 2);                        // nostril
+  px(ctx, CPAL.manLL, 87, 19, 7, 2);                        // lit whisker pad
+  px(ctx, CPAL.manL, 87, 21, 7, 1);
+  // the mouth turns up at the front — three pixels of smile
+  px(ctx, CPAL.manD, 88, 23, 5, 1); px(ctx, CPAL.manD, 93, 22, 1, 1);
   for (const [wx, wy] of [[95, 19], [95, 22], [94, 17]]) px(ctx, CPAL.bone, wx, wy, 2, 1);
   if (scarred) {
     for (let i = 0; i < 3; i++) for (let j = 0; j < 7; j++) {
@@ -1183,12 +1234,12 @@ function buildSideFluke() {
     { x: 6,  y: 9, rx: 6.0, ry: 8.4 },
     { x: 2,  y: 9, rx: 3.5, ry: 6.5 },
   ]);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man], { outline: CPAL.out, lift: 0.16, smooth: 2, contrast: 0.7 });
+  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manD, CPAL.man, CPAL.manL], { outline: CPAL.out, lift: 0.22, smooth: 2, contrast: 0.7 });
   for (let i = -1; i <= 1; i += 2) for (let x = 3; x < 20; x++) {
     const y = 9 + i * 3 + Math.round((20 - x) * i * 0.12);
-    if (f[y * W + x] > 0.06) px(ctx, CPAL.manDD, x, y);
+    if (f[y * W + x] > 0.06) px(ctx, CPAL.manD, x, y);
   }
-  for (let y = 3; y < 15; y++) if (f[y * W + 1] > 0.02) px(ctx, CPAL.manL, 1, y);
+  for (let y = 3; y < 15; y++) if (f[y * W + 1] > 0.02) px(ctx, CPAL.manLL, 1, y);
   return spriteFrom(c, W - 2, 9);
 }
 function buildSideFlipper(dark) {
@@ -1199,8 +1250,8 @@ function buildSideFlipper(dark) {
     { x: 11, y: 6, rx: 3.6, ry: 3.2 },
     { x: 14, y: 6, rx: 2.2, ry: 2.2 },
   ]);
-  const ramp = dark ? [CPAL.manDD, CPAL.manDD, CPAL.manD] : [CPAL.manDD, CPAL.manD, CPAL.man];
-  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: CPAL.out, lift: 0.12, smooth: 1, contrast: 0.7 });
+  const ramp = dark ? [CPAL.manDD, CPAL.manD, CPAL.manD] : [CPAL.manD, CPAL.man, CPAL.manL];
+  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: CPAL.out, lift: 0.20, smooth: 1, contrast: 0.7 });
   if (!dark) for (let i = 0; i < 3; i++) px(ctx, CPAL.bone, 12 + (i & 1), 4 + i * 2);
   return spriteFrom(c, 2, 4);
 }
@@ -1227,16 +1278,17 @@ function manateeSideFace(ctx, exp, blink, t) {
   const O = CPAL.out;
   const shut = blink && exp !== 'dead' && exp !== 'wide';
   if (exp === 'pain' || shut) {
-    px(ctx, O, ex - 1, ey, 5, 1); px(ctx, CPAL.manDD, ex - 1, ey - 2, 5, 1);
+    px(ctx, O, ex - 2, ey, 7, 1); px(ctx, O, ex - 3, ey - 1, 1, 1); px(ctx, O, ex + 3, ey - 1, 1, 1);
+    px(ctx, CPAL.manDD, ex - 2, ey - 2, 7, 1);
   } else if (exp === 'dead') {
-    px(ctx, O, ex - 1, ey - 1, 5, 5); px(ctx, '#5c5668', ex, ey, 3, 3);
+    px(ctx, O, ex - 2, ey - 2, 7, 7); px(ctx, '#6a5a63', ex - 1, ey - 1, 5, 5);
   } else {
-    const big = exp === 'wide' ? 1 : 0;
-    px(ctx, O, ex - 1 - big, ey - 1 - big, 5 + big * 2, 5 + big * 2);
-    px(ctx, CPAL.eye, ex - big, ey - big, 3 + big * 2, 3 + big * 2);
-    px(ctx, CPAL.shine, ex + 1, ey);
-    if (exp === 'angry') { px(ctx, CPAL.manDD, ex - 2, ey - 2, 6, 1); px(ctx, CPAL.manDD, ex + 1, ey - 3, 4, 1); }
-    else if (exp === 'sad') { px(ctx, CPAL.manDD, ex - 3, ey - 3, 5, 1); }
+    const big = exp === 'wide';
+    stamp(ctx, big ? SIDE_EYE_W : SIDE_EYE, ex - (big ? 4 : 3), ey - (big ? 4 : 3), { k: O, e: CPAL.eye });
+    px(ctx, CPAL.shine, ex - 2, ey - 2, 2, 2);
+    px(ctx, CPAL.manLL, ex + 2, ey + 2);
+    if (exp === 'angry') { px(ctx, CPAL.manDD, ex - 4, ey - 4, 7, 1); px(ctx, CPAL.manDD, ex + 1, ey - 5, 4, 1); }
+    else if (exp === 'sad') { px(ctx, CPAL.manDD, ex - 5, ey - 5, 6, 1); }
   }
   const open = exp === 'wide' || exp === 'pain' || (exp === 'talk' && (Math.floor(t * 7) & 1));
   if (open) { px(ctx, O, mx - 2, my - 1, 6, 4); px(ctx, '#2a1218', mx - 1, my, 4, 2); }
@@ -1868,7 +1920,8 @@ const Rig = {
       const poleLag = clamp((this._tilt.x - this._tiltSlow) * 2.2, -0.34, 0.34);
       // The pole is tall enough to carry the flag clear of her back: over the
       // body it would only hide the armour it is flying above.
-      ctx.save(); ctx.translate(-16, 4); ctx.rotate(-0.13 + poleLag + this._fluke.x * 0.18);
+      ctx.save(); ctx.translate(-16, 4);
+      ctx.rotate(-0.13 + poleLag + this._fluke.x * 0.18 + Math.sin(fsw * 0.5) * 0.022);
       // the pole itself is drawn on the ART grid, so it is a crisp two-art-
       // pixel spar with a lit side rather than a slab two world units wide
       ctx.save(); ctx.scale(1 / AS, 1 / AS);
@@ -1876,9 +1929,12 @@ const Rig = {
       px(ctx, CPAL.woodDD, -1, -49, 2, 52); px(ctx, CPAL.woodD, -1, -49, 1, 52);
       px(ctx, CPAL.wood, -1, -49, 1, 8);
       ctx.restore();
+      // pivot at the foot of the hoist, so the fly end is what sweeps: a
+      // rotation about the middle of the cloth moves the top corner by almost
+      // nothing, which is exactly the corner the eye is watching
       ctx.save();
-      ctx.translate(0, -20); ctx.rotate(Math.sin(fsw) * 0.055);
-      ctx.drawImage(flag.c, -flag.ax, -flag.ay);
+      ctx.translate(0, -11); ctx.rotate(Math.sin(fsw) * 0.075);
+      ctx.drawImage(flag.c, -flag.ax, -flag.ay - 9);
       ctx.restore();
       ctx.restore();
 
