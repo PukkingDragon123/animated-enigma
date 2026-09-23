@@ -25,101 +25,358 @@ const NODE_ICON = {
   g_hide: 'hp', g_hide2: 'hp', g_diet: 'regen', g_eyes: 'dmg', g_armor: 'shield', g_cool: 'cd', g_eyes2: 'dmg', g_hide3: 'hp', g_rock: 'ability', g_speed: 'rate', g_armor2: 'shield', g_diet2: 'regen', g_cool2: 'cd', g_second: 'hp', g_veteran: 'ability',
 };
 
+// ---------------------------------------------------------------------------
+//  Small pictures that used to be sentences.
+//  The HUD says what the wave wants with an icon and a number instead of a
+//  line of prose, so these are the vocabulary it speaks in.
+// ---------------------------------------------------------------------------
+const HUD_SP = {
+  boat: makeSprite([
+    '..k.....',
+    '.kwk....',
+    'kwwk....',
+    'kwwwk...',
+    'kkkkkkk.',
+    'kUTTTTk.',
+    '.kkkkk..',
+    '........'], { ax: 4, ay: 4 }),
+  target: makeSprite([
+    '...kk...',
+    '.kkRRkk.',
+    '.kR..Rk.',
+    'kkR..Rkk',
+    'kkR..Rkk',
+    '.kR..Rk.',
+    '.kkRRkk.',
+    '...kk...'], { ax: 4, ay: 4 }),
+};
+// the two of them, eight pixels each, so a bubble can say who is talking
+// without spending a word on it
+const FACE_SP = {
+  o: makeSprite([
+    '.k....k.',
+    'kBk..kBk',
+    '.kBBBBk.',
+    'kBBBBBBk',
+    'kBwBBwBk',
+    'kcccccck',
+    '.kcKKck.',
+    '..kkkk..'], { ax: 0, ay: 0 }),
+  m: makeSprite([
+    '..kkkk..',
+    '.kGGGGk.',
+    'kGGGGGGk',
+    'kGwGGwGk',
+    'kGGGGGGk',
+    'kGhhhhGk',
+    '.khkkhk.',
+    '..kkkk..'], { ax: 0, ay: 0 }),
+};
+// warm little punctuation marks that pop out of a bubble
+const EMO_SP = {
+  heart: makeSprite(['.k.k.', 'kpkpk', 'kpppk', '.kpk.', '..k..'], { ax: 0, ay: 0 }),
+  spark: makeSprite(['..y..', '.yYy.', 'yYwYy', '.yYy.', '..y..'], { ax: 0, ay: 0 }),
+  note: makeSprite(['..kkk.', '..kYk.', '..kYk.', '.kkYk.', 'kYYYk.', 'kYYk..', '.kk...'], { ax: 0, ay: 0 }),
+  bang: makeSprite(['.k.', 'kRk', 'kRk', 'kRk', '.k.', 'kRk', '.k.'], { ax: 0, ay: 0 }),
+};
+
+// ---------------------------------------------------------------------------
+//  BANTER
+//  The wall of instructions is gone; the pair say the same things to each
+//  other instead. The otter is scrappy and will not shut up, the manatee
+//  answers in about three words. One bubble at a time, short, over their
+//  heads, and never more often than the fight can carry.
+//
+//  Lines are ['o'|'m', text, emote?]. A topic is a list of them.
+// ---------------------------------------------------------------------------
+const BANTER = {
+  // a wave with nothing to say of its own falls back to these; the lines that
+  // belong to a particular wave live next to that wave, in waves.js
+  wave: [
+    [['o', 'Here they come!'], ['m', 'Ready.']],
+    [['o', 'More boats.'], ['m', 'Turning.']],
+  ],
+  cleared: [
+    [['o', 'Water is ours!', 'spark'], ['m', 'For now.']],
+    [['o', 'That is the lot.'], ['m', 'Rest a moment.']],
+    [['o', 'Easy!'], ['m', 'It was not.', 'note']],
+    [['o', 'Good turning back there.'], ['m', 'Good shooting.', 'heart']],
+  ],
+  last: [[['o', 'Only the Chief left.'], ['m', 'Breathe first.']]],
+  big: [
+    [['o', 'That is a BIG one!', 'bang'], ['m', 'I see it.']],
+    [['o', 'Look at the size of it!'], ['m', 'Aim small.']],
+  ],
+  objdone: [
+    [['o', 'That is it! Done!', 'spark'], ['m', 'They are running.']],
+  ],
+  hurt: [
+    [['o', 'You are bleeding!', 'bang'], ['m', 'I am fine.']],
+    [['o', 'Too close! Too close!'], ['m', 'Breathe. Turn.']],
+  ],
+  netted: [
+    [['o', 'Net! Roll us out!', 'bang']],
+    [['o', 'Tangled! Roll!', 'bang']],
+  ],
+  parry: [
+    [['o', 'Caught it!', 'spark']],
+    [['o', 'Ha! Try again.']],
+    [['o', 'Right back at you!']],
+  ],
+  ready: [
+    [['o', 'I am getting loud.', 'spark']],
+  ],
+  rampage: [
+    [['o', 'RAAAAH!', 'bang'], ['m', 'Oh dear.']],
+  ],
+  firstkill: [
+    [['o', 'One down!'], ['m', 'Good.']],
+  ],
+  shop: [
+    [['o', 'We can afford something!', 'spark'], ['m', 'After.']],
+  ],
+  idle: [
+    [['o', 'You are still my favourite boat.', 'heart'], ['m', 'Not a boat.']],
+    [['o', 'Nice day for it.'], ['m', 'Mm.', 'note']],
+    [['o', 'You smell like kelp.'], ['m', 'You too.', 'heart']],
+    [['o', 'Wake me if it gets hard.'], ['m', 'It is hard.']],
+  ],
+};
+// how loudly each topic asks to be heard, and how long before it may repeat
+// the start of a wave and a net around the fluke are the two things that get
+// to cut somebody off mid-sentence
+const BANTER_PRI = { netted: 6, wave: 5, hurt: 4, rampage: 4, big: 4, cleared: 4, last: 4, objdone: 3, firstkill: 2, ready: 2, parry: 1, shop: 1, idle: 0 };
+const BANTER_GAP = { netted: 12, hurt: 18, rampage: 20, big: 8, wave: 0, cleared: 0, last: 0, objdone: 0, firstkill: 999, parry: 22, ready: 45, shop: 90, idle: 34 };
+
+const Banter = {
+  cur: null, queue: [], pri: -1, cool: 0, last: {}, t: 0, idleT: 0, pick: {},
+  // ---- driving it
+  reset() { this.cur = null; this.queue = []; this.pri = -1; this.cool = 0; this.last = {}; this.idleT = 0; },
+  // one exchange. kind picks the pool; opts.idx picks a fixed entry, opts.lines
+  // hands the lines over directly. Returns true if it got the floor.
+  say(kind, opts) {
+    opts = opts || {};
+    const pool = BANTER[kind];
+    let topic = opts.lines;
+    if (!topic && pool) topic = opts.idx != null ? pool[clamp(opts.idx, 0, pool.length - 1)] : this.rotate(kind, pool);
+    if (!topic || !topic.length) return false;
+    const pri = opts.pri != null ? opts.pri : (BANTER_PRI[kind] || 0);
+    const gap = BANTER_GAP[kind] != null ? BANTER_GAP[kind] : 20;
+    // a topic that just ran keeps quiet; a quiet topic waits for the floor
+    if (this.last[kind] != null && this.t - this.last[kind] < gap) return false;
+    if (this.cur && pri <= this.pri) return false;
+    if (!this.cur && this.cool > 0 && pri < 3) return false;
+    this.last[kind] = this.t;
+    this.pri = pri;
+    this.queue = topic.slice(1);
+    this.start(topic[0], opts.delay || 0);
+    this.idleT = 0;
+    return true;
+  },
+  // walk a pool instead of rolling dice, so you never hear the same joke twice
+  rotate(kind, pool) {
+    const i = (this.pick[kind] == null ? Math.floor(Math.random() * pool.length) : this.pick[kind] + 1) % pool.length;
+    this.pick[kind] = i;
+    return pool[i];
+  },
+  start(line, delay) {
+    const text = line[1];
+    this.cur = {
+      who: line[0], text, emo: line[2] || null,
+      t: -(delay || 0), chars: 0,
+      dur: clamp(0.9 + text.length * 0.045, 1.25, 2.6),
+      seed: Math.random() * 10,
+    };
+    this.layout(this.cur);
+  },
+  layout(b) {
+    const lines = wrapText(null, b.text, 112, 6);
+    b.lines = lines.slice(0, 2);
+    b.full = b.lines.join(' ').length;
+    let tw = 0; for (const l of b.lines) tw = Math.max(tw, textWidth(l, 6));
+    b.w = clamp(tw + 22, 44, 148);
+    b.h = b.lines.length * 9 + 9;
+  },
+  update(dt) {
+    this.t += dt;
+    if (this.cool > 0) this.cool -= dt;
+    const b = this.cur;
+    if (!b) { this.idleT += dt; return; }
+    b.t += dt;
+    if (b.t > 0.16) b.chars = Math.min(b.full, b.chars + dt * 52);
+    // a line holds for its duration once it has finished typing
+    const typed = b.chars >= b.full;
+    if (typed && b.t > b.dur) {
+      if (this.queue.length) this.start(this.queue.shift(), 0.12);
+      else { this.cur = null; this.pri = -1; this.cool = 2.2; this.idleT = 0; }
+    }
+  },
+  // ---- the bubble itself
+  draw(ctx, t) {
+    const b = this.cur; if (!b || b.t < 0) return;
+    const p = G.player; if (!p || p.dead) return;
+    const sp = G.worldToScreen(p.x, p.y);
+    // pop in with a little overshoot, pop out flat; nothing snaps
+    const fade = Math.max(0, b.dur + (b.full - b.chars) / 52 - b.t);
+    let k = b.t < 0.18 ? easeBack(b.t / 0.18) : fade < 0.14 ? fade / 0.14 : 1;
+    if (k <= 0.02) return;
+    k = clamp(k, 0.02, 1.14);
+    const W = Math.max(8, Math.round(b.w * k)), H = Math.max(6, Math.round(b.h * k));
+    // the otter leans over her right shoulder, the manatee speaks from below
+    const bob = Math.round(Math.sin(t * 3.1 + b.seed) * 1.4);
+    const ax = Math.round(sp.x + (b.who === 'o' ? 14 : -14));
+    let ay = Math.round(sp.y - 40 + bob);
+    let x = clamp(Math.round(ax - W / 2), 4, 636 - W);
+    let below = false;
+    if (ay - H < 52) { ay = Math.round(sp.y + 46 + bob); below = true; }
+    const y = below ? ay : ay - H;
+    const warm = b.who === 'o';
+    const ink = warm ? '#3a2416' : '#26313f';
+    const fill = warm ? '#fff3d6' : '#eaf3ff';
+    const hi = warm ? '#fffdf2' : '#ffffff';
+    const sh = warm ? '#f0d4a4' : '#cfe0f4';
+    // tail first so the body's ink covers its root
+    tailShape(ctx, ink, fill, clamp(ax, x + 6, x + W - 7), below ? y : y + H - 1, below ? -1 : 1);
+    roundFill(ctx, ink, x, y, W, H, 3);
+    roundFill(ctx, fill, x + 1, y + 1, W - 2, H - 2, 2);
+    roundFill(ctx, hi, x + 2, y + 1, W - 4, 2, 1);
+    roundFill(ctx, sh, x + 2, y + H - 3, W - 4, 2, 1);
+    if (k < 0.995) return;                       // words only once it has settled
+    // who is talking, as a face and not a name
+    const f = FACE_SP[b.who];
+    ctx.drawImage(f.c, x + 3, y + Math.round((H - 8) / 2));
+    let shown = Math.floor(b.chars), tx = x + 14;
+    for (let i = 0; i < b.lines.length; i++) {
+      const l = b.lines[i];
+      const cut = l.slice(0, Math.max(0, shown));
+      if (cut) pixelText(ctx, cut, tx, y + 4 + i * 9, 6, ink, 'left', false);
+      shown -= l.length + 1;
+      if (shown <= 0) break;
+    }
+    // a heart, a spark or a note hops out of the corner
+    if (b.emo && b.chars >= b.full) {
+      const e = EMO_SP[b.emo];
+      const hop = Math.round(Math.abs(Math.sin(t * 4 + b.seed)) * 2);
+      ctx.drawImage(e.c, x + W - 4, y - 3 - hop);
+    }
+  },
+};
+// ease-out-back: the bubble overshoots by a hair and settles
+function easeBack(x) { const c = 2.2; const u = x - 1; return 1 + (c + 1) * u * u * u + c * u * u; }
+// a hand-rasterised rounded rectangle: hard edges, no arc(), no antialiasing
+function roundFill(ctx, col, x, y, w, h, rad) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  if (w <= 0 || h <= 0) return;
+  ctx.fillStyle = col;
+  const r = Math.min(rad, Math.floor(Math.min(w, h) / 2));
+  for (let i = 0; i < h; i++) {
+    const d = Math.min(i, h - 1 - i);
+    const ins = d >= r ? 0 : r - d - 1;
+    ctx.fillRect(x + ins, y + i, w - ins * 2, 1);
+  }
+}
+// the little spout under a bubble, pointing at whoever said it
+function tailShape(ctx, ink, fill, px, py, dir) {
+  px = Math.round(px); py = Math.round(py);
+  for (let j = 0; j < 5; j++) {
+    const w = 7 - j;
+    ctx.fillStyle = ink; ctx.fillRect(px - 3, py + j * dir, w, 1);
+    if (w > 2 && j < 4) { ctx.fillStyle = fill; ctx.fillRect(px - 2, py + j * dir, w - 2, 1); }
+  }
+}
+
 const UI = {
   banner: null, hover: null, treeTab: 0, notify: 0,
+  banter: Banter,
+  hpGhost: 1, _lt: 0, _seen: {},
+  // The one hook anything outside this file needs:
+  //   UI.banterEvent(kind, opts)  ->  bool, true if the pair took the floor
+  banterEvent(kind, opts) { return Banter.say(kind, opts); },
   // ------------------------------------------------------------- HUD
   drawHUD(ctx, t) {
     const p = G.player, st = p.stats;
     const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+    // the HUD is the only thing running every frame in every play state, so it
+    // keeps its own clock rather than asking game.js for one
+    const dt = clamp(t - this._lt, 0, 0.1); this._lt = t;
+    this.watch(dt, t);
+    Banter.update(dt);
 
     // ---------- top-left: vitals ----------
-    const PW = 186, PH = touch ? 44 : 60;
+    // A bar says how hurt you are better than a number does, so the number is
+    // gone. So are the control reminders: the otter says those out loud now.
+    const PW = 126, PH = touch ? 32 : 42;
     UIKit.panel(ctx, 2, 2, PW, PH, 'dark');
-    drawSprite(ctx, SP.heart, 16, 15);
     const hpk = clamp(p.hp / st.maxHp, 0, 1);
-    UIKit.bar(ctx, 26, 10, 150, 10, hpk, hpk > 0.5 ? '#6fd88e' : hpk > 0.25 ? '#ffe48f' : '#ff6161', '#1b2028');
-    if (p.hurt > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(28, 12, Math.round(146 * hpk), 6); }
-    pixelTextOutlined(ctx, `${Math.ceil(p.hp)}/${st.maxHp}`, 101, 11, 6, '#ffffff', '#14141c', 'center');
+    // the ghost trails the real value so a big hit reads as a wound, not a jump
+    this.hpGhost = this.hpGhost > hpk ? Math.max(hpk, this.hpGhost - dt * 0.55) : lerp(this.hpGhost, hpk, 0.25);
+    drawSprite(ctx, SP.heart, 13, 12);
+    UIKit.bar(ctx, 20, 7, 100, 10, hpk, hpk > 0.5 ? '#6fd88e' : hpk > 0.25 ? '#ffe48f' : '#ff6161', '#1b2028');
+    // the wound the bar has not caught up with yet, painted inside the frame
+    const gx = 22 + Math.round(96 * hpk), gw = Math.round(96 * clamp(this.hpGhost, 0, 1)) - Math.round(96 * hpk);
+    if (gw > 0) { ctx.fillStyle = '#8e2026'; ctx.fillRect(gx, 9, gw, 6); ctx.fillStyle = '#c8302e'; ctx.fillRect(gx, 9, gw, 2); }
+    if (p.hurt > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(22, 9, Math.round(96 * hpk), 6); }
 
-    drawSprite(ctx, GLYPH_SP.rampage, 16, 28);
+    drawSprite(ctx, GLYPH_SP.rampage, 13, 24);
     const full = p.rampage.meter >= 100 && !p.rampage.active;
     const rk = p.rampage.active ? 1 - p.rampage.t / p.rampage.dur : p.rampage.meter / 100;
-    UIKit.bar(ctx, 26, 23, 150, 9, clamp(rk, 0, 1),
+    UIKit.bar(ctx, 20, 20, 100, 8, clamp(rk, 0, 1),
       p.rampage.active ? (Math.floor(t * 10) % 2 ? '#ff6161' : '#ffe48f') : full ? (Math.floor(t * 4) % 2 ? '#ff6161' : '#ff9a3c') : '#c8302e', '#1b2028');
-    pixelTextOutlined(ctx, p.rampage.active ? 'RAMPAGE!' : full ? 'RAMPAGE READY' : 'OTTER RAMPAGE', 101, 24, 5, '#ffffff', '#14141c', 'center');
-
-    // roll charges + parry, keyboard prompts only on desktop
-    drawSprite(ctx, GLYPH_SP.roll, 16, 41);
-    for (let i = 0; i < st.rollCharges; i++) {
-      const on = i < p.roll.charges;
-      ctx.fillStyle = '#14141c'; ctx.fillRect(25 + i * 9, 37, 8, 8);
-      ctx.fillStyle = on ? '#6fd88e' : '#2c3440'; ctx.fillRect(26 + i * 9, 38, 6, 6);
-      if (on) { ctx.fillStyle = '#b6f5cd'; ctx.fillRect(26 + i * 9, 38, 6, 2); }
-    }
-    if (p.roll.charges < st.rollCharges) {
-      const k = 1 - p.roll.rechargeT / p.cd(2.4 * st.rollCd);
-      ctx.fillStyle = '#6fd88e'; ctx.fillRect(26 + p.roll.charges * 9, 44, Math.round(6 * clamp(k, 0, 1)), 1);
-    }
-    const shx = 30 + st.rollCharges * 9;
-    drawSprite(ctx, GLYPH_SP.absorb, shx + 5, 41);
-    const acd = p.absorb.cd > 0 ? 1 - p.absorb.cd / p.cd(st.absorbCd) : 1;
-    UIKit.bar(ctx, shx + 12, 37, 48, 8, clamp(acd, 0, 1), p.absorb.active ? '#ffffff' : acd >= 1 ? '#8ac6ff' : '#3f6f9f', '#1b2028');
+    if (p.rampage.active || full) pixelTextOutlined(ctx, p.rampage.active ? 'RAMPAGE' : 'READY', 70, 21, 5, '#ffffff', '#14141c', 'center');
 
     if (!touch) {
-      pixelText(ctx, 'SPACE ROLL', 26, 49, 5, '#8fa6b8');
-      pixelText(ctx, 'E / RMB PARRY', shx + 12, 49, 5, p.absorb.active ? '#ffffff' : '#8fa6b8');
-      let ax = 2, ay = PH + 6;
+      // roll charges as pips, parry as a bar. No words: the pips fill up and
+      // that is the whole of it.
+      for (let i = 0; i < st.rollCharges; i++) {
+        const on = i < p.roll.charges;
+        ctx.fillStyle = '#14141c'; ctx.fillRect(20 + i * 8, 31, 7, 7);
+        ctx.fillStyle = on ? '#6fd88e' : '#2c3440'; ctx.fillRect(21 + i * 8, 32, 5, 5);
+        if (on) { ctx.fillStyle = '#b6f5cd'; ctx.fillRect(21 + i * 8, 32, 5, 2); }
+      }
+      if (p.roll.charges < st.rollCharges) {
+        const k = 1 - p.roll.rechargeT / p.cd(2.4 * st.rollCd);
+        ctx.fillStyle = '#6fd88e'; ctx.fillRect(21 + p.roll.charges * 8, 37, Math.round(5 * clamp(k, 0, 1)), 1);
+      }
+      const shx = 24 + st.rollCharges * 8;
+      drawSprite(ctx, GLYPH_SP.absorb, shx + 4, 34);
+      const acd = p.absorb.cd > 0 ? 1 - p.absorb.cd / p.cd(st.absorbCd) : 1;
+      UIKit.bar(ctx, shx + 10, 31, PW - shx - 10, 7, clamp(acd, 0, 1), p.absorb.active ? '#ffffff' : acd >= 1 ? '#8ac6ff' : '#3f6f9f', '#1b2028');
+
+      // unlocked abilities: the key you press and how cold it is. You bought
+      // the thing, you know what it is called.
+      let ax = 2; const ay = PH + 5;
       const ab = [];
-      if (st.dive) ab.push(['DIVE', 'SHIFT', p.dive.cd, p.cd(7), '#8ac6ff']);
-      if (st.decoy) ab.push(['DECOY', 'F', p.decoyCd, p.cd(14), '#ffe48f']);
-      if (st.tidal) ab.push(['TIDAL', 'R', p.tidalCd, p.cd(12), '#6fd88e']);
-      for (const [name, key, cd, max, col] of ab) {
-        const label = `${name} [${key}]`;
-        const w = Math.max(50, textWidth(label, 5) + 8);
-        UIKit.panel(ctx, ax, ay, w, 14, 'dark');
+      if (st.dive) ab.push(['SHIFT', p.dive.cd, p.cd(7), '#8ac6ff']);
+      if (st.decoy) ab.push(['F', p.decoyCd, p.cd(14), '#ffe48f']);
+      if (st.tidal) ab.push(['R', p.tidalCd, p.cd(12), '#6fd88e']);
+      for (const [key, cd, max, col] of ab) {
+        const w = Math.max(16, textWidth(key, 5) + 8);
         const k = cd > 0 ? 1 - cd / max : 1;
-        ctx.fillStyle = k >= 1 ? col : '#2c3440'; ctx.fillRect(ax + 3, ay + 10, Math.round((w - 6) * clamp(k, 0, 1)), 2);
-        pixelText(ctx, label, ax + 4, ay + 3, 5, k >= 1 ? '#fff' : '#7d8fa0');
+        roundFill(ctx, '#14141c', ax, ay, w, 14, 3);
+        roundFill(ctx, k >= 1 ? '#2b3a4a' : '#1b222c', ax + 1, ay + 1, w - 2, 12, 2);
+        pixelText(ctx, key, ax + Math.round(w / 2), ay + 2, 5, k >= 1 ? col : '#5d6f80', 'center');
+        ctx.fillStyle = k >= 1 ? col : '#3d4b58'; ctx.fillRect(ax + 2, ay + 10, Math.round((w - 4) * clamp(k, 0, 1)), 2);
         ax += w + 3;
       }
     }
 
-    // ---------- top-centre: clock & wave ----------
-    const w0 = G.director.currentWave();
-    // before the fight the village's own sign is on screen, so don't repeat it
-    const waveLabel = G.director.started ? (w0.boss ? 'BOSS' : G.director.waveName(G.director.waveIdx)) : null;
-    void waveLabel;
-    const cw = Math.max(88, waveLabel ? textWidth(waveLabel, 6) + 20 : 0);
-    UIKit.panel(ctx, 320 - cw / 2, 2, cw, waveLabel ? 24 : 18, 'dark');
-    pixelTextOutlined(ctx, fmtTime(G.director.time), 320, waveLabel ? 5 : 4, 9, '#ffffff', '#14141c', 'center');
-    if (waveLabel) pixelTextOutlined(ctx, waveLabel, 320, 16, 6, '#ffe48f', '#14141c', 'center');
-
-    // ---------- objective ----------
-    // What this wave is actually asking for, on screen the whole time it lasts.
+    // ---------- top-centre: where you are, and what the wave wants ----------
+    // Sixteen pips for sixteen waves, and one chip with an icon and a number.
+    // The sentence that used to live here is said out loud instead.
     const d0 = G.director;
+    if (d0.started) this.drawWaveDots(ctx, t, d0);
     if (d0.started && d0.state === 'fighting' && d0.objectiveStatus) {
       const ob = d0.objectiveStatus();
-      if (ob) {
-        const ow = Math.max(240, textWidth(ob.text, 6) + 30);
-        const oy = (G.boss && !G.boss.dead) ? 52 : 28;
-        UIKit.panel(ctx, 320 - ow / 2, oy, ow, 26, 'dark');
-        pixelTextOutlined(ctx, 'OBJECTIVE', 320 - ow / 2 + 8, oy + 4, 5, '#9ab0c0', '#14141c');
-        const vc = ob.done ? '#6fd88e' : '#ffe48f';
-        pixelTextOutlined(ctx, ob.value, 320 + ow / 2 - 8, oy + 4, 5, vc, '#14141c', 'right');
-        pixelTextOutlined(ctx, ob.text, 320, oy + 13, 6, ob.done ? '#6fd88e' : '#ffffff', '#14141c', 'center');
-        ctx.fillStyle = '#1b2028'; ctx.fillRect(320 - ow / 2 + 6, oy + 22, ow - 12, 2);
-        ctx.fillStyle = vc; ctx.fillRect(320 - ow / 2 + 6, oy + 22, Math.round((ow - 12) * clamp(ob.frac || 0, 0, 1)), 2);
-      }
+      if (ob) this.drawObjective(ctx, t, ob);
     }
 
     // ---------- boss bar ----------
     const b = G.boss;
     if (b && !b.dead) {
-      UIKit.panel(ctx, 150, 28, 340, 22, 'dark');
-      UIKit.bar(ctx, 156, 40, 328, 7, clamp(b.hp / b.maxHp, 0, 1), b.phase === 2 ? '#ff6161' : '#c8302e', '#1b2028');
-      ctx.fillStyle = '#ffe48f'; ctx.fillRect(156 + 164, 39, 1, 9);
-      const nm = `${b.name}${b.phaseName ? ' - ' + b.phaseName : ''}${b.stunned ? '  [STUNNED]' : ''}`;
-      pixelTextOutlined(ctx, nm, 320, 30, 7, b.stunned ? '#ffe48f' : '#ffffff', '#14141c', 'center');
+      UIKit.panel(ctx, 150, 30, 340, 22, 'dark');
+      UIKit.bar(ctx, 156, 42, 328, 7, clamp(b.hp / b.maxHp, 0, 1), b.phase === 2 ? '#ff6161' : '#c8302e', '#1b2028');
+      ctx.fillStyle = '#ffe48f'; ctx.fillRect(156 + 164, 41, 1, 9);
+      pixelTextOutlined(ctx, b.name + (b.stunned ? ' - DOWN' : ''), 320, 32, 7, b.stunned ? '#ffe48f' : '#ffffff', '#14141c', 'center');
       const bp = G.worldToScreen(b.x, b.y), sx = bp.x, sy = bp.y;
       if (sx < 0 || sy < 0 || sx > 640 || sy > 360) {
         const a = angleTo(320, 180, sx, sy), ex = clamp(320 + Math.cos(a) * 400, 12, 628), ey = clamp(180 + Math.sin(a) * 400, 56, 348);
@@ -147,78 +404,147 @@ const UI = {
     }
 
     // ---------- top-right: salvage ----------
-    const SW = 210, SX = 640 - SW - 2;
-    UIKit.panel(ctx, SX, 2, SW, 28, 'dark');
-    SCRAP_TYPES.forEach((k, i) => {
-      const x = SX + 12 + i * 38;
-      drawSprite(ctx, SP.scrap[k], x + 4, 15);
-      pixelTextOutlined(ctx, G.tree.scrap[k] + '', x + 12, 11, 7, SCRAP_COLORS[k], '#14141c');
-    });
+    // Numbers you actually spend. The [TAB] nagging is gone; the panel just
+    // glows when there is something you can afford.
     const canBuy = SKILL_NODES.some(n => !G.tree.has(n.id) && G.tree.available(n) && G.tree.canAfford(n));
-    if (!touch) {
-      // the prompt is short enough to clear the panel; the nudge goes under it
-      pixelTextOutlined(ctx, '[TAB] SKILL TREE', 630, 33, 5,
-        canBuy && Math.floor(t * 2) % 2 ? '#6fd88e' : '#9ab0c0', '#14141c', 'right');
-      if (canBuy) pixelTextOutlined(ctx, 'points ready', 630, 42, 5,
-        Math.floor(t * 2) % 2 ? '#6fd88e' : '#4f8a63', '#14141c', 'right');
+    const SW = 158, SX = 640 - SW - 2;
+    UIKit.panel(ctx, SX, 2, SW, 24, 'dark');
+    SCRAP_TYPES.forEach((k, i) => {
+      const x = SX + 10 + i * 29;
+      const v = G.tree.scrap[k];
+      if (this._seen[k] == null) this._seen[k] = v;
+      // a count that changes hops rather than flicking over
+      let pop = 0;
+      if (v !== this._seen[k]) { this._pop = this._pop || {}; this._pop[k] = 1; this._seen[k] = v; }
+      if (this._pop && this._pop[k] > 0) { pop = Math.round(this._pop[k] * 3); this._pop[k] = Math.max(0, this._pop[k] - dt * 3.5); }
+      drawSprite(ctx, SP.scrap[k], x + 4, 14 - pop);
+      pixelTextOutlined(ctx, v + '', x + 11, 10 - pop, 7, SCRAP_COLORS[k], '#14141c');
+    });
+    if (canBuy) {
+      const s = Math.floor(t * 3) % 2;
+      ctx.drawImage(SP.star.c, SX - 5, s ? 5 : 6);
+      ctx.fillStyle = s ? '#ffe48f' : '#8a6f36'; ctx.fillRect(SX + 2, 24, SW - 4, 1);
     }
 
-    // ---------- bottom-left: weapon ----------
+    // ---------- bottom-left: the belt ----------
+    // The gun the otter is holding is already on screen, so this is only here
+    // to say which number key swaps to what.
     if (!touch) {
-      const wp = WEAPONS[G.tree.primary];
-      const side = st.sidearm && G.tree.sidearm && G.tree.sidearm !== G.tree.primary;
-      UIKit.panel(ctx, 2, 318, 210, 40, 'dark');
-      drawSprite(ctx, SP.guns[G.tree.primary], 16, 332);
-      pixelText(ctx, wp.name, 42, 324, 6, '#ffffff');
       const wl = G.tree.weaponsUnlocked();
-      // the otter fires when you tell him to and not before, so say it plainly
-      pixelText(ctx, 'HOLD LEFT MOUSE TO FIRE', 42, 333, 5, Input.mouse.down ? '#ffe48f' : '#8fa6b8');
-      pixelText(ctx, wl.length > 1 ? `[1-${wl.length}] switch  (${wl.indexOf(G.tree.primary) + 1}/${wl.length})` : 'unlock more in the skill tree', 42, 341, 5, '#8fa6b8');
-      if (side) { drawSprite(ctx, SP.guns[G.tree.sidearm], 16, 351); pixelText(ctx, '+ ' + WEAPONS[G.tree.sidearm].name, 42, 349, 5, '#ffe48f'); }
+      const CW = 26, CH = 21, y0 = 336;
+      wl.forEach((k, i) => {
+        const x = 4 + i * (CW + 2);
+        const sel = G.tree.primary === k, side = G.tree.sidearm === k;
+        this.beltT = this.beltT || {};
+        const want = sel ? 1 : 0;
+        this.beltT[k] = lerp(this.beltT[k] == null ? want : this.beltT[k], want, 0.25);
+        const lift = Math.round(this.beltT[k] * 3);
+        const yy = y0 - lift;
+        roundFill(ctx, '#14141c', x, yy, CW, CH, 3);
+        roundFill(ctx, sel ? '#e0b45c' : '#3a4450', x + 1, yy + 1, CW - 2, CH - 2, 2);
+        roundFill(ctx, sel ? '#2a2014' : '#161d26', x + 2, yy + 2, CW - 4, CH - 4, 2);
+        const g = SP.guns[k];
+        ctx.save(); ctx.beginPath(); ctx.rect(x + 2, yy + 2, CW - 4, CH - 4); ctx.clip();
+        ctx.drawImage(g.c, x + Math.max(2, Math.round((CW - g.w) / 2)), yy + 8 - Math.round(g.h / 2));
+        ctx.restore();
+        pixelText(ctx, (i + 1) + '', x + Math.round(CW / 2), yy + 11, 6, sel ? '#ffe9b0' : '#7d8fa0', 'center', false);
+        if (side) { ctx.fillStyle = '#ffe48f'; ctx.fillRect(x + CW - 5, yy + 3, 3, 3); }
+      });
     }
 
     // ---------- bottom-right: tally ----------
-    const tally = `${G.stats.kills} SUNK`;
-    const tw = textWidth(tally, 6) + 40;
-    UIKit.panel(ctx, 638 - tw, 328, tw, 20, 'dark');
-    drawSprite(ctx, SP.skull, 652 - tw, 338);
-    pixelText(ctx, tally, 659 - tw, 335, 6, '#ffffff');
+    const tally = G.stats.kills + '';
+    const tw = textWidth(tally, 7) + 22;
+    roundFill(ctx, '#14141c', 638 - tw, 338, tw, 18, 3);
+    roundFill(ctx, '#232c38', 639 - tw, 339, tw - 2, 16, 2);
+    drawSprite(ctx, SP.skull, 648 - tw, 347);
+    pixelText(ctx, tally, 654 - tw, 342, 7, '#ffffff');
 
     // ---------- banner ----------
+    // Kept for the beats that earn it (a boss, a wave cleared). The second
+    // line of prose it used to carry is gone - the pair say it instead.
     if (this.banner) {
       const bn = this.banner, k = bn.t / bn.dur;
       const alpha = k < 0.1 ? k / 0.1 : k > 0.8 ? (1 - k) / 0.2 : 1;
       ctx.globalAlpha = alpha;
       UIKit.ribbon(ctx, 320, 62, bn.text, 'gold');
-      if (bn.sub) {
-        ctx.fillStyle = 'rgba(6,14,26,0.72)';
-        const sw = textWidth(bn.sub, 6) + 16;
-        ctx.fillRect(320 - sw / 2, 84, sw, 12);
-        pixelTextOutlined(ctx, bn.sub, 320, 86, 6, '#ffffff', '#14141c', 'center');
-      }
       ctx.globalAlpha = 1;
     }
 
     // ---------- between waves ----------
     const d = G.director;
-    if (d.cleared && !G.boss) {
-      const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
+    if (d.cleared && !G.boss && !d.lastWave) {
+      // the ribbon already said WAVE CLEARED; this only has to say how to go on
       const pulse = Math.floor(t * 2) % 2;
-      UIKit.panel(ctx, 128, 250, 384, 46, 'gold');
-      pixelTextOutlined(ctx, d.lastWave ? 'THE FLEET IS BROKEN' : 'WAVE CLEARED', 320, 257, 11,
-        pulse ? '#ffffff' : '#ffe48f', '#14141c', 'center');
-      if (d.lastWave) {
-        pixelTextOutlined(ctx, 'Only the Chief is left. Take a breath.', 320, 273, 7, '#e8d9b4', '#14141c', 'center');
-        pixelTextOutlined(ctx, touch ? 'SKILL TREE to spend salvage' : '[TAB] SKILL TREE to spend salvage', 320, 283, 6, '#c9b890', '#14141c', 'center');
-      } else {
-        pixelTextOutlined(ctx, touch ? 'Open the SKILL TREE to spend your salvage' : '[TAB] open the SKILL TREE and spend your salvage', 320, 272, 7, '#e8d9b4', '#14141c', 'center');
-        pixelTextOutlined(ctx, touch ? 'TAP HERE FOR THE NEXT WAVE' : '[ENTER] CALL IN THE NEXT WAVE', 320, 282, 8,
-          pulse ? '#ffe48f' : '#ffffff', '#14141c', 'center');
-      }
+      const label = touch ? 'TAP FOR THE NEXT WAVE' : '[ENTER] NEXT WAVE';
+      const cw = textWidth(label, 8) + 28, cx = Math.round(320 - cw / 2);
+      roundFill(ctx, '#14141c', cx, 262, cw, 22, 4);
+      roundFill(ctx, pulse ? '#ffe48f' : '#e0b45c', cx + 1, 263, cw - 2, 20, 3);
+      roundFill(ctx, '#2a2014', cx + 3, 265, cw - 6, 16, 3);
+      pixelTextOutlined(ctx, label, 320, 268, 8, pulse ? '#ffffff' : '#ffe48f', '#14141c', 'center');
     }
 
     if (hpk < 0.3) { ctx.fillStyle = `rgba(200,20,20,${(0.12 + Math.sin(t * 6) * 0.08).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
-    if (p.slowed > 0) pixelTextOutlined(ctx, 'NETTED! ROLL TO BREAK FREE', 320, 296, 7, '#6fd88e', '#14141c', 'center');
+
+    // ---------- the pair, talking ----------
+    Banter.draw(ctx, t);
+  },
+
+  // sixteen pips, one per wave: filled behind you, bright under you, dim ahead
+  drawWaveDots(ctx, t, d) {
+    const n = (typeof WAVES !== 'undefined' ? WAVES.length : 16);
+    const sp = 6, x0 = Math.round(320 - (n * sp - 2) / 2), y = 5;
+    for (let i = 0; i < n; i++) {
+      const x = x0 + i * sp, cur = i === d.waveIdx, done = i < d.waveIdx || (cur && d.cleared);
+      const boss = typeof WAVES !== 'undefined' && WAVES[i] && WAVES[i].boss;
+      ctx.fillStyle = '#0d1018'; ctx.fillRect(x - 1, y - 1, 6, 6);
+      let col = done ? (boss ? '#ff6161' : '#ffe48f') : cur ? '#ffffff' : boss ? '#5a2a2a' : '#39424f';
+      if (cur && !d.cleared) { const b = Math.floor(t * 3) % 2; col = b ? '#ffffff' : '#ffe48f'; }
+      ctx.fillStyle = col; ctx.fillRect(x, y, 4, 4);
+      if (done || cur) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x, y, 4, 1); }
+    }
+  },
+
+  // what the wave wants, as one icon and one number
+  drawObjective(ctx, t, ob) {
+    const kind = ob.kind || 'clear';
+    const val = ob.value || '';
+    const w = Math.max(34, textWidth(val, 7) + (val ? 26 : 16));
+    const x = Math.round(320 - w / 2), y = 13;
+    roundFill(ctx, '#0d1018', x, y, w, 15, 3);
+    roundFill(ctx, ob.done ? '#2f5236' : '#232c38', x + 1, y + 1, w - 2, 13, 2);
+    const icon = kind === 'survive' ? GLYPH_SP.cd : kind === 'salvage' ? GLYPH_SP.scrap
+      : kind === 'hunt' ? HUD_SP.target : kind === 'boss' ? SP.skull : HUD_SP.boat;
+    drawSprite(ctx, icon, x + (val ? 9 : Math.round(w / 2)), y + 7);
+    if (val) pixelTextOutlined(ctx, val, x + w - 5, y + 3, 7, ob.done ? '#8dffb0' : '#ffffff', '#14141c', 'right');
+    const fr = clamp(ob.frac || 0, 0, 1);
+    this.objFrac = lerp(this.objFrac == null ? fr : this.objFrac, fr, 0.18);
+    ctx.fillStyle = '#0d1018'; ctx.fillRect(x + 3, y + 12, w - 6, 2);
+    ctx.fillStyle = ob.done ? '#6fd88e' : '#ffe48f'; ctx.fillRect(x + 3, y + 12, Math.round((w - 6) * this.objFrac), 2);
+  },
+
+  // the things the pair notice on their own, without game.js having to tell
+  // them: a wound, a good parry, a net, the meter coming up
+  watch(dt, t) {
+    const p = G.player; if (!p) return;
+    const s = this._w || (this._w = { hp: 1, abs: 0, kills: 0, buy: false, ramp: false, ready: false, run: false });
+    const hpk = clamp(p.hp / p.stats.maxHp, 0, 1);
+    if (!G.director.started) { s.hp = hpk; s.abs = G.stats.absorbs; s.kills = G.stats.kills; return; }
+    if (hpk < 0.34 && s.hp >= 0.34) Banter.say('hurt');
+    else if (s.hp - hpk > 0.16) Banter.say('hurt');
+    s.hp = hpk;
+    if (G.stats.absorbs > s.abs) { s.abs = G.stats.absorbs; Banter.say('parry'); }
+    if (G.stats.kills > s.kills) { if (s.kills === 0 && G.stats.kills === 1) Banter.say('firstkill'); s.kills = G.stats.kills; }
+    if (p.slowed > 0.1 && !s.net) { s.net = true; Banter.say('netted'); } else if (p.slowed <= 0) s.net = false;
+    const full = p.rampage.meter >= 100 && !p.rampage.active;
+    if (full && !s.ready) Banter.say('ready'); s.ready = full;
+    if (p.rampage.active && !s.ramp) Banter.say('rampage'); s.ramp = p.rampage.active;
+    if (t % 1 < dt) {                                   // the shop check is not cheap; once a second is plenty
+      const canBuy = SKILL_NODES.some(n => !G.tree.has(n.id) && G.tree.available(n) && G.tree.canAfford(n));
+      if (canBuy && !s.buy) Banter.say('shop'); s.buy = canBuy;
+    }
+    // nothing has happened for a while: let them be fond of each other
+    if (Banter.idleT > 26 && G.director.state === 'fighting') Banter.say('idle');
   },
 
   // ------------------------------------------------------------- Skill tree

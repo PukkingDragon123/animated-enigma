@@ -4,78 +4,84 @@
 //
 // Every wave carries an OBJECTIVE. Most of them are "sink the lot", but some
 // ask for something else: hunt one boat down, hold the water for a count, or
-// come back with salvage. The objective is what the wave is really about and
-// it is on screen the whole time.
+// come back with salvage.
+//
+// A wave used to announce itself with a banner and a sentence of prose, and
+// then repeat that sentence in a panel for as long as it lasted. It does not
+// any more. The HUD shows the objective as one icon and one number, and the
+// wave's character comes out of the otter's mouth: `chat` is what he says as
+// it starts and what the manatee answers, in as few words as they can manage.
+// obj.text survives as the objective's short name, not as a line of teaching.
 const WAVES = [
-  { sub: 'Two dinghies leave the pier. Hold to shoot',
-    obj: { kind: 'clear', text: 'Hold to shoot. Sink the two dinghies' },
+  { chat: [['o', 'Two boats. Watch this.', 'spark'], ['m', 'Careful.']],
+    obj: { kind: 'clear', text: 'Sink the dinghies' },
     pool: { dinghy: 1 }, count: 4, interval: 3.0, max: 2, burst: [['dinghy', 2]] },
 
-  { sub: 'A few more. Roll out of the way',
-    obj: { kind: 'clear', text: 'Sink them. Roll to get clear' },
+  { chat: [['o', 'They brought friends!'], ['m', 'Hold on. Rolling.']],
+    obj: { kind: 'clear', text: 'Sink them' },
     pool: { dinghy: 1 }, count: 6, interval: 2.6, max: 3, burst: [['dinghy', 2]] },
 
-  { sub: 'Net boats. Raise the parry to catch one',
-    obj: { kind: 'clear', text: 'Parry the nets, then sink them' },
+  { chat: [['o', 'Nets! Slap one back at them.'], ['m', 'I will turn.']],
+    obj: { kind: 'clear', text: 'Sink the netters' },
     pool: { dinghy: 1.6, netter: 1.2 }, count: 8, interval: 2.4, max: 4, burst: [['netter', 2]] },
 
-  { sub: 'Harpooners keep their distance',
-    obj: { kind: 'clear', text: 'Close on the harpooners and sink them' },
+  { chat: [['o', 'Harpoons. Cowards.'], ['m', 'Get me closer.']],
+    obj: { kind: 'clear', text: 'Sink the harpooners' },
     pool: { dinghy: 1.6, netter: 1, harpooner: 1.2 }, count: 10, interval: 2.2, max: 5, burst: [['harpooner', 2]] },
 
-  { sub: 'A spotter is painting you for the fleet',
-    obj: { kind: 'hunt', target: 'spotter', text: 'Kill the Spotter before it calls the fleet in' },
+  { chat: [['o', 'That one is pointing at us!', 'bang'], ['m', 'Him first.']],
+    obj: { kind: 'hunt', target: 'spotter', text: 'Kill the Spotter' },
     pool: { dinghy: 1.4, netter: 1, harpooner: 1, spotter: 0.9 }, count: 11, interval: 2.0, max: 5, burst: [['spotter', 1], ['dinghy', 2]] },
 
-  { sub: 'Speedboats on strafing runs',
-    obj: { kind: 'clear', text: 'Sink the strafing runs' },
+  { chat: [['o', 'Fast ones! Ha!', 'spark'], ['m', 'Breathe.']],
+    obj: { kind: 'clear', text: 'Sink the speedboats' },
     pool: { dinghy: 1.2, netter: 1, harpooner: 1, speedboat: 1.5, spotter: 0.4, stalker: 0.7 }, count: 13, interval: 1.8, max: 6, burst: [['speedboat', 3]] },
 
-  { sub: 'Something big is coming out of the harbour',
-    obj: { kind: 'hunt', mini: true, text: 'Put the harbour rig on the bottom' },
+  { chat: [['o', 'Something big woke up.', 'bang'], ['m', 'Big sinks too.']],
+    obj: { kind: 'hunt', mini: true, text: 'Sink the harbour rig' },
     mini: true,
     pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, crabber: 1.1, tender: 0.7 }, count: 12, interval: 1.7, max: 7 },
 
-  { sub: 'Jetski bombers. Roll away from them',
-    obj: { kind: 'survive', seconds: 45, text: 'Hold this water for 45 seconds' },
+  { chat: [['o', 'Bombs! Just hang on!'], ['m', 'I can hold.']],
+    obj: { kind: 'survive', seconds: 45, text: 'Hold this water' },
     pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 2.0, longliner: 1, minelayer: 0.8 }, count: 16, interval: 1.5, max: 8, burst: [['jetski', 3]] },
 
-  { sub: 'Longliners and crab pots. Watch the water',
-    obj: { kind: 'clear', text: 'Clear the hooks and the pots out of the bay' },
+  { chat: [['o', 'Hooks in the water.'], ['m', 'Mind your paws.']],
+    obj: { kind: 'clear', text: 'Clear the hooks and pots' },
     pool: { netter: 1, harpooner: 1, longliner: 1.6, crabber: 1.5, jetski: 0.8, twin: 0.9, sub: 0.7 }, count: 16, interval: 1.5, max: 8, burst: [['longliner', 2], ['crabber', 2]] },
 
-  { sub: 'Dynamite skiffs. Parry the sticks',
-    obj: { kind: 'salvage', amount: 30, text: 'Strip 30 pieces of salvage out of them' },
+  { chat: [['o', 'Dynamite. Take all of it.'], ['m', 'Gently.']],
+    obj: { kind: 'salvage', amount: 30, text: 'Strip their salvage' },
     pool: { netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1.8, tug: 0.7, grappler: 0.8, courier: 0.5 }, count: 17, interval: 1.45, max: 8, burst: [['dynaboat', 3]] },
 
-  { sub: 'The Trawler',
+  { chat: [['o', 'The Trawler. That is the one.'], ['m', 'I remember it.']],
     obj: { kind: 'hunt', target: 'trawler', text: 'Sink the Trawler' },
     pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, tug: 0.8, trawler: 0.5, ironclad: 0.5, sub: 0.6 },
     count: 18, interval: 1.4, max: 9, burst: [['trawler', 1], ['dinghy', 3]] },
 
-  { sub: 'The harbour sends its own',
-    obj: { kind: 'hunt', mini: true, text: 'Break whatever they just let off the chain' },
+  { chat: [['o', 'They let something loose.'], ['m', 'Good.']],
+    obj: { kind: 'hunt', mini: true, text: 'Break their champion' },
     mini: true,
     pool: { harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, crabber: 1, tug: 1, bulwark: 0.6, minelayer: 0.7 }, count: 15, interval: 1.5, max: 8 },
 
-  { sub: 'Gunboats out of the harbour',
+  { chat: [['o', 'Guns now. Rude.'], ['m', 'Stay low.']],
     obj: { kind: 'clear', text: 'Sink the gunboats' },
     pool: { netter: 1, harpooner: 1.2, speedboat: 1, jetski: 1, dynaboat: 1, trawler: 0.4, gunboat: 0.8, tug: 0.7, ironclad: 0.7, grappler: 0.7, bulwark: 0.5 },
     count: 19, interval: 1.35, max: 9, burst: [['gunboat', 2], ['speedboat', 2]] },
 
-  { sub: 'The whole fleet is awake now',
+  { chat: [['o', 'All of them at once?!'], ['m', 'Together, then.', 'heart']],
     obj: { kind: 'clear', text: 'Sink all of it' },
     pool: { netter: 1, harpooner: 1.2, speedboat: 1.2, jetski: 1.4, dynaboat: 1.2, longliner: 1, crabber: 1, trawler: 0.5, gunboat: 0.9, sub: 0.8, twin: 0.8, dredger: 0.5, tender: 0.6, stalker: 0.6 },
     count: 21, interval: 1.3, max: 10, burst: [['jetski', 4], ['gunboat', 2]] },
 
-  { sub: 'Everything they have left',
-    obj: { kind: 'hunt', mini: true, text: 'Clear the way to the Chief' },
+  { chat: [['o', 'Last of the fleet.'], ['m', 'Then the Chief.']],
+    obj: { kind: 'hunt', mini: true, text: 'Clear the way' },
     mini: true,
     pool: { speedboat: 1.3, jetski: 1.5, dynaboat: 1.3, tug: 1, trawler: 0.8, gunboat: 1.1, dredger: 0.7, ironclad: 0.9, bulwark: 0.7, courier: 0.5, grappler: 0.6 },
     count: 20, interval: 1.3, max: 10, burst: [['gunboat', 2]] },
 
-  { name: 'THE VILLAGE CHIEF', sub: 'He rides a shark. Bait his charge into the rocks',
-    obj: { kind: 'boss', text: 'Bait the Chief into the rocks, then hit him while he is down' },
+  { name: 'THE VILLAGE CHIEF', chat: [['o', 'There he is.'], ['m', 'I am ready.', 'heart']],
+    obj: { kind: 'boss', text: 'Bait him into the rocks' },
     boss: true, pool: { jetski: 1, dinghy: 1 }, count: 999, interval: 6.0, max: 3 },
 ];
 
@@ -108,7 +114,10 @@ class Director {
     this.remaining = w.count;
     this.spawnT = 1.2;
     this.objT = 0; this.objSalvage = 0; this.objTarget = null; this.objDone = false;
-    G.banner(this.waveName(i), w.boss ? '#ff6161' : '#ffe48f', 2.4, w.sub);
+    // Only a boss gets a ribbon across the screen. An ordinary wave announces
+    // itself by the otter saying something and the manatee answering him.
+    if (w.boss) G.banner(this.waveName(i), '#ff6161', 2.2);
+    this.chat(w.boss ? 'wave' : 'wave', { lines: w.chat, delay: w.boss ? 1.6 : 0.5 });
     if (typeof Hazards !== 'undefined') {
       Hazards.difficulty = this.difficulty;
       if (Hazards.applyWaveScaling) Hazards.applyWaveScaling(this.waveIdx, this.difficulty);
@@ -123,7 +132,7 @@ class Director {
     if (typeof G.spawnMiniBoss !== 'function') return;
     const pos = this.spawnPos();
     const m = G.spawnMiniBoss(null, pos.x, pos.y, this.difficulty);
-    if (m) this.objTarget = m;
+    if (m) { this.objTarget = m; this.chat('big', { delay: 0.4 }); }
   }
 
   next() {
@@ -141,24 +150,24 @@ class Director {
     switch (o.kind) {
       case 'survive': {
         const left = Math.max(0, o.seconds - this.objT);
-        return { text: o.text, value: left > 0 ? Math.ceil(left) + 's left' : 'HELD', done: left <= 0, frac: 1 - left / o.seconds };
+        return { kind: o.kind, text: o.text, value: left > 0 ? Math.ceil(left) + 's' : '', done: left <= 0, frac: 1 - left / o.seconds };
       }
       case 'salvage':
-        return { text: o.text, value: Math.min(o.amount, this.objSalvage) + '/' + o.amount, done: this.objSalvage >= o.amount, frac: Math.min(1, this.objSalvage / o.amount) };
+        return { kind: o.kind, text: o.text, value: Math.min(o.amount, this.objSalvage) + '/' + o.amount, done: this.objSalvage >= o.amount, frac: Math.min(1, this.objSalvage / o.amount) };
       case 'hunt': {
         const t = this.objTarget;
         const alive = t && !t.dead;
-        const label = t && (t.displayName || t.name || (t.cfg && t.cfg.name)) || 'the target';
-        return { text: o.text, value: alive ? label : 'DOWN', done: !alive && !!t, frac: alive && t.maxHp ? 1 - t.hp / t.maxHp : (t ? 1 : 0) };
+        // the bar under the chip is the target's health, so it needs no words
+        return { kind: o.kind, text: o.text, value: '', done: !alive && !!t, frac: alive && t.maxHp ? 1 - t.hp / t.maxHp : (t ? 1 : 0) };
       }
       case 'boss': {
         const b = G.boss;
-        return { text: o.text, value: b && !b.dead ? (b.name || 'THE BOSS') : 'DOWN', done: !!(b && b.dead), frac: b && b.maxHp ? 1 - b.hp / b.maxHp : 0 };
+        return { kind: o.kind, text: o.text, value: '', done: !!(b && b.dead), frac: b && b.maxHp ? 1 - b.hp / b.maxHp : 0 };
       }
       default: {
         const total = this.currentWave().count;
         const left = this.remaining + G.enemies.length;
-        return { text: o.text, value: left + ' left', done: left <= 0, frac: total ? 1 - left / total : 0 };
+        return { kind: 'clear', text: o.text, value: left + '', done: left <= 0, frac: total ? 1 - left / total : 0 };
       }
     }
   }
@@ -195,7 +204,7 @@ class Director {
       if (alive === 0) { this.clear(); return; }
       if (!this.objDone) {
         this.objDone = true;
-        G.banner('OBJECTIVE COMPLETE', '#6fd88e', 1.8, 'They are breaking off');
+        this.chat('objdone');
         for (const e of G.enemies) if (!e.dead) e.retreatT = 99;
       }
       return;
@@ -215,6 +224,13 @@ class Director {
   clear() {
     this.state = 'cleared'; this.clearedAt = this.time; this.wavesCleared++;
     G.onWaveCleared(this.waveIdx);
+    // let the ribbon land first, then let them talk over the quiet water
+    this.chat(this.lastWave ? 'last' : 'cleared', { delay: 1.5 });
+  }
+
+  // the director's one line to the pair. Safe if the HUD is not loaded.
+  chat(kind, opts) {
+    if (typeof UI !== 'undefined' && UI.banterEvent) UI.banterEvent(kind, opts);
   }
 
   spawnOne(w) {
