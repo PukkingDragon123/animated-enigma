@@ -97,7 +97,7 @@ class Game {
     this.fisherman = this.firstRun ? new Fisherman(this.pier.x, this.pier.y1 - 6) : null;
     this.cam.x = this.player.x - (CROP_X + VIEW_W / 2); this.cam.y = this.player.y - (CROP_Y + VIEW_H / 2);
     UI.banner = null;
-    if (!this.firstRun) { this.director.begin(); this.banner('REMATCH', '#ffe48f', 2); }
+    if (!this.firstRun) { this.director.begin(); this.banner('BACK FOR MORE', '#ffe48f', 2); }
   }
   // ---------------------------------------------------------- skipping
   // A cutscene is never skipped by a stray tap. You hold the button down and
@@ -220,8 +220,8 @@ class Game {
     // the cutscenes be replaced with.
     if (typeof UI !== 'undefined' && UI.banterEvent) {
       UI.banterEvent('big', k === 'chief'
-        ? { lines: [['o', "That's him. That's the Chief."], ['m', 'I know.']], pri: 9 }
-        : { lines: [['o', 'Something big!'], ['m', 'I see it.']], pri: 8 });
+        ? { lines: [['o', "That's the Chief. Gut him."], ['m', 'Hold him under.']], pri: 9 }
+        : { lines: [['o', 'Big one! Break its back!'], ['m', 'It bleeds.']], pri: 8 });
     }
     if (k === 'chief') this.playCut('chief_intro');
     else this.playCut('mini_intro', { name: this.boss.name || 'SOMETHING BIG' });
@@ -259,7 +259,7 @@ class Game {
   // a wave is only over when every last boat is on the bottom
   onWaveCleared(idx) {
     const d = this.director;
-    this.banner('WAVE CLEARED', '#6fd88e', 2.6);
+    this.banner('ALL HANDS DEAD', '#6fd88e', 2.6);
     Audio_.rampage();
     this.pickups.forEach(p => { p.life = Math.max(p.life, 30); });
     // the tree comes up on its own once the banner has had its moment
@@ -269,7 +269,7 @@ class Game {
   onEnemyKilled(e) { this.lastKill = { x: e.x, y: e.y }; const p = this.player; p.joyT = 1.2; if (p.rampage.active && p.stats.rampFrenzy) p.rampage.t = Math.max(0, p.rampage.t - 0.6); }
   onBossKilled() {
     const nm = (this.boss && this.boss.name) || 'THE CHIEF';
-    this.banner(nm + ' IS DOWN', '#ffe48f', 3); this.endT = 0;
+    this.banner(nm + ' IS DEAD', '#ffe48f', 3); this.endT = 0;
     this.bossBeaten = true;
     this.persist(true);
     this.state = 'victory_wait';
@@ -280,7 +280,7 @@ class Game {
     this.playCut(this.bossKey === 'chief' || !this.bossKey ? 'chief_defeat' : 'mini_defeat', { name: nm });
   }
   onMiniBossKilled(m) {
-    this.banner((m && (m.displayName || m.name) || 'IT') + ' IS DOWN', '#ffe48f', 2);
+    this.banner((m && (m.displayName || m.name) || 'IT') + ' IS DEAD', '#ffe48f', 2);
     this.playCut('mini_defeat', { name: m && (m.displayName || m.name) || '' });
   }
   onPlayerDeath() {
@@ -365,7 +365,7 @@ class Game {
         this.updateWorld(dt);
         if (Input.hit('Tab')) {
           if (this.upgradesOpen()) this.openTree('play');
-          else { this.banner('FINISH THE WAVE FIRST', '#ff6161', 1.6); Audio_.deny(); }
+          else { this.banner('KILL THEM FIRST', '#ff6161', 1.6); Audio_.deny(); }
         }
         else if (Input.hit('Escape') || Input.hit('KeyP')) this.state = 'paused';
         if (this.director.cleared && !this.director.lastWave) {
@@ -960,11 +960,11 @@ class Game {
     ctx.fillStyle = win ? 'rgba(6,26,20,0.88)' : 'rgba(30,5,10,0.88)';
     ctx.fillRect(0, 0, 640, 360);
     const s = this.stats || {};
-    UIKit.ribbon(ctx, 320, 30, win ? 'THE BOATS ARE GONE' : 'SHE GOES BACK TO THE REEF', win ? 'gold' : 'dark');
+    UIKit.ribbon(ctx, 320, 30, win ? 'NO SURVIVORS' : 'DEAD IN THE WATER', win ? 'gold' : 'dark');
     const rows = [
-      ['Boats sunk', (s.kills | 0) + ''],
+      ['Hulls sunk', (s.kills | 0) + ''],
       ['Time', fmtTime((this.director && this.director.time) || 0)],
-      ['Scrap', (s.scrapCollected | 0) + ''],
+      ['Plunder', (s.scrapCollected | 0) + ''],
     ];
     UIKit.panel(ctx, 190, 96, 260, 106, 'dark');
     rows.forEach(([k, v], i) => {
