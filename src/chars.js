@@ -23,23 +23,9 @@ const CPAL = {
   gold: '#e0a838', goldD:'#a87a1e', goldL:'#f8dc86',
   // wood
   wood: '#b57d3f', woodD:'#89592a', woodDD:'#5a3818', woodL:'#d6a05e',
-  // manatee hide — warmed off the old grey-purple toward a soft mauve taupe,
-  // with a cream belly instead of a cold blue one. She is the same animal in
-  // the same light; she is just no longer the colour of wet slate.
-  // ONE HARD RULE ON THESE: src/intro.js recolours the family off her hide by
-  // multiplying every pixel whose channel spread is <= 30 and leaving the
-  // rest alone (that test is how it protects the algae, the blood and the
-  // bone). Push any of these past a spread of 30 and her mother, her father
-  // and her brother all silently stop being different animals. Every value
-  // below is inside 28.
-  man:  '#756871', manD: '#554a52', manDD:'#3a323a', manL: '#94848c', manLL:'#b3a3a8',
-  belly:'#c9b6ae', bellyL:'#dccbc2',
-  // the cheeks — the one place on either of them that is allowed to be pink.
-  // Two pairs, because a mauve that glows on her grey-violet hide turns to
-  // dirt on his orange fur, and a rose that glows on the fur turns into a
-  // wound on the hide.
-  blush:'#bf8388', blushL:'#d6a29e',
-  blushF:'#c2544f', blushFL:'#e0857a',
+  // manatee hide
+  man:  '#67646d', manD: '#4b4851', manDD:'#332f39', manL: '#827e88', manLL:'#9d99a3',
+  belly:'#9fadbd',
   // accents
   white:'#f4f7fb', bone: '#e8e4d8', blood:'#c4202c', bloodD:'#7a0d16',
   eye:  '#241a12', shine:'#ffffff',
@@ -342,33 +328,20 @@ const MAN_W = 140, MAN_H = 64, MAN_CX = 70, MAN_CY = 32;
 // glance and close enough that a crease drawn one band darker still reads as
 // a crease and not a hole.
 const HD = {
-  dd: '#231a21', d: '#3f323b', m: '#5e4d57', mm: '#7e6a73',
-  l: '#a08891', ll: '#c0a6ab', pale: '#dcc5c1', top: '#f4e3d8',
+  dd: '#211d27', d: '#37333f', m: '#4d4a56', mm: '#635f6c',
+  l: '#807c8a', ll: '#9c98a7', pale: '#bdbac9', top: '#d6d4de',
 };
-// Pale dapples on her back where the old barnacles and algae were. A sea cow
-// really does carry a garden; this one carries freckles.
-const HALG = ['#e6cfc4', '#f2e0d5', '#d3b8b4'];
+const HALG = ['#3c5f48', '#2c4936', '#4a7355'];      // algae on her back
 // Her half-beam, in ART pixels, keyed along her length. A hand-keyed curve
 // beats a field of blobs: blobs smooth into a heap of lumps, a curve gives a
 // spade fluke, a real peduncle waist and a blunt head. The flipper socket
 // the rig (and src/death.js) uses is world (15, +-13) = art (100, +-26), so
 // the curve has to still be 26 art px deep there.
-// CUTER, on the same canvas: the head end used to run away to a point from
-// x=106 onward, which is what made her read as a torpedo. It now holds its
-// beam almost all the way to the muzzle and only rounds off in the last six
-// pixels, so the head is a big soft dome instead of a taper — chibi
-// proportions without the canvas, the anchor or the flipper socket moving.
-// The peduncle is a little narrower to set the head off against it, and the
-// fluke a shade smaller for the same reason.
-//   * art x=100 must stay at least 26 deep: the flipper socket the rig and
-//     src/death.js both use is world (15, +-13) = art (100, +-26).
-//   * the waist must stay at art x=40: MAN_PIVX pivots the fluke there and
-//     MAN_CUT_F/MAN_CUT_T straddle it.
 const MAN_KEYS = [
-  [2, 13], [5, 19], [9, 23], [14, 24], [19, 22], [24, 18], [29, 13],
-  [34, 10], [40, 10], [46, 13], [52, 17.5], [58, 22], [66, 26], [74, 28.5],
-  [82, 29], [90, 28.5], [98, 27], [104, 26], [110, 24.5], [116, 23],
-  [121, 21.5], [126, 19.5], [130, 17], [134, 14], [137, 10.5], [139, 7],
+  [2, 14], [5, 20], [9, 24], [14, 25], [19, 23], [24, 19], [29, 14],
+  [34, 11], [40, 11.5], [46, 14], [52, 18], [58, 22], [66, 26], [74, 28.5],
+  [82, 29], [90, 28.5], [98, 27], [106, 25], [112, 22], [117, 19.5],
+  [122, 18], [127, 16.5], [132, 14.5], [136, 12], [138, 10.5], [139, 9],
 ];
 function manHalf(x) {
   if (x < MAN_KEYS[0][0] || x > MAN_KEYS[MAN_KEYS.length - 1][0]) return -1;
@@ -409,9 +382,9 @@ function buildManateeBody(armored) {
   const tOf = (x, y) => (y - span[x * 2]) / Math.max(1, span[x * 2 + 1] - span[x * 2]);
   // ---- blunt muzzle: a manatee's snout ends in a wall, not a point, so the
   //      front column is all outline with the two corners knocked off
-  for (let y = cyy - 7; y <= cyy + 7; y++) px(ctx, CPAL.out, MAN_W - 1, y);
-  ctx.clearRect(MAN_W - 1, cyy - 7, 1, 1); ctx.clearRect(MAN_W - 1, cyy + 7, 1, 1);
-  px(ctx, CPAL.out, MAN_W - 2, cyy - 7); px(ctx, CPAL.out, MAN_W - 2, cyy + 7);
+  for (let y = cyy - 9; y <= cyy + 9; y++) px(ctx, CPAL.out, MAN_W - 1, y);
+  ctx.clearRect(MAN_W - 1, cyy - 9, 1, 1); ctx.clearRect(MAN_W - 1, cyy + 9, 1, 1);
+  px(ctx, CPAL.out, MAN_W - 2, cyy - 9); px(ctx, CPAL.out, MAN_W - 2, cyy + 9);
 
   // ---- hide grain. Very sparse single art pixels one band off their own, in
   //      the mid-tones only, so she reads leathery rather than speckled.
@@ -423,130 +396,107 @@ function buildManateeBody(armored) {
     if (r > 0.988) px(ctx, t < 0.5 ? HD.l : HD.d, x, y);
     else if (r < 0.010) px(ctx, t < 0.5 ? HD.ll : HD.m, x, y);
   }
-  // ---- transverse skin folds across the barrel. There were three of them,
-  //      cut a full band darker, and they read as ribs on a hull. Two now,
-  //      well aft of the head, and only half a band down: enough to say the
-  //      body is soft and bends, not enough to say it is armour plate.
-  for (const fx of [62, 84]) for (let y = cyy - 15; y <= cyy + 15; y++) {
-    const x = fx + Math.round(Math.sin((y - cyy) / 22) * 5);
-    if (!deep(x, y, 9)) continue;
-    px(ctx, tOf(x, y) < 0.5 ? HD.mm : HD.m, x, y);
-    if (deep(x - 1, y, 10)) px(ctx, tOf(x, y) < 0.5 ? HD.pale : HD.l, x - 1, y);
-  }
-  // ---- the crease where her neck meets her shoulders, so the big head is a
-  //      head and not just a wide end. Pushed aft, out from under the eyes.
-  for (let y = cyy - 17; y <= cyy + 17; y++) {
-    const x = 107 + Math.round(Math.sin((y - cyy) / 20) * 3);
+  // ---- transverse skin folds across the barrel: a dark core with a lit
+  //      upper lip, bowed the way a fold sits on a round back, and stopping
+  //      short of the sheer so they crease her instead of banding her
+  for (const fx of [60, 80, 100]) for (let y = 2; y < MAN_H - 2; y++) {
+    const x = fx + Math.round(Math.sin((y - cyy) / 30) * 5);
     if (!deep(x, y, 7)) continue;
-    px(ctx, tOf(x, y) < 0.5 ? HD.mm : HD.m, x, y);
+    px(ctx, HD.m, x, y); px(ctx, HD.d, x + 1, y);
+    if (deep(x - 1, y, 8)) px(ctx, tOf(x, y) < 0.5 ? HD.pale : HD.l, x - 1, y);
   }
-  // ---- fluke: ridges fanning out of the peduncle and a pale trailing edge.
-  //      Two ridges a side instead of three, and only half a band down: the
-  //      old set cut a full band and read as scratches on a paddle.
-  for (const i of [-2, -1, 1, 2]) {
-    for (let x = 6; x < 34; x++) {
-      const y = Math.round(cyy + i * 8 + (34 - x) * i * 0.12);
-      if (!deep(x, y, 3)) continue;
-      px(ctx, tOf(x, y) < 0.5 ? HD.mm : HD.m, x, y);
-      if ((x & 3) === 0 && deep(x, y - 1, 3)) px(ctx, HD.pale, x, y - 1);
+  // ---- the crease where her neck meets her shoulders, so the head is a head
+  for (let y = 3; y < MAN_H - 3; y++) {
+    const x = 116 + Math.round(Math.sin((y - cyy) / 26) * 3);
+    if (!deep(x, y, 3)) continue;
+    px(ctx, HD.d, x, y); px(ctx, HD.dd, x + 1, y);
+    if (deep(x + 2, y, 4)) px(ctx, HD.pale, x + 2, y);
+  }
+  // ---- fluke: ridges fanning out of the peduncle and a pale trailing edge
+  for (let i = -3; i <= 3; i++) {
+    if (!i) continue;
+    for (let x = 5; x < 36; x++) {
+      const y = Math.round(cyy + i * 6 + (36 - x) * i * 0.12);
+      if (!deep(x, y, 2)) continue;
+      px(ctx, HD.d, x, y);
+      if ((x & 3) === 0 && deep(x, y - 1, 2)) px(ctx, HD.l, x, y - 1);
     }
   }
   for (let y = 4; y < MAN_H - 4; y++) { if (solid(3, y)) px(ctx, HD.pale, 3, y); if (solid(4, y)) px(ctx, HD.ll, 4, y); }
-  // (the torn notch that used to be bitten out of the trailing edge is gone
-  //  with the barnacles and the gashes: nothing on her is damage any more)
+  // a torn notch out of the trailing edge — she has been in the gear before
+  for (let i = 0; i < 4; i++) for (let y = cyy - 11 - i; y <= cyy - 8 + i; y++) {
+    if (!solid(2 + i, y)) continue;
+    ctx.clearRect(2 + i, y, 1, 1);
+  }
+  for (let i = 0; i < 5; i++) if (solid(6 + i, cyy - 10)) px(ctx, CPAL.out, 5 + i, cyy - 11 + (i >> 1), 1, 2);
 
-  // ---- freckles. What used to be here was four propeller gashes, five
-  //      barnacles and a bloom of algae — the marks of an animal that has
-  //      been chewed by the gear, which is exactly what she is NOT meant to
-  //      read as any more. Same placements, same pixel discipline, half the
-  //      count: soft pale dapples along her lit back, the way a seal pup is
-  //      dappled. She keeps a spotted hide; it just stopped being damage.
-  for (const [ax, ay, w2, h2] of [[66, 14, 9, 5], [90, 44, 8, 4], [52, 24, 7, 4], [42, 36, 6, 3]]) {
+  // ---- old propeller gashes: paired pale gouges with a dark lower lip
+  const gash = (x0, y0, dx, dy, n) => {
+    for (let i = 0; i < n; i++) {
+      const x = Math.round(x0 + i * dx), y = Math.round(y0 + i * dy);
+      if (!deep(x, y, 2)) continue;
+      px(ctx, HD.pale, x, y, 2, 1); px(ctx, HD.dd, x, y + 1, 2, 1);
+    }
+  };
+  gash(64, 12, 1.6, 1.0, 11);
+  gash(86, 50, 1.5, -0.9, 9);
+  gash(52, 40, 1.2, 0.7, 7);
+  gash(104, 20, 1.0, -0.5, 5);
+  // ---- algae on the back, where the light hits and nothing rubs it off
+  for (const [ax, ay, w2, h2] of [[68, 14, 9, 5], [92, 44, 8, 4], [54, 24, 7, 4], [40, 34, 6, 3]]) {
     for (let y = ay; y < ay + h2; y++) for (let x = ax; x < ax + w2; x++) {
-      if (!deep(x, y, 4)) continue;
+      if (!deep(x, y, 3)) continue;
       const r = hash2(x * 3, y * 5);
-      if (r > 0.62) px(ctx, HALG[r > 0.90 ? 2 : r > 0.76 ? 1 : 0], x, y);
+      if (r > 0.55) px(ctx, HALG[r > 0.86 ? 2 : r > 0.7 ? 0 : 1], x, y);
     }
   }
-  // a few loose spots between them, so the dapple is a pattern and not four
-  // patches in a row
-  for (const [bx, by] of [[58, 20], [80, 47], [48, 33], [74, 52], [96, 22]]) {
+  // ---- barnacles: a dark rim, a dull shell and a shadow, three art px wide
+  for (const [bx, by] of [[58, 20], [82, 46], [48, 34], [74, 52], [66, 26]]) {
     if (!deep(bx, by, 5)) continue;
-    px(ctx, HALG[0], bx, by, 3, 2); px(ctx, HALG[1], bx, by, 2, 1);
+    px(ctx, HD.dd, bx - 1, by - 1, 5, 5);
+    px(ctx, '#9a9382', bx, by, 3, 3);
+    px(ctx, '#c2bba6', bx, by, 2, 1);
+    px(ctx, HD.dd, bx + 1, by + 1, 2, 2);
   }
 
   // ---- head ---------------------------------------------------------------
-  // The eye is STILL A DOT — one bead, no sclera, no lid, no anatomy — it is
-  // just a bigger one. Seven art pixels across instead of five, rounded at
-  // all four corners so it reads as a bead and not a die, with a two-pixel
-  // catchlight up in the light and a single dot of bounce down in the shade.
-  // The pale socket ring is what keeps it alive against whichever band of
-  // hide it lands on, and the blush sits just outboard of it.
-  for (const s2 of [-1, 1]) {
-    const ey = cyy + (s2 < 0 ? -13 : 7);          // 7 tall, centred on cyy-+10
-    // socket: a pale ring under the bead, so the dot has somewhere to sit
-    for (let y = -1; y <= 7; y++) for (let x = -1; x <= 7; x++) {
-      const u = (x - 3) / 4.6, v = (y - 3) / 4.6;
-      if (u * u + v * v > 1) continue;
-      if (!deep(116 + x, ey + y, 1)) continue;
-      px(ctx, y < 3 ? HD.pale : HD.ll, 116 + x, ey + y);
-    }
+  // The eye is a DOT: one black bead with one glint, ringed by a pale socket
+  // so it survives against whichever band of hide it lands on.
+  for (const ey of [cyy - 12, cyy + 8]) {
+    px(ctx, HD.pale, 118, ey - 1, 5, 1);          // lit brow over the socket
     stamp(ctx, [
-      '.kkkkk.',
-      'kkeeekk',
-      'keeeeek',
-      'keeeeek',
-      'keeeeek',
-      'kkeeekk',
-      '.kkkkk.',
-    ], 117, ey, { k: CPAL.out, e: CPAL.eye });
-    px(ctx, CPAL.shine, 118, ey + 1, 2, 2);       // the catchlight
-    px(ctx, HD.ll, 121, ey + 4);                  // one dot of bounce light
-    px(ctx, HD.dd, 117, ey + 7, 5, 1);            // the socket's own shadow
+      '.kkk.',
+      'keeek',
+      'keeek',
+      'keeek',
+      '.kkk.',
+    ], 118, ey, { k: CPAL.out, e: CPAL.eye });
+    px(ctx, CPAL.shine, 119, ey + 1);             // the one glint
+    px(ctx, HD.dd, 118, ey + 5, 5, 1);            // the socket's own shadow
   }
   // whisker pad: the brightest block on her, right at the front, so the
   // silhouette has a face end and a tail end at any distance. Clipped to the
-  // muzzle, so it never spills off the outline. It is bigger and rounder than
-  // it was, because the head under it is.
-  for (let y = cyy - 12; y <= cyy + 12; y++) for (let x = 126; x < MAN_W - 1; x++) {
+  // muzzle, so it never spills off the outline.
+  for (let y = cyy - 10; y <= cyy + 10; y++) for (let x = 127; x < MAN_W - 1; x++) {
     if (!deep(x, y, 1)) continue;
-    const t = Math.abs(y - cyy) / 11.5, u = (x - 126) / 14;
+    const t = Math.abs(y - cyy) / 10.5, u = (x - 127) / 13;
     if (t * t + u * u * 0.30 > 1) continue;
     px(ctx, t > 0.88 ? HD.l : t > 0.66 ? HD.ll : t > 0.34 ? HD.pale : HD.top, x, y);
   }
-  for (let y = cyy - 9; y <= cyy + 9; y++) if (deep(125, y, 2)) px(ctx, HD.mm, 125, y);
-  // ---- blush. LAST, over the pad, because the cheek is where the pad ends
-  //      and everything else up here would paint over it. Two bands and a
-  //      stipple, kept five pixels inboard of the sheer so it is a warm cheek
-  //      and never a coloured edge, and small: it has to say "soft animal" at
-  //      a glance from across the bay without turning into a wound.
-  for (const s2 of [-1, 1]) for (let y = 11; y <= 18; y++) for (let x = 117; x <= 130; x++) {
-    const u = (x - 123) / 4.6, v = (y - 15) / 2.4;
-    const r2 = u * u + v * v;
-    if (r2 > 1 || !deep(x, cyy + s2 * y, 5)) continue;
-    if (hash2(x * 9 + 1, y * 5) < 0.36) continue;
-    px(ctx, r2 < 0.40 ? CPAL.blushL : CPAL.blush, x, cyy + s2 * y);
-  }
+  for (let y = cyy - 8; y <= cyy + 8; y++) if (deep(126, y, 2)) px(ctx, HD.m, 126, y);
   // dimples in the pad, a lit row and a shaded one, so it reads as stippled
-  for (const [dx, dy] of [[129, -7], [132, -7], [135, -6], [129, 6], [132, 6], [135, 5]]) {
+  for (const [dx, dy] of [[130, -6], [133, -6], [136, -5], [130, 5], [133, 5], [136, 4]]) {
     if (!deep(dx, cyy + dy, 1)) continue;
     px(ctx, HD.l, dx, cyy + dy); px(ctx, HD.top, dx, cyy + dy - 1);
   }
-  // nostrils: two soft dots rather than two slits — a slit is a snarl
-  for (const ny of [cyy - 7, cyy + 6]) {
-    px(ctx, HD.top, 133, ny - 1, 2, 1);
-    px(ctx, HD.d, 133, ny, 2, 2);
+  // nostrils: two short slits high on the muzzle with a lit upper lip
+  for (const ny of [cyy - 7, cyy + 5]) {
+    px(ctx, HD.top, 135, ny - 1, 2, 1);
+    px(ctx, CPAL.out, 135, ny, 2, 3);
+    px(ctx, HD.dd, 135, ny + 3, 2, 1);
   }
-  // The mouth, seen from straight above: a crease that BOWS FORWARD in the
-  // middle instead of running straight across. A straight one read as a slot
-  // cut in the front of her; a bowed one is the top lip of something that is
-  // pleased to see you, which is the whole difference and costs three pixels.
-  // Kept half a band down, not a full one: a hard line here is a frown.
-  for (let dy = -5; dy <= 5; dy++) {
-    const u = dy / 5, x = 133 + Math.round((1 - u * u) * 3);
-    if (!deep(x, cyy + dy, 1)) continue;
-    px(ctx, HD.ll, x, cyy + dy);
-  }
+  // the mouth, a crease across the front of the pad
+  px(ctx, HD.m, 132, cyy - 1, 6, 1); px(ctx, HD.d, 133, cyy, 5, 1); px(ctx, HD.dd, 134, cyy + 1, 3, 1);
   for (const [wx, wy] of [[137, cyy - 4], [137, cyy + 3], [136, cyy - 9], [136, cyy + 8]])
     if (solid(wx, wy)) px(ctx, CPAL.bone, wx, wy, 2, 1);
 
@@ -620,26 +570,25 @@ function buildManateeBody(armored) {
     px(ctx, CPAL.goldL, sx, cyy - 5, 6, 2);
     px(ctx, CPAL.out, sx + 2, cyy - 2, 2, 5);                 // the tongue
     px(ctx, CPAL.out, sx + 2, cyy - 9, 2, 2); px(ctx, CPAL.out, sx + 2, cyy + 8, 2, 2);
-    // ---- shoulder plates: out at the widest point, where they break the
-    //      silhouette instead of disappearing into the back. They were spikes;
-    //      a spike is the one shape on her that could never be soft, so they
-    //      are domed pauldrons now — the same steel, the same footprint, the
-    //      same break in the outline, with the point taken off the top.
+    // ---- shoulder spikes: out at the widest point, where they break the
+    //      silhouette instead of disappearing into the back
     stamp(ctx, [
-      '..kkkkkk..',
-      '.kLLLLLLk.',
+      '....kk....',
+      '...kLLk...',
+      '..kLMMLk..',
+      '.kLMMMMLk.',
       'kLMMMMMMLk',
-      'kMMMMMMMMk',
       'kMMmmmmMMk',
       'kkkkkkkkkk',
-    ], 78, 2, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL, m: CPAL.metD });
+    ], 78, 1, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL, m: CPAL.metD });
     stamp(ctx, [
       'kkkkkkkkkk',
       'kMMmmmmMMk',
-      'kMMMMMMMMk',
       'kLMMMMMMLk',
-      '.kLLLLLLk.',
-      '..kkkkkk..',
+      '.kLMMMMLk.',
+      '..kLMMLk..',
+      '...kLLk...',
+      '....kk....',
     ], 78, MAN_H - 8, { k: CPAL.out, M: CPAL.met, L: CPAL.metLL, m: CPAL.metD });
     // ---- a brass ring through the snout: the fleet put it there
     px(ctx, CPAL.goldD, 133, cyy - 5, 3, 11);
@@ -887,31 +836,6 @@ function buildOtterHeadHi() {
   return spriteFromHi(c, 18, 18);
 }
 
-// His eye, hand-rasterized: a round bead with a two-pixel catchlight up in
-// the light and one pixel of bounce down in the shade. `k` is the ink, `e`
-// the bead, `W` the catchlight, `w` the bounce.
-const EYE_BEAD = [
-  '.kkkkkk.',
-  'kkeeeekk',
-  'keWWeeek',
-  'keWWeeek',
-  'keeeeeek',
-  'keeeewek',
-  'kkeeeekk',
-  '.kkkkkk.',
-];
-const EYE_WIDE = [
-  '..kkkkkk..',
-  '.kkeeeekk.',
-  'kkeWWeeekk',
-  'keeWWeeeek',
-  'keeeeeeeek',
-  'keeeeeweek',
-  'kkeeeeeekk',
-  '..kkkkkk..',
-];
-const EYEMAP = { k: CPAL.out, e: CPAL.eye, W: CPAL.shine, w: '#a9c4d6' };
-
 // Muzzle + expression, drawn live over the head raster, in ART pixels.
 // When it is called on anything but CH.headBuf the destination is in WORLD
 // units (src/death.js paints the face onto his bare skull inside a frame
@@ -936,47 +860,27 @@ function drawOtterFace(ctx, exp, blink, t) {
   px(ctx, O, 16, 20, 6, 4); px(ctx, '#8a5b46', 16, 20, 4, 2); px(ctx, '#a97a63', 16, 20, 2, 1);
 
   if (exp === 'drown' || exp === 'pain') {
-    for (const ex of [7, 23]) { px(ctx, O, ex, 16, 8, 2); px(ctx, CPAL.furDD, ex, 14, 8, 2); }
+    for (const ex of [8, 24]) { px(ctx, O, ex, 16, 6, 2); px(ctx, CPAL.furDD, ex, 14, 6, 2); }
     const g = Math.floor(t * 4) & 1;
     px(ctx, O, 14, 27, 10, 4 + g * 2);
     px(ctx, CPAL.bloodD, 16, 29, 6, g * 2);
     if (world) ctx.restore();
     return;
   }
-  // ---- the eyes. They were six art pixels wide with a four-pixel white and
-  //      a three-pixel pupil: a competent, slightly mean little eye. They are
-  //      eight across now with a six-pixel white, a big round pupil, a square
-  //      catchlight up in the light and a second dot of bounce down in the
-  //      shade — the two-highlight trick that makes an eye look wet. Same
-  //      sockets, same head, no part of him moved.
   const shut = blink || exp === 'happy';
-  for (const ex of [7, 23]) {
-    if (shut) {
-      // a shut eye curves, or it is a scowl: three rows, the ends one lower
-      px(ctx, O, ex, 16, 8, 2); px(ctx, O, ex - 1, 15, 2, 2); px(ctx, O, ex + 7, 15, 2, 2);
-      px(ctx, CPAL.furDD, ex, 14, 8, 1); continue;
-    }
-    // A big white with a small pupil in it reads as a goggle. A big ROUND
-    // BEAD with two highlights in it reads as a wet eye, which is the whole
-    // trick. Eight across where it was six, and it has to live between the
-    // hat band (y 10-11) and the muzzle pad (y 20), so eight tall is the
-    // most the head has room for.
-    if (exp === 'surprised') stampRuns(ctx, EYE_WIDE, ex - 1, 12, EYEMAP);
-    else stampRuns(ctx, EYE_BEAD, ex, 12, EYEMAP);
-  }
-  // ---- blush: one warm patch on each cheek, in the gap between the muzzle
-  //      pad and the jowl, stippled so it reads as a flush in the fur rather
-  //      than a sticker on top of it.
-  for (const bx of [6, 26]) {
-    px(ctx, CPAL.blushF, bx + 1, 20, 3, 1);
-    px(ctx, CPAL.blushFL, bx, 21, 5, 1);
-    px(ctx, CPAL.blushF, bx + 1, 22, 3, 1);
+  for (const ex of [8, 24]) {
+    if (shut) { px(ctx, O, ex, 16, 6, 2); px(ctx, CPAL.furDD, ex, 15, 6, 1); continue; }
+    const big = exp === 'surprised' ? 2 : 0;
+    px(ctx, O, ex - big, 12 - big, 6 + big * 2, 8 + big * 2);
+    px(ctx, CPAL.white, ex, 14, 4, 4);
+    px(ctx, E, ex + 1, 14, 3, 3);
+    px(ctx, W, ex, 14, 2, 2);
   }
   // brows say the mood at this size more than the eyes do
   if (exp === 'angry') {
-    px(ctx, CPAL.furDD, 5, 9, 9, 2); px(ctx, CPAL.furDD, 10, 11, 5, 2);
-    px(ctx, CPAL.furDD, 24, 9, 9, 2); px(ctx, CPAL.furDD, 23, 11, 5, 2);
-  } else if (exp === 'surprised') { px(ctx, CPAL.furDD, 5, 7, 9, 2); px(ctx, CPAL.furDD, 24, 7, 9, 2); }
+    px(ctx, CPAL.furDD, 6, 10, 8, 2); px(ctx, CPAL.furDD, 10, 12, 5, 2);
+    px(ctx, CPAL.furDD, 24, 10, 8, 2); px(ctx, CPAL.furDD, 23, 12, 5, 2);
+  } else if (exp === 'surprised') { px(ctx, CPAL.furDD, 6, 8, 8, 2); px(ctx, CPAL.furDD, 24, 8, 8, 2); }
   // mouth
   if (exp === 'happy') {
     px(ctx, O, 14, 28, 10, 2); px(ctx, O, 12, 26, 2, 2); px(ctx, O, 24, 26, 2, 2);
@@ -1116,10 +1020,10 @@ function buildManateeBelly(src) {
   ctx.fillRect(0, 0, W, H);
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   const k = src.hi ? AS : 1, cy = Math.round(H / 2);
-  // a pale keel line down the middle. The two old boat scars that used to
-  // cross it went the way of the gashes on her back: a belly you are meant
-  // to want to scratch cannot have blood on it.
-  for (let x = 10 * k; x < W - 8 * k; x += 2) px(ctx, CPAL.bellyL, x, cy);
+  // a pale keel line down the middle and two old boat scars across it
+  for (let x = 10 * k; x < W - 8 * k; x += 2) px(ctx, '#c9d6e2', x, cy);
+  for (let i = 0; i < 7 * k; i++) { px(ctx, CPAL.blood, 34 * k + i, 11 * k + i); px(ctx, CPAL.bloodD, 34 * k + i, 12 * k + i); }
+  for (let i = 0; i < 5 * k; i++) px(ctx, CPAL.bloodD, 52 * k + i, 30 * k - i);
   if (src.hi) { HIRES.add(c); return { c, w: src.w, h: src.h, ax: src.ax, ay: src.ay, hi: 1 }; }
   return spriteFrom(c, src.ax, src.ay);
 }
@@ -1128,52 +1032,22 @@ function buildManateeBelly(src) {
 //  SIDE-ON MANATEE — facing RIGHT. The cinematics' hero.
 // ===========================================================================
 const MSIDE_W = 98, MSIDE_H = 40, MSIDE_CX = 49, MSIDE_CY = 20;
-// Her side-on dot eye, one art pixel per world unit. The BAKED one and the
-// LIVE one (manateeSideFace) have to be the same size or the live pass leaves
-// a ring of the baked one showing round it.
-const SIDE_EYE = [
-  '.kkkkk.',
-  'kkeeekk',
-  'keeeeek',
-  'keeeeek',
-  'keeeeek',
-  'kkeeekk',
-  '.kkkkk.',
-];
-const SIDE_EYE_W = [
-  '..kkkkk..',
-  '.kkeeekk.',
-  'kkeeeeekk',
-  'keeeeeeek',
-  'keeeeeeek',
-  'keeeeeeek',
-  'kkeeeeekk',
-  '.kkeeekk.',
-  '..kkkkk..',
-];
 function buildManateeSideBody(scarred) {
   const W = MSIDE_W, H = MSIDE_H, cy = MSIDE_CY;
-  // The head end used to shed a third of its depth over the last twenty-five
-  // pixels, which read as a snout on a barrel. It now carries its depth to
-  // within four pixels of the muzzle and rounds off in one step: the same
-  // animal, the same anchors, with a head you could cup in two hands. The
-  // eye, the mouth, the shoulder and the tail anchors below are unchanged
-  // and every one of them is still well inside the new form.
   const lobes = [
-    { x: 8,  y: cy,     rx: 4.5,  ry: 4.2 },
-    { x: 16, y: cy,     rx: 6.5,  ry: 6.6 },
-    { x: 26, y: cy,     rx: 8.5,  ry: 9.4 },
-    { x: 38, y: cy,     rx: 11.0, ry: 12.2 },
+    { x: 8,  y: cy,     rx: 4.5,  ry: 4.0 },
+    { x: 16, y: cy,     rx: 6.5,  ry: 6.4 },
+    { x: 26, y: cy,     rx: 8.5,  ry: 9.2 },
+    { x: 38, y: cy,     rx: 11.0, ry: 12.0 },
     { x: 52, y: cy,     rx: 12.0, ry: 13.0 },
-    { x: 64, y: cy - 1, rx: 11.5, ry: 12.6 },
-    { x: 74, y: cy - 2, rx: 10.5, ry: 11.6 },
-    { x: 83, y: cy - 2, rx: 9.0,  ry: 10.2 },
-    { x: 90, y: cy - 2, rx: 6.5,  ry: 7.8 },
-    { x: 94, y: cy - 1, rx: 3.6,  ry: 5.2 },
+    { x: 64, y: cy - 1, rx: 11.0, ry: 12.0 },
+    { x: 74, y: cy - 2, rx: 9.0,  ry: 10.2 },
+    { x: 83, y: cy - 2, rx: 7.0,  ry: 8.2 },
+    { x: 90, y: cy - 1, rx: 5.0,  ry: 6.2 },
   ];
   const f = blobField(W, H, lobes);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man, CPAL.manL, CPAL.manLL],
-    { outline: CPAL.out, lx: -0.25, ly: -0.92, contrast: 0.74, lift: 0.30, smooth: 2 });
+  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man, CPAL.manL],
+    { outline: CPAL.out, lx: -0.25, ly: -0.92, contrast: 0.74, lift: 0.26, smooth: 2 });
   const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
   // ---- pale belly: the bottom third of every column, in two bands
   for (let x = 0; x < W; x++) {
@@ -1184,51 +1058,30 @@ function buildManateeSideBody(scarred) {
     for (let y = y0 + 1; y < y1; y++) {
       const k = (y - y0) / hgt;
       if (k < 0.66) continue;
-      px(ctx, k > 0.82 ? CPAL.bellyL : CPAL.belly, x, y);
+      px(ctx, k > 0.82 ? '#b2c0cf' : CPAL.belly, x, y);
     }
     px(ctx, CPAL.manL, x, y0 + 1);          // lit back
     px(ctx, CPAL.out2, x, y1);              // dark keel
   }
-  // ---- transverse folds. Three of them, cut a full band down and run from
-  //      her back clean to her keel, segmented her like a grub. Two now, over
-  //      the upper flank only, half a band down: a soft body that bends.
-  for (const fx of [44, 62]) for (let y = cy - 10; y <= cy + 1; y++) {
-    if (((y - cy) & 3) === 2) continue;                    // broken, not ruled
-    const x = fx + Math.round(Math.sin((y - cy) / 10) * 2);
-    if (!inside(x, y) || !inside(x, y + 3) || !inside(x - 2, y)) continue;
-    px(ctx, CPAL.manD, x, y);
+  // ---- three transverse folds, bowed with the barrel
+  for (const fx of [34, 48, 62]) for (let y = 2; y < H - 2; y++) {
+    const x = fx + Math.round(Math.sin((y - cy) / 14) * 2);
+    if (!inside(x, y) || !inside(x, y + 1) || !inside(x - 2, y)) continue;
+    px(ctx, CPAL.manDD, x, y);
   }
-  // ---- pale dapples along her lit back, where the algae and the barnacles
-  //      used to be. Same three placements, softened into freckles.
-  for (const [bx, by] of [[44, 10], [58, 9], [30, 13], [68, 12], [40, 15]]) {
-    px(ctx, CPAL.manLL, bx, by, 3, 1); px(ctx, CPAL.manL, bx + 1, by + 1, 2, 1);
+  // ---- algae on the back, barnacles on the shoulder
+  for (const [bx, by] of [[44, 10], [58, 9], [30, 13]]) {
+    px(ctx, '#3f6b4c', bx, by, 3, 1); px(ctx, '#2d4f38', bx + 1, by + 1, 2, 1);
   }
+  for (const [bx, by] of [[68, 12], [40, 14]]) { px(ctx, CPAL.manDD, bx, by, 3, 3); px(ctx, CPAL.bone, bx + 1, by + 1, 2, 2); }
   // ---- flipper socket crease
-  for (let i = 0; i < 6; i++) px(ctx, CPAL.manD, 72 + i, 24 + (i >> 1));
-  // ---- head: the DOT eye, the nostril and the mouth crease. The bead is
-  //      seven across instead of four, rounded at the corners, with a pale
-  //      socket under it and a two-pixel catchlight in it — still one dot,
-  //      still no anatomy, just a dot you can actually see her with.
-  for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) {
-    if (x * x + y * y > 18) continue;
-    if (!inside(82 + x, 14 + y)) continue;
-    px(ctx, y < 0 ? CPAL.manLL : CPAL.manL, 82 + x, 14 + y);
-  }
-  stamp(ctx, SIDE_EYE, 79, 11, { k: CPAL.out, e: CPAL.eye });
-  px(ctx, CPAL.shine, 80, 12, 2, 2);
-  px(ctx, CPAL.manLL, 84, 16);
-  // ---- blush, on the cheek behind the whisker pad
-  //      At this size a stipple only ever comes out as a squiggle, so it is
-  //      three clean rows: a lit top, a core, and one row of falloff.
-  for (const [bx, by, bw, col] of [[76, 17, 5, CPAL.blushL], [75, 18, 7, CPAL.blush],
-                                   [77, 19, 4, CPAL.blush]]) {
-    for (let i = 0; i < bw; i++) if (inside(bx + i, by) && inside(bx + i, by + 3)) px(ctx, col, bx + i, by);
-  }
-  px(ctx, CPAL.manDD, 92, 15, 2, 2);                        // nostril
-  px(ctx, CPAL.manLL, 87, 19, 7, 2);                        // lit whisker pad
-  px(ctx, CPAL.manL, 87, 21, 7, 1);
-  // the mouth turns up at the front — three pixels of smile
-  px(ctx, CPAL.manD, 88, 23, 5, 1); px(ctx, CPAL.manD, 93, 22, 1, 1);
+  for (let i = 0; i < 6; i++) px(ctx, CPAL.manDD, 72 + i, 24 + (i >> 1));
+  // ---- head: the DOT eye, the nostril and the mouth crease
+  px(ctx, CPAL.out, 81, 13, 4, 4); px(ctx, CPAL.eye, 81, 13, 3, 3); px(ctx, CPAL.shine, 82, 14);
+  px(ctx, CPAL.manL, 81, 12, 4, 1);
+  px(ctx, CPAL.out, 92, 15, 2, 2);                          // nostril
+  px(ctx, CPAL.manL, 88, 20, 6, 1);                         // lit whisker pad
+  px(ctx, CPAL.out2, 88, 23, 6, 1);                         // mouth crease
   for (const [wx, wy] of [[95, 19], [95, 22], [94, 17]]) px(ctx, CPAL.bone, wx, wy, 2, 1);
   if (scarred) {
     for (let i = 0; i < 3; i++) for (let j = 0; j < 7; j++) {
@@ -1248,12 +1101,12 @@ function buildSideFluke() {
     { x: 6,  y: 9, rx: 6.0, ry: 8.4 },
     { x: 2,  y: 9, rx: 3.5, ry: 6.5 },
   ]);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manD, CPAL.man, CPAL.manL], { outline: CPAL.out, lift: 0.22, smooth: 2, contrast: 0.7 });
+  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man], { outline: CPAL.out, lift: 0.16, smooth: 2, contrast: 0.7 });
   for (let i = -1; i <= 1; i += 2) for (let x = 3; x < 20; x++) {
     const y = 9 + i * 3 + Math.round((20 - x) * i * 0.12);
-    if (f[y * W + x] > 0.06) px(ctx, CPAL.manD, x, y);
+    if (f[y * W + x] > 0.06) px(ctx, CPAL.manDD, x, y);
   }
-  for (let y = 3; y < 15; y++) if (f[y * W + 1] > 0.02) px(ctx, CPAL.manLL, 1, y);
+  for (let y = 3; y < 15; y++) if (f[y * W + 1] > 0.02) px(ctx, CPAL.manL, 1, y);
   return spriteFrom(c, W - 2, 9);
 }
 function buildSideFlipper(dark) {
@@ -1264,8 +1117,8 @@ function buildSideFlipper(dark) {
     { x: 11, y: 6, rx: 3.6, ry: 3.2 },
     { x: 14, y: 6, rx: 2.2, ry: 2.2 },
   ]);
-  const ramp = dark ? [CPAL.manDD, CPAL.manD, CPAL.manD] : [CPAL.manD, CPAL.man, CPAL.manL];
-  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: CPAL.out, lift: 0.20, smooth: 1, contrast: 0.7 });
+  const ramp = dark ? [CPAL.manDD, CPAL.manDD, CPAL.manD] : [CPAL.manDD, CPAL.manD, CPAL.man];
+  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: CPAL.out, lift: 0.12, smooth: 1, contrast: 0.7 });
   if (!dark) for (let i = 0; i < 3; i++) px(ctx, CPAL.bone, 12 + (i & 1), 4 + i * 2);
   return spriteFrom(c, 2, 4);
 }
@@ -1292,17 +1145,16 @@ function manateeSideFace(ctx, exp, blink, t) {
   const O = CPAL.out;
   const shut = blink && exp !== 'dead' && exp !== 'wide';
   if (exp === 'pain' || shut) {
-    px(ctx, O, ex - 2, ey, 7, 1); px(ctx, O, ex - 3, ey - 1, 1, 1); px(ctx, O, ex + 3, ey - 1, 1, 1);
-    px(ctx, CPAL.manDD, ex - 2, ey - 2, 7, 1);
+    px(ctx, O, ex - 1, ey, 5, 1); px(ctx, CPAL.manDD, ex - 1, ey - 2, 5, 1);
   } else if (exp === 'dead') {
-    px(ctx, O, ex - 2, ey - 2, 7, 7); px(ctx, '#6a5a63', ex - 1, ey - 1, 5, 5);
+    px(ctx, O, ex - 1, ey - 1, 5, 5); px(ctx, '#5c5668', ex, ey, 3, 3);
   } else {
-    const big = exp === 'wide';
-    stamp(ctx, big ? SIDE_EYE_W : SIDE_EYE, ex - (big ? 4 : 3), ey - (big ? 4 : 3), { k: O, e: CPAL.eye });
-    px(ctx, CPAL.shine, ex - 2, ey - 2, 2, 2);
-    px(ctx, CPAL.manLL, ex + 2, ey + 2);
-    if (exp === 'angry') { px(ctx, CPAL.manDD, ex - 4, ey - 4, 7, 1); px(ctx, CPAL.manDD, ex + 1, ey - 5, 4, 1); }
-    else if (exp === 'sad') { px(ctx, CPAL.manDD, ex - 5, ey - 5, 6, 1); }
+    const big = exp === 'wide' ? 1 : 0;
+    px(ctx, O, ex - 1 - big, ey - 1 - big, 5 + big * 2, 5 + big * 2);
+    px(ctx, CPAL.eye, ex - big, ey - big, 3 + big * 2, 3 + big * 2);
+    px(ctx, CPAL.shine, ex + 1, ey);
+    if (exp === 'angry') { px(ctx, CPAL.manDD, ex - 2, ey - 2, 6, 1); px(ctx, CPAL.manDD, ex + 1, ey - 3, 4, 1); }
+    else if (exp === 'sad') { px(ctx, CPAL.manDD, ex - 3, ey - 3, 5, 1); }
   }
   const open = exp === 'wide' || exp === 'pain' || (exp === 'talk' && (Math.floor(t * 7) & 1));
   if (open) { px(ctx, O, mx - 2, my - 1, 6, 4); px(ctx, '#2a1218', mx - 1, my, 4, 2); }
@@ -1610,8 +1462,8 @@ function _eo(u) { const v = 1 - u; return 1 - v * v * v; }
 // which is never zero, so not one pixel of her was ever landing square on
 // the grid anyway.
 //
-// It is still exactly right for the cinematic entry points further down,
-// which are handed a raw world position and have to put it somewhere.
+// It is still exactly right for the cinematic entry points further up, which
+// are handed a raw world position and have to put it somewhere.
 const _snapOut = [0, 0];
 function _snapXY(ctx, x, y) {
   let m = null;
@@ -2014,9 +1866,9 @@ const Rig = {
         // The gun is kept grip-down by mirroring it in Y once the aim passes
         // vertical, and that mirror used to happen between two frames: sight,
         // grip and hammer all jumped to the other side at once. Roll it over
-        // instead — ease the sign through zero and hold it off the degenerate
-        // scale, so the weapon turns over in his paws the way a real one
-        // would. It is scoped to the gun and its flash; the paws do not move.
+        // instead — ease the sign through zero and hold it just off the
+        // degenerate scale, so the weapon turns over in his paws the way a
+        // real one would. Scoped to the gun and its flash; the paws stay put.
         this._gunRoll = _lp(this._gunRoll, Math.cos(localAim) < 0 ? -1 : 1, 0.05, dt);
         const r0 = this._gunRoll;
         ctx.scale(1, Math.abs(r0) < 0.04 ? (r0 < 0 ? -0.04 : 0.04) : r0);
