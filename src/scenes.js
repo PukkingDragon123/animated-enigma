@@ -7,46 +7,17 @@
 function sceneG() { try { return G; } catch (e) { return null; } }
 
 // =========================================================================
-//  CUTE — the hand-rasterized pieces the arrival is drawn out of.
+//  GRIM — the hand-rasterized pieces the arrival is drawn out of.
+//
+//  Nothing in here is soft.  The bubbles are scraps of sailcloth torn off
+//  somebody's rigging and nailed up over their heads, and what pops out of
+//  them is a skull, a drop of blood or a pair of cutlasses.
 //
 //  ctx.arc() + ctx.fill() antialiases, so there is not one of them in here:
-//  a round corner is a table of row insets measured off a real circle and
-//  filled as whole rows.  Integer coordinates, flat bands, hard edges.
+//  a corner is chewed off a row at a time.  Integer coordinates, flat bands,
+//  hard edges.
 // =========================================================================
-const Cute = {
-  // quarter-circle row insets, so a corner reads ROUND and not as a 45 degree
-  // chamfer (which is what a straight [n..1,0] ramp gives you)
-  INSET: { 2: [1, 0], 3: [1, 0, 0], 4: [2, 1, 0, 0], 5: [3, 1, 1, 0, 0], 6: [3, 2, 1, 0, 0, 0] },
-
-  // a filled rounded box: corner rows one at a time, the straight middle in
-  // a single rect, so a bubble costs eleven fills and not twenty
-  rr(ctx, col, x, y, w, h, r) {
-    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
-    if (w < 2 || h < 2) return;
-    const tab = this.INSET[r] || this.INSET[3];
-    const n = Math.min(tab.length, h >> 1), hw = w >> 1;
-    ctx.fillStyle = col;
-    for (let i = 0; i < n; i++) {
-      const d = Math.min(tab[i], hw);
-      if (w - d * 2 <= 0) continue;
-      ctx.fillRect(x + d, y + i, w - d * 2, 1);
-      ctx.fillRect(x + d, y + h - 1 - i, w - d * 2, 1);
-    }
-    const mh = h - n * 2;
-    if (mh > 0) ctx.fillRect(x, y + n, w, mh);
-  },
-  // ONE row of that same silhouette — the lit lip along the top and the
-  // shaded sill along the bottom have to follow the corners or the bubble
-  // stops looking rounded the moment it is shaded
-  rrRow(ctx, col, x, y, w, h, r, i) {
-    const tab = this.INSET[r] || this.INSET[3];
-    const j = Math.min(i, h - 1 - i);
-    const d = Math.min(j < tab.length ? tab[j] : 0, w >> 1);
-    if (w - d * 2 <= 0) return;
-    ctx.fillStyle = col;
-    ctx.fillRect(Math.round(x) + d, Math.round(y) + i, Math.round(w) - d * 2, 1);
-  },
-
+const Grim = {
   // ---- little stamps, baked once into canvases --------------------------
   ART: {
     // who is talking, with no words spent on saying so: a 7x7 chip of each
@@ -65,34 +36,41 @@ const Cute = {
             '.sssss.',
             '.sbbbs.',
             '..sss..'],
-    heart: ['.hh.hh.',
-            'hlhhhhh',
-            'hhhhhhh',
-            '.hhhhh.',
-            '..hhh..',
-            '...h...'],
-    spark: ['...s...',
-            '...s...',
-            '..sws..',
-            'sswwwss',
-            '..sws..',
-            '...s...',
-            '...s...'],
+    skull: ['.BBBB.',
+            'BBBBBB',
+            'BEBBEB',
+            'BBBBBB',
+            '.BBBB.',
+            '.BEEB.'],
+    blood: ['..R..',
+            '..R..',
+            '.RRR.',
+            'RRRRR',
+            'RRRrR',
+            '.RRR.'],
+    cutlass: ['S.....S',
+              '.S...S.',
+              '..S.S..',
+              '...S...',
+              '..U.U..',
+              '.U...U.',
+              'U.....U'],
   },
-  // the two that fly around loose get a hard ink edge baked on, so they read
-  // against bright water and against a dark hull alike
-  OUTLINED: { heart: '#3b1f2a', spark: '#6b4a10' },
+  // the three that fly around loose get a hard ink edge baked on, so they
+  // read against bright water and against a dark hull alike
+  OUTLINED: { skull: '#120b10', blood: '#3a0508', cutlass: '#141018' },
   PAL: {
     f: '#b5722f', d: '#7c4a1e', m: '#f2dcb4', n: '#5a2f1c', e: '#1a1220',
-    g: '#8a93a0', s: '#c9d2dd', b: '#5b6574', h: '#ff8fa8', l: '#ffd6e0', w: '#fffdf0',
+    g: '#8a93a0', s: '#c9d2dd', b: '#5b6574',
+    B: '#ded4bc', E: '#17110f', R: '#c8141b', r: '#75080d', S: '#c3ccd6', U: '#7a4c22',
   },
   _baked: null,
   bake() {
     if (this._baked) return this._baked;
     const out = {};
-    // the spark stamp shares 's' with the manatee snout, so it is given its
-    // own palette rather than the shared one
-    const pals = { spark: { s: '#ffd978', w: '#fffdf0' } };
+    // every stamp reads off the one palette now; the hook is kept for the
+    // day one of them wants its own
+    const pals = {};
     for (const k in this.ART) {
       const rows = this.ART[k];
       let w = 0;
@@ -130,14 +108,49 @@ const Cute = {
   },
 
   // ---- easing -----------------------------------------------------------
-  // a pop that overshoots and settles: a bubble that stops dead is a decal
+  // a slam: out fast, a hair past full, then hard down onto it
   back(u) {
     if (u <= 0) return 0;
     if (u >= 1) return 1;
-    const v = u - 1;
-    return 1 + 2.20158 * v * v * v + 1.20158 * v * v;
+    if (u < 0.75) { const q = u / 0.75; return (1 - (1 - q) * (1 - q)) * 1.08; }
+    return 1.08 - (u - 0.75) / 0.25 * 0.08;
   },
   eo2(u) { u = u < 0 ? 0 : u > 1 ? 1 : u; return 1 - (1 - u) * (1 - u); },
+
+  // ---- the scrap ---------------------------------------------------------
+  // A strip of sailcloth with the ends chewed off, nailed up: one fill per
+  // row, a bleached lip along the top, a wet dark sill along the bottom, and
+  // the blood somebody wiped off on it.
+  scrap(ctx, S, x, y, w, h, seed) {
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    if (w < 8 || h < 6) { ctx.fillStyle = S.ink; ctx.fillRect(x, y, Math.max(1, w), Math.max(1, h)); return; }
+    for (let i = 0; i < h; i++) {
+      const edge = (i === 0 || i === h - 1) ? 2 : (i === 1 || i === h - 2) ? 1 : 0;
+      const l = edge + this.bite(seed, i), r = edge + this.bite(seed + 7.3, i);
+      const ww = w - l - r;
+      if (ww < 3) continue;
+      ctx.fillStyle = S.ink; ctx.fillRect(x + l, y + i, ww, 1);
+      if (i === 0 || i === h - 1) continue;
+      ctx.fillStyle = i <= 2 ? S.lit : i >= h - 3 ? S.sill : S.face;
+      ctx.fillRect(x + l + 1, y + i, ww - 2, 1);
+    }
+    // the nails holding it up
+    ctx.fillStyle = '#2b2f36'; ctx.fillRect(x + 3, y + 2, 2, 2); ctx.fillRect(x + w - 5, y + 2, 2, 2);
+    ctx.fillStyle = '#7a8492'; ctx.fillRect(x + 3, y + 2, 1, 1); ctx.fillRect(x + w - 5, y + 2, 1, 1);
+    // and the blood: dried into the foot of it, one drip still going
+    ctx.fillStyle = S.gore;
+    ctx.fillRect(x + 6, y + h - 3, 3, 1); ctx.fillRect(x + 7, y + h - 2, 1, 1);
+    ctx.fillRect(x + w - 11, y + h - 4, 2, 1); ctx.fillRect(x + w - 10, y + h - 3, 4, 1);
+    const dx = x + 5 + ((seed * 37) | 0) % Math.max(1, w >> 2);
+    ctx.fillRect(dx, y + h, 1, 2); ctx.fillRect(dx, y + h + 3, 1, 1);
+  },
+  // how far this row has been torn back. Stable per scrap and per row, so it
+  // does not crawl about while it hangs there.
+  bite(seed, i) {
+    const v = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453;
+    const f = v - Math.floor(v);
+    return f > 0.88 ? 2 : f > 0.58 ? 1 : 0;
+  },
   // alpha snapped onto a coarse ladder, so a fade is still a posterized one
   qa(a) { return a <= 0 ? 0 : a >= 1 ? 1 : Math.round(a * 8) / 8; },
 };
@@ -154,9 +167,10 @@ const Cute = {
 //  interface up, the world stays in full daylight, and you can swim while
 //  they talk.
 //
-//  It is five short lines between the otter (chatty, scrappy) and the
-//  manatee (gentle, few words), about seven seconds, and then `done` goes
-//  true and game.js starts the fight on the spot.
+//  It is five short lines between the otter (scrappy, bloody-minded, will
+//  not shut up) and the manatee (four words at a time, and she means all
+//  four), about seven seconds, and then `done` goes true and game.js starts
+//  the fight on the spot.
 //
 //  Nothing here can strand the view: the camera is never taken.  reset()
 //  still hands it back once, so an arrival that follows something which DID
@@ -178,11 +192,11 @@ const Dialogue = {
   // dwell is the beat AFTER the line has finished typing.  Every line here
   // has to earn its place; there are only five of them.
   LINES: [
-    { who: 0, s: 'Fisher village! We found it!', dwell: 0.52 },
-    { who: 1, s: "...that's a lot of boats.", dwell: 0.54 },
-    { who: 0, s: 'Easy! You bonk, I shoot.', dwell: 0.52, deco: 'spark' },
-    { who: 1, s: 'ok.', dwell: 0.66, deco: 'heart' },
-    { who: 0, s: "Let's go get 'em!", dwell: 0.40, deco: 'spark' },
+    { who: 0, s: 'Fisher village. Raid it.', dwell: 0.52 },
+    { who: 1, s: '...a lot of boats to sink.', dwell: 0.54 },
+    { who: 0, s: "Easy! You ram, I gut 'em.", dwell: 0.52, deco: 'cutlass' },
+    { who: 1, s: 'No quarter.', dwell: 0.66, deco: 'blood' },
+    { who: 0, s: 'Blood in the water!', dwell: 0.40, deco: 'skull' },
   ],
   POP: 0.22, OUT: 0.20, CPS: 46, LEAD: 0.80, TAIL: 0.24, OVERLAP: 0.14,
   // the bubble is already past full width a fifth of the way through its pop
@@ -191,9 +205,11 @@ const Dialogue = {
   SAY: 0.45,
 
   // ---- how each of them is drawn ---------------------------------------
+  // His is sun-bleached canvas cut off a hull, hers is wet grey tarpaulin.
+  // Both have been used for something other than talking.
   SKIN: [
-    { chip: 'otter', face: '#fff2d6', lit: '#fffbee', sill: '#eed3a4', ink: '#4a2b26', text: '#5a3324', side: 1 },
-    { chip: 'manat', face: '#cfe1fb', lit: '#eef6ff', sill: '#9fbce4', ink: '#2f3a52', text: '#2b3852', side: -1 },
+    { chip: 'otter', face: '#9c8261', lit: '#b9a179', sill: '#5e4c31', ink: '#150d08', text: '#1d1108', gore: '#7c1414', side: 1 },
+    { chip: 'manat', face: '#78838e', lit: '#96a1ab', sill: '#465059', ink: '#0a0f14', text: '#101720', gore: '#5f1016', side: -1 },
   ],
 
   _plan: null, _end: 0, _hit: null, _deco: [], _gave: false,
@@ -221,7 +237,7 @@ const Dialogue = {
     this.t = 0; this.done = false; this.shotFired = false; this.cinematic = false;
     this._hit = {}; this._deco.length = 0;
     this.plan();
-    Cute.bake();
+    Grim.bake();
     // the camera was never ours, but whatever ran before us may have had it.
     // One clean hand-back here and the arrival is guaranteed to open on the
     // plain daylit game view with no bars and no zoom.
@@ -241,14 +257,14 @@ const Dialogue = {
   },
   once(k) { if (!this._hit) this._hit = {}; if (this._hit[k]) return false; return this._hit[k] = true; },
   sfx(fn) { try { if (typeof Audio_ !== 'undefined') fn(); } catch (e) { } },
-  // a little voice per speaker: the otter chirps up, she answers low and soft
+  // a voice per speaker: he snarls it out, she answers from somewhere deep
   chirp(who) {
     this.sfx(() => {
       if (who === 0) {
-        Audio_.tone(720, 0.05, 'square', 0.05, 240);
-        setTimeout(() => Audio_.tone(980, 0.05, 'square', 0.04, 160), 55);
+        Audio_.tone(560, 0.05, 'square', 0.05, 200);
+        setTimeout(() => Audio_.tone(700, 0.05, 'square', 0.04, 140), 55);
       } else {
-        Audio_.tone(300, 0.11, 'sine', 0.08, 70);
+        Audio_.tone(190, 0.13, 'sine', 0.09, 60);
       }
     });
   },
@@ -265,7 +281,7 @@ const Dialogue = {
     for (let i = 0; i < plan.length; i++) {
       const L = plan[i];
       if (this.t >= L.t0 && this.once('v' + i)) this.chirp(L.who);
-      // the hearts and sparkles come out a beat after the bubble has landed
+      // the bone and the blood come out a beat after the scrap has landed
       if (L.deco && this.t >= L.t0 + this.POP + 0.14 && this.once('d' + i)) this.puff(L, i);
     }
     this.stepDeco(dt);
@@ -284,7 +300,9 @@ const Dialogue = {
         art: L.deco,
         x: p.x + side * 12 + (k - 1) * 10, y: top - k * 2,
         t: -k * 0.16, life: 1.05,
-        rise: 16 + k * 4, sway: 2 + hash2(i * 7 + k, 3) * 3, ph: hash2(k, i) * 6.28,
+        // steel and bone jump up off the scrap; blood runs down it
+        rise: (L.deco === 'blood' ? -11 : 16) + k * 4,
+        sway: 2 + hash2(i * 7 + k, 3) * 3, ph: hash2(k, i) * 6.28,
       });
     }
   },
@@ -303,11 +321,11 @@ const Dialogue = {
       const u = q.t / q.life;
       // eased rise, a sine drift across it, and a fade that is quantized so
       // it stays a posterized pop-out instead of a smooth blur
-      const sp = g.worldToScreen(q.x + Math.sin(u * 4.4 + q.ph) * q.sway, q.y - Cute.eo2(u) * q.rise);
-      const a = Cute.qa(Math.min(1, u / 0.18) * Math.min(1, (1 - u) / 0.34));
+      const sp = g.worldToScreen(q.x + Math.sin(u * 4.4 + q.ph) * q.sway, q.y - Grim.eo2(u) * q.rise);
+      const a = Grim.qa(Math.min(1, u / 0.18) * Math.min(1, (1 - u) / 0.34));
       if (a <= 0) continue;
       ctx.globalAlpha = a;
-      Cute.stampC(ctx, q.art, sp.x, sp.y);
+      Grim.stampC(ctx, q.art, sp.x, sp.y);
       ctx.globalAlpha = 1;
     }
   },
@@ -322,13 +340,13 @@ const Dialogue = {
     const S = this.SKIN[L.who];
     if (!L.w) L.w = Math.max(46, textWidth(L.s, 7) + 24);
 
-    const w0 = L.w, h0 = 20, r = 5;
+    const w0 = L.w, h0 = 20;
     // ---- pop in with an overshoot, and squash-and-stretch it: the height
     // lags the width by a frame or two, so it springs out sideways first
     let kx = 1, ky = 1, lift = 0;
     if (e < this.POP) {
-      kx = Cute.back(e / this.POP);
-      ky = Cute.back((e - 0.05) / (this.POP - 0.05));
+      kx = Grim.back(e / this.POP);
+      ky = Grim.back((e - 0.05) / (this.POP - 0.05));
     } else if (e > L.dur - this.OUT) {
       const u = (e - (L.dur - this.OUT)) / this.OUT;
       kx = ky = 1 - u * u;                       // eased down, not cut
@@ -353,27 +371,18 @@ const Dialogue = {
     by = clamp(by, 30, 300);
     const tx = clamp(tailX, bx + 6, bx + w - 7);
 
-    // ---- the bubble: ink silhouette, face inside it, a lit lip along the
-    // top and a shaded sill along the bottom, all on the same round corners
-    Cute.rr(ctx, 'rgba(8,14,26,0.25)', bx + 1, by + 2, w, h, r);
-    Cute.rr(ctx, S.ink, bx, by, w, h, r);
-    Cute.rr(ctx, S.face, bx + 1, by + 1, w - 2, h - 2, r);
-    Cute.rrRow(ctx, S.lit, bx + 1, by + 1, w - 2, h - 2, r, 0);
-    Cute.rrRow(ctx, S.lit, bx + 1, by + 1, w - 2, h - 2, r, 1);
-    Cute.rrRow(ctx, S.sill, bx + 1, by + 1, w - 2, h - 2, r, h - 3);
-    // a little shine up in the far corner, clear of the face chip
-    if (w > 30) { ctx.fillStyle = '#ffffff'; ctx.fillRect(bx + w - 8, by + 2, 3, 1); ctx.fillRect(bx + w - 5, by + 3, 1, 1); }
+    // ---- the scrap: a hard shadow under it, then the torn cloth itself
+    ctx.fillStyle = 'rgba(6,9,14,0.3)'; ctx.fillRect(bx + 1, by + 2, w, h);
+    Grim.scrap(ctx, S, bx, by, w, h, i * 3 + 1);
 
-    // ---- the tail, curling back toward whoever said it
-    const TW = [8, 7, 5, 3, 1];
+    // ---- the spike, stabbing back down at whoever said it
+    const TW = [7, 5, 3, 1];
     for (let k = 0; k < TW.length; k++) {
       const ww = Math.max(1, Math.round(TW[k] * kx));
       const rx = Math.round(tx - S.side * k) - (ww >> 1), ry = by + h - 1 + k;
-      ctx.fillStyle = S.ink;
-      ctx.fillRect(rx - 1, ry, 1, 1); ctx.fillRect(rx + ww, ry, 1, 1);
+      ctx.fillStyle = S.ink; ctx.fillRect(rx - 1, ry, ww + 2, 1);
       if (k === TW.length - 1) ctx.fillRect(rx, ry + 1, ww, 1);
-      ctx.fillStyle = k === TW.length - 1 ? S.sill : S.face;
-      ctx.fillRect(rx, ry, ww, 1);
+      ctx.fillStyle = S.sill; ctx.fillRect(rx, ry, ww, 1);
     }
 
     // ---- who said it, and what they said.  Clipped to the inside of the
@@ -383,7 +392,7 @@ const Dialogue = {
     if (e < say) return;
     ctx.save();
     ctx.beginPath(); ctx.rect(bx + 1, by + 1, w - 2, h - 2); ctx.clip();
-    Cute.stamp(ctx, S.chip, bx + 5, by + 6);
+    Grim.stamp(ctx, S.chip, bx + 5, by + 6);
     const n = Math.floor((e - say) * this.CPS) + 1;
     pixelText(ctx, L.s.slice(0, Math.min(L.s.length, n)), bx + 16, by + 6, 7, S.text, 'left', false);
     ctx.restore();

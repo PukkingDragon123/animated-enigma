@@ -517,6 +517,9 @@ class Wreck {
     this.sprite = sprite; this.x = x; this.y = y; this.angle = angle || 0;
     this.radius = Math.max(6, radius || 12);
     this.t = 0; this.dead = false; this.smokeT = 0; this.oilT = 0;
+    // a hull with the crew still in her goes on emptying into the water for
+    // as long as there is anything left of her to empty
+    this.bloodT = 0; this.bleedFor = 9 + this.radius / 5;
     this.pieces = []; this.events = [];
     this.fireT = o.fire === false ? 0 : 1.2 + this.radius / 9;
     this.build(o);
@@ -639,14 +642,20 @@ class Wreck {
       }
       case 'mast': this.dropMast(); break;
       case 'crew': {
-        // the people aboard go into the water. Hazards owns swimmers; this
-        // only ever asks it for one, and only when the water is not already
-        // full of them, so a sinking fleet never turns into a mob.
+        // The people aboard go into the water, and most of them are already
+        // dead when they get there: the ones that come off the rail turning
+        // are corpses, and ONE of them, if the water is not already full of
+        // them, is a man who made it and is coming for you with a knife.
+        const a0 = rand(0, TAU);
+        for (let i = 0; i < 2; i++) {
+          const a = a0 + i * 2.1 + rand(-0.5, 0.5);
+          P.crew(this.x + Math.cos(a) * r * 0.6, this.y + Math.sin(a) * r * 0.6, a, 0.7);
+        }
+        P.bleed(this.x, this.y, 1.1, 5, r * 0.7);
         if (typeof Hazards === 'undefined' || !Hazards.spawnSwimmer) break;
         const sw = Hazards.swimmers;
         if (sw && sw.length > 5) break;
-        const a = rand(0, TAU);
-        Hazards.spawnSwimmer(this.x + Math.cos(a) * (r + 4), this.y + Math.sin(a) * (r + 4), Math.random() < 0.3 ? 'gaff' : 'knife');
+        Hazards.spawnSwimmer(this.x + Math.cos(a0) * (r + 4), this.y + Math.sin(a0) * (r + 4), Math.random() < 0.3 ? 'gaff' : 'knife');
         break;
       }
     }
@@ -744,6 +753,17 @@ class Wreck {
     }
     this.oilT -= dt;
     if (this.oilT <= 0) { this.oilT = 0.25; if (oc) oc.addOil(this.x, this.y, 0.03); }
+    // and she goes on bleeding out of whatever is left of her, off the
+    // pieces themselves so the stain drifts apart with the wreckage
+    if (oc && this.t < this.bleedFor) {
+      this.bloodT -= dt;
+      if (this.bloodT <= 0) {
+        this.bloodT = 0.3;
+        const q = this.pieces.length ? this.pieces[(Math.random() * this.pieces.length) | 0] : this;
+        const k = 1 - this.t / this.bleedFor;
+        oc.addBlood(q.x + rand(-6, 6), q.y + rand(-6, 6), 0.09 * k + 0.02);
+      }
+    }
 
     if (this.whole) {                  // the fallback sink, unchanged in feel
       if (this.t > this.whole.dur) this.dead = true;
@@ -835,7 +855,7 @@ class Wreck {
         p.sink += dt / p.sinkDur;
         if (Math.random() < dt * 3.5 && seen(p.x, p.y)) P.bubbles(p.x + rand(-4, 4), p.y + rand(-4, 4), 1);
         if (p.sink >= 1) {
-          if (oc) { oc.addFoam(p.x, p.y, 0.3); oc.addOil(p.x, p.y, 0.05); }
+          if (oc) { oc.addFoam(p.x, p.y, 0.3); oc.addOil(p.x, p.y, 0.05); if (this.t < this.bleedFor * 1.6) oc.addBlood(p.x, p.y, 0.16); }
           if (seen(p.x, p.y)) P.bubbles(p.x, p.y, 3);
           this.pieces.splice(i, 1);
           continue;
@@ -1032,7 +1052,20 @@ class Player {
       if (Math.random() < 0.8) G.particles.spray(this.x - this.roll.dirx * 8, this.y - this.roll.diry * 8, Math.atan2(-this.roll.diry, -this.roll.dirx), 2, 120);
       G.ocean.addFoam(this.x, this.y, 0.35);
       if (st.slipstream) { this.slipT -= dt; if (this.slipT <= 0) { this.slipT = 0.05; G.ocean.currents.push({ type: 'lane', x: this.x, y: this.y, r: 28, ang: Math.atan2(this.roll.diry, this.roll.dirx), s: 90, life: 4 }); } }
-      if (st.rollDmg) for (const e of G.enemies) if (!e.dead && !e.rollHit && circleHit(this.x, this.y, 14, e.x, e.y, e.radius)) { e.rollHit = true; e.hit(st.rollDmg, this.roll.dirx * 220, this.roll.diry * 220, null); G.shake(3); }
+      // a several-tonne animal hitting a wooden boat at speed. The hull
+      // gives: planking, blood off the rail, and the sea shoved sideways.
+      if (st.rollDmg) for (const e of G.enemies) if (!e.dead && !e.rollHit && circleHit(this.x, this.y, 14, e.x, e.y, e.radius)) {
+        e.rollHit = true;
+        const ra = Math.atan2(this.roll.diry, this.roll.dirx);
+        e.hit(st.rollDmg, this.roll.dirx * 220, this.roll.diry * 220, null);
+        G.shake(5);
+        G.particles.debris(e.x - this.roll.dirx * e.radius * 0.5, e.y - this.roll.diry * e.radius * 0.5, 7, ['#b57d3f', '#8f5c2c', '#5c3a1c']);
+        G.particles.gore(e.x - this.roll.dirx * e.radius * 0.4, e.y - this.roll.diry * e.radius * 0.4, 0.9, ra);
+        G.particles.gib(e.x, e.y, 2, ra, { spread: 1.1, speed: 170 });
+        G.particles.splash((this.x + e.x) / 2, (this.y + e.y) / 2, 1.1);
+        if (G.ocean.disturb) G.ocean.disturb(e.x, e.y, 4, this.roll.dirx * 240, this.roll.diry * 240);
+        Audio_.noise(0.2, 0.3, 500, 70);
+      }
       if (this.roll.t >= this.roll.dur) this.endRoll();
     } else {
       let tx = inp.x * maxSp, ty = inp.y * maxSp;
@@ -1197,16 +1230,24 @@ class Player {
     if (st.meleeBleed && !e.dead) { e.bleedT = 3; e.bleedDps = st.meleeBleed; }
     if (st.meleeStun && !e.dead) e.slowT = Math.max(e.slowT || 0, st.meleeStun);
     if (st.meleeLifesteal) this.hp = Math.min(st.maxHp, this.hp + st.meleeLifesteal);
-    // the hit itself: a hard impact ring, a burst, and the sea moving
+    // The hit itself. Two tonnes of animal arriving side-on: the hull stoves
+    // in, the planking goes, and whatever was standing at that rail goes
+    // with it -- all of it thrown along the line of the swing, not puffed
+    // outward, so you can read where the blow went.
     Toon.impact(e.x, e.y, 1.6, '#eaf8ff');
     Toon.burst(e.x, e.y, 1.1, '#cfe9ff');
-    G.particles.splash((this.x + e.x) / 2, (this.y + e.y) / 2, 1.5);
-    G.particles.debris(e.x, e.y, 4);
+    const cx = (this.x + e.x) / 2, cy = (this.y + e.y) / 2;
+    G.particles.splash(cx, cy, 1.5);
+    G.particles.debris(e.x, e.y, 9, ['#b57d3f', '#8f5c2c', '#5c3a1c', '#d6a05e']);
+    G.particles.gib(e.x - Math.cos(a) * e.radius * 0.4, e.y - Math.sin(a) * e.radius * 0.4, e.dead ? 2 : 4, a, { spread: 1.5, speed: 190 });
+    G.particles.gore(e.x - Math.cos(a) * e.radius * 0.4, e.y - Math.sin(a) * e.radius * 0.4, 1.1, a);
+    if (typeof Gore !== 'undefined' && Gore.burst) Gore.burst(e.x, e.y, 1.2, a, 5);
     G.ocean.ripple(e.x, e.y, 46, 190, 0.7);
     if (G.ocean.disturb) G.ocean.disturb(e.x, e.y, 5, Math.cos(a) * 260, Math.sin(a) * 260);
-    G.shake(5);
+    G.shake(6.5);
     Audio_.noise(0.16, 0.3, 900, 90); Audio_.tone(110, 0.14, 'square', 0.18, -50);
-    if (m.hits.size === 1) G.particles.text(this.x + Math.cos(m.dir) * 20, this.y - 18, 'WHUMP!', '#cfe9ff', 9);
+    Audio_.noise(0.22, 0.26, 420, 60);                      // the timber going
+    if (m.hits.size === 1) G.particles.text(this.x + Math.cos(m.dir) * 20, this.y - 18, 'CRUNCH!', '#ff6161', 9);
   }
   // ---- being winched in ---------------------------------------------------
   hooked(boat, proj) {
@@ -2462,12 +2503,20 @@ class Enemy {
     if (!silent) {
       G.particles.sparks(this.x, this.y, 3); G.particles.debris(this.x, this.y, 2);
       Toon.impact(this.x, this.y, proj && proj.crit ? 1.5 : 0.8, proj && proj.crit ? '#ffe48f' : '#ffffff');
+      // Every hole in her has somebody behind it. The mark left on the deck
+      // is wet, not scorched, and the blood goes the way the shot was going.
+      const wa = (kx || ky) ? Math.atan2(ky, kx) : (proj ? Math.atan2(proj.vy, proj.vx) : null);
       if (this.scars.length < 10) {
         const a = rand(0, TAU), r = rand(0, this.radius * 0.8);
-        this.scars.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, s: randi(1, 3) });
+        this.scars.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, s: randi(1, 3), wet: Math.random() < 0.65 });
       }
-      // crew gets hurt: a little blood
-      if (Math.random() < 0.6) G.particles.blood(this.x, this.y, 0.4, proj ? Math.atan2(proj.vy, proj.vx) : null);
+      const crit = !!(proj && proj.crit);
+      G.particles.gore(this.x + rand(-4, 4), this.y + rand(-3, 3), crit ? 0.9 : 0.42, wa);
+      if (crit || dmg > 45) {
+        // that one took a man apart
+        G.particles.gib(this.x, this.y, crit ? 3 : 2, wa, { spread: 1.4, speed: 105 });
+        G.particles.mist(this.x, this.y, 2);
+      }
       G.particles.text(this.x + rand(-6, 6), this.y - this.radius - 4, Math.round(dmg) + '', proj && proj.crit ? '#ffe48f' : '#fff', proj && proj.crit ? 9 : 7);
       Audio_.hit(); G.stats.damageDealt += dmg;
     }
@@ -2495,12 +2544,17 @@ class Enemy {
     // fireball the size of the old one hid the wreckage for a second and a
     // half, which is exactly the second and a half worth watching
     if (!silentBoom) G.particles.explode(this.x, this.y, 11 + r * 0.85, { debris: Math.round(r * 0.5), oil: 0.6 + r / 15, debrisColors: this.type === 'gunboat' || this.type === 'harpooner' ? ['#7d858f', '#4a515a', '#aeb6c1'] : undefined });
-    G.particles.blood(this.x, this.y, 0.8 + r / 22);
-    // the crew goes with the boat
-    if (typeof Gore !== 'undefined') { Gore.burst(this.x, this.y, 1.1 + r / 14, rand(0, TAU)); if (r > 18) Gore.burst(this.x + rand(-r, r) * 0.5, this.y + rand(-r, r) * 0.5, 0.8, rand(0, TAU)); }
     G.shake(Math.min(14, 4 + r / 3));
     // ---- and she comes apart. What killed her decides how.
     const lh = this.lastHit;
+    // ---- and so does her crew. A boat is not a target: it is a deck with
+    // men standing on it, and when she goes they go over the side the way
+    // the blow was travelling -- in the air, in pieces, and into water that
+    // stays red long after the fire is out. Cost is bounded by the gore
+    // budget in particles.js, so a whole wave going up at once is affordable.
+    G.particles.slaughter(this.x, this.y, r, lh ? lh.a : undefined, {
+      vx: this.vx, vy: this.vy, power: lh ? lh.power : 1,
+    });
     const drops = c.drops || {};
     const wreck = new Wreck(this.sprite, this.x, this.y, this.angle, r, {
       rel: lh ? angleDiff(this.angle, lh.a) : undefined,
@@ -2749,7 +2803,9 @@ class Enemy {
     // scorched holes where it has been hit
     if (this.flash <= 0) for (const sc of this.scars) {
       ctx.fillStyle = '#14141c'; ctx.fillRect(Math.round(sc.x), Math.round(sc.y), sc.s, sc.s);
-      if (sc.s > 1) { ctx.fillStyle = '#3a3038'; ctx.fillRect(Math.round(sc.x), Math.round(sc.y) - 1, sc.s, 1); }
+      // a hole in her is a hole in somebody: most of them are wet
+      if (sc.wet) { ctx.fillStyle = '#7c1414'; ctx.fillRect(Math.round(sc.x) - 1, Math.round(sc.y) + sc.s, sc.s + 2, 1); ctx.fillStyle = '#c8302e'; ctx.fillRect(Math.round(sc.x), Math.round(sc.y) + sc.s, 1, 1); }
+      else if (sc.s > 1) { ctx.fillStyle = '#3a3038'; ctx.fillRect(Math.round(sc.x), Math.round(sc.y) - 1, sc.s, 1); }
     }
     ctx.restore();
     this.renderTell(ctx, cam, t, Math.round(sx), Math.round(sy + bob));

@@ -65,33 +65,42 @@
   // ------------------------------------------------------------- palettes
   // weathered reddish-brown wood: posts are dark, decking is lighter
   const W = {
-    ink: '#1a1015', shadow: '#2a1a13',
-    post0: '#331e13', post1: '#4a2b1a', post2: '#5f3821', post3: '#7a4a2a',
-    deck0: '#573320', deck1: '#7b4a29', deck2: '#9c6238', deck3: '#b9814a', deck4: '#d3a469',
-    wet: '#25301f', alg: '#3c5730', alg2: '#59783d', barn: '#b3b0a0',
-    rope0: '#6f5230', rope1: '#a4804a', rope2: '#cfb078',
-    met0: '#282d34', met1: '#474f59', met2: '#737d89', met3: '#a3adb8',
-    rust0: '#6b3a20', rust1: '#98532a', rust2: '#c07038',
-    net0: '#5c6b4a', net1: '#8a9a6c', net2: '#c2cba0',
-    tar: '#20191c', float0: '#d9622f', float1: '#f39a4a', float2: '#f2e3c0',
-    glow: '#ffd27a', glowHot: '#fff3c4',
+    ink: '#140c12', shadow: '#231710',
+    post0: '#26170f', post1: '#3a2416', post2: '#4d301d', post3: '#653f27',
+    deck0: '#3c2618', deck1: '#573820', deck2: '#734c2c', deck3: '#8e6639', deck4: '#a9854f',
+    wet: '#1d281c', alg: '#324a2a', alg2: '#4a6634', barn: '#9b9a8c',
+    rope0: '#5c4429', rope1: '#8a6b3e', rope2: '#b09562',
+    met0: '#1e2228', met1: '#3a414a', met2: '#616a76', met3: '#8b94a0',
+    rust0: '#5a2f1a', rust1: '#84431f', rust2: '#a85b28',
+    net0: '#3a3c30', net1: '#5a5c48', net2: '#878872',
+    tar: '#181316', char0: '#0f0b0e', char1: '#1c161a', char2: '#2e2529', char3: '#463a3c',
+    ash: '#5c5458', bone0: '#6e6a5c', bone1: '#9a9480', bone2: '#c6bfa6', bone3: '#e6dfc6',
+    gold0: '#7a5a16', gold1: '#b58a26', gold2: '#dcb44c', gold3: '#ffe9a0',
+    silver: '#9aa3ab',
+    float0: '#8d3020', float1: '#b0512c', float2: '#c9b48e',
+    glow: '#ff9c46', glowHot: '#ffd48a',
   };
 
+  // every scheme is tarred, sooted, salt-rotted or painted with pitch. nothing
+  // in this port was ever meant to look welcoming.
   const HOUSE_COLS = [
-    { wall: ['#8e4136', '#a8503f', '#c0654a'], dk: '#5e2a26', roof: ['#452a29', '#5a3831', '#71463a'], trim: '#dcb47c', name: 'red' },
-    { wall: ['#3c5b63', '#4b727c', '#5f8b95'], dk: '#27414a', roof: ['#2c373f', '#3a4852', '#4b5b67'], trim: '#cbd6c6', name: 'teal' },
-    { wall: ['#77602f', '#94783c', '#b0924c'], dk: '#4f3f1e', roof: ['#47391f', '#5a4728', '#6d5832'], trim: '#e2cd93', name: 'ochre' },
-    { wall: ['#3b5738', '#4b6d45', '#5f8755'], dk: '#26391f', roof: ['#313c2a', '#414e36', '#536243'], trim: '#cde0a6', name: 'green' },
-    { wall: ['#68432d', '#815538', '#9a6746'], dk: '#43291a', roof: ['#3b281c', '#4d3524', '#5d402d'], trim: '#d6b183', name: 'wood' },
-    { wall: ['#5a4a63', '#6f5c78', '#87718f'], dk: '#3a2f42', roof: ['#332b3a', '#443a4b', '#554a5d'], trim: '#d8cbe0', name: 'plum' },
+    { wall: ['#26232a', '#322e39', '#413c47'], dk: '#17151b', roof: ['#100d12', '#1a161c', '#241f26'], trim: '#6d5f4a', name: 'pitch' },
+    { wall: ['#421f22', '#532728', '#63302e'], dk: '#281216', roof: ['#241617', '#31201e', '#3e2925'], trim: '#8a6c4c', name: 'oxblood' },
+    { wall: ['#28332a', '#344135', '#435142'], dk: '#18201a', roof: ['#1e2320', '#292f28', '#353c32'], trim: '#787a5e', name: 'rot' },
+    { wall: ['#4e483c', '#5e574a', '#6e6659'], dk: '#322e26', roof: ['#262320', '#322e28', '#3d3831'], trim: '#94886c', name: 'bleached' },
+    { wall: ['#36251a', '#453021', '#543b2a'], dk: '#1f150e', roof: ['#1f1712', '#2a2019', '#362920'], trim: '#7e6644', name: 'burnt' },
+    { wall: ['#212433', '#2b3040', '#373d4f'], dk: '#141621', roof: ['#181a23', '#22242e', '#2d2f3a'], trim: '#6e7286', name: 'indigo' },
   ];
 
-  const SKIN = ['#e9b78c', '#d8a172', '#c68a5c', '#a96f45', '#8a5733', '#f0c9a4'];
-  const SHIRT = ['#4f8fe0', '#d24a3c', '#3fae68', '#ef8f34', '#a06a3e', '#66788a', '#c8904f', '#8069a4', '#dcb985', '#3f8b98',
-    '#e0c060', '#b8556a', '#6fa8c8', '#9aae5a'];
-  const PANTS = ['#55637a', '#6b543a', '#455a6b', '#7a6244', '#4c6350', '#5f4a60', '#8a7a5e', '#6a4a3a'];
-  const HATCOL = ['#c8302e', '#e6802a', '#3f7fd6', '#2f9e5b', '#d9a25a', '#8a9599', '#7c1414', '#4e5f6b'];
+  const SKIN = ['#c89a72', '#b8875c', '#a5714a', '#8b5d39', '#6f4a2d', '#d3aa84'];
+  // slops, tar-stained linen, stolen coats. no bright colours, nothing clean.
+  const SHIRT = ['#6b2a26', '#37404a', '#494334', '#2d3a32', '#5a482c', '#7a2f28', '#3c3346', '#4f4d45',
+    '#6a5636', '#2c3f46', '#573325', '#424836', '#5e5348', '#2a2a32'];
+  const PANTS = ['#332f2a', '#2a303c', '#453d33', '#2e2b28', '#3a3540', '#4a4033', '#262d2b', '#3d3228'];
+  const HATCOL = ['#7c1414', '#241f28', '#37442f', '#432f20', '#551d24', '#2a3644', '#645327', '#191519'];
   const BLOOD = ['#ff5a5a', '#e0322e', '#c8302e', '#9e1f22', '#7c1414', '#55090c', '#3b0508'];
+  // dried blood on timber, for baked stains (wet blood is BLOOD, above)
+  const DRIED = ['#5e1418', '#4a1014', '#380c10', '#6b1c18', '#2a0a0c'];
 
   /* ======================================================================
      1.  PROPS  --  procedural, built at K art pixels per world unit
@@ -297,14 +306,163 @@
     R(c, Math.round(w / 2) - 1, 0, 2, 2, W.ink);
     R(c, 1, 2, w - 2, 2, W.ink); R(c, 2, 2, w - 4, 1, W.met2);
     R(c, 0, 3, w, h - 3, W.ink);
-    R(c, 1, 4, w - 2, h - 6, lit ? '#ffe9a6' : W.met0);
-    if (lit) { R(c, 2, 5, w - 4, h - 8, '#fff6d5'); R(c, 1, 4, w - 2, 1, '#ffd27a'); }
+    R(c, 1, 4, w - 2, h - 6, lit ? '#d9781f' : W.met0);
+    if (lit) { R(c, 2, 5, w - 4, h - 8, '#ffb347'); R(c, 1, 4, w - 2, 1, '#8a4414'); }
     else { R(c, 2, 5, w - 4, h - 8, W.met1); }
     R(c, 1, h - 2, w - 2, 1, W.met1);
     for (let y = 4; y < h - 2; y += 3) R(c, 1, y, w - 2, 1, 'rgba(26,16,21,0.5)');
   }
   P.lantern = prop(5, 10, (c, rng, w, h) => lanternBody(c, w, h, true), { ay: 0 });
   P.lanternOut = prop(5, 10, (c, rng, w, h) => lanternBody(c, w, h, false), { ay: 0 });
+
+  // --- skulls, bones, plunder, powder -------------------------------------
+  // a 5x5 skull, the device this port paints on everything it owns
+  const SKULL5 = ['.###.', '#####', '#o#o#', '.###.', '.#o#.'];
+  function stamp(c, rows, x, y, px, on, off) {
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      for (let q = 0; q < row.length; q++) {
+        const ch = row[q];
+        if (ch === '.') continue;
+        R(c, x + q * px, y + r * px, px, px, ch === '#' ? on : off);
+      }
+    }
+  }
+  // skull and crossed bones, painted on a flag or a keg
+  function jollyRoger(c, x, y, px, on, off) {
+    // bones first, so the skull sits over the crossing
+    for (let i = 0; i < 9; i++) {
+      R(c, x - px + i * px, y + (4 + Math.round(i * 0.42)) * px, px, px, on);
+      R(c, x - px + i * px, y + (8 - Math.round(i * 0.42)) * px, px, px, on);
+    }
+    for (const bx of [x - px, x + 7 * px]) {
+      R(c, bx, y + 3 * px, px, px, on); R(c, bx, y + 9 * px, px, px, on);
+    }
+    R(c, x - px, y + 4 * px, px * 2, px, off);
+    stamp(c, SKULL5, x, y, px, on, off);
+  }
+
+  P.skull = prop(3, 3, (c, rng, w, h) => {
+    stamp(c, SKULL5, Math.max(0, (w - 5) >> 1), Math.max(0, (h - 5) >> 1), 1, W.bone2, W.char0);
+    void rng;
+  });
+  // a head taken off somebody, for the spikes along the rail
+  P.head = prop(5, 6, (c, rng, w, h) => {
+    const sk = SKIN[Math.floor(rng.next() * SKIN.length)];
+    const hr = ['#241a16', '#3a2718', '#4e3a22', '#6b6155'][Math.floor(rng.next() * 4)];
+    R(c, 0, 1, w, h - 1, W.ink);
+    R(c, 1, 2, w - 2, h - 4, sk);
+    R(c, 1, 2, 1, h - 4, shade(sk, 1.2));
+    R(c, w - 2, 2, 1, h - 4, shade(sk, 0.66));
+    // matted hair over the crown and down one side
+    R(c, 0, 1, w, 2, hr);
+    R(c, 0, 1, 1, Math.max(2, h - 4), hr);
+    R(c, w - 1, 1, 1, 2, hr);
+    R(c, 2, 4, 1, 1, W.char0); R(c, w - 3, 4, 1, 1, W.char0);     // eyes
+    R(c, 2, h - 3, w - 4, 1, shade(sk, 0.5));                      // slack jaw
+    R(c, 1, h - 2, w - 2, 1, DRIED[0]);                            // the cut
+    R(c, 1, h - 1, w - 2, 1, DRIED[2]);
+    for (let i = 0; i < 4; i++) R(c, 1 + Math.floor(rng.next() * (w - 2)), h - 3 - Math.floor(rng.next() * 2), 1, 1, DRIED[1]);
+  }, { ay: 0 });
+  P.bones = prop(11, 5, (c, rng, w, h) => {
+    for (let i = 0; i < 5; i++) {
+      const bx = Math.floor(rng.range(0, w - uw(3))), by = Math.floor(rng.range(1, h - 2)), bl = Math.floor(rng.range(uw(2), uw(4)));
+      R(c, bx, by + 1, bl, 1, W.ink);
+      R(c, bx, by, bl, 1, rng.next() < 0.5 ? W.bone1 : W.bone2);
+      R(c, bx, by, 1, 1, W.bone0); R(c, bx + bl - 1, by, 1, 1, W.bone0);
+    }
+    stamp(c, SKULL5, Math.floor(rng.range(0, w - 6)), h - 5, 1, W.bone2, W.char0);
+  });
+  // a ribcage picked clean, left where it fell
+  P.carcass = prop(13, 7, (c, rng, w, h) => {
+    R(c, 1, h - 2, w - 2, 1, 'rgba(20,12,18,0.4)');
+    for (let i = uw(1); i < w - uw(2); i += uw(1.5)) {
+      const r = Math.round(Math.sin((i / w) * Math.PI) * (h - 3));
+      R(c, i, h - 2 - r, 1, r, W.ink);
+      R(c, i, h - 2 - r, 1, r - 1 || 1, W.bone1);
+      R(c, i, h - 2 - r, 1, 1, W.bone2);
+    }
+    R(c, uw(1), h - 2, w - uw(3), 1, W.bone0);
+    stamp(c, SKULL5, w - 6, h - 6, 1, W.bone2, W.char0);
+    for (let i = 0; i < 6; i++) R(c, Math.floor(rng.range(1, w - 2)), Math.floor(rng.range(h - 3, h - 1)), 1, 1, DRIED[Math.floor(rng.next() * 3)]);
+  });
+  // rum: a barrel with the skull stencilled on the head
+  P.rumBarrel = prop(10, 10, (c, rng, w, h) => {
+    barrelBody(c, rng, w, h, false);
+    stamp(c, SKULL5, (w >> 1) - 2, (h >> 1) - 2, 1, W.bone2, W.char0);
+    for (let i = 0; i < 4; i++) R(c, 2 + Math.floor(rng.next() * (w - 4)), h - 4 - Math.floor(rng.next() * 3), 1, 1, '#4a2a16');
+  });
+  // powder: pitch-black, iron-hooped, with a fuse out of the bung
+  P.powderKeg = prop(8, 8, (c, rng, w, h) => {
+    R(c, 0, 1, w, h - 2, W.ink);
+    for (let i = 1; i < w - 1; i++) {
+      const k = Math.abs(i - (w - 1) / 2) / (w / 2);
+      R(c, i, 2, 1, h - 4, k < 0.3 ? W.char3 : k < 0.7 ? W.char2 : W.char1);
+    }
+    for (const hy of [2, h - 5]) { R(c, 1, hy, w - 2, 2, W.met1); R(c, 1, hy, w - 2, 1, W.met2); if (rng.next() < 0.6) R(c, 2, hy, 1, 1, W.rust1); }
+    R(c, 1, 1, w - 2, 2, W.char1); R(c, 2, 1, w - 4, 1, W.char3);
+    stamp(c, SKULL5, (w >> 1) - 2, 3, 1, W.bone2, W.char0);
+    // fuse
+    R(c, (w >> 1), 0, 1, 2, W.rope0); R(c, (w >> 1) + 1, 0, 1, 1, W.rope1);
+    R(c, 1, h - 2, w - 2, 1, W.ink);
+  });
+  // what the port is actually for
+  P.chest = prop(11, 8, (c, rng, w, h) => {
+    R(c, 0, 0, w, h, W.ink);
+    R(c, 1, 3, w - 2, h - 4, W.deck1);
+    for (let y = 4; y < h - 1; y += 2) R(c, 1, y, w - 2, 1, W.deck0);
+    R(c, 1, 3, w - 2, 1, W.deck3);
+    // the lid, thrown back
+    R(c, 1, 0, w - 2, 3, W.deck2); R(c, 1, 0, w - 2, 1, W.deck3); R(c, 1, 2, w - 2, 1, W.ink);
+    for (const ix of [2, w - 4]) { R(c, ix, 0, 2, h - 1, W.met1); R(c, ix, 0, 1, h - 1, W.met2); }
+    // coin spilling over the lip
+    for (let i = 0; i < w - 4; i++) if (rng.next() < 0.75) R(c, 2 + i, 3 - (rng.next() < 0.4 ? 1 : 0), 1, 1, rng.next() < 0.4 ? W.gold3 : W.gold2);
+    R(c, (w >> 1) - 1, h - 4, 2, 2, W.gold1);
+    for (let i = 0; i < 5; i++) R(c, 1 + Math.floor(rng.next() * (w - 2)), h - 2 - Math.floor(rng.next() * 2), 1, 1, W.gold1);
+  });
+  // loose plunder heaped on the boards: coin, plate, a cut-down candlestick
+  P.loot = prop(11, 5, (c, rng, w, h) => {
+    R(c, 0, h - 2, w, 2, 'rgba(20,12,18,0.35)');
+    for (let i = 0; i < w; i++) {
+      const hgt = Math.max(1, Math.round(Math.sin((i / w) * Math.PI) * (h - 2)));
+      for (let q = 0; q < hgt; q++) {
+        const r = rng.next();
+        R(c, i, h - 2 - q, 1, 1, r < 0.42 ? W.gold1 : r < 0.68 ? W.gold2 : r < 0.84 ? W.silver : W.gold0);
+      }
+      R(c, i, h - 2 - hgt, 1, 1, W.ink);
+    }
+    for (let i = 0; i < 4; i++) R(c, Math.floor(rng.range(1, w - 1)), Math.floor(rng.range(1, h - 2)), 1, 1, W.gold3);
+  });
+  // round shot, stacked in a pyramid by the gun
+  P.shot = prop(9, 6, (c, rng, w, h) => {
+    const r = uw(1.2);
+    for (let row = 0; row < 3; row++) {
+      const n = 3 - row;
+      for (let i = 0; i < n; i++) {
+        const cx = Math.round(uw(1.4) + row * r + i * r * 2), cy = h - 1 - Math.round(row * r * 1.6) - r;
+        for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+          if (dx * dx + dy * dy > r * r) continue;
+          R(c, cx + dx, cy + dy, 1, 1, (dx + dy < -r * 0.6) ? W.met1 : (dx * dx + dy * dy > (r - 1) * (r - 1) ? W.char0 : W.met0));
+        }
+      }
+    }
+    void rng;
+  });
+  // a slab of meat on a hook -- what the docks butcher and hang up to bleed
+  P.meat = prop(5, 9, (c, rng, w, h) => {
+    R(c, (w >> 1) - 1, 0, 2, uw(1.5), W.met2);          // hook
+    R(c, (w >> 1), uw(1), 1, uw(1), W.met3);
+    for (let y = uw(1.5); y < h; y++) {
+      const k = (y - uw(1.5)) / (h - uw(1.5));
+      const ww = Math.max(2, Math.round(Math.sin(Math.min(1, 0.2 + k) * Math.PI * 0.9) * (w - 1)));
+      const xx = (w >> 1) - (ww >> 1);
+      R(c, xx - 1, y, ww + 2, 1, W.ink);
+      R(c, xx, y, ww, 1, k < 0.25 ? '#9e1f22' : k < 0.6 ? '#7c1414' : '#55090c');
+      R(c, xx, y, 1, 1, k < 0.5 ? '#c8302e' : '#7c1414');
+      if (rng.next() < 0.3) R(c, xx + Math.floor(rng.next() * ww), y, 1, 1, W.bone1);
+    }
+    R(c, (w >> 1) - 1, h - 1, 2, 1, DRIED[2]);
+  }, { ay: 0 });
 
   // --- gulls (small, drawn in world space at 1/K) --------------------------
   P.gull = prop(6, 4, (c) => {
@@ -528,7 +686,8 @@
     }
   };
 
-  // -- drying rack with hanging fish ---------------------------------------
+  // -- the hanging rack: meat, bone, and whoever crossed them ---------------
+  // Same frame the fishermen used. What is on the hooks is the difference.
   Kit.fishRack = function (c, x, y, w, rng, o) {
     o = o || {};
     const h = o.h || uw(11), leg = uw(1);
@@ -541,13 +700,25 @@
       R(c, x - uw(1), by, w + uw(2), uw(1), W.deck2);
       R(c, x - uw(1), by + uw(1), w + uw(2), 1, W.ink);
     }
-    for (let i = uw(1.5); i < w - uw(1.5); i += uw(2.5)) {
+    let body = o.body === false ? 1 : 0;      // at most one full body per rack
+    for (let i = uw(1.5); i < w - uw(1.5); i += uw(3)) {
       const ln = uw(1) + Math.floor(rng.next() * uw(1));
       const top = rng.next() < 0.5 ? y - h : y - Math.round(h * 0.58);
-      R(c, x + i, top + uw(1), 1, ln, W.rope0);
-      Kit.hangFish(c, x + i, top + uw(1) + ln, uw(3) + Math.floor(rng.next() * uw(2)), rng);
+      const r = rng.next();
+      if (!body && r < 0.3) {
+        body = 1;
+        Kit.hangBody(c, x + i, top + uw(1), ln + uw(1), rng, { crow: true });
+      } else if (r < 0.72) {
+        R(c, x + i, top + uw(1), 1, ln, W.rope0);
+        c.drawImage(P.meat.c, x + i - (P.meat.w >> 1), top + uw(1) + ln);
+      } else {
+        R(c, x + i, top + uw(1), 1, ln + uw(2), W.rope0);
+        R(c, x + i - uw(1), top + uw(1) + ln + uw(2), uw(2), uw(2.5), W.ink);
+        R(c, x + i - uw(1) + 1, top + uw(1) + ln + uw(2), uw(1.5), uw(2), rng.next() < 0.5 ? W.bone1 : '#55090c');
+      }
     }
     Kit.brace(c, x + 1, y - 2, x + w - 2, y - h + uw(3), uw(1));
+    Kit.bloodBoards(c, x - uw(1), y - uw(2), w + uw(2), uw(2), rng, 1.2);
   };
 
   // -- a fish hung head-down on a drying line -------------------------------
@@ -778,7 +949,8 @@
     const roofH = o.roofH || (Math.round(w * 0.30) + uw(3));
     const over = uw(2.5);
     const top = y - wallH;
-    const corr = kind === 'shed' || kind === 'boathouse' || kind === 'market';
+    const corr = kind === 'shed' || kind === 'boathouse' || kind === 'market' || kind === 'powder';
+    const openFront = kind === 'boathouse' || kind === 'market' || kind === 'tavern';
 
     // floor joists
     R(c, x - uw(1), y, w + uw(2), 1, W.ink);
@@ -808,9 +980,10 @@
     const doorX = x + (o.doorLeft ? uw(1.5) : Math.round(w * (o.doorAt === undefined ? 0.62 : o.doorAt)));
     const doorY = y - doorH - uw(1.5);
 
-    if (kind === 'boathouse' || kind === 'market') {
+    if (openFront) {
       // a big open mouth: dark interior, a boat or a counter inside
       const ow = Math.round(w * (kind === 'boathouse' ? 0.62 : 0.72));
+      const oy0 = 0; void oy0;
       const ox2 = x + Math.round((w - ow) / 2);
       const oh = Math.round(wallH * (kind === 'boathouse' ? 0.72 : 0.6));
       R(c, ox2 - 1, y - oh - 1, ow + 2, oh + 1, W.ink);
@@ -824,7 +997,7 @@
       for (let q = uw(1); q < ow; q += uw(2)) R(c, ox2 + q, y - oh, 1, oh, 'rgba(10,6,10,0.5)');
       R(c, ox2, y - oh, ow, uw(1), '#1a1218');
       for (let q = uw(2); q < ow - uw(2); q += uw(4)) {
-        if (kind === 'market') Kit.hangFish(c, ox2 + q, y - oh + uw(1), uw(3), rng);
+        if (kind === 'market') { R(c, ox2 + q, y - oh + uw(1), 1, uw(1), W.rope0); c.drawImage(P.meat.c, ox2 + q - (P.meat.w >> 1), y - oh + uw(2)); }
         else { R(c, ox2 + q, y - oh + uw(1), 1, uw(2), W.rope0); R(c, ox2 + q - 1, y - oh + uw(3), uw(2), uw(1), W.net1); }
       }
       // shelf along the back
@@ -835,21 +1008,36 @@
       R(c, ox2 - uw(1), y - oh - uw(1), ow + uw(2), uw(1), W.post1);
       R(c, ox2 - uw(1), y - oh - uw(1), ow + uw(2), 1, W.post2);
       if (kind === 'boathouse') {
-        // hull nose in the shadow, and rails running out
-        const bl = Math.round(ow * 0.7);
-        for (let i = 0; i < bl; i++) {
-          const k = i / bl, rise = Math.round(Math.pow(1 - k, 1.8) * uw(3));
-          R(c, ox2 + Math.round((ow - bl) / 2) + i, y - uw(4) - rise, 1, uw(4) + rise, i % uw(4) === 0 ? W.deck0 : W.deck1);
-          R(c, ox2 + Math.round((ow - bl) / 2) + i, y - uw(4) - rise, 1, 1, W.deck3);
-        }
+        // a gun kept under cover, run back off its port
+        Kit.cannon(c, ox2 + uw(2), y - uw(1), rng, 1);
         for (const rx of [ox2 + uw(1), ox2 + ow - uw(2)]) R(c, rx, y - uw(1), uw(1), uw(1), W.post2);
         lights.push({ x: ox2 + uw(1), y: y - uw(3), w: ow - uw(2), h: uw(2), ph: rng.range(0, TAU), k: 0.35 });
+      } else if (kind === 'tavern') {
+        // a bar, a wall of kegs, and a lamp kept burning at both ends
+        R(c, ox2, y - uw(5), ow, uw(2), W.deck1);
+        R(c, ox2, y - uw(5), ow, 1, W.deck3);
+        R(c, ox2, y - uw(3), ow, 1, W.ink);
+        for (let i = uw(1); i < ow - uw(5); i += uw(5)) c.drawImage(P.keg.c, ox2 + i, y - uw(5) - P.keg.h);
+        for (let i = uw(2); i < ow - uw(3); i += uw(4)) R(c, ox2 + i, y - uw(6), uw(1), uw(1), W.met3);
+        for (let q = uw(2); q < ow - uw(2); q += uw(6)) {
+          R(c, ox2 + q, y - oh + uw(1), 1, uw(2), W.rope0);
+          c.drawImage(P.lantern.c, ox2 + q - uw(1), y - oh + uw(3));
+          lights.push({ x: ox2 + q - uw(1), y: y - oh + uw(5), w: uw(2.5), h: uw(2.5), ph: rng.range(0, TAU), k: 1.2, lantern: true });
+        }
+        Kit.bloodBoards(c, ox2, y - uw(2), ow, uw(2), rng, 1.1);
       } else {
-        // market counter with fish laid out
+        // the counter: not a market any more, a share-out of what was taken
         R(c, ox2, y - uw(4), ow, uw(1.5), W.deck2);
         R(c, ox2, y - uw(4), ow, 1, W.deck4);
         R(c, ox2, y - uw(4) + uw(1.5), ow, 1, W.ink);
-        for (let i = uw(1); i < ow - uw(3); i += uw(3)) c.drawImage(P.fish.c, ox2 + i, y - uw(5) - 1);
+        let mi = uw(1);
+        while (mi < ow - uw(4)) {
+          const r = rng.next();
+          if (r < 0.4) { c.drawImage(P.loot.c, ox2 + mi, y - uw(4) - P.loot.h); mi += uw(6); }
+          else if (r < 0.62) { c.drawImage(P.chest.c, ox2 + mi, y - uw(4) - P.chest.h); mi += uw(7); }
+          else if (r < 0.8) { c.drawImage(P.head.c, ox2 + mi + uw(1), y - uw(4) - P.head.h); R(c, ox2 + mi, y - uw(4), uw(3), 1, DRIED[0]); mi += uw(4); }
+          else { c.drawImage(P.skull.c, ox2 + mi + uw(1), y - uw(4) - P.skull.h); mi += uw(4); }
+        }
         lights.push({ x: ox2 + uw(1), y: y - oh + uw(1), w: ow - uw(2), h: uw(2), ph: rng.range(0, TAU), k: 0.5 });
       }
       // roller-door tracks either side
@@ -862,6 +1050,13 @@
       R(c, doorX, doorY, doorW, 1, W.deck3);
       R(c, doorX, doorY + Math.round(doorH * 0.32), doorW, 1, W.deck0);   // ledge brace
       R(c, doorX + doorW - uw(1.5), doorY + Math.round(doorH / 2), uw(1), 1, W.met3);
+      if (kind === 'powder') {
+        // iron-strapped, padlocked, and marked so nobody carries a light in
+        for (const sy2 of [uw(1), doorH - uw(2)]) { R(c, doorX, doorY + sy2, doorW, uw(1), W.met1); R(c, doorX, doorY + sy2, doorW, 1, W.met2); }
+        R(c, doorX - uw(1), doorY + Math.round(doorH / 2) - 1, uw(2), uw(2), W.met0);
+        R(c, doorX - uw(1), doorY + Math.round(doorH / 2) - 1, uw(2), 1, W.met2);
+        stamp(c, SKULL5, doorX + (doorW >> 1) - 2, doorY - uw(3), 1, W.bone2, W.char0);
+      }
       if (o.doorOpen) {
         R(c, doorX + uw(1.5), doorY + 1, doorW - uw(1.5), doorH - 1, '#160f14');
         lights.push({ x: doorX + uw(1.5), y: doorY + doorH - uw(3), w: doorW - uw(1.5), h: uw(2.5), ph: rng.range(0, TAU), k: 0.5 });
@@ -872,7 +1067,7 @@
     }
 
     // ---- windows -----------------------------------------------------------
-    const nWin = kind === 'shed' ? (rng.next() < 0.6 ? 1 : 0) : (w > uw(22) ? 2 : 1);
+    const nWin = kind === 'powder' ? 0 : kind === 'shed' ? (rng.next() < 0.6 ? 1 : 0) : (w > uw(22) ? 2 : 1);
     const winY = top + uw(2.5) + Math.floor(rng.next() * uw(1.5));
     for (let i = 0; i < nWin; i++) {
       const wx = x + uw(2.5) + Math.round((w - uw(8)) * (nWin === 1 ? (o.doorAt > 0.5 ? 0.12 : 0.7) : i * 0.62));
@@ -881,6 +1076,10 @@
       R(c, wx - 1, winY - 1, ww + 2, wh + 2, col.trim);
       R(c, wx, winY, ww, wh, '#1a1218');
       lights.push({ x: wx, y: winY, w: ww, h: wh, ph: rng.range(0, TAU), k: 1, mull: true });
+      if (rng.next() < 0.45) {   // barred, or boarded over with a plank
+        if (rng.next() < 0.5) for (let q = 1; q < ww; q += uw(1.5)) R(c, wx + q, winY, 1, wh, W.met0);
+        else { R(c, wx - uw(1), winY + Math.round(wh * 0.4), ww + uw(2), uw(1.5), W.deck1); R(c, wx - uw(1), winY + Math.round(wh * 0.4), ww + uw(2), 1, W.deck3); }
+      }
       R(c, wx - uw(1.5), winY + wh + 1, ww + uw(3), uw(1), col.trim);
       R(c, wx - uw(1.5), winY + wh + 1 + uw(1), ww + uw(3), 1, W.ink);
       const sw = uw(2);
@@ -909,10 +1108,13 @@
     // ridge cap
     R(c, Math.round(x + w / 2 - uw(1.5)), top - roofH - 1, uw(3), uw(1) + 1, W.ink);
     R(c, Math.round(x + w / 2 - uw(1)), top - roofH - 1, uw(2), 1, col.roof[2]);
-    // moss patch
-    if (rng.next() < 0.6) {
+    // a patch of roof that has been burnt through, or gone to rot
+    if (rng.next() < 0.75) {
       const mx = Math.round(x + rng.range(uw(2), w - uw(5))), my = top - Math.round(roofH * rng.range(0.25, 0.7));
-      for (let i = 0; i < uw(6); i++) R(c, mx + Math.floor(rng.range(0, uw(3.5))), my + Math.floor(rng.range(0, uw(2))), 1, 1, rng.next() < 0.5 ? W.alg : W.alg2);
+      const burnt = rng.next() < 0.6;
+      for (let i = 0; i < uw(9); i++) R(c, mx + Math.floor(rng.range(0, uw(4))), my + Math.floor(rng.range(0, uw(2.5))), 1, 1,
+        burnt ? (rng.next() < 0.5 ? W.char0 : W.char2) : (rng.next() < 0.5 ? W.alg : W.alg2));
+      if (burnt) R(c, mx + uw(1), my - 1, uw(2), 1, W.ash);
     }
 
     // ---- gable vent / hoist beam ------------------------------------------
@@ -937,7 +1139,7 @@
     }
 
     // ---- chimney -----------------------------------------------------------
-    if (o.chimney !== false && kind !== 'boathouse' && kind !== 'market') {
+    if (o.chimney !== false && kind !== 'boathouse' && kind !== 'market' && kind !== 'powder') {
       const cxp = Math.round(x + (o.chimneyLeft ? w * 0.22 : w * 0.76));
       const rowK = Math.abs(cxp - (x + w / 2)) / (w / 2 + over);
       const roofTopY = top - roofH + Math.round(rowK * roofH);
@@ -955,14 +1157,20 @@
 
     // ---- awning / porch ----------------------------------------------------
     if (o.awning !== false && kind !== 'boathouse') {
-      const ay = (kind === 'market' ? y - wallH + uw(2) : doorY - uw(2));
-      const aw = kind === 'market' ? w + uw(4) : doorW + uw(5);
-      const ax2 = kind === 'market' ? x - uw(2) : doorX - uw(2.5);
+      const ay = ((kind === 'market' || kind === 'tavern') ? y - wallH + uw(2) : doorY - uw(2));
+      const aw = (kind === 'market' || kind === 'tavern') ? w + uw(4) : doorW + uw(5);
+      const ax2 = (kind === 'market' || kind === 'tavern') ? x - uw(2) : doorX - uw(2.5);
       R(c, ax2, ay - 1, aw, 1, W.ink);
-      for (let i = 0; i < aw; i++) R(c, ax2 + i, ay, 1, uw(1.5), (Math.floor(i / uw(2)) % 2) ? col.roof[1] : col.trim);
+      // tarred canvas, sagging and torn through in places
+      for (let i = 0; i < aw; i++) {
+        if (rng.next() < 0.07) continue;                       // a rip
+        const sag = Math.round(Math.sin(i / aw * Math.PI) * uw(0.8));
+        R(c, ax2 + i, ay + sag, 1, uw(1.5), (i & 1) ? W.char1 : W.char2);
+        R(c, ax2 + i, ay + sag, 1, 1, W.char3);
+      }
       R(c, ax2, ay + uw(1.5), aw, 1, W.ink);
-      R(c, ax2 + 1, ay + uw(2), uw(1), (kind === 'market' ? wallH - uw(3) : doorY - ay - uw(2)), W.post1);
-      R(c, ax2 + aw - uw(1) - 1, ay + uw(2), uw(1), (kind === 'market' ? wallH - uw(3) : doorY - ay - uw(2)), W.post1);
+      R(c, ax2 + 1, ay + uw(2), uw(1), ((kind === 'market' || kind === 'tavern') ? wallH - uw(3) : doorY - ay - uw(2)), W.post1);
+      R(c, ax2 + aw - uw(1) - 1, ay + uw(2), uw(1), ((kind === 'market' || kind === 'tavern') ? wallH - uw(3) : doorY - ay - uw(2)), W.post1);
       // hanging lamp
       const lxp = ax2 + aw - uw(2);
       R(c, lxp, ay, 1, uw(1), W.ink);
@@ -970,23 +1178,37 @@
       lights.push({ x: lxp - uw(1), y: ay + uw(3), w: uw(2.5), h: uw(2.5), ph: rng.range(0, TAU), k: 1.3, lantern: true });
     }
 
-    // ---- working clutter on the wall ---------------------------------------
+    // ---- what gets hung on a wall here -------------------------------------
     if (kind === 'loft' || kind === 'shed') {
       Kit.net(c, x + uw(1), top + wallH - uw(8), Math.min(uw(9), w - uw(3)), uw(5), rng, { sag: uw(1) });
     }
-    if (rng.next() < 0.55) {
+    // a black flag off the gable, or one nailed flat to the boards
+    if (o.flag !== false && rng.next() < 0.5) {
+      Kit.blackFlag(c, x + (rng.next() < 0.5 ? uw(2) : w - uw(3)), top + 1, uw(9), rng, rng.next() < 0.5 ? 1 : -1, w > uw(46));
+    }
+    // a skull, or a noose, left hanging by the door
+    if (rng.next() < 0.5) {
       const bx2 = x + w - uw(4.5);
       R(c, bx2 + uw(1), top + uw(1.5), 1, uw(2), W.rope0);
-      c.drawImage(P.buoyProp.c, bx2, top + uw(3));
-    }
-    if (rng.next() < 0.5) {
-      // oars leaning on the wall
-      const ox3 = x + uw(1);
-      for (let i = 0; i < 2; i++) {
-        pline(c, ox3 + i * uw(1.5), y - 1, ox3 + i * uw(1.5) + uw(1), y - wallH + uw(2), uw(1) + 1, W.ink);
-        pline(c, ox3 + i * uw(1.5), y - 1, ox3 + i * uw(1.5) + uw(1), y - wallH + uw(2), 1, W.deck2);
+      if (rng.next() < 0.55) c.drawImage(P.skull.c, bx2 + uw(0.5), top + uw(3.5));
+      else {
+        for (let i = 0; i < uw(4); i++) R(c, bx2 + uw(1), top + uw(3.5) + i, 1, 1, i % 3 ? W.rope1 : W.rope0);
+        R(c, bx2, top + uw(7.5), uw(2.5), uw(1.5), W.rope0);
+        R(c, bx2, top + uw(7.5), uw(2.5), 1, W.rope2);
       }
     }
+    if (rng.next() < 0.55) {
+      // boarding steel stacked against the wall: cutlasses, a pike, an axe
+      const ox3 = x + uw(1);
+      for (let i = 0; i < 2 + (rng.next() < 0.5 ? 1 : 0); i++) {
+        const bx3 = ox3 + i * uw(1.8), tipY = y - wallH + uw(2) + Math.floor(rng.next() * uw(3));
+        pline(c, bx3, y - 1, bx3 + uw(1.5), tipY, uw(1) + 1, W.ink);
+        pline(c, bx3, y - 1, bx3 + uw(1.5), tipY, 1, i % 2 ? W.met2 : W.met3);
+        R(c, bx3, y - uw(2), uw(1), uw(2), W.char1);   // grip
+      }
+    }
+    // blood worked into the boards at the foot of the wall
+    if (o.gore !== false && rng.next() < 0.6) Kit.bloodBoards(c, x + uw(1), y - uw(2.5), w - uw(2), uw(2), rng, 0.9);
     return { lights, smoke, roofH };
   };
 
@@ -1022,6 +1244,427 @@
         for (let q = -ww; q < ww; q += 2) if (rng.next() < 0.2) R(c, x + q, yy, 1, 1, '#6fd88e');
       }
     }
+  };
+
+  // ======================= the port's own furniture ========================
+
+  // -- a body hanging by the neck ------------------------------------------
+  // (x,y) is where the rope is made fast. Everything below is dead weight.
+  // Deliberately a silhouette: dark slops, a pale slumped head, a rope. At two
+  // art pixels per world unit there is no room for detail and none is wanted.
+  Kit.hangBody = function (c, x, y, ropeLen, rng, o) {
+    o = o || {};
+    const CL = ['#2a2730', '#3a2b24', '#2e3330', '#332028', '#26303a', '#463a2c'];
+    const cloth = o.cloth || CL[Math.floor(rng.next() * CL.length)];
+    const clothL = shade(cloth, 1.45), clothD = shade(cloth, 0.55);
+    const sk = o.skin || SKIN[Math.floor(rng.next() * SKIN.length)];
+    const skD = shade(sk, 0.66);
+    const sway = o.sway === undefined ? Math.round(rng.range(-1, 1)) : o.sway;
+    const S2 = Math.max(1, Math.round(U * 0.5));    // one unit of body thickness
+    x = Math.round(x); y = Math.round(y);
+    // the rope
+    for (let i = 0; i < ropeLen; i++) {
+      const rx = x + Math.round(sway * i / Math.max(1, ropeLen));
+      R(c, rx, y + i, 1, 1, i % 3 ? W.rope1 : W.rope0);
+      R(c, rx + 1, y + i, 1, 1, W.ink);
+    }
+    const nx = x + sway, ny = y + ropeLen;
+    R(c, nx - 1, ny, S2 * 3, S2 * 2, W.ink);
+    R(c, nx - 1, ny, S2 * 3 - 1, S2, W.rope0);
+    R(c, nx - 1, ny, S2 * 3 - 1, 1, W.rope2);
+    // the head, dropped onto one shoulder
+    const tilt = rng.next() < 0.5 ? -S2 : S2;
+    const bx = nx + tilt;
+    const hw = S2 * 4, hh = S2 * 4, hy = ny + S2 * 2;
+    R(c, bx - (hw >> 1) - 1, hy - 1, hw + 2, hh + 2, W.ink);
+    R(c, bx - (hw >> 1), hy, hw, hh, sk);
+    R(c, bx - (hw >> 1), hy, hw, S2, o.hair || '#241a16');
+    R(c, bx + (hw >> 1) - 1, hy, 1, hh, skD);
+    R(c, bx - (hw >> 1) + S2, hy + S2 * 2, 1, 1, W.char0);           // eyes, open
+    R(c, bx + (hw >> 1) - S2 - 1, hy + S2 * 2, 1, 1, W.char0);
+    R(c, bx - (hw >> 1) + S2, hy + hh - S2, S2 * 2, 1, shade(sk, 0.5));
+    // shoulders and torso
+    const ty = hy + hh, tw = S2 * 5, th2 = S2 * 8;
+    R(c, bx - (tw >> 1) - S2 - 1, ty - 1, tw + S2 * 2 + 2, S2 * 2 + 1, W.ink);
+    R(c, bx - (tw >> 1) - S2, ty, tw + S2 * 2, S2 * 2, cloth);
+    R(c, bx - (tw >> 1) - S2, ty, tw + S2 * 2, 1, clothL);
+    R(c, bx - (tw >> 1) - 1, ty + S2 * 2 - 1, tw + 2, th2 + 2, W.ink);
+    R(c, bx - (tw >> 1), ty + S2 * 2, tw, th2, cloth);
+    R(c, bx - (tw >> 1), ty + S2 * 2, 1, th2, clothL);
+    R(c, bx + (tw >> 1) - 1, ty + S2 * 2, 1, th2, clothD);
+    R(c, bx - (tw >> 1), ty + S2 * 5, tw, S2, clothD);               // a sash, empty of anything useful
+    R(c, bx - (tw >> 1), ty + S2 * 5, tw, 1, '#5a1a1c');
+    // arms, clear of the body so the silhouette still has limbs in it
+    for (const s2 of [-1, 1]) {
+      const ax = bx + s2 * ((tw >> 1) + S2) - (s2 < 0 ? S2 - 1 : 0);
+      R(c, ax - 1, ty + S2 * 2 - 1, S2 + 2, S2 * 6 + 2, W.ink);
+      R(c, ax, ty + S2 * 2, S2, S2 * 5, s2 < 0 ? clothD : cloth);
+      R(c, ax, ty + S2 * 2, 1, S2 * 5, s2 < 0 ? cloth : clothL);
+      R(c, ax, ty + S2 * 7, S2, S2 * 2, s2 < 0 ? skD : sk);          // a hand
+    }
+    // legs, hanging with a gap between them
+    const ly = ty + S2 * 2 + th2;
+    for (const s2 of [-1, 1]) {
+      const lx = bx + (s2 < 0 ? -(tw >> 1) : (tw >> 1) - S2 * 2) + (s2 > 0 ? tilt : 0);
+      R(c, lx - 1, ly - 1, S2 * 2 + 2, S2 * 7 + 2, W.ink);
+      R(c, lx, ly, S2 * 2, S2 * 6, s2 < 0 ? '#3c3730' : '#4e4840');
+      R(c, lx, ly, 1, S2 * 6, s2 < 0 ? '#565046' : '#67604f');
+      R(c, lx - 1, ly + S2 * 6, S2 * 3, S2 * 2, W.ink);
+      R(c, lx - 1, ly + S2 * 6, S2 * 3 - 1, S2, '#3a2c22');
+    }
+    // it has been up there a while
+    if (o.blood !== false) {
+      for (let i = 0; i < S2 * 5; i++) R(c, bx - (tw >> 1) + Math.floor(rng.next() * tw), ty + S2 * 2 + Math.floor(rng.next() * th2), 1, 1, DRIED[Math.floor(rng.next() * 3)]);
+      R(c, bx - S2, hy + hh - 1, S2 * 2, 1, DRIED[0]);
+      R(c, bx - S2 + 1, hy + hh + S2, 1, S2 * 2, DRIED[1]);
+    }
+    if (o.crow && rng.next() < 0.45) {   // something is feeding
+      const cx3 = bx + (tw >> 1) + S2 * 2;
+      R(c, cx3, ty + S2, S2 * 3, S2 * 2, W.char0);
+      R(c, cx3 + S2 * 3, ty + S2, S2, 1, '#8a6a2a');
+      R(c, cx3 + S2, ty + S2 + 1, 1, 1, '#5a5258');
+    }
+    return { x: bx, y: ly + S2 * 8 };
+  };
+
+  // -- gallows: a crossbeam on two braced posts, hung -----------------------
+  Kit.gallows = function (c, x, y, w, hgt, rng, n) {
+    x = Math.round(x); y = Math.round(y);
+    const pw = uw(2.5);
+    for (const px2 of [x, x + w - pw]) {
+      R(c, px2 - 1, y - hgt, pw + 2, hgt, W.ink);
+      R(c, px2, y - hgt, pw, hgt, W.post1);
+      R(c, px2, y - hgt, 1, hgt, W.post2);
+      R(c, px2 + pw - 1, y - hgt, 1, hgt, W.post0);
+      Kit.lashing(c, px2 - 1, y - Math.round(hgt * 0.72), pw + 2, rng);
+      // splayed foot blocks
+      R(c, px2 - uw(2), y - uw(1.5), pw + uw(4), uw(1.5), W.ink);
+      R(c, px2 - uw(2), y - uw(1.5), pw + uw(4), 1, W.post2);
+    }
+    // the beam
+    R(c, x - uw(2), y - hgt - uw(2) - 1, w + uw(4), uw(2) + 2, W.ink);
+    R(c, x - uw(2), y - hgt - uw(2), w + uw(4), uw(2), W.post1);
+    R(c, x - uw(2), y - hgt - uw(2), w + uw(4), 1, W.post3);
+    for (let q = uw(2); q < w; q += uw(6)) R(c, x + q, y - hgt - uw(2), 1, uw(2), W.post0);
+    // knee braces
+    Kit.brace(c, x + pw, y - hgt + uw(5), x + uw(6), y - hgt - uw(1), uw(1.5));
+    Kit.brace(c, x + w - pw, y - hgt + uw(5), x + w - uw(6), y - hgt - uw(1), uw(1.5));
+    // and what it is for
+    n = n === undefined ? 2 : n;
+    const step = w / (n + 1);
+    for (let i = 0; i < n; i++) {
+      const hx = Math.round(x + step * (i + 1));
+      if (rng.next() < 0.22) {                 // an empty noose, waiting
+        const rl = Math.round(rng.range(uw(4), uw(7)));
+        for (let q = 0; q < rl; q++) R(c, hx, y - hgt + q, 1, 1, q % 3 ? W.rope1 : W.rope0);
+        R(c, hx - 1, y - hgt + rl, uw(1.5), uw(1.5), W.rope0);
+        R(c, hx - 1, y - hgt + rl, uw(1.5), 1, W.rope2);
+        continue;
+      }
+      Kit.hangBody(c, hx, y - hgt, Math.round(rng.range(uw(2), uw(5))), rng, { crow: true });
+    }
+  };
+
+  // -- gibbet: a body left in an iron cage on an out-swung arm --------------
+  Kit.gibbet = function (c, x, y, hgt, rng, dir) {
+    dir = dir || 1;
+    x = Math.round(x); y = Math.round(y);
+    const pw = uw(3);
+    R(c, x - 1, y - hgt, pw + 2, hgt, W.ink);
+    R(c, x, y - hgt, pw, hgt, W.post1);
+    R(c, x, y - hgt, 1, hgt, W.post2);
+    R(c, x + pw - 1, y - hgt, 1, hgt, W.post0);
+    Kit.lashing(c, x - 1, y - Math.round(hgt * 0.6), pw + 2, rng);
+    // the arm
+    const reach = uw(10);
+    const ax = dir > 0 ? x + pw : x;
+    R(c, Math.min(ax, ax + dir * reach) - 1, y - hgt - uw(2) - 1, reach + 2, uw(2) + 2, W.ink);
+    R(c, Math.min(ax, ax + dir * reach), y - hgt - uw(2), reach, uw(2), W.post1);
+    R(c, Math.min(ax, ax + dir * reach), y - hgt - uw(2), reach, 1, W.post3);
+    Kit.brace(c, ax, y - hgt + uw(5), ax + dir * uw(6), y - hgt - uw(1), uw(1.5));
+    // chain down to the cage
+    const cx2 = ax + dir * (reach - uw(2)), chain = uw(3);
+    for (let i = 0; i < chain; i++) R(c, cx2, y - hgt + i, 1, 1, i % 2 ? W.met1 : W.met2);
+    // the cage: iron straps round a body that is no longer fighting them
+    const cw = uw(5), chh = uw(9), cy = y - hgt + chain;
+    R(c, cx2 - (cw >> 1) - 1, cy - 1, cw + 2, chh + 2, W.ink);
+    R(c, cx2 - (cw >> 1), cy, cw, chh, '#241b20');
+    // occupant
+    R(c, cx2 - uw(1), cy + uw(1), uw(2), uw(2), rng.next() < 0.4 ? W.bone1 : SKIN[Math.floor(rng.next() * SKIN.length)]);
+    R(c, cx2 - uw(1.5), cy + uw(3), uw(3), uw(4), '#2e2730');
+    R(c, cx2 - uw(1), cy + uw(7), uw(2), uw(2), '#262320');
+    for (let i = 0; i < uw(3); i++) R(c, cx2 - (cw >> 1) + 1 + Math.floor(rng.next() * (cw - 2)), cy + Math.floor(rng.next() * chh), 1, 1, DRIED[Math.floor(rng.next() * 3)]);
+    // straps
+    for (let i = 0; i < chh; i += uw(2)) { R(c, cx2 - (cw >> 1), cy + i, cw, 1, W.met1); R(c, cx2 - (cw >> 1), cy + i, 1, 1, W.met2); }
+    for (let q = 0; q < cw; q += uw(1.5)) R(c, cx2 - (cw >> 1) + q, cy, 1, chh, W.met0);
+    R(c, cx2 - (cw >> 1), cy + chh - 1, cw, 1, W.met1);
+  };
+
+  // -- a head on a pike, a row of them along a rail -------------------------
+  Kit.spikeHead = function (c, x, y, hgt, rng) {
+    x = Math.round(x); y = Math.round(y);
+    R(c, x - 1, y - hgt, 3, hgt, W.ink);
+    R(c, x, y - hgt, 1, hgt, W.met1);
+    R(c, x, y - hgt, 1, Math.round(hgt * 0.4), W.met2);
+    R(c, x, y - hgt - uw(1), 1, uw(1), W.met3);
+    const skull = rng.next() < 0.35;
+    if (skull) stamp(c, SKULL5, x - 2, y - hgt + 1, 1, W.bone2, W.char0);
+    else {
+      const sp = P.head;
+      c.drawImage(sp.c, x - (sp.w >> 1), y - hgt + 1);
+      // it has run down the pike
+      for (let i = 0; i < uw(3); i++) R(c, x + (rng.next() < 0.5 ? 0 : 1), y - hgt + uw(3) + Math.floor(rng.next() * uw(5)), 1, 1, DRIED[Math.floor(rng.next() * 3)]);
+    }
+  };
+
+  // -- a black flag on a pole ----------------------------------------------
+  Kit.blackFlag = function (c, x, y, hgt, rng, dir, big) {
+    dir = dir || 1;
+    x = Math.round(x); y = Math.round(y);
+    R(c, x - 1, y - hgt, uw(1) + 2, hgt, W.ink);
+    R(c, x, y - hgt, uw(1), hgt, W.post1);
+    R(c, x, y - hgt, 1, hgt, W.post2);
+    R(c, x - 1, y - hgt - uw(1), uw(1) + 2, uw(1), W.met1);
+    const fw = big ? uw(14) : uw(9), fh = big ? uw(10) : uw(6.5);
+    const fx = dir > 0 ? x + uw(1) : x - fw;
+    const fy = y - hgt + 1;
+    // the cloth, with a wind-bent trailing edge and a torn hem
+    for (let i = 0; i < fw; i++) {
+      const k = i / fw;
+      const drop = Math.round(Math.sin(k * 2.2) * uw(1));
+      const hh = fh - Math.round(k * k * uw(1.5)) - (rng.next() < 0.14 ? uw(1) : 0);
+      const xx = dir > 0 ? fx + i : fx + fw - 1 - i;
+      R(c, xx, fy + drop - 1, 1, hh + 2, W.ink);
+      R(c, xx, fy + drop, 1, hh, (i & 1) ? W.char1 : W.char0);
+      R(c, xx, fy + drop, 1, 1, W.char3);
+    }
+    const px = big ? 2 : 1;
+    jollyRoger(c, fx + Math.round(fw * 0.26), fy + Math.round(fh * 0.18), px, W.bone3, W.char0);
+  };
+
+  // -- a gun on the pier ----------------------------------------------------
+  Kit.cannon = function (c, x, y, rng, dir) {
+    dir = dir || 1;
+    x = Math.round(x); y = Math.round(y);
+    const bl = uw(11), bt = uw(2.5);
+    const by = y - uw(4);
+    const x0 = dir > 0 ? x : x - bl;
+    // barrel: breech thick, muzzle flared
+    for (let i = 0; i < bl; i++) {
+      const k = dir > 0 ? i / bl : 1 - i / bl;
+      let t = bt - Math.round(k * uw(0.8));
+      if (k > 0.93) t = bt;                         // muzzle swell
+      if (k < 0.08) t = bt + uw(0.5);               // cascabel end
+      const yy = by - (t >> 1);
+      R(c, x0 + i, yy - 1, 1, t + 2, W.ink);
+      R(c, x0 + i, yy, 1, t, W.met1);
+      R(c, x0 + i, yy, 1, 1, W.met3);
+      R(c, x0 + i, yy + 1, 1, 1, W.met2);
+      R(c, x0 + i, yy + t - 1, 1, 1, W.met0);
+      if (rng.next() < 0.10) R(c, x0 + i, yy + 1 + Math.floor(rng.next() * Math.max(1, t - 2)), 1, 1, W.rust1);
+    }
+    // reinforcing rings
+    for (const k of [0.18, 0.52, 0.86]) {
+      const rx = x0 + Math.round(bl * k);
+      R(c, rx, by - (bt >> 1) - 1, 1, bt + 2, W.met2);
+      R(c, rx + 1, by - (bt >> 1) - 1, 1, bt + 2, W.char0);
+    }
+    // truck carriage
+    const cw = uw(7), cx0 = x0 + Math.round(bl * (dir > 0 ? 0.18 : 0.52));
+    R(c, cx0 - 1, by + (bt >> 1) - 1, cw + 2, uw(3) + 2, W.ink);
+    R(c, cx0, by + (bt >> 1), cw, uw(3), W.deck2);
+    R(c, cx0, by + (bt >> 1), cw, 1, W.deck4);
+    for (let q = 0; q < cw; q += uw(2)) R(c, cx0 + q, by + (bt >> 1), 1, uw(3), W.deck0);
+    for (const wx of [cx0 + uw(0.5), cx0 + cw - uw(2)]) {
+      const r = uw(1.4), wy = y - r;
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r) continue;
+        R(c, wx + uw(1) + dx, wy + dy, 1, 1, dx * dx + dy * dy > (r - 1) * (r - 1) ? W.ink : W.deck0);
+      }
+      R(c, wx + uw(1) - 1, wy - 1, 2, 2, W.met1);
+    }
+    // breeching rope back to a ringbolt
+    const rx0 = dir > 0 ? x0 : x0 + bl;
+    for (let i = 0; i < uw(5); i++) R(c, rx0 - dir * i, by + Math.round(Math.sin(i / uw(5) * Math.PI) * uw(1.5)), 1, 1, i % 3 ? W.rope1 : W.rope0);
+    R(c, x0 + (dir > 0 ? -uw(1) : bl), y - uw(1), uw(1), uw(1), W.met1);
+    // shot and a keg of powder to hand
+    c.drawImage(P.shot.c, x0 + (dir > 0 ? bl - uw(3) : -uw(6)), y - P.shot.h);
+    if (rng.next() < 0.7) c.drawImage(P.powderKeg.c, x0 + (dir > 0 ? -uw(7) : bl + uw(1)), y - P.powderKeg.h);
+    // powder scorch on the boards under the muzzle
+    const mx = dir > 0 ? x0 + bl : x0;
+    for (let i = 0; i < uw(8); i++) R(c, mx + dir * Math.floor(rng.next() * uw(6)), y - Math.floor(rng.next() * uw(2)), 1, 1, rng.next() < 0.5 ? W.char0 : W.char2);
+  };
+
+  // -- a gun seen from above, run out to a port on the pier edge ------------
+  Kit.cannonTop = function (c, x, y, rng, dir) {
+    dir = dir || 1;
+    x = Math.round(x); y = Math.round(y);
+    const bl = uw(10), bt = uw(2.5);
+    // carriage bed
+    R(c, x - 1, y - 1, uw(7) + 2, uw(6) + 2, W.ink);
+    R(c, x, y, uw(7), uw(6), W.deck1);
+    for (let q = 0; q < uw(6); q += uw(2)) R(c, x, y + q, uw(7), 1, W.deck0);
+    R(c, x, y, uw(7), 1, W.deck3);
+    for (const wy of [y + uw(1), y + uw(4)]) { R(c, x - uw(1), wy, uw(9), uw(1), W.char1); R(c, x - uw(1), wy, uw(9), 1, W.char3); }
+    // the barrel, foreshortened, pointing off the pier
+    const bx = dir > 0 ? x + uw(6) : x - bl + uw(1);
+    for (let i = 0; i < bl; i++) {
+      const k = dir > 0 ? i / bl : 1 - i / bl;
+      let t = bt - Math.round(k * uw(0.7));
+      if (k > 0.9) t = bt;
+      const yy = y + uw(3) - (t >> 1);
+      R(c, bx + i, yy - 1, 1, t + 2, W.ink);
+      R(c, bx + i, yy, 1, t, W.met0);
+      R(c, bx + i, yy, 1, 1, W.met2);
+      if (rng.next() < 0.1) R(c, bx + i, yy + 1, 1, 1, W.rust1);
+    }
+    c.drawImage(P.shot.c, x + uw(1), y + uw(6));
+    if (rng.next() < 0.6) c.drawImage(P.powderKeg.c, x - uw(3), y + uw(2));
+    for (let i = 0; i < uw(8); i++) R(c, bx + Math.floor(rng.next() * bl), y + uw(1) + Math.floor(rng.next() * uw(4)), 1, 1, rng.next() < 0.5 ? W.char0 : W.char2);
+  };
+
+  // -- the butcher's end of the dock ---------------------------------------
+  // A block, a cleaver, and something on it. Read as shape and colour: a dark
+  // bench, a red mass, a pale bone end. No anatomy is drawn at this size.
+  Kit.butchery = function (c, x, y, rng) {
+    x = Math.round(x); y = Math.round(y);
+    const bw = uw(12), bh = uw(3), by = y - uw(6);
+    // trestle
+    R(c, x - 1, by - 1, bw + 2, bh + 2, W.ink);
+    R(c, x, by, bw, bh, W.deck1);
+    R(c, x, by, bw, 1, W.deck3);
+    for (let q = 0; q < bw; q += uw(2)) R(c, x + q, by, 1, bh, W.deck0);
+    for (const lx of [x + uw(1), x + bw - uw(2)]) {
+      R(c, lx - 1, by + bh, uw(1.5) + 2, uw(6) + 1, W.ink);
+      R(c, lx, by + bh, uw(1.5), uw(6), W.post1);
+      R(c, lx, by + bh, 1, uw(6), W.post2);
+    }
+    // the carcass on the block
+    const cx2 = x + uw(2), cw = uw(8);
+    R(c, cx2 - 1, by - uw(2.5) - 1, cw + 2, uw(2.5) + 1, W.ink);
+    for (let i = 0; i < cw; i++) {
+      const k = i / cw;
+      const hh = Math.max(1, Math.round(Math.sin(Math.min(1, 0.25 + k) * Math.PI * 0.85) * uw(2.5)));
+      R(c, cx2 + i, by - hh, 1, hh, k < 0.35 ? '#9e1f22' : k < 0.72 ? '#7c1414' : '#55090c');
+      R(c, cx2 + i, by - hh, 1, 1, k < 0.5 ? '#c8302e' : '#7c1414');
+      if (rng.next() < 0.18) R(c, cx2 + i, by - hh + 1, 1, 1, W.bone1);
+    }
+    R(c, cx2 + cw - uw(1), by - uw(1.5), uw(1.5), uw(1), W.bone2);   // the cut end
+    // cleaver stood in the wood
+    const kx = x + bw - uw(3);
+    R(c, kx, by - uw(4), uw(1), uw(3), W.ink);
+    R(c, kx, by - uw(4), 1, uw(3), W.deck2);
+    R(c, kx - uw(1), by - uw(2), uw(2.5), uw(2), W.ink);
+    R(c, kx - uw(1) + 1, by - uw(2) + 1, uw(2), uw(1), W.met3);
+    R(c, kx - uw(1) + 1, by - uw(1), uw(2), 1, DRIED[0]);
+    // a bucket of what came off, and the boards below
+    c.drawImage(P.bucket.c, x + bw - uw(6), y - P.bucket.h);
+    R(c, x + bw - uw(6) + 1, y - P.bucket.h + 1, P.bucket.w - 2, 2, '#7c1414');
+    Kit.bloodBoards(c, x - uw(2), y - uw(2), bw + uw(6), uw(2), rng, 1.4);
+    for (let i = 0; i < uw(4); i++) R(c, x + uw(2) + Math.floor(rng.next() * cw), by + bh + Math.floor(rng.next() * uw(5)), 1, Math.floor(rng.range(1, uw(2))), DRIED[Math.floor(rng.next() * 3)]);
+  };
+
+  // -- somebody left where they fell ---------------------------------------
+  // Face down, dark clothes, a pool. At this size the body is a shape on the
+  // boards, and the pool does the telling.
+  Kit.carcassDrop = function (c, x, y, rng) {
+    x = Math.round(x); y = Math.round(y);
+    const CL = ['#2a2730', '#3a2b24', '#2e3330', '#332028'];
+    const cloth = CL[Math.floor(rng.next() * CL.length)];
+    const sk = SKIN[Math.floor(rng.next() * SKIN.length)];
+    const len = uw(10), bh = uw(2.5);
+    // the pool first, so the body sits in it
+    Kit.bloodBoards(c, x - uw(2), y - uw(2), len + uw(5), uw(2), rng, 2.2);
+    R(c, x - uw(1), y - uw(1), len + uw(3), uw(1), DRIED[1]);
+    R(c, x, y - uw(1.5), len + uw(1), 1, DRIED[0]);
+    // torso and legs, flat to the deck
+    R(c, x - 1, y - bh - 1, len + 2, bh + 2, W.ink);
+    R(c, x, y - bh, len, bh, cloth);
+    R(c, x, y - bh, len, 1, shade(cloth, 1.3));
+    R(c, x + Math.round(len * 0.55), y - bh, 1, bh, shade(cloth, 0.6));
+    // the head, turned away
+    R(c, x - uw(2.5), y - bh - 1, uw(2.5) + 1, uw(2) + 2, W.ink);
+    R(c, x - uw(2), y - bh, uw(2), uw(2), sk);
+    R(c, x - uw(2), y - bh, uw(2), 1, '#241a16');
+    // an arm flung out, and a boot
+    R(c, x + uw(2), y - bh - uw(1.5), uw(1), uw(1.5), W.ink);
+    R(c, x + uw(2), y - bh - uw(1), uw(1), uw(1), sk);
+    R(c, x + len, y - uw(2), uw(2), uw(2), W.ink);
+    R(c, x + len, y - uw(2), uw(2) - 1, 1, '#3a2c22');
+    // and whatever they were carrying, dropped
+    if (rng.next() < 0.5) c.drawImage(P.loot.c, x + uw(4), y - P.loot.h);
+    else if (rng.next() < 0.5) c.drawImage(P.skull.c, x + uw(5), y - P.skull.h);
+  };
+
+  // -- blood worked into the decking ---------------------------------------
+  // Dried, soaked-in, walked-through. Stains read as colour at this distance,
+  // so they are flat bands and flecks rather than any kind of shape.
+  Kit.bloodBoards = function (c, x, y, w, h, rng, amount) {
+    amount = amount === undefined ? 1 : amount;
+    // pools, with board between them -- a stain that runs the whole length of
+    // a dock stops reading as blood and starts reading as paint
+    const n = Math.max(1, Math.round(amount * (0.8 + w / uw(46))));
+    for (let i = 0; i < n; i++) {
+      const px2 = Math.round(x + rng.next() * Math.max(1, w - uw(4)));
+      const py = Math.round(y + rng.next() * Math.max(1, h - 2));
+      const pw = Math.round(rng.range(uw(2), uw(6) * Math.min(1.6, amount)));
+      const ph = Math.max(1, Math.round(rng.range(1, uw(2.4))));
+      // a pool is widest through the middle and ragged at both ends
+      for (let q = 0; q < ph; q++) {
+        const k = ph === 1 ? 1 : Math.sin(((q + 0.5) / ph) * Math.PI);
+        const rw = Math.max(1, Math.round(pw * (0.45 + k * 0.55)) - Math.floor(rng.next() * uw(1)));
+        const rx = px2 + ((pw - rw) >> 1) + Math.floor(rng.range(-1, 1.5));
+        R(c, rx, py + q, rw, 1, q === 0 || q === ph - 1 ? DRIED[2] : DRIED[Math.floor(rng.next() * 2)]);
+        if (rw > uw(2)) R(c, rx + 1, py + q, rw - 2, 1, DRIED[Math.floor(rng.next() * 2)]);
+        // dithered ends rather than a hard rectangle edge
+        R(c, rx - 1, py + q, 1, 1, DRIED[4]);
+        R(c, rx + rw, py + q, 1, 1, DRIED[4]);
+      }
+      // spatter thrown clear of the pool
+      for (let q = 0; q < Math.round(5 * amount); q++)
+        R(c, px2 + Math.floor(rng.range(-uw(3), pw + uw(3))), py + Math.floor(rng.range(-uw(2), ph + uw(2))), 1, 1, DRIED[Math.floor(rng.next() * DRIED.length)]);
+      // and what has run off the edge of a board
+      if (rng.next() < 0.45) {
+        const dl = Math.round(rng.range(uw(1), uw(3)));
+        const dx2 = px2 + Math.floor(rng.next() * pw);
+        for (let q = 0; q < dl; q++) R(c, dx2, py + ph + q, q < dl - 1 ? 1 : 1, 1, q > dl * 0.6 ? DRIED[4] : DRIED[2]);
+      }
+    }
+  };
+
+  // -- a burnt-out hull, hauled up and left where it died -------------------
+  Kit.burntHull = function (c, x, y, len, rng) {
+    x = Math.round(x); y = Math.round(y);
+    const h = uw(7);
+    for (let i = 0; i < len; i++) {
+      const k = i / len;
+      const rise = Math.round(Math.pow(Math.abs(k - 0.5) * 2, 2.0) * uw(3.5));
+      let top = y - h - rise;
+      // the middle is burnt away to the frames
+      const gone = Math.abs(k - 0.46) < 0.16 + rng.next() * 0.05;
+      if (gone) {
+        if ((i % uw(3)) === 0) {           // a charred rib standing in the gap
+          R(c, x + i, top + uw(1), 1, h + rise - uw(1), W.char1);
+          R(c, x + i, top + uw(1), 1, 1, W.ash);
+        }
+        R(c, x + i, y - uw(1), 1, uw(1), W.char0);
+        continue;
+      }
+      const charred = Math.abs(k - 0.46) < 0.34;
+      R(c, x + i, top, 1, h + rise, charred ? W.char1 : W.deck0);
+      R(c, x + i, top, 1, 1, charred ? W.char3 : W.deck2);
+      if (!charred && (i % uw(5)) === 0) R(c, x + i, top + 1, 1, h + rise - 1, W.deck0);
+      if (charred && rng.next() < 0.25) R(c, x + i, top + Math.floor(rng.next() * (h + rise)), 1, 1, W.char2);
+      if (rng.next() < 0.06) R(c, x + i, top + Math.floor(rng.next() * (h + rise)), 1, 1, W.ash);
+    }
+    R(c, x, y, len, 1, W.ink);
+    // a stump of burnt mast leaning out of it
+    const mx = x + Math.round(len * 0.3);
+    pline(c, mx, y - h, mx + uw(4), y - h - uw(9), uw(2) + 1, W.ink);
+    pline(c, mx, y - h, mx + uw(4), y - h - uw(9), uw(1.5), W.char1);
+    pline(c, mx + 1, y - h, mx + uw(4) + 1, y - h - uw(6), 1, W.char3);
+    // scorch spreading out across whatever it is sitting on
+    for (let i = 0; i < uw(14); i++) R(c, x + Math.floor(rng.next() * len), y - Math.floor(rng.next() * uw(2)), 1, 1, rng.next() < 0.6 ? W.char0 : W.char2);
   };
 
   // -- top-down pier decking, with real gaps you can see water through -----
@@ -1734,13 +2377,13 @@
         const fl = 0.72 + 0.16 * Math.sin(t * 2.3 + l.ph) + 0.12 * Math.sin(t * 11.7 + l.ph * 3);
         const gx = (ax + l.x + (l.w >> 1)) / K, gy = (ay + l.y + (l.h >> 1)) / K;
         if (l.lantern) {
-          drawGlow(ctx, gx, gy, Math.round(uw(4.5) * fl * l.k), W.glow, 0.85);
+          drawGlow(ctx, gx, gy, Math.round(uw(4.5) * fl * l.k), W.glow, 0.7);
           A(l.x + 1, l.y + 1, l.w - 2, l.h - 2, fl > 0.78 ? W.glowHot : W.glow);
-          A(l.x + 2, l.y + 2, l.w - 4, l.h - 3, '#fff8de');
+          A(l.x + 2, l.y + 2, l.w - 4, l.h - 3, '#ffd07a');
         } else {
-          A(l.x, l.y, l.w, l.h, fl > 0.8 ? '#ffe6a8' : '#f2c85f');
-          A(l.x, l.y + l.h - uw(1), l.w, uw(1), '#e0a23c');
-          A(l.x + 1, l.y + 1, l.w - 2, uw(1), '#fff6d5');
+          A(l.x, l.y, l.w, l.h, fl > 0.8 ? '#e8a445' : '#c07a2c');
+          A(l.x, l.y + l.h - uw(1), l.w, uw(1), '#8e4c18');
+          A(l.x + 1, l.y + 1, l.w - 2, uw(1), '#f5c169');
           if (l.mull) {
             A(l.x + ((l.w >> 1) - 1), l.y, 1, l.h, '#3a2a20');
             A(l.x, l.y + ((l.h >> 1) - 1), l.w, 1, '#3a2a20');
@@ -1836,15 +2479,16 @@
     const gw = 4 * gs2, w = str.length * gw + 3 * gs2, h = 9 * gs2;
     x = Math.round(x - w / 2); y = Math.round(y - h);
     const A = (px2, py, pw, ph, c2) => { ctx.fillStyle = c2; ctx.fillRect(px2 / K, py / K, pw / K, ph / K); };
+    const back = col || '#241c22';
     A(x - gs2, y - gs2, w + gs2 * 2, h + gs2 * 2, W.ink);
-    A(x, y, w, h, col || '#f4efe0');
-    A(x + gs2, y + gs2, w - gs2 * 2, gs2, '#ffffff');
-    A(x + (tailDir > 0 ? w - 4 * gs2 : 2 * gs2), y + h, gs2 * 2, gs2 * 2, col || '#f4efe0');
+    A(x, y, w, h, back);
+    A(x + gs2, y + gs2, w - gs2 * 2, gs2, shade(back, 1.5));
+    A(x + (tailDir > 0 ? w - 4 * gs2 : 2 * gs2), y + h, gs2 * 2, gs2 * 2, back);
     A(x + (tailDir > 0 ? w - 4 * gs2 : 2 * gs2), y + h + gs2 * 2, gs2, gs2, W.ink);
     for (let i = 0; i < str.length; i++) {
       const g = GLYPHS[str[i]]; if (!g) continue;
       for (let r = 0; r < 5; r++) for (let c = 0; c < 3; c++)
-        if (g[r][c] === '1') A(x + 2 * gs2 + i * gw + c * gs2, y + 2 * gs2 + r * gs2, gs2, gs2, '#241a22');
+        if (g[r][c] === '1') A(x + 2 * gs2 + i * gw + c * gs2, y + 2 * gs2 + r * gs2, gs2, gs2, '#e6dfc6');
     }
   }
 
@@ -1868,39 +2512,49 @@
       this.onJetty = !!opts.onJetty;
       this.waterY = opts.waterY === undefined ? y + 40 : opts.waterY;
       // ---- body build (variation so a crowd reads as a crowd)
-      // build: man | woman | child | boss (the harbour master) | old
-      this.build = opts.build || (Math.random() < 0.1 ? 'child' : Math.random() < 0.42 ? 'woman' : Math.random() < 0.12 ? 'old' : 'man');
+      // build: man | woman | old | boss (the captain). There are no children
+      // on this shore -- see the note by populate().
+      this.build = opts.build || (Math.random() < 0.26 ? 'woman' : Math.random() < 0.16 ? 'old' : 'man');
       const B = this.build;
-      const tall = B === 'child' ? 0.68 : B === 'woman' ? rand(0.92, 1.0) : B === 'boss' ? 1.08 : B === 'old' ? 0.94 : rand(0.96, 1.08);
-      this.scaleB = B === 'child' ? 0.75 : 1;
+      const tall = B === 'woman' ? rand(0.94, 1.02) : B === 'boss' ? 1.10 : B === 'old' ? 0.95 : rand(0.96, 1.10);
+      this.scaleB = 1;
       this.legL = rand(4.6, 5.8) * tall; this.legL2 = this.legL * rand(0.92, 1.08);
       this.torso = rand(7, 9.5) * tall;
       this.armL = rand(3.6, 4.6) * tall; this.armL2 = this.armL * rand(0.9, 1.05);
       this.head = B === 'child' ? 5 : randi(5, 6);
-      this.bulk = B === 'child' ? 4.5 : B === 'woman' ? rand(5.2, 6.4) : B === 'boss' ? 7.5 : (Math.random() < 0.3 ? 8 : Math.random() < 0.55 ? 7 : 6);
+      this.bulk = B === 'woman' ? rand(5.4, 6.6) : B === 'boss' ? 7.8 : (Math.random() < 0.34 ? 8 : Math.random() < 0.55 ? 7 : 6.2);
       this.skin = opts.skin || pick(SKIN);
       this.shirt = opts.shirt || pick(SHIRT);
       this.shirt2 = Math.random() < 0.45 ? pick(SHIRT) : shade(this.shirt, 0.78);
       this.pants = pick(PANTS);
       this.shirtLt = shade(this.shirt, 1.32); this.pantsLt = shade(this.pants, 1.3);
-      this.boots = pick(['#5a3c28', '#4a3a42', '#6b4a30', '#3e3a30']);
-      this.hair = pick(['#2b1f1a', '#4a3020', '#6b5030', '#8a7a60', '#7a2a1a', '#1c1418']);
-      if (B === 'boss') { this.hat = 6; this.hatCol = '#25313f'; }
-      else if (B === 'woman') { this.hat = Math.random() < 0.5 ? 7 : randi(0, 2); this.hatCol = pick(HATCOL); }
-      else if (B === 'child') { this.hat = Math.random() < 0.5 ? 0 : randi(1, 4); this.hatCol = pick(HATCOL); }
-      else { this.hat = randi(0, 5); this.hatCol = pick(HATCOL); }
-      this.beard = (B === 'man' || B === 'old') && Math.random() < 0.5 ? (B === 'old' ? '#b9b4ac' : this.hair) : null;
-      if (B === 'old') this.hair = '#b9b4ac';
-      this.longHair = B === 'woman' && Math.random() < 0.7;
-      this.skirt = B === 'woman' && Math.random() < 0.55;
-      this.skirtCol = pick(['#4a5a74', '#6b4a5e', '#3f5b4a', '#7a6244', '#5b4a68']);
-      this.apron = (this.role === 'gut' || this.role === 'market') ? true : Math.random() < (B === 'woman' ? 0.45 : 0.25);
-      this.apronCol = Math.random() < 0.5 ? '#cfc6ad' : '#b7c3c8';
-      this.apronStain = pick(['#9e3a34', '#8a5a33', '#7c4a4a']);
-      this.coat = B === 'boss';
-      this.coatCol = '#28384a';
-      this.gloves = Math.random() < 0.2 ? '#7a5a3a' : null;
+      this.boots = pick(['#3a2820', '#2f2a30', '#46301f', '#2a2822']);
+      this.hair = pick(['#231a16', '#3a2718', '#4e3a22', '#6b6155', '#5a2016', '#161217']);
+      // 0 bare/matted | 1 bandana | 2 tricorn | 3 slouch brim | 4 watch cap
+      // 5 head rag | 6 the captain's tricorn | 7 bandana over long hair
+      if (B === 'boss') { this.hat = 6; this.hatCol = '#1b1820'; }
+      else if (B === 'woman') { this.hat = pick([1, 7, 7, 3, 0, 5]); this.hatCol = pick(HATCOL); }
+      else { this.hat = pick([1, 1, 2, 2, 3, 4, 5, 0]); this.hatCol = pick(HATCOL); }
+      this.beard = (B === 'man' || B === 'old') && Math.random() < 0.72 ? (B === 'old' ? '#8e8880' : this.hair) : null;
+      if (B === 'old') this.hair = '#8e8880';
+      this.longHair = Math.random() < (B === 'woman' ? 0.75 : 0.35);
+      this.skirt = B === 'woman' && Math.random() < 0.3;
+      this.skirtCol = pick(['#3a3a48', '#4a2f3a', '#2f3f34', '#4a3d2a', '#38303f']);
+      // a butcher's apron, and it has not been washed
+      this.apron = (this.role === 'gut') ? true : Math.random() < 0.18;
+      this.apronCol = Math.random() < 0.5 ? '#8a8272' : '#6f7268';
+      this.apronStain = pick(['#7c1414', '#9e1f22', '#55090c']);
+      this.coat = B === 'boss' || Math.random() < 0.22;
+      this.coatCol = B === 'boss' ? '#3a1418' : pick(['#2a2028', '#243040', '#31261c', '#1e2a24']);
+      this.gloves = Math.random() < 0.2 ? '#4a3524' : null;
       this.vest = !this.apron && !this.coat && Math.random() < 0.4;
+      // everyone on this shore is armed, whether or not their hands are full
+      this.sashCol = pick(['#7c1414', '#5a1a22', '#4a3a1c', '#2c2a38', '#6b2a18']);
+      this.cutlass = Math.random() < 0.82;
+      this.pistol = Math.random() < 0.55 || B === 'boss';
+      this.patch = Math.random() < 0.26;
+      this.patchSide = Math.random() < 0.6 ? 1 : -1;
+      this.scar = Math.random() < 0.22;
       this.item = opts.item || null;
       this.shirtDk = shade(this.shirt, 0.66); this.shirt2Dk = shade(this.shirt2, 0.66);
       this.pantsDk = shade(this.pants, 0.66); this.skinDk = shade(this.skin, 0.72);
@@ -1912,16 +2566,16 @@
       this.fishLine = 0; this.catchT = 0;
       this._ax = 0; this._ay = 0; this._c = 1; this._s = 0; this._face = this.face;
       if (this.role === 'watch_deck') this.setState('idle');
-      else if (['fish', 'hammer', 'chat', 'idle', 'mend', 'gut'].indexOf(this.role) >= 0) this.setState(this.role === 'chat' ? 'idle' : this.role);
+      else if (['guard', 'hammer', 'chat', 'idle', 'mend', 'gut'].indexOf(this.role) >= 0) this.setState(this.role === 'chat' ? 'idle' : this.role);
       else this.setState('idle');
     }
     // ------------------------------------------------------------ behaviour
     setState(s) {
       this.state = s; this.stateT = 0;
       if (s === 'walk') this.pickWalkTarget();
-      if (s === 'fish') { this.face = this.onJetty ? this.face : 1; this.fishLine = 0; }
+      if (s === 'guard') { this.item = Math.random() < 0.55 ? 'cutlass' : 'musket'; }
       if (s === 'mend') { this.item = 'net'; this.crouch = 0; }
-      if (s === 'gut') { this.item = 'knife'; }
+      if (s === 'gut') { this.item = 'cleaver'; }
     }
     say(str, dur, col) { this.speech = { s: str, t: 0, dur: dur || 1.4, col: col }; }
     laneAt(u) {
@@ -1940,7 +2594,7 @@
       this.panicked = true; this.alerted = true;
       if (this.item) { this.dropItem(); }
       this.setState('panic');
-      this.say('!', 1.1, '#ffd6d6');
+      this.say('!', 1.1, '#5e1418');
       this.speed = rand(42, 62);
       const g = gg(), p = g && g.player;
       const away = p ? sign(this.x - p.x) : (Math.random() < 0.5 ? -1 : 1);
@@ -1960,12 +2614,12 @@
       this.panicked = true; this.alerted = true; this.item = null;
       this.lane = null; this.state = 'fall'; this.stateT = 0;
       this.vy = -rand(10, 40); this.vr = rand(-5, 5); this.z = Math.max(this.z, 2); this.vz = rand(10, 60);
-      this.say('!', 1.2, '#ffd9d9');
+      this.say('!', 1.2, '#5e1418');
       if (_shoutT <= 0) { _shoutT = 0.2; try { Audio_.tone(rand(400, 700), 0.2, 'square', 0.05, -320); } catch (e) { } }
     }
     notice() {
       if (this.dead || this.panicked || this.state === 'notice') return;
-      this.alerted = true; this.setState('notice'); this.say('!', 1.3, '#fff0c0');
+      this.alerted = true; this.setState('notice'); this.say('!', 1.3, '#3a2a18');
       if (_shoutT <= 0) { _shoutT = 0.3; try { Audio_.tone(rand(420, 700), 0.08, 'square', 0.045, 190); } catch (e) { } }
     }
     kill(dirAngle, power) {
@@ -2046,7 +2700,7 @@
           this.moveStop(dt);
           if (this.stateT > 1.4 + (this.t % 3)) {
             const r = Math.random();
-            if (this.role === 'fish') this.setState('fish');
+            if (this.role === 'guard' && r < 0.8) this.setState('guard');
             else if (this.role === 'hammer' && r < 0.6) this.setState('hammer');
             else if (this.role === 'mend' && r < 0.75) this.setState('mend');
             else if (this.role === 'gut' && r < 0.75) this.setState('gut');
@@ -2065,13 +2719,14 @@
           }
           break;
         }
-        case 'fish': {
+        // standing watch over the water with a weapon out. Nobody on this
+        // shore is working; they are waiting for something to row in.
+        case 'guard': {
           this.moveStop(dt);
-          this.item = 'rod';
-          this.fishLine = Math.min(1, this.fishLine + dt * 1.6);
-          if (this.catchT > 0) { this.catchT -= dt; if (this.catchT <= 0) this.say('o', 1, '#dff0ff'); }
-          else if (Math.random() < dt * 0.06) { this.catchT = 0.9; }
-          if (this.stateT > 16) { this.item = null; this.setState('walk'); }
+          if (this.item !== 'cutlass' && this.item !== 'musket') this.item = Math.random() < 0.5 ? 'cutlass' : 'musket';
+          this.workPh += dt * 0.7;
+          if (this.stateT > 6 && Math.random() < dt * 0.35) { this.face = -this.face; this.stateT = 0; }
+          if (this.stateT > 18) { this.item = null; this.setState('walk'); }
           break;
         }
         case 'mend': {
@@ -2084,7 +2739,7 @@
         }
         case 'gut': {
           this.moveStop(dt);
-          this.item = 'knife';
+          this.item = 'cleaver';
           this.workPh += dt * 4.6;
           if (Math.sin(this.workPh * 2.4) > 0.97 && Math.random() < 0.3) Gore.splat(this.x + this.face * 5, this.y + rand(-1, 2), 0.16);
           if (this.stateT > 12) { this.item = null; this.setState('walk'); }
@@ -2258,7 +2913,8 @@
       if (this.item === 'crate' || this.item === 'box') {
         // carried in both hands, out in front, which is why they lean back
         h1x = 5.2; h1y = hipY + torsoH * 0.5; h2x = 4.4; h2y = hipY + torsoH * 0.56;
-      } else if (this.item === 'rod') { h1x = 3.6; h1y = shY - 2.6; h2x = 1.6; h2y = shY - 4.2; }
+      } else if (this.item === 'musket') { h1x = 3.0; h1y = shY - 2.0; h2x = 0.6; h2y = shY - 3.4; }
+      else if (this.item === 'cutlass') { h1x = 3.4 + Math.sin(this.workPh) * 0.4; h1y = shY - 3.0; h2x = -1.4; h2y = shY - 5.0; }
       else if (this.state === 'hammer') {
         const sw = Math.sin(this.workPh);
         h1x = 5 + sw * 2.5; h1y = shY - 4 + (sw > 0 ? sw * 7 : sw * 2);
@@ -2302,12 +2958,17 @@
       const A1 = Math.round(U * this.scaleB);
       // the gutting bench, drawn behind them so they lean over it
       if (this.state === 'gut') {
+        // the block, and the mess on it
         const ty = hipY + this.torso * 0.36, x0 = 2.0, x1 = 8.0;
-        seg(ctx, this, x0, ty, x1, ty, Math.round(1.6 * U), W.deck2, ink);
-        seg(ctx, this, x0, ty + 0.4, x1, ty + 0.4, 1, W.deck4);
+        seg(ctx, this, x0, ty, x1, ty, Math.round(1.6 * U), W.deck1, ink);
+        seg(ctx, this, x0, ty + 0.4, x1, ty + 0.4, 1, W.deck3);
         seg(ctx, this, x0 + 0.6, ty - 0.8, x0 + 0.6, 0, Math.round(1.2 * U), W.post1, ink);
         seg(ctx, this, x1 - 0.6, ty - 0.8, x1 - 0.6, 0, Math.round(1.2 * U), W.post1, ink);
-        dot(ctx, this, x1 - 1.2, ty + 1.0, Math.round(1.6 * U), '#8a3a34');
+        seg(ctx, this, x0 + 1.4, ty + 1.1, x1 - 1.0, ty + 1.1, Math.round(1.8 * U), '#7c1414', ink);
+        seg(ctx, this, x0 + 1.4, ty + 1.5, x1 - 2.0, ty + 1.5, 1, '#c8302e');
+        dot(ctx, this, x1 - 1.0, ty + 1.1, A1, W.bone2);
+        seg(ctx, this, x0 + 0.4, ty - 0.6, x1 - 0.4, ty - 0.6, 1, '#55090c');    // running off the edge
+        dot(ctx, this, x0 + 2.4, ty - 2.2, A1, '#3b0508');
       }
       // far leg
       seg(ctx, this, -1.2, hipY, k2x, k2y, legThick, this.pantsDk);
@@ -2351,9 +3012,25 @@
         seg(ctx, this, neckX * 0.55, hipY + torsoH * 0.45, neckX, neckY - 1.2, bulkA - A1 * 2, this.shirt2);
         seg(ctx, this, neckX * 0.55 + 1, hipY + torsoH * 0.45, neckX + 1, neckY - 1.2, 1, shade(this.shirt2, 1.25));
       }
-      // belt
-      seg(ctx, this, -0.6, hipY + 0.7, 0.6, hipY + 0.7, bulkA - A1, '#40291f');
-      dot(ctx, this, 0.6, hipY + 0.7, A1, W.met3);
+      // sash, baldric, and the steel everyone here wears
+      seg(ctx, this, -0.6, hipY + 0.9, 0.8, hipY + 0.6, bulkA - A1, this.sashCol);
+      seg(ctx, this, -0.6, hipY + 1.3, 0.8, hipY + 1.0, 1, shade(this.sashCol, 1.35));
+      if (this.cutlass) {
+        // a curved scabbard slung back off the hip
+        seg(ctx, this, -1.2, hipY + 0.4, -3.6, hipY - 2.4, Math.round(1.6 * U), ink);
+        seg(ctx, this, -1.2, hipY + 0.4, -3.4, hipY - 2.2, Math.round(1 * U), '#2a2228');
+        seg(ctx, this, -1.3, hipY + 0.6, -2.6, hipY - 0.6, 1, W.met2);
+        dot(ctx, this, -1.0, hipY + 1.1, Math.round(1.4 * U), W.met3);      // hilt
+        dot(ctx, this, -1.0, hipY + 1.1, 1, '#b58a26');
+      }
+      if (this.pistol) {
+        // butt of a pistol shoved through the sash
+        seg(ctx, this, 1.0, hipY + 1.2, 2.2, hipY + 0.4, Math.round(1.4 * U), ink);
+        seg(ctx, this, 1.0, hipY + 1.2, 2.1, hipY + 0.5, 1, '#5a4030');
+        dot(ctx, this, 2.0, hipY + 0.5, A1, W.met2);
+      }
+      seg(ctx, this, -bh2 * 0.9, hipY + torsoH * 0.8, bh2 * 0.9, hipY + torsoH * 0.1, Math.round(1.2 * U), shade(this.sashCol, 0.55));  // baldric
+      dot(ctx, this, 0.8, hipY + 0.7, A1, W.met3);
       // collar
       seg(ctx, this, neckX - 1, neckY - 0.6, neckX + 1, neckY - 0.6, A1, this.shirtLt);
       // neck
@@ -2377,6 +3054,13 @@
       } else dot(ctx, this, headX + this.head * 0.22, headY + 0.5, A1, this.skinDk);
       dot(ctx, this, headX + this.head * 0.54, headY - 0.1, A1, this.skinDk);   // nose
       dot(ctx, this, headX + this.head * 0.3, headY - this.head * 0.3, A1, shade(this.skin, 0.8)); // mouth line
+      if (this.patch) {
+        // an eye that is not there any more, and the strap over it
+        const ex = this.patchSide > 0 ? headX + this.head * 0.3 : headX - this.head * 0.06;
+        dot(ctx, this, ex, headY + 0.6, Math.round(1.8 * U), '#120c10');
+        seg(ctx, this, headX - this.head * 0.5, headY + this.head * 0.28, headX + this.head * 0.5, headY + 0.2, 1, '#241c22');
+      }
+      if (this.scar) seg(ctx, this, headX + this.head * 0.18, headY + this.head * 0.34, headX + this.head * 0.42, headY - this.head * 0.22, 1, shade(this.skin, 0.62));
       if (this.beard) {
         seg(ctx, this, headX - 0.4, headY - this.head * 0.3, headX + this.head * 0.34, headY - this.head * 0.34, Math.round(1.6 * U), this.beard);
         seg(ctx, this, headX + this.head * 0.1, headY - this.head * 0.5, headX + this.head * 0.2, headY - this.head * 0.5, A1, shade(this.beard, 0.8));
@@ -2410,57 +3094,76 @@
     drawHat(ctx, hx, hy, ink) {
       const r = this.head * 0.5;          // head half-height; the crown sits at hy + r
       const th = v => Math.max(1, Math.round(v * U));
+      const hc = this.hatCol, hcL = shade(hc, 1.3), hcD = shade(hc, 0.65);
       switch (this.hat) {
-        case 1: // knitted beanie
-          seg(ctx, this, hx - r * 0.7, hy + r * 1.05, hx + r * 0.7, hy + r * 1.05, th(2), ink);
-          seg(ctx, this, hx - r * 0.7, hy + r * 1.0, hx + r * 0.7, hy + r * 1.0, th(1), this.hatCol);
-          seg(ctx, this, hx - r, hy + r * 0.72, hx + r, hy + r * 0.72, th(1.5), ink);
-          seg(ctx, this, hx - r, hy + r * 0.7, hx + r, hy + r * 0.7, 1, shade(this.hatCol, 1.25));
-          for (let i = -2; i <= 2; i++) if (i % 2) dot(ctx, this, hx + r * 0.3 * i, hy + r * 1.0, 1, shade(this.hatCol, 0.7));
+        case 1: // bandana, knotted at the back with the ends hanging
+          seg(ctx, this, hx - r * 1.05, hy + r * 1.0, hx + r * 0.95, hy + r * 1.0, th(2.2), ink);
+          seg(ctx, this, hx - r * 1.0, hy + r * 0.95, hx + r * 0.9, hy + r * 0.95, th(1.4), hc);
+          seg(ctx, this, hx - r * 0.9, hy + r * 1.25, hx + r * 0.6, hy + r * 1.25, th(1), hcL);
+          seg(ctx, this, hx - r * 1.0, hy + r * 0.95, hx - r * 2.0, hy + r * 0.4, th(1.4), ink);
+          seg(ctx, this, hx - r * 1.0, hy + r * 0.9, hx - r * 1.9, hy + r * 0.4, 1, hcL);
+          seg(ctx, this, hx - r * 1.1, hy + r * 0.7, hx - r * 1.8, hy - r * 0.2, 1, hcD);
           break;
-        case 2: // wide straw brim
-          seg(ctx, this, hx - r * 2, hy + r * 0.85, hx + r * 2, hy + r * 0.85, th(1.5), ink);
-          seg(ctx, this, hx - r * 1.9, hy + r * 0.8, hx + r * 1.9, hy + r * 0.8, 1, '#dcb872');
-          seg(ctx, this, hx - r * 0.7, hy + r * 1.45, hx + r * 0.7, hy + r * 1.45, th(2), ink);
-          seg(ctx, this, hx - r * 0.7, hy + r * 1.4, hx + r * 0.7, hy + r * 1.4, th(1), '#eccf90');
-          seg(ctx, this, hx - r * 0.7, hy + r * 1.05, hx + r * 0.7, hy + r * 1.05, 1, '#a8813f');
+        case 2: { // tricorn: three corners, cocked up, dark felt
+          const c1 = this.hatCol === '#191519' ? '#26222a' : hc;
+          seg(ctx, this, hx - r * 2.1, hy + r * 0.95, hx + r * 2.1, hy + r * 0.95, th(2), ink);
+          seg(ctx, this, hx - r * 2.0, hy + r * 0.95, hx + r * 2.0, hy + r * 0.95, th(1.2), c1);
+          seg(ctx, this, hx - r * 2.0, hy + r * 1.05, hx + r * 2.0, hy + r * 1.05, 1, shade(c1, 1.35));
+          // the cocked front and back corners standing above the crown
+          seg(ctx, this, hx - r * 1.7, hy + r * 1.0, hx - r * 1.1, hy + r * 1.75, th(1.6), ink);
+          seg(ctx, this, hx - r * 1.6, hy + r * 1.0, hx - r * 1.1, hy + r * 1.7, th(1), shade(c1, 0.8));
+          seg(ctx, this, hx + r * 1.7, hy + r * 1.0, hx + r * 1.0, hy + r * 1.8, th(1.6), ink);
+          seg(ctx, this, hx + r * 1.6, hy + r * 1.0, hx + r * 1.0, hy + r * 1.75, th(1), c1);
+          seg(ctx, this, hx - r * 0.8, hy + r * 1.55, hx + r * 0.8, hy + r * 1.55, th(2.2), ink);
+          seg(ctx, this, hx - r * 0.8, hy + r * 1.5, hx + r * 0.8, hy + r * 1.5, th(1.4), c1);
           break;
-        case 3: // cap with a peak
-          seg(ctx, this, hx - r * 0.8, hy + r * 1.2, hx + r * 0.8, hy + r * 1.2, th(2), ink);
-          seg(ctx, this, hx - r * 0.8, hy + r * 1.15, hx + r * 0.8, hy + r * 1.15, th(1), this.hatCol);
-          seg(ctx, this, hx + r * 0.4, hy + r * 0.85, hx + r * 1.9, hy + r * 0.85, th(1), ink);
-          seg(ctx, this, hx + r * 0.4, hy + r * 0.8, hx + r * 1.8, hy + r * 0.8, 1, shade(this.hatCol, 0.75));
+        }
+        case 3: // a slouched wide brim, one side pinned, a broken feather
+          seg(ctx, this, hx - r * 2.2, hy + r * 0.75, hx + r * 1.9, hy + r * 1.0, th(2), ink);
+          seg(ctx, this, hx - r * 2.1, hy + r * 0.72, hx + r * 1.8, hy + r * 0.95, th(1.2), hcD);
+          seg(ctx, this, hx - r * 0.7, hy + r * 1.7, hx + r * 0.7, hy + r * 1.7, th(2.6), ink);
+          seg(ctx, this, hx - r * 0.7, hy + r * 1.65, hx + r * 0.7, hy + r * 1.65, th(1.6), hc);
+          seg(ctx, this, hx - r * 0.7, hy + r * 1.1, hx + r * 0.7, hy + r * 1.1, 1, hcD);
+          seg(ctx, this, hx - r * 1.2, hy + r * 1.5, hx - r * 2.2, hy + r * 2.2, 1, '#9a9480');
           break;
-        case 4: // bandana with a knot tail
-          seg(ctx, this, hx - r, hy + r * 0.95, hx + r, hy + r * 0.95, th(1.5), ink);
-          seg(ctx, this, hx - r, hy + r * 0.9, hx + r, hy + r * 0.9, th(1), this.hatCol);
-          seg(ctx, this, hx - r * 0.9, hy + r * 0.8, hx - r * 1.9, hy + r * 0.25, th(1), ink);
-          seg(ctx, this, hx - r * 0.9, hy + r * 0.75, hx - r * 1.8, hy + r * 0.25, 1, shade(this.hatCol, 1.2));
+        case 4: // a filthy knitted watch cap
+          seg(ctx, this, hx - r * 0.8, hy + r * 1.35, hx + r * 0.8, hy + r * 1.35, th(2.4), ink);
+          seg(ctx, this, hx - r * 0.8, hy + r * 1.3, hx + r * 0.8, hy + r * 1.3, th(1.4), hcD);
+          seg(ctx, this, hx - r * 1.05, hy + r * 0.85, hx + r * 1.0, hy + r * 0.85, th(1.8), ink);
+          seg(ctx, this, hx - r * 1.0, hy + r * 0.82, hx + r * 0.95, hy + r * 0.82, th(1), hc);
           break;
-        case 5: // sou'wester
-          seg(ctx, this, hx - r * 2.1, hy + r * 0.75, hx + r * 1.5, hy + r * 0.95, th(1.5), ink);
-          seg(ctx, this, hx - r * 2, hy + r * 0.7, hx + r * 1.4, hy + r * 0.9, 1, '#e0a02a');
-          seg(ctx, this, hx - r * 0.6, hy + r * 1.45, hx + r * 0.5, hy + r * 1.45, th(2.5), ink);
-          seg(ctx, this, hx - r * 0.6, hy + r * 1.4, hx + r * 0.5, hy + r * 1.4, th(1.5), '#f0b23a');
-          seg(ctx, this, hx - r * 0.6, hy + r * 1.05, hx + r * 0.5, hy + r * 1.05, 1, '#b8791f');
+        case 5: // a rag wound round the head, one end hanging over an ear
+          seg(ctx, this, hx - r * 1.1, hy + r * 1.1, hx + r * 1.0, hy + r * 1.1, th(2.4), ink);
+          seg(ctx, this, hx - r * 1.05, hy + r * 1.05, hx + r * 0.95, hy + r * 1.05, th(1.6), hcD);
+          seg(ctx, this, hx - r * 1.05, hy + r * 1.3, hx + r * 0.4, hy + r * 1.3, 1, hcL);
+          seg(ctx, this, hx - r * 1.05, hy + r * 0.95, hx - r * 1.2, hy + r * 0.05, th(1.4), ink);
+          seg(ctx, this, hx - r * 1.05, hy + r * 0.9, hx - r * 1.15, hy + r * 0.1, 1, hcD);
           break;
-        case 6: // peaked officer's cap (the harbour master)
-          seg(ctx, this, hx - r * 0.9, hy + r * 1.3, hx + r * 0.9, hy + r * 1.3, th(2.5), ink);
-          seg(ctx, this, hx - r * 0.9, hy + r * 1.25, hx + r * 0.9, hy + r * 1.25, th(1.5), this.hatCol);
-          seg(ctx, this, hx - r * 0.9, hy + r * 0.95, hx + r * 0.9, hy + r * 0.95, th(1), '#1b1a20');
-          seg(ctx, this, hx + r * 0.5, hy + r * 0.85, hx + r * 2.1, hy + r * 0.8, th(1), ink);
-          seg(ctx, this, hx + r * 0.5, hy + r * 0.8, hx + r * 2, hy + r * 0.75, 1, '#3b3a44');
-          dot(ctx, this, hx + r * 0.2, hy + r * 1.35, Math.max(1, Math.round(U * 0.8)), '#f2c744');
+        case 6: { // the captain: a big tricorn, gold lace and a bone cockade
+          const c1 = '#1d1a22';
+          seg(ctx, this, hx - r * 2.5, hy + r * 0.95, hx + r * 2.5, hy + r * 0.95, th(2.4), ink);
+          seg(ctx, this, hx - r * 2.4, hy + r * 0.95, hx + r * 2.4, hy + r * 0.95, th(1.4), c1);
+          seg(ctx, this, hx - r * 2.4, hy + r * 1.1, hx + r * 2.4, hy + r * 1.1, 1, '#b58a26');
+          seg(ctx, this, hx - r * 2.0, hy + r * 1.0, hx - r * 1.2, hy + r * 2.0, th(1.8), ink);
+          seg(ctx, this, hx - r * 1.9, hy + r * 1.0, hx - r * 1.2, hy + r * 1.95, th(1.1), c1);
+          seg(ctx, this, hx + r * 2.0, hy + r * 1.0, hx + r * 1.1, hy + r * 2.0, th(1.8), ink);
+          seg(ctx, this, hx + r * 1.9, hy + r * 1.0, hx + r * 1.1, hy + r * 1.95, th(1.1), c1);
+          seg(ctx, this, hx - r * 0.9, hy + r * 1.8, hx + r * 0.9, hy + r * 1.8, th(2.4), ink);
+          seg(ctx, this, hx - r * 0.9, hy + r * 1.75, hx + r * 0.9, hy + r * 1.75, th(1.5), c1);
+          dot(ctx, this, hx + r * 1.5, hy + r * 1.45, Math.max(1, Math.round(U * 1.2)), '#e6dfc6');
+          dot(ctx, this, hx + r * 1.5, hy + r * 1.45, 1, '#140c12');
           break;
-        case 7: // headscarf
+        }
+        case 7: // bandana under long matted hair
           seg(ctx, this, hx - r * 1.05, hy + r * 1.0, hx + r * 0.95, hy + r * 1.0, th(2), ink);
-          seg(ctx, this, hx - r * 1.0, hy + r * 0.95, hx + r * 0.9, hy + r * 0.95, th(1.2), this.hatCol);
-          seg(ctx, this, hx - r * 1.0, hy + r * 0.9, hx - r * 1.1, hy + r * 0.1, th(1.2), ink);
-          seg(ctx, this, hx - r * 1.0, hy + r * 0.85, hx - r * 1.05, hy + r * 0.15, 1, shade(this.hatCol, 1.2));
+          seg(ctx, this, hx - r * 1.0, hy + r * 0.95, hx + r * 0.9, hy + r * 0.95, th(1.2), hc);
+          seg(ctx, this, hx - r * 1.0, hy + r * 0.9, hx - r * 1.2, hy - r * 0.9, th(1.8), ink);
+          seg(ctx, this, hx - r * 1.0, hy + r * 0.85, hx - r * 1.15, hy - r * 0.85, th(1), this.hair);
           break;
-        default: // bare head, a bit more hair
-          seg(ctx, this, hx - r * 0.85, hy + r * 1.0, hx + r * 0.85, hy + r * 1.0, th(1.5), this.hair);
-          seg(ctx, this, hx - r * 0.85, hy + r * 0.82, hx + r * 0.3, hy + r * 0.82, 1, shade(this.hair, 1.35));
+        default: // bare, matted, salt-stiff
+          seg(ctx, this, hx - r * 0.9, hy + r * 1.05, hx + r * 0.85, hy + r * 1.05, th(1.8), this.hair);
+          seg(ctx, this, hx - r * 0.9, hy + r * 0.82, hx + r * 0.3, hy + r * 0.82, 1, shade(this.hair, 1.3));
+          seg(ctx, this, hx - r * 0.95, hy + r * 0.9, hx - r * 1.1, hy - r * 0.4, th(1.4), this.hair);
           break;
       }
     }
@@ -2499,15 +3202,31 @@
         seg(ctx, this, h1x, h1y, ex, ey, 1, '#7a5230');
         seg(ctx, this, ex - 0.6, ey + 1.4, ex + 0.6, ey - 1.4, th(2), ink);
         seg(ctx, this, ex - 0.4, ey + 1.2, ex + 0.4, ey - 1.2, th(1), W.met2);
-      } else if (this.item === 'fish') {
-        T(this, h1x + 2, h1y - 1);
-        ctx.drawImage(P.fish.c, (Math.round(_tx) - (P.fish.w >> 1)) / K, (Math.round(_ty) - (P.fish.h >> 1)) / K, P.fish.w / K, P.fish.h / K);
-      } else if (this.item === 'knife') {
-        // gutting: a short blade, and the fish held down on the bench
-        seg(ctx, this, h1x, h1y, h1x + 1.4, h1y - 1.2, th(1.4), ink);
-        seg(ctx, this, h1x, h1y, h1x + 1.3, h1y - 1.1, 1, W.met3);
-        T(this, h1x - 0.6, h1y - 0.6);
-        ctx.drawImage(P.fish.c, (Math.round(_tx) - (P.fish.w >> 1)) / K, (Math.round(_ty) - (P.fish.h >> 1)) / K, P.fish.w / K, P.fish.h / K);
+      } else if (this.item === 'head') {
+        T(this, h1x + 1.6, h1y - 1);
+        ctx.drawImage(P.head.c, (Math.round(_tx) - (P.head.w >> 1)) / K, (Math.round(_ty) - (P.head.h >> 1)) / K, P.head.w / K, P.head.h / K);
+      } else if (this.item === 'cleaver') {
+        // butchering: a heavy square blade, brought down on the block
+        seg(ctx, this, h1x, h1y, h1x + 1.2, h1y - 1.0, th(1.4), ink);
+        seg(ctx, this, h1x, h1y, h1x + 1.1, h1y - 0.9, 1, '#4a3524');
+        seg(ctx, this, h1x + 1.2, h1y - 0.6, h1x + 2.6, h1y - 1.4, th(2.4), ink);
+        seg(ctx, this, h1x + 1.3, h1y - 0.7, h1x + 2.4, h1y - 1.4, th(1.4), W.met3);
+        seg(ctx, this, h1x + 1.3, h1y - 1.4, h1x + 2.4, h1y - 2.0, 1, '#9e1f22');
+      } else if (this.item === 'cutlass') {
+        // a drawn cutlass, held low and across
+        seg(ctx, this, h1x, h1y, h1x + 0.6, h1y - 1.2, th(1.6), ink);
+        seg(ctx, this, h1x, h1y, h1x + 0.5, h1y - 1.1, 1, '#4a3524');
+        dot(ctx, this, h1x + 0.3, h1y + 0.6, Math.round(1.8 * U), ink);
+        dot(ctx, this, h1x + 0.3, h1y + 0.6, Math.round(1.2 * U), '#b58a26');   // basket hilt
+        seg(ctx, this, h1x + 0.6, h1y - 1.2, h1x + 3.4, h1y - 5.6, th(2), ink);
+        seg(ctx, this, h1x + 0.6, h1y - 1.2, h1x + 3.2, h1y - 5.4, th(1), W.met2);
+        seg(ctx, this, h1x + 0.9, h1y - 1.4, h1x + 3.2, h1y - 5.0, 1, '#c6cfd8');
+      } else if (this.item === 'musket') {
+        // a long gun rested over the rail
+        seg(ctx, this, h1x - 3.4, h1y + 1.2, h1x + 6.4, h1y - 2.4, th(2), ink);
+        seg(ctx, this, h1x - 3.4, h1y + 1.2, h1x + 2.2, h1y - 0.8, th(1.2), '#3a2718');
+        seg(ctx, this, h1x + 1.4, h1y - 0.5, h1x + 6.2, h1y - 2.3, th(1), W.met1);
+        dot(ctx, this, h1x + 0.6, h1y - 0.2, Math.max(1, Math.round(U)), W.met3);
       } else if (this.item === 'net') {
         // a lap full of net, mended stitch by stitch
         seg(ctx, this, h1x - 1, h1y - 2.4, h1x + 3.4, h1y - 2.4, th(2.6), W.net0);
@@ -2585,14 +3304,17 @@
       R(c, L - uw(1), D + uw(3) + 1, wb + uw(2), uw(1.5), W.post1);
       R(c, L - uw(1), D + uw(3) + 1, wb + uw(2), 1, W.post2);
       R(c, L - uw(1), D + uw(4.5) + 1, wb + uw(2), 1, W.ink);
-      // ---- deck surface
+      // ---- deck surface, and what has soaked into it
       Kit.deck(c, L, D, wb, rng);
-      // ---- things hung off the edge
+      Kit.bloodBoards(c, L, D, wb, uw(2.5), rng, 1.3 + (job === 'plunder' || job === 'gallows' ? 1.1 : 0));
+      // ---- things hung off the edge, over the water
       let hx = uw(4);
       while (hx < wb - uw(12)) {
         const r = rng.next();
-        if (r < 0.30) { Kit.net(c, L + hx, D + uw(6), uw(9) + Math.floor(rng.next() * uw(6)), uw(5) + Math.floor(rng.next() * uw(4)), rng, { sag: uw(1.5) }); hx += uw(17); }
-        else if (r < 0.44) { c.drawImage(P.tyre.c, L + hx, D + uw(5)); R(c, L + hx + uw(1), D + uw(3), 1, uw(2.5), W.rope0); hx += uw(8); }
+        if (r < 0.20) { Kit.net(c, L + hx, D + uw(6), uw(9) + Math.floor(rng.next() * uw(6)), uw(5) + Math.floor(rng.next() * uw(4)), rng, { sag: uw(1.5) }); hx += uw(17); }
+        else if (r < 0.32) { c.drawImage(P.tyre.c, L + hx, D + uw(5)); R(c, L + hx + uw(1), D + uw(3), 1, uw(2.5), W.rope0); hx += uw(8); }
+        else if (r < 0.46) { Kit.hangBody(c, L + hx, D + uw(3), Math.floor(rng.range(uw(2), uw(6))), rng, { crow: true }); hx += uw(12); }
+        else if (r < 0.54) { Kit.gibbet(c, L + hx, D + uw(1), uw(12), rng, rng.next() < 0.5 ? 1 : -1); hx += uw(16); }
         else hx += uw(7) + Math.floor(rng.next() * uw(10));
       }
       // ---- railing, with an opening where people step down
@@ -2622,36 +3344,61 @@
       const put = (spr, x, yOff) => c.drawImage(spr.c, L + x, D - spr.h + (yOff || 0));
       let cx2 = uw(2);
       const room = () => wb - uw(5) - cx2;
-      const W8 = { general: 0, dry: 0, pots: 0, repair: 0, market: 0, store: 0 }; void W8;
-      while (room() > uw(5)) {
-        const r = rng.next();
-        if (job === 'dry' && r < 0.55 && room() > uw(16)) { Kit.fishRack(c, L + cx2, D, uw(14), rng); cx2 += uw(17); continue; }
-        if (job === 'pots' && r < 0.34 && room() > uw(7)) { Kit.crabPots(c, L + cx2, D, 2 + Math.floor(rng.next() * 3), rng); cx2 += uw(8); continue; }
-        if (job === 'pots' && r < 0.55 && room() > uw(8)) { put(P.fishBox, cx2); put(P.crate, cx2 + uw(5)); cx2 += uw(10); continue; }
-        if (job === 'repair' && r < 0.4 && room() > uw(9)) { Kit.winch(c, L + cx2, D, rng); cx2 += uw(8); continue; }
-        if (job === 'market' && r < 0.45 && room() > uw(8)) { put(P.fishBox, cx2); put(P.fishBox, cx2 + uw(1), -P.fishBox.h + uw(1)); cx2 += uw(7); continue; }
-        if (job === 'store' && r < 0.5 && room() > uw(8)) { put(P.barrel, cx2); put(P.keg, cx2 + uw(5)); cx2 += uw(9); continue; }
-        if (r < 0.10) { put(P.barrel, cx2); cx2 += uw(6); if (rng.next() < 0.5) { put(P.barrelOpen, cx2); cx2 += uw(6); } }
-        else if (r < 0.20) { put(P.crate, cx2); if (rng.next() < 0.45) put(P.crateSm, cx2 + uw(1), -P.crate.h); cx2 += uw(6); }
-        else if (r < 0.27) { put(P.ropeCoil, cx2); cx2 += uw(6); }
-        else if (r < 0.33) { put(P.bucket, cx2); cx2 += uw(5); }
-        else if (r < 0.38) { put(P.sack, cx2); cx2 += uw(5); }
-        else if (r < 0.42) { put(P.pot, cx2); cx2 += uw(4); }
-        else if (r < 0.47) { put(P.anchor, cx2); cx2 += uw(6); }
-        else if (r < 0.53) { Kit.bollard(c, L + cx2, D, rng); cx2 += uw(5); }
-        else if (r < 0.58 && room() > uw(16)) { Kit.fishRack(c, L + cx2, D, uw(14), rng); cx2 += uw(17); }
-        else if (r < 0.60 && room() > uw(8)) { Kit.crabPots(c, L + cx2, D, 1 + Math.floor(rng.next() * 2), rng); cx2 += uw(8); }
-        else if (r < 0.68 && room() > uw(9)) { Kit.winch(c, L + cx2, D, rng); cx2 += uw(8); }
-        else if (r < 0.74) { // lamp post
-          const ph2 = L + cx2, top = D - uw(11);
-          R(c, ph2 - 1, top, 1, uw(11), W.ink); R(c, ph2, top, uw(1), uw(11), W.post1);
-          R(c, ph2, top, 1, uw(11), W.post2); R(c, ph2 + uw(1), top, 1, uw(11), W.ink);
-          R(c, ph2 + uw(1), top, uw(2.5), 1, W.post1); R(c, ph2 + uw(1), top - 1, uw(2.5), 1, W.ink);
-          c.drawImage(P.lantern.c, ph2 + uw(2), top + 1);
-          lights.push({ x: ph2 + uw(2.5), y: top + uw(3), w: uw(2.5), h: uw(2.5), ph: rng.range(0, TAU), k: 1.25, lantern: true });
-          cx2 += uw(8);
+      // a lamp on a gibbet-hook of a post: the only light this port keeps
+      const lampPost = (px3) => {
+        const top = D - uw(11);
+        R(c, px3 - 1, top, 1, uw(11), W.ink); R(c, px3, top, uw(1), uw(11), W.post1);
+        R(c, px3, top, 1, uw(11), W.post2); R(c, px3 + uw(1), top, 1, uw(11), W.ink);
+        R(c, px3 + uw(1), top, uw(2.5), 1, W.post1); R(c, px3 + uw(1), top - 1, uw(2.5), 1, W.ink);
+        c.drawImage(P.lantern.c, px3 + uw(2), top + 1);
+        lights.push({ x: px3 + uw(2.5), y: top + uw(3), w: uw(2.5), h: uw(2.5), ph: rng.range(0, TAU), k: 1.25, lantern: true });
+      };
+      // a row of pikes along the front of a deck
+      const spikes = (px3, n) => { for (let i = 0; i < n; i++) Kit.spikeHead(c, px3 + i * uw(4), D + uw(1), uw(8) + Math.floor(rng.next() * uw(3)), rng); };
+      // The dock is dressed from a bag of pieces rather than a ladder of
+      // probabilities, so one deck never comes out as a row of the same crate.
+      // Each piece knows what it costs in deck width and how often it may
+      // repeat, and the job this stretch is run for just weights the bag.
+      const PIECES = [
+        { k: 'gallows', w: 24, f: (px3) => Kit.gallows(c, px3, D, uw(20), uw(20), rng, 2 + (rng.next() < 0.4 ? 1 : 0)), j: { gallows: 7 }, d: 1 },
+        { k: 'rack', w: 17, f: (px3) => Kit.fishRack(c, px3, D, uw(14), rng), j: { gallows: 6, plunder: 3 }, d: 2 },
+        { k: 'gun', w: 18, f: (px3) => Kit.cannon(c, px3, D, rng, rng.next() < 0.5 ? 1 : -1), j: { guns: 9, general: 2 }, d: 2 },
+        { k: 'powder', w: 10, f: (px3) => { put(P.powderKeg, px3 - L); put(P.powderKeg, px3 - L + uw(4)); put(P.shot, px3 - L + uw(1), -P.powderKeg.h); }, j: { guns: 6 }, d: 1 },
+        { k: 'block', w: 15, f: (px3) => Kit.butchery(c, px3, D, rng), j: { plunder: 6, gallows: 3 }, d: 1 },
+        { k: 'chest', w: 11, f: (px3) => { put(P.chest, px3 - L); put(P.loot, px3 - L + uw(6)); }, j: { plunder: 7 }, d: 2 },
+        { k: 'rum', w: 11, f: (px3) => { put(P.rumBarrel, px3 - L); put(P.keg, px3 - L + uw(6)); if (rng.next() < 0.5) put(P.barrelOpen, px3 - L + uw(2), -P.barrel.h); }, j: { rum: 9 }, d: 2 },
+        { k: 'winch', w: 8, f: (px3) => Kit.winch(c, px3, D, rng), j: { repair: 7 }, d: 1 },
+        { k: 'spikes', w: 12, f: (px3) => spikes(px3 - L, 2 + Math.floor(rng.next() * 2)), j: { gallows: 5, guns: 2 }, d: 2 },
+        { k: 'body', w: 13, f: (px3) => Kit.carcassDrop(c, px3, D, rng), j: { gallows: 3, plunder: 3 }, d: 1 },
+        { k: 'flag', w: 13, f: (px3) => Kit.blackFlag(c, px3, D, uw(20) + Math.floor(rng.next() * uw(4)), rng, rng.next() < 0.5 ? 1 : -1, false), j: {}, d: 1 },
+        { k: 'lamp', w: 8, f: (px3) => lampPost(px3), j: {}, d: 2 },
+        { k: 'barrel', w: 7, f: (px3) => { put(rng.next() < 0.5 ? P.rumBarrel : P.barrel, px3 - L); if (rng.next() < 0.4) put(P.barrelOpen, px3 - L + uw(5)); }, j: { rum: 3 }, d: 2 },
+        { k: 'crate', w: 7, f: (px3) => { put(P.crate, px3 - L); if (rng.next() < 0.45) put(P.crateSm, px3 - L + uw(1), -P.crate.h); }, j: {}, d: 2 },
+        { k: 'bones', w: 7, f: (px3) => put(P.bones, px3 - L), j: { gallows: 3 }, d: 2 },
+        { k: 'rope', w: 6, f: (px3) => put(P.ropeCoil, px3 - L), j: {}, d: 2 },
+        { k: 'sack', w: 6, f: (px3) => put(rng.next() < 0.5 ? P.sack : P.loot, px3 - L), j: { plunder: 3 }, d: 2 },
+        { k: 'anchor', w: 6, f: (px3) => put(P.anchor, px3 - L), j: {}, d: 1 },
+        { k: 'bollard', w: 5, f: (px3) => Kit.bollard(c, px3, D, rng), j: {}, d: 2 },
+      ];
+      const used = {};
+      let lastK = '';
+      while (room() > uw(6)) {
+        let total = 0;
+        const bag = [];
+        for (const pc of PIECES) {
+          if (room() < uw(pc.w + 2)) continue;
+          if (pc.k === lastK) continue;
+          if ((used[pc.k] || 0) >= pc.d) continue;
+          const wt = (pc.j[job] || 1) + 0.5;
+          bag.push([pc, wt]); total += wt;
         }
-        else cx2 += uw(5) + Math.floor(rng.next() * uw(11));
+        if (!bag.length) break;
+        let pickv = rng.next() * total, chosen = bag[bag.length - 1][0];
+        for (const [pc, wt] of bag) { pickv -= wt; if (pickv <= 0) { chosen = pc; break; } }
+        chosen.f(L + cx2);
+        used[chosen.k] = (used[chosen.k] || 0) + 1;
+        lastK = chosen.k;
+        cx2 += uw(chosen.w) + Math.floor(rng.next() * uw(5));
       }
       if (o.davit) Kit.davit(c, L + uw(o.davit), D, rng, o.davitDir || 1);
       return { lights, haze: o.haze ? ['#bcd8ea', o.haze] : null };
@@ -2717,27 +3464,55 @@
     const draw = (c, rng) => {
       const L = uw(pad), wa = uw(o.w), la = uw(o.len);
       Kit.jetty(c, L, uw(1), wa, la, rng, { rails: o.rails !== false });
+      // the pier is where everything gets dragged ashore, and it shows: blood
+      // soaked into the boards, powder burns, and long drag marks down it
+      Kit.bloodBoards(c, L + uw(2), uw(3), wa - uw(4), la - uw(6), rng, 2.6);
+      for (let i = 0; i < 2; i++) {
+        const dx0 = L + uw(3) + Math.floor(rng.next() * (wa - uw(8)));
+        const dy0 = uw(4) + Math.floor(rng.next() * Math.max(1, la - uw(20)));
+        const dl = Math.floor(rng.range(uw(8), uw(18)));
+        const drift = rng.range(-0.35, 0.35);
+        for (let q = 0; q < dl; q++) {
+          if (rng.next() < 0.18) continue;                 // the smear breaks up as it dries
+          const xx = dx0 + Math.round(drift * q);
+          const tw2 = Math.max(1, uw(1.5) - (q > dl * 0.55 ? 1 : 0));
+          R(c, xx, dy0 + q, tw2, 1, DRIED[(q + (rng.next() < 0.4 ? 1 : 0)) % 3]);
+          if (rng.next() < 0.22) R(c, xx + (rng.next() < 0.5 ? -1 : tw2), dy0 + q, 1, 1, DRIED[4]);
+        }
+      }
+      for (let i = 0; i < uw(30); i++) R(c, L + uw(2) + Math.floor(rng.next() * (wa - uw(4))), uw(3) + Math.floor(rng.next() * (la - uw(5))), 1, 1, rng.next() < 0.6 ? 'rgba(15,11,14,0.5)' : 'rgba(46,58,44,0.5)');
       // furniture along the pier: bollards with rope, cleats, pots, lamps
       let y = uw(3);
       while (y < la - uw(6)) {
         const r = rng.next();
         const sideL = rng.next() < 0.5;
         const cx2 = sideL ? L + uw(5) : L + wa - uw(11);
-        if (r < 0.13) { Kit.bollard(c, cx2, y + uw(4), rng); if (rng.next() < 0.7) { // rope run to the rail
+        if (r < 0.11) { Kit.bollard(c, cx2, y + uw(4), rng); if (rng.next() < 0.7) { // rope run to the rail
             for (let i = 0; i < uw(6); i++) R(c, cx2 + (sideL ? -i : uw(3) + i), y + uw(2) + Math.round(Math.sin(i / uw(6) * Math.PI) * uw(1)), 1, 1, i % 3 ? W.rope1 : W.rope0); } }
-        else if (r < 0.22) c.drawImage(P.crate.c, cx2, y);
-        else if (r < 0.30) c.drawImage(P.barrel.c, cx2, y);
-        else if (r < 0.37) c.drawImage(P.ropeCoil.c, cx2, y);
-        else if (r < 0.45) Kit.crabPots(c, cx2, y + uw(4), 2 + Math.floor(rng.next() * 2), rng);
+        else if (r < 0.18) c.drawImage(P.crate.c, cx2, y);
+        else if (r < 0.26) c.drawImage(rng.next() < 0.55 ? P.rumBarrel.c : P.barrel.c, cx2, y);
+        else if (r < 0.31) c.drawImage(P.ropeCoil.c, cx2, y);
+        else if (r < 0.39) { c.drawImage(P.powderKeg.c, cx2, y); if (rng.next() < 0.6) c.drawImage(P.shot.c, cx2 + uw(4), y + uw(1)); }
+        else if (r < 0.45) { c.drawImage(P.chest.c, cx2 - uw(1), y); c.drawImage(P.loot.c, cx2 + uw(5), y + uw(3)); }
         else if (r < 0.50) c.drawImage(P.bucket.c, cx2 + uw(1), y);
-        else if (r < 0.55) Kit.cleat(c, cx2, y);
-        else if (r < 0.62) c.drawImage(P.fishBox.c, cx2 - uw(1), y);
+        else if (r < 0.54) Kit.cleat(c, cx2, y);
+        else if (r < 0.60) c.drawImage(P.bones.c, cx2 - uw(1), y);
         else if (r < 0.70 && o.rails !== false) {
           const lx = sideL ? L - 1 : L + wa - uw(1.5);
           R(c, lx, y - uw(7), uw(1.5), uw(8), W.ink); R(c, lx, y - uw(7), uw(1), uw(8), W.post1);
           c.drawImage(P.lantern.c, lx - 1, y - uw(10));
           lights.push({ x: lx - 1, y: y - uw(8), w: uw(2.5), h: uw(2.5), ph: rng.range(0, TAU), k: 1.3, lantern: true });
-        } else if (r < 0.76) c.drawImage(P.fish.c, cx2 + uw(1), y + uw(1));
+        }
+        else if (r < 0.78 && o.rails !== false) {
+          // a head left on the rail post, facing whoever comes up the pier
+          const lx = sideL ? L - 1 : L + wa - uw(2.5);
+          R(c, lx, y - uw(5), uw(2), uw(6), W.ink);
+          R(c, lx, y - uw(5), uw(1), uw(6), W.post1);
+          c.drawImage(P.head.c, lx - uw(1), y - uw(8));
+          for (let i = 0; i < uw(4); i++) R(c, lx + Math.floor(rng.next() * uw(2)), y - uw(3) + Math.floor(rng.next() * uw(4)), 1, 1, DRIED[Math.floor(rng.next() * 3)]);
+        }
+        else if (r < 0.86 && o.gun !== false) { Kit.cannonTop(c, sideL ? L + uw(3) : L + wa - uw(10), y, rng, sideL ? -1 : 1); y += uw(4); }
+        else if (r < 0.92) { Kit.bloodBoards(c, L + uw(3), y, wa - uw(6), uw(5), rng, 2.0); }
         y += uw(4) + Math.floor(rng.next() * uw(7));
       }
       // a ladder down the side into the water
@@ -2754,6 +3529,44 @@
       cw: cwid, ch, ox: -(pad + o.w / 2), oy: 0,
       bx: -o.w / 2, by: 0, bw: o.w, bh: o.len,
       hp: o.hp || 220, waterY: o.y - 999, ruinKeep: 0, leaveRuin: false,
+      draw,
+    });
+  }
+
+  // ---- bake: the gallows on the point -------------------------------------
+  function makeGibbetRow(o) {
+    const pad = 14, topPad = 40, w = 40;
+    const draw = (c, rng) => {
+      const L = uw(pad), D = uw(topPad);
+      Kit.gallows(c, L, D, uw(w - 4), uw(30), rng, 3);
+      Kit.bloodBoards(c, L - uw(2), D - uw(2), uw(w), uw(3), rng, 2.4);
+      // the pile that builds up under a working gallows
+      c.drawImage(P.bones.c, L + uw(2), D - P.bones.h);
+      if (rng.next() < 0.7) c.drawImage(P.carcass.c, L + uw(16), D - P.carcass.h);
+      for (let i = 0; i < 3; i++) Kit.spikeHead(c, L + uw(2) + i * uw(5), D + uw(1), uw(7) + Math.floor(rng.next() * uw(3)), rng);
+      return {};
+    };
+    return new Destructible({
+      kind: 'deck', x: o.x, y: o.y, seed: o.seed,
+      cw: w + pad * 2, ch: topPad + 12, ox: -pad, oy: -topPad,
+      bx: 0, by: -30, bw: w, bh: 32,
+      hp: 110, waterY: o.y + 40, ruinKeep: 8, leaveRuin: false,
+      draw,
+    });
+  }
+
+  // ---- bake: a flag pole flying the port's colours ------------------------
+  function makeColours(o) {
+    const pad = 20, topPad = 46;
+    const draw = (c, rng) => {
+      Kit.blackFlag(c, uw(pad), uw(topPad), uw(topPad - 4), rng, o.dir, o.big);
+      return {};
+    };
+    return new Destructible({
+      kind: 'deck', x: o.x, y: o.y, seed: o.seed,
+      cw: pad * 2, ch: topPad + 8, ox: -pad, oy: -topPad,
+      bx: -3, by: -topPad + 4, bw: 6, bh: topPad,
+      hp: 55, waterY: o.y + 40, ruinKeep: 0, leaveRuin: false,
       draw,
     });
   }
@@ -2806,38 +3619,46 @@
       fn(c, rng, w, h);
       BEACH.push({ c: c.canvas, w, h, ox: -wu / 2, oy: -hu, wu, hu });
     };
-    mkb(40, 20, (c, rng) => { Kit.rowboat(c, uw(2), uw(18), uw(30), rng); R(c, uw(1), uw(18), uw(18), uw(1), 'rgba(90,70,40,0.35)'); });
+    mkb(40, 20, (c, rng) => { Kit.rowboat(c, uw(2), uw(18), uw(30), rng); R(c, uw(1), uw(18), uw(18), uw(1), 'rgba(90,70,40,0.35)'); Kit.bloodBoards(c, uw(3), uw(17), uw(26), uw(2), rng, 1.4); });
     mkb(40, 30, (c, rng) => { Kit.fishRack(c, uw(2.5), uw(28), uw(15), rng, { h: uw(13) }); });
+    mkb(44, 34, (c, rng) => { Kit.gallows(c, uw(4), uw(32), uw(22), uw(22), rng, 2); });
     mkb(30, 24, (c, rng) => {
       c.drawImage(P.crate.c, uw(1), uw(24) - P.crate.h);
-      c.drawImage(P.barrel.c, uw(7), uw(24) - P.barrel.h);
+      c.drawImage(P.rumBarrel.c, uw(7), uw(24) - P.rumBarrel.h);
       if (rng.next() < 0.7) c.drawImage(P.crateSm.c, uw(1.5), uw(24) - P.crate.h - P.crateSm.h);
     });
     mkb(34, 20, (c, rng) => {
       const a = makeRock(rng.int(1, 9999), uw(4.5)), b = makeRock(rng.int(1, 9999), uw(3));
       c.drawImage(a.c, uw(1), uw(20) - a.h); c.drawImage(b.c, uw(9), uw(20) - b.h);
+      c.drawImage(P.bones.c, uw(14), uw(20) - P.bones.h);
     });
-    mkb(30, 12, (c, rng) => {
+    mkb(30, 12, (c, rng) => {   // a spar washed up, with what the tide left on it
       pline(c, uw(1), uw(10), uw(13), uw(7), uw(2), W.ink); pline(c, uw(1), uw(10), uw(13), uw(7), uw(1), W.deck1);
       pline(c, uw(4), uw(11), uw(10), uw(5), uw(1), W.deck2);
-      for (let i = 0; i < uw(14); i++) R(c, rng.range(1, uw(29)), rng.range(uw(8), uw(12)), rng.next() < 0.5 ? 2 : 1, 1, rng.next() < 0.5 ? W.alg : W.alg2);
+      c.drawImage(P.carcass.c, uw(14), uw(12) - P.carcass.h);
+      for (let i = 0; i < uw(10); i++) R(c, rng.range(1, uw(29)), rng.range(uw(8), uw(12)), rng.next() < 0.5 ? 2 : 1, 1, rng.next() < 0.5 ? W.alg : W.alg2);
     });
-    mkb(28, 14, (c, rng) => {
+    mkb(28, 20, (c, rng) => {
       Kit.net(c, uw(1), uw(1), uw(12), uw(3.5), rng, { sag: uw(0.5) });
-      c.drawImage(P.ropeCoil.c, uw(7), uw(14) - P.ropeCoil.h);
+      c.drawImage(P.ropeCoil.c, uw(7), uw(20) - P.ropeCoil.h);
+      for (let i = 0; i < 3; i++) Kit.spikeHead(c, uw(15) + i * uw(4), uw(20), uw(9), rng);
     });
     mkb(30, 14, (c, rng) => {
       c.drawImage(P.barrelOpen.c, 1, uw(14) - P.barrelOpen.h);
-      c.drawImage(P.barrel.c, uw(5.5), uw(14) - P.barrel.h);
-      c.drawImage(P.ropeCoil.c, uw(10), uw(14) - P.ropeCoil.h);
+      c.drawImage(P.rumBarrel.c, uw(5.5), uw(14) - P.rumBarrel.h);
+      c.drawImage(P.powderKeg.c, uw(11), uw(14) - P.powderKeg.h);
       void rng;
     });
-    mkb(24, 14, (c, rng) => { c.drawImage(P.anchor.c, uw(1), uw(14) - P.anchor.h); c.drawImage(P.bucket.c, uw(7), uw(14) - P.bucket.h); void rng; });
-    mkb(26, 16, (c, rng) => { Kit.crabPots(c, uw(2), uw(16), 3, rng); Kit.crabPots(c, uw(12), uw(16), 2, rng); });
-    mkb(34, 12, (c, rng) => {   // upturned hull
+    mkb(24, 14, (c, rng) => { c.drawImage(P.anchor.c, uw(1), uw(14) - P.anchor.h); c.drawImage(P.chest.c, uw(7), uw(14) - P.chest.h); void rng; });
+    mkb(26, 16, (c, rng) => { c.drawImage(P.carcass.c, uw(1), uw(16) - P.carcass.h); c.drawImage(P.bones.c, uw(12), uw(16) - P.bones.h); Kit.bloodBoards(c, uw(1), uw(14), uw(22), uw(2), rng, 1.6); });
+    mkb(26, 26, (c, rng) => { Kit.blackFlag(c, uw(12), uw(25), uw(20), rng, -1, false); c.drawImage(P.powderKeg.c, uw(13), uw(26) - P.powderKeg.h); });
+    mkb(38, 22, (c, rng) => { Kit.burntHull(c, uw(2), uw(21), uw(30), rng); });
+    mkb(34, 12, (c, rng) => {   // upturned hull, stove in
       const la = uw(30);
       for (let i = 0; i < la; i++) {
         const k = i / la, hgt = Math.round(Math.sin(k * Math.PI) * uw(4.5)) + 1;
+        const hole = Math.abs(k - 0.62) < 0.1;
+        if (hole) { R(c, uw(1) + i, uw(11) - 2, 1, 2, W.char0); continue; }
         R(c, uw(1) + i, uw(11) - hgt, 1, hgt, i % uw(2) === 0 ? W.deck0 : W.deck1);
         R(c, uw(1) + i, uw(11) - hgt, 1, 1, W.ink);
         if (rng.next() < 0.2) R(c, uw(1) + i, uw(11) - hgt + 2, 1, 1, W.deck3);
@@ -2897,7 +3718,7 @@
         const w = rng.int(26, 40);
         this.add(makeHouse({
           x: hx, y: rowB.deckY + rng.range(-10, 4), w, wallH: rng.int(18, 24), col: pick(HOUSE_COLS),
-          kind: zoneOf(hx - X) === 2 ? 'shed' : pick(['shed', 'cottage']),
+          kind: zoneOf(hx - X) === 2 ? 'shed' : pick(['shed', 'powder', 'tavern', 'cottage']),
           seed: seed++, waterY: rowB.waterY, haze: rowB.haze, stilts: false,
           doorAt: rng.range(0.25, 0.7), chimneyLeft: rng.next() < 0.5, awning: rng.next() < 0.4,
         }), -2);
@@ -2917,7 +3738,7 @@
       const startX = X - 2400, endX = X + 2400;
       let x = startX;
       const platforms = [];
-      const JOBS = [['dry', 'store', 'general'], ['pots', 'repair', 'store', 'general'], ['dry', 'general', 'pots']];
+      const JOBS = [['gallows', 'rum', 'guns'], ['guns', 'repair', 'rum', 'general'], ['gallows', 'general', 'guns']];
       while (x < endX) {
         const z = zoneOf(x + 80 - X);
         let w = z === 0 ? rng.int(120, 170) : z === 1 ? rng.int(110, 200) : rng.int(90, 210);
@@ -2928,7 +3749,7 @@
           job: pick(JOBS[z]),
         };
         // opening where the pier joins the shore
-        if (x < X + 40 && x + w > X - 40) { o.openX0 = Math.max(0, X - 34 - x); o.openX1 = Math.min(w, X + 34 - x); o.job = 'market'; }
+        if (x < X + 40 && x + w > X - 40) { o.openX0 = Math.max(0, X - 34 - x); o.openX1 = Math.min(w, X + 34 - x); o.job = 'plunder'; }
         if (o.openX0 === undefined && w > 130 && rng.next() < (z === 0 ? 0.6 : 0.35)) {
           o.stair = Math.round(rng.range(16, w - 40)); o.stairDir = rng.next() < 0.5 ? 1 : -1;
           o.openX0 = o.stair; o.openX1 = o.stair + 18;
@@ -2943,7 +3764,9 @@
         x += w + rng.int(0, 4);
       }
       // ---- buildings along the boardwalk, by zone
-      let heartLoft = false, heartMarket = false;
+      // The heart of the port gets the tavern and the magazine: the two
+      // buildings a place like this is actually organised around.
+      let heartTavern = false, heartMarket = false, heartPowder = false;
       for (const pf of platforms) {
         if (pf.w < 100) continue;
         const skip = pf.zone === 0 ? 0.05 : pf.zone === 1 ? 0.3 : 0.55;
@@ -2953,16 +3776,29 @@
         if (Math.abs(hx + hw / 2 - X) < 78) continue;
         let kind;
         if (pf.zone === 0) {
-          if (!heartLoft) { kind = 'loft'; heartLoft = true; }
+          if (!heartTavern) { kind = 'tavern'; heartTavern = true; }
           else if (!heartMarket) { kind = 'market'; heartMarket = true; }
+          else if (!heartPowder) { kind = 'powder'; heartPowder = true; }
           else kind = pick(['boathouse', 'shed', 'loft']);
-        } else if (pf.zone === 1) kind = pick(['shed', 'cottage', 'loft', 'boathouse']);
-        else kind = pick(['shed', 'cottage', 'shed']);
+        } else if (pf.zone === 1) kind = pick(['shed', 'powder', 'loft', 'boathouse', 'tavern']);
+        else kind = pick(['shed', 'cottage', 'shed', 'powder']);
         this.add(makeHouse({
           x: hx, y: pf.deckY, w: hw, wallH: kind === 'loft' ? rng.int(38, 48) : rng.int(26, 36), col: pick(HOUSE_COLS),
           kind, seed: seed++, waterY: rowM.waterY, stilts: false,
           doorAt: rng.range(0.2, 0.68), doorOpen: rng.next() < 0.35, chimneyLeft: rng.next() < 0.5,
         }), 1);
+      }
+
+      // ---- the point: the gallows either side of the pier head, and the
+      // colours over the whole port. This is the silhouette the shore is read
+      // by, so it goes in as its own structure rather than deck furniture.
+      for (const side of [-1, 1]) {
+        const gx = X + side * rng.range(96, 150);
+        this.add(makeGibbetRow({ x: gx, y: rowM.deckY - 1, seed: seed++, side }), 1);
+      }
+      for (let i = 0; i < 9; i++) {
+        const fx = X + (i === 0 ? 0 : rng.range(-1700, 1700));
+        this.add(makeColours({ x: fx, y: (i === 0 ? rowM.deckY : rowB.deckY + rng.range(-6, 6)) - 1, seed: seed++, big: i === 0 || rng.next() < 0.4, dir: rng.next() < 0.5 ? 1 : -1 }), i === 0 ? 1 : -2);
       }
 
       // ---- the boatyard: a slipway with a hull in its cradle
@@ -2984,7 +3820,7 @@
         this.decks.push({ x0: hx, x1: hx + hw, y0: rowF.deckY - 8, y1: rowF.deckY + 8 });
         const dx = hx + (side < 0 ? hw + 2 : -64);
         const pl = makePlatform({
-          x: dx, w: 62, deckY: rowF.deckY, waterY: rowF.waterY, seed: seed++, hp: 90, job: side < 0 ? 'pots' : 'dry',
+          x: dx, w: 62, deckY: rowF.deckY, waterY: rowF.waterY, seed: seed++, hp: 90, job: side < 0 ? 'guns' : 'gallows',
           stair: side < 0 ? 40 : 6, stairDir: side < 0 ? 1 : -1, openX0: side < 0 ? 40 : 6, openX1: side < 0 ? 58 : 24,
           davit: side < 0 ? undefined : 50, davitDir: 1,
         });
@@ -3009,30 +3845,47 @@
       for (let i = 0; i < 18; i++) this.props.push({ s: P.buoyProp, x: X + rng.range(-2200, 2200), y: S + rng.range(30, 150), ph: rng.range(0, TAU), amp: 1.8 });
       for (let i = 0; i < 14; i++) this.props.push({ s: P.buoyBall, x: X + rng.range(-2300, 2300), y: S + rng.range(20, 120), ph: rng.range(0, TAU), amp: 1.4 });
 
-      // ---- the sign
-      const sw = 96, sh = 26;
+      // ---- the sign over the head of the pier. It is the first thing anyone
+      // rowing in reads, and it is nailed to a gallows beam on purpose.
+      const sw = 110, sh = 40;
       const sc = cv(uw(sw), uw(sh));
       const A = v => uw(v);
-      R(sc, 0, A(4), A(sw), A(8), W.ink);
-      R(sc, 1, A(4) + 1, A(sw) - 2, A(8) - 2, W.deck1);
-      R(sc, 1, A(4) + 1, A(sw) - 2, A(1), W.deck3);
-      R(sc, 1, A(11), A(sw) - 2, A(1), W.deck0);
-      for (let i = 0; i < A(sw) - 2; i += A(1.5)) if ((i * 7 % 11) < A(1.5)) R(sc, 1 + i, A(5), A(1), A(6), W.deck2);
-      R(sc, A(6), A(12), A(1.5), A(7), W.post1); R(sc, A(87), A(12), A(1.5), A(7), W.post1);
-      R(sc, A(6) - 1, A(12), 1, A(7), W.ink); R(sc, A(88.5), A(12), 1, A(7), W.ink);
+      const srng = new SeededRandom(5150);
+      // the beam it hangs from, and the two posts holding that up
+      R(sc, A(4), A(1), A(sw - 8), A(2), W.ink);
+      R(sc, A(4), A(1), A(sw - 8), A(1.5), W.post1);
+      R(sc, A(4), A(1), A(sw - 8), 1, W.post3);
+      for (const px2 of [A(5), A(sw - 8)]) {
+        R(sc, px2 - 1, A(1), A(2.5) + 2, A(sh - 2), W.ink);
+        R(sc, px2, A(1), A(2.5), A(sh - 2), W.post1);
+        R(sc, px2, A(1), 1, A(sh - 2), W.post2);
+      }
+      // chains down to the board
+      for (const cxp of [A(22), A(sw - 24)]) for (let i = 0; i < A(3); i++) R(sc, cxp, A(3) + i, 1, 1, i % 2 ? W.met1 : W.met2);
+      // the board: tarred black, iron-bound, scarred
+      R(sc, A(12), A(6), A(sw - 24), A(10), W.ink);
+      R(sc, A(12) + 1, A(6) + 1, A(sw - 24) - 2, A(10) - 2, W.char2);
+      R(sc, A(12) + 1, A(6) + 1, A(sw - 24) - 2, A(1), W.char3);
+      R(sc, A(12) + 1, A(15), A(sw - 24) - 2, A(1), W.char0);
+      for (let i = 0; i < A(sw - 24) - 2; i += A(1.5)) if ((i * 7 % 11) < A(1.5)) R(sc, A(12) + 1 + i, A(7), A(1), A(8), W.char1);
+      for (const bx2 of [A(13), A(sw - 15)]) { R(sc, bx2, A(6), A(1), A(10), W.met1); R(sc, bx2, A(6), 1, A(10), W.met2); }
       try {
         const tc = cv(uw(sw), uw(sh));
-        pixelText(tc, 'FISHER VILLAGE', uw(48), uw(4.5), uw(4.5), '#ffffff', 'center', false);
+        pixelText(tc, 'GALLOWS REACH', uw(sw / 2), uw(8), uw(4.5), '#ffffff', 'center', false);
         const im = tc.getImageData(0, 0, uw(sw), uw(sh)), d2 = im.data;
         for (let i = 0; i < d2.length; i += 4) {
           const on = d2[i + 3] > 120;
-          d2[i] = 0xf6; d2[i + 1] = 0xe0; d2[i + 2] = 0xb0; d2[i + 3] = on ? 255 : 0;
+          d2[i] = 0xe6; d2[i + 1] = 0xdf; d2[i + 2] = 0xc6; d2[i + 3] = on ? 255 : 0;
         }
         tc.putImageData(im, 0, 0);
         sc.drawImage(tc.canvas, 0, 0);
       } catch (e) { }
+      // and the port's answer to anyone who cannot read it
+      Kit.hangBody(sc, A(26), A(16), A(2), srng, { crow: true });
+      Kit.hangBody(sc, A(sw - 28), A(16), A(4), srng, { crow: true });
+      Kit.blackFlag(sc, A(6), A(1), 0, srng, 1, false);
       this.signSprite = { c: sc.canvas, w: uw(sw), h: uw(sh), ox: -sw / 2, oy: -sh, wu: sw, hu: sh };
-      this.signX = X; this.signY = S - 52;
+      this.signX = X; this.signY = S - 46;
 
       // ---- gulls
       for (let i = 0; i < 16; i++) this.gulls.push({ x: X + rng.range(-2200, 2200), y: S - rng.range(70, 170), vx: rng.range(-16, 16), ph: rng.range(0, TAU), up: 0 });
@@ -3050,12 +3903,12 @@
       const mk = (x, y, opts) => { const v = new Villager(x, y, opts); this.villagers.push(v); return v; };
       // the crowd is picked to suit what each stretch of deck is for
       const byJob = {
-        dry: ['mend', 'haul', 'gut', 'walk'],
-        pots: ['mend', 'hammer', 'haul', 'walk'],
+        gallows: ['guard', 'haul', 'gut', 'walk'],
+        guns: ['hammer', 'guard', 'haul', 'walk'],
         repair: ['hammer', 'hammer', 'haul', 'chat'],
-        store: ['haul', 'walk', 'chat', 'idle'],
-        market: ['gut', 'chat', 'walk', 'haul'],
-        general: ['walk', 'fish', 'chat', 'idle', 'haul'],
+        rum: ['haul', 'walk', 'chat', 'guard'],
+        plunder: ['gut', 'chat', 'haul', 'guard'],
+        general: ['walk', 'guard', 'chat', 'mend', 'haul'],
       };
       let ri = 0;
       for (const pf of platforms) {
@@ -3066,11 +3919,10 @@
           const role = list[(ri++) % list.length];
           const lane = { x0: pf.x + 10, y0: pf.deckY, x1: pf.x + pf.w - 10, y1: pf.deckY };
           const vx = rng.range(lane.x0, lane.x1);
-          const kid = rng.next() < 0.12;
-          mk(vx, pf.deckY, { lane, role: kid ? 'walk' : role, waterY: this.waterY, build: kid ? 'child' : undefined });
+          mk(vx, pf.deckY, { lane, role, waterY: this.waterY });
         }
       }
-      // the harbour master keeps to the head of the pier
+      // the captain keeps to the head of the pier
       const hm = mk(X + 26, S - 16, { lane: { x0: X - 30, y0: S - 16, x1: X + 30, y1: S - 16 }, role: 'watch_deck', waterY: this.waterY, build: 'boss' });
       hm.onJetty = true;
       // pair up chatters
@@ -3094,7 +3946,7 @@
       for (let i = 0; i < 7; i++) {
         const u = rng.range(0.1, 0.95);
         const lane = { x0: X - jw / 2 + 9, y0: lerp(jl.y0, jl.y1, Math.max(0, u - 0.3)), x1: X + jw / 2 - 9, y1: lerp(jl.y0, jl.y1, Math.min(1, u + 0.3)) };
-        const v = mk(rng.range(lane.x0, lane.x1), lerp(lane.y0, lane.y1, 0.5), { lane, role: i === 0 ? 'fish' : pick(['walk', 'haul', 'fish', 'gut', 'mend', 'chat', 'walk']), onJetty: true });
+        const v = mk(rng.range(lane.x0, lane.x1), lerp(lane.y0, lane.y1, 0.5), { lane, role: i === 0 ? 'guard' : pick(['walk', 'haul', 'guard', 'gut', 'mend', 'chat', 'walk']), onJetty: true });
         v.waterY = v.y + 10;
       }
       // front-row decks
@@ -3104,7 +3956,7 @@
         const lane = { x0: d.x0 + 8, y0: rowF.deckY, x1: d.x1 - 8, y1: rowF.deckY };
         if (lane.x1 - lane.x0 < 20) continue;
         for (let q = 0; q < 2; q++) {
-          const v = mk(rng.range(lane.x0, lane.x1), rowF.deckY, { lane, role: pick(['fish', 'mend', 'gut', 'walk', 'haul']) });
+          const v = mk(rng.range(lane.x0, lane.x1), rowF.deckY, { lane, role: pick(['guard', 'mend', 'gut', 'walk', 'haul']) });
           v.waterY = rowF.waterY;
         }
       }

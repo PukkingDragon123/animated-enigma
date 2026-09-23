@@ -40,6 +40,15 @@ const HUD_SP = {
     'kUTTTTk.',
     '.kkkkk..',
     '........'], { ax: 4, ay: 4 }),
+  // what is left of you, as a drop of blood. The cartoon heart that used to
+  // sit here was the last soft thing on the HUD.
+  vital: makeSprite([
+    '..kk..',
+    '..kk..',
+    '.kRRk.',
+    'kRrrRk',
+    'kRrrqk',
+    '.kqqk.'], { ax: 3, ay: 3 }),
   target: makeSprite([
     '...kk...',
     '.kkRRkk.',
@@ -72,20 +81,26 @@ const FACE_SP = {
     '.khkkhk.',
     '..kkkk..'], { ax: 0, ay: 0 }),
 };
-// warm little punctuation marks that pop out of a bubble
+// hard little punctuation that jumps out of a bubble. There is nothing fond
+// in here: a skull, a drop of blood, crossed cutlasses, and a bang.
 const EMO_SP = {
-  heart: makeSprite(['.k.k.', 'kpkpk', 'kpppk', '.kpk.', '..k..'], { ax: 0, ay: 0 }),
-  spark: makeSprite(['..y..', '.yYy.', 'yYwYy', '.yYy.', '..y..'], { ax: 0, ay: 0 }),
-  note: makeSprite(['..kkk.', '..kYk.', '..kYk.', '.kkYk.', 'kYYYk.', 'kYYk..', '.kk...'], { ax: 0, ay: 0 }),
+  skull: makeSprite(['.kkkk.', 'kwwwwk', 'kKwwKk', 'kwwwwk', '.kwwk.', '.kKKk.'], { ax: 0, ay: 0 }),
+  blood: makeSprite(['..k..', '..k..', '.kRk.', 'kRrqk', '.kqk.'], { ax: 0, ay: 0 }),
+  cutlass: makeSprite(['Mk....kM', 'kMk..kMk', '.kMkkMk.', '..kMMk..', '..kMMk..', '.kMkkMk.', 'kTk..kTk', 'Tk....kT'], { ax: 0, ay: 0 }),
   bang: makeSprite(['.k.', 'kRk', 'kRk', 'kRk', '.k.', 'kRk', '.k.'], { ax: 0, ay: 0 }),
 };
+// waves.js still asks for the sweet old set by name. Nothing soft survives,
+// so those names land on this art instead - a heart draws a skull now.
+const EMO_ALIAS = { heart: 'skull', spark: 'cutlass', note: 'blood' };
+function emoSprite(k) { return EMO_SP[k] || EMO_SP[EMO_ALIAS[k]] || null; }
 
 // ---------------------------------------------------------------------------
 //  BANTER
 //  The wall of instructions is gone; the pair say the same things to each
-//  other instead. The otter is scrappy and will not shut up, the manatee
-//  answers in about three words. One bubble at a time, short, over their
-//  heads, and never more often than the fight can carry.
+//  other instead. The otter is a scrappy little killer and will not shut up,
+//  the manatee answers in about three words and means every one of them.
+//  One bubble at a time, short, over their heads, and never more often than
+//  the fight can carry.
 //
 //  Lines are ['o'|'m', text, emote?]. A topic is a list of them.
 // ---------------------------------------------------------------------------
@@ -93,53 +108,53 @@ const BANTER = {
   // a wave with nothing to say of its own falls back to these; the lines that
   // belong to a particular wave live next to that wave, in waves.js
   wave: [
-    [['o', 'Here they come!'], ['m', 'Ready.']],
-    [['o', 'More boats.'], ['m', 'Turning.']],
+    [['o', 'Fresh meat!'], ['m', 'Sink them.']],
+    [['o', 'More boats.'], ['m', 'More bodies.']],
   ],
   cleared: [
-    [['o', 'Water is ours!', 'spark'], ['m', 'For now.']],
-    [['o', 'That is the lot.'], ['m', 'Rest a moment.']],
-    [['o', 'Easy!'], ['m', 'It was not.', 'note']],
-    [['o', 'Nice turning.'], ['m', 'Nice shooting.', 'heart']],
+    [['o', 'Water is ours!', 'cutlass'], ['m', 'And it is red.']],
+    [['o', 'That is the lot.'], ['m', 'Let them sink.']],
+    [['o', 'Butchered them!'], ['m', 'It was close.', 'blood']],
+    [['o', 'Nice ramming.'], ['m', 'Nice butchery.', 'skull']],
   ],
-  last: [[['o', 'Only the Chief left.'], ['m', 'Breathe first.']]],
+  last: [[['o', 'Only the Chief left.'], ['m', 'He drowns next.']]],
   big: [
-    [['o', 'That is a BIG one!', 'bang'], ['m', 'I see it.']],
-    [['o', 'Look at the size!'], ['m', 'Aim small.']],
+    [['o', 'Big one!', 'bang'], ['m', 'It bleeds too.']],
+    [['o', 'Look at the size!'], ['m', 'Gut it anyway.']],
   ],
   objdone: [
-    [['o', 'That is it! Done!', 'spark'], ['m', 'They are running.']],
+    [['o', 'Done! Butchered!', 'cutlass'], ['m', 'Run them down.']],
   ],
   hurt: [
-    [['o', 'You are bleeding!', 'bang'], ['m', 'I am fine.']],
-    [['o', 'Too close! Too close!'], ['m', 'Breathe. Turn.']],
+    [['o', 'You are bleeding!', 'blood'], ['m', 'So will they.']],
+    [['o', 'Too close! Too close!'], ['m', 'Turn. Ram them.']],
   ],
   netted: [
-    [['o', 'Net! Roll us out!', 'bang']],
-    [['o', 'Tangled! Roll!', 'bang']],
+    [['o', 'Net! Cut it! Roll!', 'bang']],
+    [['o', 'Tangled! Tear it!', 'bang']],
   ],
   parry: [
-    [['o', 'Caught it!', 'spark']],
-    [['o', 'Ha! Try again.']],
-    [['o', 'Right back at you!']],
+    [['o', 'Back in your teeth!']],
+    [['o', 'Ha! Choke on it.']],
+    [['o', 'Eat your own steel!']],
   ],
   ready: [
-    [['o', 'I am getting loud.', 'spark']],
+    [['o', 'Let me off the chain.', 'skull']],
   ],
   rampage: [
-    [['o', 'RAAAAH!', 'bang'], ['m', 'Oh dear.']],
+    [['o', 'RAAAAH!', 'bang'], ['m', 'Kill.']],
   ],
   firstkill: [
-    [['o', 'One down!'], ['m', 'Good.']],
+    [['o', 'First blood!'], ['m', 'More.']],
   ],
   shop: [
-    [['o', 'We can buy something!', 'spark'], ['m', 'After.']],
+    [['o', 'Plunder! New teeth!', 'cutlass'], ['m', 'After the killing.']],
   ],
   idle: [
-    [['o', 'My favourite boat.', 'heart'], ['m', 'Not a boat.']],
-    [['o', 'Nice day for it.'], ['m', 'Mm.', 'note']],
-    [['o', 'You smell like kelp.'], ['m', 'You too.', 'heart']],
-    [['o', 'Any more of them?'], ['m', 'Many more.']],
+    [['o', 'My favourite warship.', 'skull'], ['m', 'Not a ship.']],
+    [['o', 'Good day for killing.'], ['m', 'Mm.', 'blood']],
+    [['o', 'You smell like blood.'], ['m', 'You too.', 'blood']],
+    [['o', 'Any more of them?'], ['m', 'A whole village.']],
   ],
 };
 // How loudly each topic asks to be heard, and how long before it may repeat.
@@ -224,35 +239,40 @@ const Banter = {
     }
   },
   // ---- the bubble itself
+  // Not a bubble any more: a scrap torn off somebody's sail, nailed up over
+  // their heads, with the blood still on it.
   draw(ctx, t) {
     const b = this.cur; if (!b || b.t < 0) return;
     const p = G.player; if (!p || p.dead) return;
     const sp = G.worldToScreen(p.x, p.y);
-    // pop in with a little overshoot, pop out flat; nothing snaps
+    // slams out, holds, drops away. A hair past full and then hard down -
+    // no spring, nothing bounces here
     const fade = Math.max(0, b.dur + (b.full - b.chars) / 52 - b.t);
-    let k = b.t < 0.18 ? easeBack(b.t / 0.18) : fade < 0.14 ? fade / 0.14 : 1;
+    let k = b.t < 0.13 ? slamIn(b.t / 0.13) : fade < 0.12 ? fade / 0.12 : 1;
     if (k <= 0.02) return;
-    k = clamp(k, 0.02, 1.14);
+    k = clamp(k, 0.02, 1.08);
     const W = Math.max(8, Math.round(b.w * k)), H = Math.max(6, Math.round(b.h * k));
-    // the otter leans over her right shoulder, the manatee speaks from below
-    const bob = Math.round(Math.sin(t * 3.1 + b.seed) * 1.4);
+    // the otter leans over her right shoulder, the manatee speaks from below.
+    // A slow heavy sway, like something hung up to dry.
+    const bob = Math.round(Math.sin(t * 1.7 + b.seed));
     const ax = Math.round(sp.x + (b.who === 'o' ? 14 : -14));
     let ay = Math.round(sp.y - 40 + bob);
     let x = clamp(Math.round(ax - W / 2), 4, 636 - W);
     let below = false;
     if (ay - H < 52) { ay = Math.round(sp.y + 46 + bob); below = true; }
     const y = below ? ay : ay - H;
-    const warm = b.who === 'o';
-    const ink = warm ? '#3a2416' : '#26313f';
-    const fill = warm ? '#fff3d6' : '#eaf3ff';
-    const hi = warm ? '#fffdf2' : '#ffffff';
-    const sh = warm ? '#f0d4a4' : '#cfe0f4';
-    // tail first so the body's ink covers its root
-    tailShape(ctx, ink, fill, clamp(ax, x + 6, x + W - 7), below ? y : y + H - 1, below ? -1 : 1);
-    roundFill(ctx, ink, x, y, W, H, 3);
-    roundFill(ctx, fill, x + 1, y + 1, W - 2, H - 2, 2);
-    roundFill(ctx, hi, x + 2, y + 1, W - 4, 2, 1);
-    roundFill(ctx, sh, x + 2, y + H - 3, W - 4, 2, 1);
+    const o = b.who === 'o';
+    // his is sun-bleached canvas off a hull, hers is wet grey tarpaulin.
+    // Both have been used for something other than talking.
+    const ink = o ? '#150d08' : '#0a0f14';
+    const fill = o ? '#9c8261' : '#7f8a95';
+    const hi = o ? '#b9a179' : '#9fabb4';
+    const sh = o ? '#5e4c31' : '#4d5761';
+    const txt = o ? '#1d1108' : '#101720';
+    const gore = o ? '#7c1414' : '#5f1016';
+    // spike first, so the scrap's ink covers its root
+    ragTail(ctx, ink, sh, clamp(ax, x + 6, x + W - 7), below ? y : y + H - 1, below ? -1 : 1);
+    scrapPanel(ctx, ink, fill, hi, sh, gore, x, y, W, H, b.seed);
     if (k < 0.995) return;                       // words only once it has settled
     // who is talking, as a face and not a name
     const f = FACE_SP[b.who];
@@ -261,20 +281,26 @@ const Banter = {
     for (let i = 0; i < b.lines.length; i++) {
       const l = b.lines[i];
       const cut = l.slice(0, Math.max(0, shown));
-      if (cut) pixelText(ctx, cut, tx, y + 4 + i * 9, 6, ink, 'left', false);
+      if (cut) pixelText(ctx, cut, tx, y + 4 + i * 9, 6, txt, 'left', false);
       shown -= l.length + 1;
       if (shown <= 0) break;
     }
-    // a heart, a spark or a note hops out of the corner
+    // a skull, a drop of blood or a pair of cutlasses jumps out of the corner
     if (b.emo && b.chars >= b.full) {
-      const e = EMO_SP[b.emo];
-      const hop = Math.round(Math.abs(Math.sin(t * 4 + b.seed)) * 2);
-      ctx.drawImage(e.c, x + W - 4, y - 3 - hop);
+      const e = emoSprite(b.emo);
+      if (e) {
+        const hop = Math.round(Math.abs(Math.sin(t * 4 + b.seed)) * 2);
+        ctx.drawImage(e.c, x + W - 4, y - 3 - hop);
+      }
     }
   },
 };
-// ease-out-back: the bubble overshoots by a hair and settles
-function easeBack(x) { const c = 2.2; const u = x - 1; return 1 + (c + 1) * u * u * u + c * u * u; }
+// a slam: out fast, a pixel past full, then straight down onto it
+function slamIn(x) {
+  x = clamp(x, 0, 1);
+  if (x < 0.75) { const u = x / 0.75; return (1 - (1 - u) * (1 - u)) * 1.08; }
+  return 1.08 - (x - 0.75) / 0.25 * 0.08;
+}
 // a hand-rasterised rounded rectangle: hard edges, no arc(), no antialiasing
 function roundFill(ctx, col, x, y, w, h, rad) {
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
@@ -287,13 +313,51 @@ function roundFill(ctx, col, x, y, w, h, rad) {
     ctx.fillRect(x + ins, y + i, w - ins * 2, 1);
   }
 }
-// the little spout under a bubble, pointing at whoever said it
-function tailShape(ctx, ink, fill, px, py, dir) {
+// The scrap: chewed corners, a bite out of an edge here and there, a bleached
+// top, a wet dark sill, two nails and the blood somebody wiped off on it.
+// One fill per row, integers only, no arc(), nothing soft.
+function scrapPanel(ctx, ink, fill, hi, sh, gore, x, y, w, h, seed) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  if (w < 8 || h < 6) { ctx.fillStyle = ink; ctx.fillRect(x, y, Math.max(1, w), Math.max(1, h)); return; }
+  for (let i = 0; i < h; i++) {
+    const edge = (i === 0 || i === h - 1) ? 2 : (i === 1 || i === h - 2) ? 1 : 0;
+    const l = edge + bite(seed, i), r = edge + bite(seed + 7.3, i);
+    const ww = w - l - r;
+    if (ww < 3) continue;
+    ctx.fillStyle = ink; ctx.fillRect(x + l, y + i, ww, 1);
+    if (i === 0 || i === h - 1) continue;
+    ctx.fillStyle = i <= 2 ? hi : i >= h - 3 ? sh : fill;
+    ctx.fillRect(x + l + 1, y + i, ww - 2, 1);
+  }
+  // two nail heads holding it up
+  ctx.fillStyle = '#2b2f36'; ctx.fillRect(x + 3, y + 2, 2, 2); ctx.fillRect(x + w - 5, y + 2, 2, 2);
+  ctx.fillStyle = '#7a8492'; ctx.fillRect(x + 3, y + 2, 1, 1); ctx.fillRect(x + w - 5, y + 2, 1, 1);
+  // worn through along the lip, filthy along the sill
+  const n = seed * 1000 | 0;
+  ctx.fillStyle = fill; ctx.fillRect(x + 8 + n % Math.max(1, w - 22), y + 1, 2, 1);
+  ctx.fillStyle = ink; ctx.fillRect(x + 6 + (n >> 3) % Math.max(1, w - 16), y + h - 2, 3, 1);
+  // and the blood: dried into the foot of it, and one drip still going
+  ctx.fillStyle = gore;
+  ctx.fillRect(x + 6, y + h - 3, 3, 1); ctx.fillRect(x + 7, y + h - 2, 1, 1);
+  ctx.fillRect(x + w - 10, y + h - 4, 2, 1); ctx.fillRect(x + w - 9, y + h - 3, 4, 1);
+  const dx = x + 5 + (n >> 6) % Math.max(1, (w >> 2));
+  ctx.fillRect(dx, y + h, 1, 2); ctx.fillRect(dx, y + h + 3, 1, 1);
+}
+// how far this row has been torn back. Stable per scrap and per row, so it
+// does not crawl about while it hangs there.
+function bite(seed, i) {
+  const v = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453;
+  const f = v - Math.floor(v);
+  return f > 0.88 ? 2 : f > 0.58 ? 1 : 0;
+}
+// the spike under a scrap, pointing at whoever said it. Torn, not curved.
+function ragTail(ctx, ink, fill, px, py, dir) {
   px = Math.round(px); py = Math.round(py);
-  for (let j = 0; j < 5; j++) {
-    const w = 7 - j;
-    ctx.fillStyle = ink; ctx.fillRect(px - 3, py + j * dir, w, 1);
-    if (w > 2 && j < 4) { ctx.fillStyle = fill; ctx.fillRect(px - 2, py + j * dir, w - 2, 1); }
+  const TW = [7, 5, 3, 1];
+  for (let j = 0; j < TW.length; j++) {
+    const w = TW[j], hx = px - (w >> 1);
+    ctx.fillStyle = ink; ctx.fillRect(hx - 1, py + j * dir, w + 2, 1);
+    if (w > 1) { ctx.fillStyle = fill; ctx.fillRect(hx, py + j * dir, w, 1); }
   }
 }
 
@@ -322,7 +386,7 @@ const UI = {
     const hpk = clamp(p.hp / st.maxHp, 0, 1);
     // the ghost trails the real value so a big hit reads as a wound, not a jump
     this.hpGhost = this.hpGhost > hpk ? Math.max(hpk, this.hpGhost - dt * 0.55) : lerp(this.hpGhost, hpk, 0.25);
-    drawSprite(ctx, SP.heart, 13, 12);
+    drawSprite(ctx, HUD_SP.vital, 13, 12);
     UIKit.bar(ctx, 20, 7, 100, 10, hpk, hpk > 0.5 ? '#6fd88e' : hpk > 0.25 ? '#ffe48f' : '#ff6161', '#1b2028');
     // the wound the bar has not caught up with yet, painted inside the frame
     const gx = 22 + Math.round(96 * hpk), gw = Math.round(96 * clamp(this.hpGhost, 0, 1)) - Math.round(96 * hpk);
@@ -572,7 +636,7 @@ const UI = {
       if (canBuy && !s.buy) Banter.say('shop');
       s.buy = canBuy;
     }
-    // nothing has happened for a while: let them be fond of each other
+    // nothing has happened for a while: let them talk about the killing
     if (Banter.idleT > 26 && G.director.state === 'fighting') Banter.say('idle');
   },
 
