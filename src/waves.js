@@ -13,19 +13,19 @@
 // it starts and what the manatee answers, in as few words as they can manage.
 // obj.text survives as the objective's short name, not as a line of teaching.
 const WAVES = [
-  { chat: [['o', 'Hold the trigger!', 'spark'], ['m', 'Two boats. Careful.']],
+  { chat: [['o', 'Hold the trigger!', 'cutlass'], ['m', 'Two boats. Sink them.']],
     obj: { kind: 'clear', text: 'Sink the dinghies' },
     pool: { dinghy: 1 }, count: 4, interval: 3.0, max: 2, burst: [['dinghy', 2]] },
 
-  { chat: [['o', 'They brought friends!'], ['m', 'Hold on. Rolling.']],
+  { chat: [['o', 'They brought friends!'], ['m', 'More to drown.']],
     obj: { kind: 'clear', text: 'Sink them' },
     pool: { dinghy: 1 }, count: 6, interval: 2.6, max: 3, burst: [['dinghy', 2]] },
 
-  { chat: [['o', 'Nets! Parry one back!'], ['m', 'I will turn.']],
+  { chat: [['o', 'Nets! Parry one back!'], ['m', 'Send it back.']],
     obj: { kind: 'clear', text: 'Sink the netters' },
     pool: { dinghy: 1.6, netter: 1.2 }, count: 8, interval: 2.4, max: 4, burst: [['netter', 2]] },
 
-  { chat: [['o', 'Harpoons. Cowards.'], ['m', 'Get me closer.']],
+  { chat: [['o', 'Harpoons. Cowards.'], ['m', 'Closer. Now.']],
     obj: { kind: 'clear', text: 'Sink the harpooners' },
     pool: { dinghy: 1.6, netter: 1, harpooner: 1.2 }, count: 10, interval: 2.2, max: 5, burst: [['harpooner', 2]] },
 
@@ -33,28 +33,28 @@ const WAVES = [
     obj: { kind: 'hunt', target: 'spotter', text: 'Kill the Spotter' },
     pool: { dinghy: 1.4, netter: 1, harpooner: 1, spotter: 0.9 }, count: 11, interval: 2.0, max: 5, burst: [['spotter', 1], ['dinghy', 2]] },
 
-  { chat: [['o', 'Fast ones! Ha!', 'spark'], ['m', 'Breathe.']],
+  { chat: [['o', 'Fast ones! Ha!', 'cutlass'], ['m', 'Run them down.']],
     obj: { kind: 'clear', text: 'Sink the speedboats' },
     pool: { dinghy: 1.2, netter: 1, harpooner: 1, speedboat: 1.5, spotter: 0.4, stalker: 0.7 }, count: 13, interval: 1.8, max: 6, burst: [['speedboat', 3]] },
 
-  { chat: [['o', 'Something big woke up.', 'bang'], ['m', 'Big sinks too.']],
+  { chat: [['o', 'Something big woke up.', 'bang'], ['m', 'Big things bleed.']],
     obj: { kind: 'hunt', mini: true, text: 'Sink the harbour rig' },
     mini: true,
     pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, crabber: 1.1, tender: 0.7 }, count: 12, interval: 1.7, max: 7 },
 
-  { chat: [['o', 'Bombs! Just hang on!'], ['m', 'I can hold.']],
+  { chat: [['o', 'Bombs! Just hang on!'], ['m', 'Let them burn.']],
     obj: { kind: 'survive', seconds: 45, text: 'Hold this water' },
     pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 2.0, longliner: 1, minelayer: 0.8 }, count: 16, interval: 1.5, max: 8, burst: [['jetski', 3]] },
 
-  { chat: [['o', 'Hooks in the water.'], ['m', 'Mind your paws.']],
+  { chat: [['o', 'Hooks in the water.'], ['m', 'Tear them out.']],
     obj: { kind: 'clear', text: 'Clear the hooks and pots' },
     pool: { netter: 1, harpooner: 1, longliner: 1.6, crabber: 1.5, jetski: 0.8, twin: 0.9, sub: 0.7 }, count: 16, interval: 1.5, max: 8, burst: [['longliner', 2], ['crabber', 2]] },
 
-  { chat: [['o', 'Dynamite. Take it all.'], ['m', 'Gently.']],
+  { chat: [['o', 'Dynamite. Take it all.'], ['m', 'Blow them open.']],
     obj: { kind: 'salvage', amount: 30, text: 'Strip their salvage' },
     pool: { netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1.8, tug: 0.7, grappler: 0.8, courier: 0.5 }, count: 17, interval: 1.45, max: 8, burst: [['dynaboat', 3]] },
 
-  { chat: [['o', 'The Trawler. That one.'], ['m', 'I remember it.']],
+  { chat: [['o', 'The Trawler. That one.'], ['m', 'It dies first.']],
     obj: { kind: 'hunt', target: 'trawler', text: 'Sink the Trawler' },
     pool: { dinghy: 1, netter: 1, harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, tug: 0.8, trawler: 0.5, ironclad: 0.5, sub: 0.6 },
     count: 18, interval: 1.4, max: 9, burst: [['trawler', 1], ['dinghy', 3]] },
@@ -64,12 +64,12 @@ const WAVES = [
     mini: true,
     pool: { harpooner: 1, speedboat: 1, jetski: 1, dynaboat: 1, crabber: 1, tug: 1, bulwark: 0.6, minelayer: 0.7 }, count: 15, interval: 1.5, max: 8 },
 
-  { chat: [['o', 'Guns now. Rude.'], ['m', 'Stay low.']],
+  { chat: [['o', 'Guns now. Rude.'], ['m', 'Board them.']],
     obj: { kind: 'clear', text: 'Sink the gunboats' },
     pool: { netter: 1, harpooner: 1.2, speedboat: 1, jetski: 1, dynaboat: 1, trawler: 0.4, gunboat: 0.8, tug: 0.7, ironclad: 0.7, grappler: 0.7, bulwark: 0.5 },
     count: 19, interval: 1.35, max: 9, burst: [['gunboat', 2], ['speedboat', 2]] },
 
-  { chat: [['o', 'All of them at once?!'], ['m', 'Together, then.', 'heart']],
+  { chat: [['o', 'All of them at once?!'], ['m', 'Good. Less chasing.', 'skull']],
     obj: { kind: 'clear', text: 'Sink all of it' },
     pool: { netter: 1, harpooner: 1.2, speedboat: 1.2, jetski: 1.4, dynaboat: 1.2, longliner: 1, crabber: 1, trawler: 0.5, gunboat: 0.9, sub: 0.8, twin: 0.8, dredger: 0.5, tender: 0.6, stalker: 0.6 },
     count: 21, interval: 1.3, max: 10, burst: [['jetski', 4], ['gunboat', 2]] },
@@ -80,7 +80,7 @@ const WAVES = [
     pool: { speedboat: 1.3, jetski: 1.5, dynaboat: 1.3, tug: 1, trawler: 0.8, gunboat: 1.1, dredger: 0.7, ironclad: 0.9, bulwark: 0.7, courier: 0.5, grappler: 0.6 },
     count: 20, interval: 1.3, max: 10, burst: [['gunboat', 2]] },
 
-  { name: 'THE VILLAGE CHIEF', chat: [['o', 'There he is.'], ['m', 'I am ready.', 'heart']],
+  { name: 'THE VILLAGE CHIEF', chat: [['o', 'There he is.'], ['m', 'His turn.', 'skull']],
     obj: { kind: 'boss', text: 'Bait him into the rocks' },
     boss: true, pool: { jetski: 1, dinghy: 1 }, count: 999, interval: 6.0, max: 3 },
 ];
