@@ -28,6 +28,12 @@ const CPAL = {
   belly:'#9fadbd',
   // accents
   white:'#f4f7fb', bone: '#e8e4d8', blood:'#c4202c', bloodD:'#7a0d16',
+  // ---- gore. Five bands, because a wound needs as much posterising as a
+  // hull does: the wet crown of it, the body of the blood, the dark it runs
+  // into, the meat under the hide, and the dried smear the water drags aft.
+  goreL:'#e03a40', gore: '#a0161f', goreD:'#4c0a11',
+  meat: '#c26a67', meatD:'#8d4344',
+  stain:'#5b262c', stainD:'#3a181e',
   eye:  '#241a12', shine:'#ffffff',
   smoke:'#b9b3ad', ember:'#ff8b2e', emberL:'#ffd27a',
 };
@@ -423,25 +429,118 @@ function buildManateeBody(armored) {
     }
   }
   for (let y = 4; y < MAN_H - 4; y++) { if (solid(3, y)) px(ctx, HD.pale, 3, y); if (solid(4, y)) px(ctx, HD.ll, 4, y); }
-  // a torn notch out of the trailing edge — she has been in the gear before
-  for (let i = 0; i < 4; i++) for (let y = cyy - 11 - i; y <= cyy - 8 + i; y++) {
-    if (!solid(2 + i, y)) continue;
-    ctx.clearRect(2 + i, y, 1, 1);
-  }
-  for (let i = 0; i < 5; i++) if (solid(6 + i, cyy - 10)) px(ctx, CPAL.out, 5 + i, cyy - 11 + (i >> 1), 1, 2);
-
-  // ---- old propeller gashes: paired pale gouges with a dark lower lip
-  const gash = (x0, y0, dx, dy, n) => {
-    for (let i = 0; i < n; i++) {
-      const x = Math.round(x0 + i * dx), y = Math.round(y0 + i * dy);
-      if (!deep(x, y, 2)) continue;
-      px(ctx, HD.pale, x, y, 2, 1); px(ctx, HD.dd, x, y + 1, 2, 1);
+  // ---- CHUNKS out of the trailing edge. Not notches: bites, taken in one
+  //      go and never grown back. `solid()` reads the span table the body was
+  //      painted from, so it cannot see a hole punched afterwards — the bite
+  //      keeps its own record of what it removed and everything downstream of
+  //      it asks that instead. The raw rim is re-inked so she still has a line
+  //      round her, and the meat behind the rim is left showing.
+  const gone = new Uint8Array(MAN_W * MAN_H);
+  const inBody = (x, y) => x >= 0 && x < MAN_W && y >= 0 && y < MAN_H &&
+    span[x * 2 + 1] > span[x * 2] && y >= span[x * 2] && y <= span[x * 2 + 1];
+  const hide = (x, y) => inBody(x, y) && !gone[y * MAN_W + x];
+  const bite = (bx, byc, r) => {
+    for (let y = byc - r - 2; y <= byc + r + 2; y++) for (let x = 0; x < 40; x++) {
+      const dx = (x - bx) / (r * 1.25), dy = (y - byc) / r;
+      // a torn rim, not a compass arc: the radius wobbles along it
+      if (dx * dx + dy * dy > 1 + (hash2(x * 3, y * 5) - 0.5) * 0.40) continue;
+      if (!inBody(x, y)) continue;
+      gone[y * MAN_W + x] = 1;
+      ctx.clearRect(x, y, 1, 1);
     }
   };
-  gash(64, 12, 1.6, 1.0, 11);
-  gash(86, 50, 1.5, -0.9, 9);
-  gash(52, 40, 1.2, 0.7, 7);
-  gash(104, 20, 1.0, -0.5, 5);
+  bite(1, cyy - 12, 8);
+  bite(4, cyy + 15, 4);
+  // re-ink the rim and pack the wound in behind it
+  for (let y = 0; y < MAN_H; y++) for (let x = 0; x < 40; x++) {
+    if (!hide(x, y)) continue;
+    if (hide(x - 1, y) && hide(x + 1, y) && hide(x, y - 1) && hide(x, y + 1)) continue;
+    if (!(gone[y * MAN_W + Math.max(0, x - 1)] || gone[y * MAN_W + Math.min(MAN_W - 1, x + 1)] ||
+          (y > 0 && gone[(y - 1) * MAN_W + x]) || (y < MAN_H - 1 && gone[(y + 1) * MAN_W + x]))) continue;
+    px(ctx, CPAL.out, x, y);
+    // run the wound INBOARD from the rim: raw meat, then blood, then the
+    // stain it has dried into. One pixel of red round a hole reads as a red
+    // outline; five reads as a hole with the inside of her showing.
+    for (let k = 1; k <= 5; k++) {
+      if (!hide(x + k, y)) break;
+      const c2 = k === 1 ? CPAL.meat : k === 2 ? (hash2(x, y * 7) > 0.4 ? CPAL.goreL : CPAL.gore)
+        : k === 3 ? CPAL.gore : k === 4 ? CPAL.goreD : CPAL.stain;
+      if (k >= 4 && hash2(x * 3, y * 5) < 0.45) break;
+      px(ctx, c2, x + k, y);
+    }
+  }
+  // ---- propeller wounds. These used to be two pale pixels and a shadow —
+  //      scars, healed, decorative. They are wounds now: the hide is cut, the
+  //      lip of it stands up torn and pale, there is meat under the lip and
+  //      wet blood in the deepest part of the run, and everything downstream
+  //      of it is stained where the water has dragged it aft. `open` says how
+  //      fresh it is; a closed one is an old rake with only the dried smear.
+  const gash = (x0, y0, dx, dy, n, open) => {
+    for (let i = 0; i < n; i++) {
+      const x = Math.round(x0 + i * dx), y = Math.round(y0 + i * dy);
+      if (!deep(x, y, 3)) continue;
+      const mid = 1 - Math.abs(i - (n - 1) / 2) / ((n - 1) / 2 || 1);   // deepest mid-run
+      px(ctx, HD.top, x, y - 1, 2, 1);                   // torn hide, standing up lit
+      px(ctx, CPAL.meatD, x, y, 2, 1);
+      if (open) {
+        px(ctx, mid > 0.45 ? CPAL.gore : CPAL.goreD, x, y, 2, 1);
+        if (mid > 0.78) px(ctx, CPAL.goreL, x, y);
+      }
+      px(ctx, CPAL.goreD, x, y + 1, 2, 1);               // the dark it runs into
+      // the smear the water drags aft (aft is -x: she swims nose-first)
+      for (let k = 1; k <= 7; k++) {
+        const sx = x - k * 2, sy = y + ((k >> 1) & 1);
+        if (!deep(sx, sy, 2)) continue;
+        if (hash2(sx * 5 + i, sy * 7) < 0.26 + k * 0.09) continue;
+        px(ctx, k < 3 ? CPAL.stain : CPAL.stainD, sx, sy, 2, 1);
+      }
+    }
+  };
+  gash(64, 12, 1.6, 1.0, 11, 1);
+  gash(86, 50, 1.5, -0.9, 9, 1);
+  gash(52, 40, 1.2, 0.7, 7, 0);
+  gash(104, 20, 1.0, -0.5, 5, 0);
+  gash(96, 40, 1.4, 0.8, 8, 1);
+  // ---- a stitched wound. Somebody sewed her back together with whatever
+  //      was on the boat, and it held: a long closed seam with cross-ticks
+  //      of wire either side of it. The one mark on her that says she was
+  //      meant to die and did not.
+  for (let i = 0; i < 30; i++) {
+    const x = 46 + i, y = Math.round(cyy + 6 + Math.sin(i * 0.16) * 4 + i * 0.22);
+    if (!deep(x, y, 4)) continue;
+    px(ctx, CPAL.meatD, x, y, 1, 2);
+    px(ctx, HD.pale, x, y - 1);
+    if (i % 4 === 1 && deep(x, y + 3, 3)) {
+      px(ctx, CPAL.bone, x, y - 3, 1, 3); px(ctx, CPAL.bone, x + 1, y + 1, 1, 3);
+      px(ctx, HD.dd, x + 1, y - 3, 1, 3); px(ctx, HD.dd, x + 2, y + 1, 1, 3);
+    }
+  }
+  // ---- a barbed harpoon head, snapped off in her shoulder. It is still in
+  //      there; the shaft broke and the fleet kept the rest of it.
+  {
+    const hx = 66, hy = 48;                 // where it went in, art px
+    // the wound it is sitting in, first, so the steel lies over it
+    for (let y = -4; y <= 4; y++) for (let x = -4; x <= 5; x++) {
+      if (x * x * 0.7 + y * y > 14) continue;
+      if (!deep(hx + x, hy + y, 2)) continue;
+      const r2 = x * x * 0.7 + y * y;
+      px(ctx, r2 > 9 ? CPAL.stain : r2 > 4 ? CPAL.goreD : CPAL.gore, hx + x, hy + y);
+    }
+    px(ctx, CPAL.goreL, hx - 1, hy, 2, 1);
+    // a snapped shaft standing out of her, barbs and all
+    for (let i = 0; i < 15; i++) {
+      const x = hx + 1 + i, y = hy - 1 - (i >> 1);
+      if (!inBody(x, y)) continue;
+      px(ctx, CPAL.out, x, y - 1, 1, 4);
+      px(ctx, CPAL.met, x, y, 1, 2); px(ctx, CPAL.metLL, x, y);
+      if (i === 4 || i === 9) {
+        px(ctx, CPAL.out, x, y - 3, 2, 3); px(ctx, CPAL.metL, x, y - 3, 1, 2);
+        px(ctx, CPAL.out, x + 1, y + 2, 2, 3); px(ctx, CPAL.metL, x + 1, y + 2, 1, 2);
+      }
+    }
+    px(ctx, CPAL.out, hx + 16, hy - 9, 3, 3);   // the snapped-off butt
+    px(ctx, CPAL.metDD, hx + 16, hy - 9, 2, 2);
+  }
   // ---- algae on the back, where the light hits and nothing rubs it off
   for (const [ax, ay, w2, h2] of [[68, 14, 9, 5], [92, 44, 8, 4], [54, 24, 7, 4], [40, 34, 6, 3]]) {
     for (let y = ay; y < ay + h2; y++) for (let x = ax; x < ax + w2; x++) {
@@ -541,6 +640,27 @@ function buildManateeBody(armored) {
     for (const [gx, gy, n] of [[pxx + 5, cyy - 8, 5], [pxx + 14, cyy + 5, 4]])
       for (let i = 0; i < n; i++) { px(ctx, ST.w, gx + i, gy + (i >> 1), 1, 1); px(ctx, ST.k, gx + i, gy + 1 + (i >> 1), 1, 1); }
     for (let i = 0; i < 7; i++) px(ctx, i < 2 ? '#b4653a' : '#8a4526', pxx + pw - 5, cyy + 4 + i);
+    // ---- and what has run down the plate since. The armour is where the
+    //      fleet aims, so it is where most of it ends up: blood in the seams,
+    //      dried into the rivet lines and gone black at the bottom of the run.
+    for (const [bx, by, n] of [[pxx + 3, cyy - 16, 13], [pxx + 11, cyy + 3, 11], [pxx + 18, cyy - 11, 9]]) {
+      for (let i = 0; i < n; i++) {
+        const x = bx - (i >> 2), y = by + i;
+        const hw = manHalf(x); if (hw < 6) continue;
+        const inset = Math.round(hw * 0.34) + 2;
+        if (y < Math.round(cyy - hw) + inset || y > Math.round(cyy + hw) - inset) continue;
+        px(ctx, i < 3 ? CPAL.blood : i < 7 ? CPAL.bloodD : CPAL.stainD, x, y, 2, 1);
+        if (hash2(x * 3, y * 7) > 0.72) px(ctx, CPAL.stainD, x + 2, y);
+      }
+    }
+    // ---- three doubloons hammered flat onto the plate. It is not decoration:
+    //      soft gold over a shot hole is the cheapest patch there is.
+    for (const [gx, gy] of [[pxx + 6, cyy - 5], [pxx + 16, cyy - 9], [pxx + 12, cyy + 8]]) {
+      px(ctx, CPAL.out, gx - 1, gy - 1, 5, 5);
+      px(ctx, CPAL.goldD, gx - 1, gy, 5, 3); px(ctx, CPAL.goldD, gx, gy - 1, 3, 5);
+      px(ctx, CPAL.gold, gx, gy, 3, 3); px(ctx, CPAL.goldL, gx, gy, 2, 1);
+      px(ctx, CPAL.goldD, gx + 1, gy + 1);
+    }
     // ---- steel collar round her neck, right behind the head
     for (let x = 106; x <= 115; x++) for (let y = 2; y < MAN_H - 2; y++) {
       if (!solid(x, y)) continue;
@@ -704,6 +824,16 @@ function buildFlag(frame) {
       px(ctx, col, 6 + x, yy);
     }
   }
+  // ---- the blood that has been on this flag since the second boat. It rides
+  //      the same wave offset as the cloth, so it stays ON the cloth however
+  //      the frame ripples instead of swimming across it.
+  for (let i = 0; i < 22; i++) {
+    const y = 15 + (i % 7), sx = 8 + i;
+    const ph2 = (y / 24) * 3.1 + u;
+    const off2 = Math.round(Math.sin(ph2) * 3 + wav * 0.8);
+    if (hash2(sx * 5, y * 3) < 0.42) continue;
+    px(ctx, hash2(sx, y) > 0.6 ? CPAL.bloodD : '#3a0a10', 6 + sx - 8, 6 + y + off2, 2, 1);
+  }
   // a skull, reduced to two black sockets and a jaw that still reads
   const off0 = Math.round(Math.sin(0.45 * 3.1 + u) * 3 + wav * 0.8);
   stamp(ctx, [
@@ -745,6 +875,20 @@ function buildOtterTorso() {
   // cape folds, and a torn hem
   for (let i = 0; i < 4; i++) { const x = 10 + i * 6; for (let y = 22; y < 34; y++) if (hash2(x, y) > 0.25) px(ctx, CPAL.capeD, x, y); }
   for (let x = 12; x < 30; x += 3) px(ctx, CPAL.capeL, x, 21, 2, 1);
+  // ---- it is a CAPTAIN'S coat, so it gets gold lace down both front edges.
+  //      Read the edge off the raster rather than naming coordinates: at this
+  //      point the canvas holds nothing but the coat, so the outermost opaque
+  //      pixel in each row IS the edge, whatever shape the stamp came out.
+  {
+    const d = ctx.getImageData(0, 0, c.width, c.height).data, W2 = c.width;
+    for (let y = 18; y < c.height; y++) {
+      let l = -1, r = -1;
+      for (let x = 0; x < W2; x++) if (d[(y * W2 + x) * 4 + 3] > 8) { if (l < 0) l = x; r = x; }
+      if (l < 0 || r - l < 7) continue;
+      px(ctx, CPAL.goldD, l + 1, y, 2, 1); px(ctx, CPAL.goldD, r - 2, y, 2, 1);
+      if ((y & 1) === 0) { px(ctx, CPAL.goldL, l + 1, y); px(ctx, CPAL.goldL, r - 1, y); }
+    }
+  }
   // torso: shoulders at the top, a cream chest, hips at the bottom
   stampUp(ctx, [
     '...kkkkkkk...',
@@ -773,6 +917,18 @@ function buildOtterTorso() {
   // the buckle over the heart
   px(ctx, CPAL.out, 19, 16, 6, 6); px(ctx, CPAL.goldD, 20, 17, 4, 4);
   px(ctx, CPAL.gold, 20, 17, 3, 3); px(ctx, CPAL.goldL, 20, 17, 2, 1);
+  // ---- the cutlass across his back: a basket hilt over one shoulder and the
+  //      scabbard running down behind him, so the blade reads even side-on
+  px(ctx, CPAL.out, 4, 12, 4, 20); px(ctx, CPAL.leaD, 5, 13, 2, 18);
+  px(ctx, CPAL.lea, 5, 13, 1, 18); px(ctx, CPAL.metLL, 5, 30, 2, 2);
+  px(ctx, CPAL.out, 3, 8, 7, 6);
+  px(ctx, CPAL.goldD, 4, 9, 5, 4); px(ctx, CPAL.gold, 4, 9, 4, 2); px(ctx, CPAL.goldL, 4, 9, 3, 1);
+  px(ctx, CPAL.out, 6, 10, 2, 2);
+  // ---- and what the last man who argued left on his chest
+  for (const [bx, by] of [[18, 10], [24, 13], [21, 19], [16, 15], [26, 20]]) {
+    px(ctx, CPAL.bloodD, bx, by, 2, 1); px(ctx, CPAL.blood, bx, by);
+    if (hash2(bx, by) > 0.5) px(ctx, CPAL.bloodD, bx + 2, by + 1);
+  }
   // salvaged steel pauldrons, tucked in at the shoulders, with a rivet each
   for (const sx of [8, 28]) {
     px(ctx, CPAL.out, sx, 4, 6, 9);
@@ -797,6 +953,20 @@ function buildOtterHeadHi() {
     px(ctx, CPAL.furDD, ex + 1, 11, 4, 6);
     px(ctx, '#7a4356', ex + 2, 12, 2, 3);
   }
+  // ---- somebody took a piece out of the starboard ear and he kept the rest.
+  //      Cut the notch out of the silhouette, re-ink the raw edge, leave it
+  //      scabbed: an ear that has been bitten does not grow back tidy.
+  ctx.clearRect(33, 9, 4, 5);
+  px(ctx, CPAL.out, 32, 9, 1, 6); px(ctx, CPAL.out, 33, 14, 4, 1);
+  px(ctx, CPAL.bloodD, 32, 10, 1, 4); px(ctx, CPAL.blood, 32, 11, 1, 2);
+  ctx.clearRect(34, 16, 2, 2);
+  px(ctx, CPAL.out, 33, 16, 1, 3); px(ctx, CPAL.bloodD, 33, 17);
+  // ---- and a gold hoop through the port one. Hand-rasterized: a ring drawn
+  //      with ctx.arc would come back with soft edges on it.
+  px(ctx, CPAL.goldD, 2, 18, 5, 1); px(ctx, CPAL.goldD, 2, 22, 5, 1);
+  px(ctx, CPAL.goldD, 1, 19, 1, 3); px(ctx, CPAL.goldD, 6, 19, 1, 3);
+  px(ctx, CPAL.goldL, 2, 18, 3, 1); px(ctx, CPAL.goldL, 1, 19, 1, 2);
+  px(ctx, CPAL.out, 3, 19, 3, 3);
   // skull: wide cheeks, narrow chin
   stampUp(ctx, [
     '.kkkkkkkkkkk.',
@@ -836,6 +1006,31 @@ function buildOtterHeadHi() {
   return spriteFromHi(c, 18, 18);
 }
 
+// The patch, its strap and the ruined socket under it. `p` is black leather,
+// `P` its one lit edge, `s` the strap where it leaves the patch for the hat.
+// The leather is a dark BROWN, not black: CPAL.out is near-black, so a black
+// patch inside a black outline next to a black ear reads as one hole in his
+// head rather than as a thing strapped to it.
+const PATCH = [
+  '.kkkkk.',
+  'kPPPPPk',
+  'kPpppPk',
+  'kppppPk',
+  'kpppppk',
+  'kkpppkk',
+  '.kkkkk.',
+];
+const PATCHMAP = { k: CPAL.out, p: '#33222b', P: '#6e5a63' };
+function drawEyePatch(ctx) {
+  // strap stubs leaving the patch and going up under the brim, one each side.
+  // A full band across the skull competes with the hat; two stubs read.
+  px(ctx, CPAL.out, 21, 14, 2, 1); px(ctx, CPAL.out, 20, 13, 2, 1); px(ctx, CPAL.out, 19, 12, 2, 1);
+  px(ctx, CPAL.out, 30, 14, 2, 1); px(ctx, CPAL.out, 31, 13, 2, 1); px(ctx, CPAL.out, 32, 12, 2, 1);
+  stampRuns(ctx, PATCH, 23, 13, PATCHMAP);
+  px(ctx, '#9a8590', 24, 14, 2, 1);          // the one glint off the leather
+  px(ctx, CPAL.metL, 22, 14, 1, 1);          // the buckle stud on the strap
+}
+
 // Muzzle + expression, drawn live over the head raster, in ART pixels.
 // When it is called on anything but CH.headBuf the destination is in WORLD
 // units (src/death.js paints the face onto his bare skull inside a frame
@@ -860,22 +1055,35 @@ function drawOtterFace(ctx, exp, blink, t) {
   px(ctx, O, 16, 20, 6, 4); px(ctx, '#8a5b46', 16, 20, 4, 2); px(ctx, '#a97a63', 16, 20, 2, 1);
 
   if (exp === 'drown' || exp === 'pain') {
-    for (const ex of [8, 24]) { px(ctx, O, ex, 16, 6, 2); px(ctx, CPAL.furDD, ex, 14, 6, 2); }
+    px(ctx, O, 8, 16, 6, 2); px(ctx, CPAL.furDD, 8, 14, 6, 2);
+    drawEyePatch(ctx);
     const g = Math.floor(t * 4) & 1;
     px(ctx, O, 14, 27, 10, 4 + g * 2);
     px(ctx, CPAL.bloodD, 16, 29, 6, g * 2);
     if (world) ctx.restore();
     return;
   }
+  // ---- ONE eye. The other socket is under a patch and has been for years.
+  //      The patch is drawn here rather than baked into the head so it rides
+  //      every expression, and so it is still on him in the beats where
+  //      src/death.js takes his hat off and paints the face onto a bare skull.
   const shut = blink || exp === 'happy';
-  for (const ex of [8, 24]) {
-    if (shut) { px(ctx, O, ex, 16, 6, 2); px(ctx, CPAL.furDD, ex, 15, 6, 1); continue; }
-    const big = exp === 'surprised' ? 2 : 0;
-    px(ctx, O, ex - big, 12 - big, 6 + big * 2, 8 + big * 2);
-    px(ctx, CPAL.white, ex, 14, 4, 4);
-    px(ctx, E, ex + 1, 14, 3, 3);
-    px(ctx, W, ex, 14, 2, 2);
+  {
+    const ex = 8;
+    if (shut) { px(ctx, O, ex, 16, 6, 2); px(ctx, CPAL.furDD, ex, 15, 6, 1); }
+    else {
+      const big = exp === 'surprised' ? 2 : 0;
+      px(ctx, O, ex - big, 12 - big, 6 + big * 2, 8 + big * 2);
+      px(ctx, CPAL.white, ex, 14, 4, 4);
+      px(ctx, E, ex + 1, 14, 3, 3);
+      px(ctx, W, ex, 14, 2, 2);
+    }
   }
+  drawEyePatch(ctx);
+  // the scar the patch is there because of: it did not stop at the socket
+  px(ctx, CPAL.furDD, 25, 20, 2, 1); px(ctx, CPAL.furLL || CPAL.furL, 25, 21, 2, 1);
+  px(ctx, CPAL.furDD, 27, 22, 2, 1); px(ctx, CPAL.furLL || CPAL.furL, 27, 23, 2, 1);
+  px(ctx, CPAL.furDD, 29, 24, 2, 1);
   // brows say the mood at this size more than the eyes do
   if (exp === 'angry') {
     px(ctx, CPAL.furDD, 6, 10, 8, 2); px(ctx, CPAL.furDD, 10, 12, 5, 2);
@@ -885,8 +1093,10 @@ function drawOtterFace(ctx, exp, blink, t) {
   if (exp === 'happy') {
     px(ctx, O, 14, 28, 10, 2); px(ctx, O, 12, 26, 2, 2); px(ctx, O, 24, 26, 2, 2);
     px(ctx, CPAL.white, 16, 26, 6, 2);
+    px(ctx, CPAL.gold, 16, 26, 2, 2); px(ctx, CPAL.goldL, 16, 26, 2, 1);
   } else if (exp === 'angry') {
-    px(ctx, O, 14, 28, 10, 4); px(ctx, CPAL.white, 16, 28, 2, 2); px(ctx, CPAL.white, 20, 28, 2, 2);
+    px(ctx, O, 14, 28, 10, 4); px(ctx, CPAL.gold, 16, 28, 2, 2); px(ctx, CPAL.white, 20, 28, 2, 2);
+    px(ctx, CPAL.goldL, 16, 28, 2, 1);
   } else if (exp === 'talk') {
     const o = Math.floor(t * 9) & 1; px(ctx, O, 16, 26, 8, 4 + o * 2); px(ctx, CPAL.blood, 18, 28, 4, o * 2);
   } else if (exp === 'surprised') { px(ctx, O, 16, 26, 6, 6); px(ctx, CPAL.bloodD, 18, 28, 2, 2); }
@@ -929,6 +1139,8 @@ function buildOtterArm() {
   // leather cuff with two stitches
   px(ctx, CPAL.out, 13, 2, 3, 8); px(ctx, CPAL.lea, 13, 3, 3, 6);
   px(ctx, CPAL.leaL, 13, 3, 3, 2); px(ctx, CPAL.creamD, 14, 5, 1, 4);
+  // the gold lace on the cuff, to match the coat
+  px(ctx, CPAL.goldD, 12, 2, 1, 8); px(ctx, CPAL.goldL, 12, 3, 1, 3);
   // the paw: three fingers curled round a grip, with claws
   px(ctx, CPAL.out, 16, 2, 6, 8);
   px(ctx, CPAL.furD, 17, 3, 4, 6);
@@ -1074,11 +1286,44 @@ function buildManateeSideBody(scarred) {
     px(ctx, '#3f6b4c', bx, by, 3, 1); px(ctx, '#2d4f38', bx + 1, by + 1, 2, 1);
   }
   for (const [bx, by] of [[68, 12], [40, 14]]) { px(ctx, CPAL.manDD, bx, by, 3, 3); px(ctx, CPAL.bone, bx + 1, by + 1, 2, 2); }
+  // ---- what the fleet has done to her, in the cinematics' own units. Three
+  //      propeller rakes across the flank: torn hide standing pale on the lit
+  //      lip, meat under it, blood in the deep of the run, and a dried smear
+  //      dragged aft. This is the BASE body, not the `scarred` variant — she
+  //      does not get a clean version of herself any more.
+  const rake = (x0, y0, n, dy, open) => {
+    for (let i = 0; i < n; i++) {
+      const x = x0 + i, y = y0 + Math.round(i * dy);
+      if (!inside(x, y) || !inside(x, y + 2) || !inside(x, y - 2)) continue;
+      px(ctx, CPAL.manLL, x, y - 1);
+      px(ctx, CPAL.meatD, x, y);
+      if (open) px(ctx, Math.abs(i - n / 2) < n * 0.3 ? CPAL.gore : CPAL.goreD, x, y);
+      px(ctx, CPAL.goreD, x, y + 1);
+      for (let k = 1; k <= 4; k++) {
+        const sx = x - k * 2;
+        if (!inside(sx, y + 1) || hash2(sx * 5, y * 3 + i) < 0.22 + k * 0.14) continue;
+        px(ctx, k < 2 ? CPAL.stain : CPAL.stainD, sx, y + (k & 1));
+      }
+    }
+  };
+  rake(42, 13, 16, 0.42, 1);
+  rake(56, 26, 12, -0.34, 1);
+  rake(30, 20, 10, 0.30, 0);
+  // a seam somebody sewed shut with wire, and it held
+  for (let i = 0; i < 18; i++) {
+    const x = 50 + i, y = 24 + Math.round(Math.sin(i * 0.3) * 1.5);
+    if (!inside(x, y) || !inside(x, y + 2)) continue;
+    px(ctx, CPAL.meatD, x, y);
+    if (i % 5 === 1) { px(ctx, CPAL.bone, x, y - 2, 1, 2); px(ctx, CPAL.manDD, x, y + 1, 1, 2); }
+  }
   // ---- flipper socket crease
   for (let i = 0; i < 6; i++) px(ctx, CPAL.manDD, 72 + i, 24 + (i >> 1));
   // ---- head: the DOT eye, the nostril and the mouth crease
   px(ctx, CPAL.out, 81, 13, 4, 4); px(ctx, CPAL.eye, 81, 13, 3, 3); px(ctx, CPAL.shine, 82, 14);
   px(ctx, CPAL.manL, 81, 12, 4, 1);
+  // a scar through the brow, so the dot eye reads as a hard one
+  px(ctx, CPAL.manDD, 79, 10, 1, 4); px(ctx, CPAL.manLL, 80, 10, 1, 4);
+  px(ctx, CPAL.manDD, 84, 17, 3, 1); px(ctx, CPAL.bloodD, 85, 18, 2, 1);
   px(ctx, CPAL.out, 92, 15, 2, 2);                          // nostril
   px(ctx, CPAL.manL, 88, 20, 6, 1);                         // lit whisker pad
   px(ctx, CPAL.out2, 88, 23, 6, 1);                         // mouth crease
@@ -1107,6 +1352,31 @@ function buildSideFluke() {
     if (f[y * W + x] > 0.06) px(ctx, CPAL.manDD, x, y);
   }
   for (let y = 3; y < 15; y++) if (f[y * W + 1] > 0.02) px(ctx, CPAL.manL, 1, y);
+  // ---- a chunk out of the trailing edge, to match the top-down body. The
+  //      field `f` is what says where she is, so the bite is cut out of the
+  //      raster and the raw rim is re-inked off the same field.
+  const cut = new Uint8Array(W * H);
+  const bit = (bx, byc, r) => {
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const dx = (x - bx) / (r * 1.2), dy = (y - byc) / r;
+      if (dx * dx + dy * dy > 1 + (hash2(x * 7, y * 3) - 0.5) * 0.5) continue;
+      if (f[y * W + x] > 0) cut[y * W + x] = 1;
+      f[y * W + x] = 0; ctx.clearRect(x, y, 1, 1);
+    }
+  };
+  bit(2, 5, 3.2);                       // one clean bite, not a serrated edge
+  // Only the BITE rim gets meat packed behind it — the natural trailing edge
+  // of the fluke is not a wound and must not be painted like one.
+  for (let y = 0; y < H; y++) for (let x = 0; x < 12; x++) {
+    if (f[y * W + x] <= 0) continue;
+    const wasCut = (qx, qy) => qx >= 0 && qy >= 0 && qx < W && qy < H && cut[qy * W + qx];
+    if (!(wasCut(x - 1, y) || wasCut(x + 1, y) || wasCut(x, y - 1) || wasCut(x, y + 1))) continue;
+    px(ctx, CPAL.out, x, y);
+    for (let k = 1; k <= 3; k++) {
+      if (f[y * W + x + k] <= 0) break;
+      px(ctx, k === 1 ? CPAL.meat : k === 2 ? CPAL.gore : CPAL.goreD, x + k, y);
+    }
+  }
   return spriteFrom(c, W - 2, 9);
 }
 function buildSideFlipper(dark) {
@@ -1236,18 +1506,43 @@ function buildOtterStand() {
     else if (hash2(x * 13, y * 3) > 0.975) px(ctx, CPAL.furL, x, y);
   }
   for (let i = 0; i < 9; i++) px(ctx, CPAL.creamD, 20 - (i >> 2), 12 + i);
-  // hind legs and webbed feet
+  // hind leg, webbed foot — one of them. He has the other one in a jar.
   stampUp(ctx, ['kddk', 'kdfk', 'kddk', 'kkkk'], 10, 24, M);
   px(ctx, CPAL.out, 8, 32, 14, 6);
   px(ctx, CPAL.furD, 10, 34, 10, 2); px(ctx, CPAL.furDD, 10, 36, 10, 1);
-  px(ctx, CPAL.out, 14, 38, 14, 4); px(ctx, CPAL.furD, 16, 39, 10, 2);
-  for (let i = 0; i < 3; i++) { px(ctx, CPAL.furDD, 11 + i * 3, 34, 1, 3); px(ctx, CPAL.furDD, 17 + i * 3, 39, 1, 3); }
-  // belt, buckle and a knife on his hip
+  for (let i = 0; i < 3; i++) px(ctx, CPAL.furDD, 11 + i * 3, 34, 1, 3);
+  // ---- the near leg is a PEG. The stump is strapped into a socket, the
+  //      shank is a turned bit of somebody's boat and there is a brass
+  //      ferrule on the end where it takes the deck. Same footprint as the
+  //      webbed foot it replaces, so nothing that places him moved.
+  px(ctx, CPAL.out, 15, 29, 10, 5);
+  px(ctx, CPAL.leaD, 16, 30, 8, 3); px(ctx, CPAL.lea, 16, 30, 8, 1);
+  px(ctx, CPAL.creamD, 17, 32, 1, 1); px(ctx, CPAL.creamD, 22, 32, 1, 1);
+  for (let i = 0; i < 9; i++) {
+    const w = 6 - ((i * 4) / 9 | 0), x = 17 + (((i * 4) / 9 | 0) >> 1);
+    px(ctx, CPAL.out, x, 33 + i, w, 1);
+    px(ctx, CPAL.woodDD, x + 1, 33 + i, Math.max(1, w - 2), 1);
+    px(ctx, CPAL.woodD, x + 1, 33 + i, Math.max(1, w - 3), 1);
+    if (i < 4) px(ctx, CPAL.wood, x + 1, 33 + i, 1, 1);
+  }
+  px(ctx, CPAL.out, 17, 41, 5, 3);
+  px(ctx, CPAL.goldD, 18, 42, 3, 1); px(ctx, CPAL.gold, 18, 42, 2, 1);
+  // belt, buckle and the cutlass on his hip
   px(ctx, CPAL.leaD, 10, 22, 12, 5); px(ctx, CPAL.lea, 10, 22, 12, 3); px(ctx, CPAL.leaL, 10, 22, 12, 1);
   for (let x = 11; x < 22; x += 3) px(ctx, CPAL.creamD, x, 25);
   px(ctx, CPAL.out, 16, 21, 5, 7); px(ctx, CPAL.goldD, 17, 22, 3, 5);
   px(ctx, CPAL.gold, 17, 22, 2, 4); px(ctx, CPAL.goldL, 17, 22, 2, 1);
-  px(ctx, CPAL.out, 9, 26, 3, 8); px(ctx, CPAL.metL, 10, 27, 1, 6); px(ctx, CPAL.woodD, 10, 26, 1, 2);
+  // ---- the cutlass: a basket hilt at the belt and a curved blade behind his
+  //      heel. It was a knife; a captain carries a sword.
+  px(ctx, CPAL.out, 5, 20, 7, 6);
+  px(ctx, CPAL.goldD, 6, 21, 5, 4); px(ctx, CPAL.gold, 6, 21, 4, 2); px(ctx, CPAL.goldL, 6, 21, 3, 1);
+  px(ctx, CPAL.out, 8, 22, 2, 2);
+  for (let i = 0; i < 14; i++) {
+    const x = 7 - (i >> 3), y = 26 + i;
+    px(ctx, CPAL.out, x, y, 4, 1);
+    px(ctx, CPAL.metL, x + 1, y, 2, 1); px(ctx, CPAL.metLL, x + 1, y, 1, 1);
+  }
+  px(ctx, CPAL.out, 5, 40, 4, 2); px(ctx, CPAL.bloodD, 6, 40, 2, 1);
   return spriteFromHi(c, 16, 24);
 }
 // o: {x, y, scale, facing, exp, blink, t, rage, arms:[near,far], hold, tail, alpha}
