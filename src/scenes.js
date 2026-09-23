@@ -1,5 +1,5 @@
-// ---- Cinematic intro, dialogue, end screens -----------------------------
-// The intro cinematic now lives in src/intro.js, which defines the global
+// ---- The arrival, dialogue, end screens ---------------------------------
+// The intro cinematic lives in src/intro.js, which defines the global
 // `Intro`. A top-level `const Intro` here would shadow it, so it is gone.
 
 // G is a top-level `let` in entities.js and may not be initialised while this
@@ -7,245 +7,404 @@
 function sceneG() { try { return G; } catch (e) { return null; } }
 
 // =========================================================================
-//  THE ARRIVAL — staged in the LIVE WORLD, not drawn as a plate.
+//  CUTE — the hand-rasterized pieces the arrival is drawn out of.
 //
-//  The real village out of src/village.js, the real pier, the real player,
-//  the real lookout.  Every beat below is the game itself with the cine
-//  camera and the letterbox doing the work; the only thing drawn here is the
-//  night that goes over the top of it, the lamps the village has lit, and
-//  the marks and bubbles that hang off a world position.
+//  ctx.arc() + ctx.fill() antialiases, so there is not one of them in here:
+//  a round corner is a table of row insets measured off a real circle and
+//  filled as whole rows.  Integer coordinates, flat bands, hard edges.
+// =========================================================================
+const Cute = {
+  // quarter-circle row insets, so a corner reads ROUND and not as a 45 degree
+  // chamfer (which is what a straight [n..1,0] ramp gives you)
+  INSET: { 2: [1, 0], 3: [1, 0, 0], 4: [2, 1, 0, 0], 5: [3, 1, 1, 0, 0], 6: [3, 2, 1, 0, 0, 0] },
+
+  // a filled rounded box: corner rows one at a time, the straight middle in
+  // a single rect, so a bubble costs eleven fills and not twenty
+  rr(ctx, col, x, y, w, h, r) {
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    if (w < 2 || h < 2) return;
+    const tab = this.INSET[r] || this.INSET[3];
+    const n = Math.min(tab.length, h >> 1), hw = w >> 1;
+    ctx.fillStyle = col;
+    for (let i = 0; i < n; i++) {
+      const d = Math.min(tab[i], hw);
+      if (w - d * 2 <= 0) continue;
+      ctx.fillRect(x + d, y + i, w - d * 2, 1);
+      ctx.fillRect(x + d, y + h - 1 - i, w - d * 2, 1);
+    }
+    const mh = h - n * 2;
+    if (mh > 0) ctx.fillRect(x, y + n, w, mh);
+  },
+  // ONE row of that same silhouette — the lit lip along the top and the
+  // shaded sill along the bottom have to follow the corners or the bubble
+  // stops looking rounded the moment it is shaded
+  rrRow(ctx, col, x, y, w, h, r, i) {
+    const tab = this.INSET[r] || this.INSET[3];
+    const j = Math.min(i, h - 1 - i);
+    const d = Math.min(j < tab.length ? tab[j] : 0, w >> 1);
+    if (w - d * 2 <= 0) return;
+    ctx.fillStyle = col;
+    ctx.fillRect(Math.round(x) + d, Math.round(y) + i, Math.round(w) - d * 2, 1);
+  },
+
+  // ---- little stamps, baked once into canvases --------------------------
+  ART: {
+    // who is talking, with no words spent on saying so: a 7x7 chip of each
+    // of them sits in the corner of their own bubble
+    otter: ['.d...d.',
+            'dfffffd',
+            'fffffff',
+            'fefffef',
+            'fmmmmmf',
+            '.mmnmm.',
+            '..mmm..'],
+    manat: ['.ggggg.',
+            'ggggggg',
+            'gegggeg',
+            'ggggggg',
+            '.sssss.',
+            '.sbbbs.',
+            '..sss..'],
+    heart: ['.hh.hh.',
+            'hlhhhhh',
+            'hhhhhhh',
+            '.hhhhh.',
+            '..hhh..',
+            '...h...'],
+    spark: ['...s...',
+            '...s...',
+            '..sws..',
+            'sswwwss',
+            '..sws..',
+            '...s...',
+            '...s...'],
+  },
+  // the two that fly around loose get a hard ink edge baked on, so they read
+  // against bright water and against a dark hull alike
+  OUTLINED: { heart: '#3b1f2a', spark: '#6b4a10' },
+  PAL: {
+    f: '#b5722f', d: '#7c4a1e', m: '#f2dcb4', n: '#5a2f1c', e: '#1a1220',
+    g: '#8a93a0', s: '#c9d2dd', b: '#5b6574', h: '#ff8fa8', l: '#ffd6e0', w: '#fffdf0',
+  },
+  _baked: null,
+  bake() {
+    if (this._baked) return this._baked;
+    const out = {};
+    // the spark stamp shares 's' with the manatee snout, so it is given its
+    // own palette rather than the shared one
+    const pals = { spark: { s: '#ffd978', w: '#fffdf0' } };
+    for (const k in this.ART) {
+      const rows = this.ART[k];
+      let w = 0;
+      for (let i = 0; i < rows.length; i++) if (rows[i].length > w) w = rows[i].length;
+      const ink = this.OUTLINED[k], o = ink ? 1 : 0;
+      const c = document.createElement('canvas');
+      c.width = w + o * 2; c.height = rows.length + o * 2;
+      const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+      const pal = pals[k] || this.PAL;
+      // the ink edge first, as the same silhouette pushed one pixel each way
+      if (ink) {
+        x.fillStyle = ink;
+        const off = [[0, 1], [2, 1], [1, 0], [1, 2]];
+        for (let d = 0; d < off.length; d++)
+          for (let r = 0; r < rows.length; r++) for (let q = 0; q < rows[r].length; q++)
+            if (rows[r][q] !== '.') x.fillRect(q + off[d][0], r + off[d][1], 1, 1);
+      }
+      for (let r = 0; r < rows.length; r++) for (let q = 0; q < rows[r].length; q++) {
+        const ch = rows[r][q];
+        if (ch === '.') continue;
+        x.fillStyle = pal[ch] || this.PAL[ch] || '#ffffff';
+        x.fillRect(q + o, r + o, 1, 1);
+      }
+      out[k] = c;
+    }
+    return this._baked = out;
+  },
+  stamp(ctx, key, x, y) {
+    const a = this.bake()[key];
+    if (a) ctx.drawImage(a, Math.round(x), Math.round(y));
+  },
+  stampC(ctx, key, x, y) {
+    const a = this.bake()[key];
+    if (a) ctx.drawImage(a, Math.round(x) - (a.width >> 1), Math.round(y) - (a.height >> 1));
+  },
+
+  // ---- easing -----------------------------------------------------------
+  // a pop that overshoots and settles: a bubble that stops dead is a decal
+  back(u) {
+    if (u <= 0) return 0;
+    if (u >= 1) return 1;
+    const v = u - 1;
+    return 1 + 2.20158 * v * v * v + 1.20158 * v * v;
+  },
+  eo2(u) { u = u < 0 ? 0 : u > 1 ? 1 : u; return 1 - (1 - u) * (1 - u); },
+  // alpha snapped onto a coarse ladder, so a fade is still a posterized one
+  qa(a) { return a <= 0 ? 0 : a >= 1 ? 1 : Math.round(a * 8) / 8; },
+};
+
+// =========================================================================
+//  THE ARRIVAL — the two of them, talking.  NOT a cutscene.
 //
-//    0.0  IN THE DARK   she comes up the channel UNDER the water, the
-//                       village asleep across the top of the frame
-//    2.3  SURFACED      she breaks it, and that is what he looks up at
-//    2.9  SPOTTED       the camera pushes onto the lookout on the pier head
-//    3.5  THE SHOUT     he yells, and the bay has half a second to hear it
-//    5.1  THE ANSWER    the prompt comes up; the player fires; the camera
-//                       snaps onto him on the bang and starts pulling out
-//     ->  the alarm, the Chief's order and the fleet carry straight on in
-//         BossCut's in-world 'village_alarm', queued from here
+//  What used to be here was a night cinematic: she came up the channel
+//  submerged, a lookout on the pier spotted her and shouted, and the game
+//  did not begin until you clicked to shoot him.  All of that is gone.  No
+//  letterbox, no camera takeover, no night veil, no frozen view, no click
+//  gate, no muzzle flash, no alarm — the fisherman is alive and stays that
+//  way.  `cinematic` is false the whole way through, so game.js keeps the
+//  interface up, the world stays in full daylight, and you can swim while
+//  they talk.
 //
-//  game.js owns the kill (Dialogue.done + a click -> a real projectile at
-//  G.fisherman -> G.onFishermanShot), so all of this is staged AROUND that
-//  handshake instead of replacing it.  If the arrival is cut short from
-//  outside -- the test harnesses set Dialogue.done straight to true -- the
-//  staging drops out, the camera goes back, and the plain bubble is what is
-//  left.  Nothing here can strand the view: the snap onto the lookout sets
-//  its own slow release on the same frame, so even a dropped timer recovers.
+//  It is five short lines between the otter (chatty, scrappy) and the
+//  manatee (gentle, few words), about seven seconds, and then `done` goes
+//  true and game.js starts the fight on the spot.
+//
+//  Nothing here can strand the view: the camera is never taken.  reset()
+//  still hands it back once, so an arrival that follows something which DID
+//  take it starts from a clean, un-letterboxed, daylit frame — which is also
+//  what the boot harnesses get when they set Dialogue.done from outside.
 // =========================================================================
 const Dialogue = {
   // ---- the handshake game.js drives.  Do not rename.
-  t: 0, text: 'OI! SOMETHING IN THE WATER!', done: false, shotFired: false,
-  // True for exactly as long as the arrival is running as a cinematic, so
-  // game.js can hold the interface off the letterbox while it does:
-  //   ... && !(this.state === 'dialogue' && Dialogue.cinematic)) UI.drawHUD(...)
-  // It is false the moment the staging drops out or the shot is fired, and
-  // false for the whole beat on anything that skips straight to the bubble.
+  t: 0, text: '', done: false,
+  // dead field.  Nothing shoots anybody on the way in any more; it is kept
+  // defined only so anything still reading it gets a false instead of throwing.
+  shotFired: false,
+  // never true again: the arrival is not staged as a cinematic, so the HUD,
+  // the vitals and the clock stay up for all of it
   cinematic: false,
-  // ---- the beats, in seconds
-  K: { dive: 2.25, spot: 2.90, shout: 3.45, ready: 5.10 },
-  _nat: false, _bail: false, _shot: -1, _queued: false, _timer: 0,
-  _flash: 0, _cut: 1e9, _hit: null,
+
+  // ---- the exchange -----------------------------------------------------
+  // who: 0 = the otter on her back, 1 = the manatee underneath him.
+  // dwell is the beat AFTER the line has finished typing.  Every line here
+  // has to earn its place; there are only five of them.
+  LINES: [
+    { who: 0, s: 'Fisher village! We found it!', dwell: 0.52 },
+    { who: 1, s: "...that's a lot of boats.", dwell: 0.54 },
+    { who: 0, s: 'Easy! You bonk, I shoot.', dwell: 0.52, deco: 'spark' },
+    { who: 1, s: 'ok.', dwell: 0.66, deco: 'heart' },
+    { who: 0, s: "Let's go get 'em!", dwell: 0.40, deco: 'spark' },
+  ],
+  POP: 0.22, OUT: 0.20, CPS: 46, LEAD: 0.80, TAIL: 0.24, OVERLAP: 0.14,
+  // the bubble is already past full width a fifth of the way through its pop
+  // (that is what the overshoot is for), so the line starts there instead of
+  // leaving an empty balloon sitting on screen for a quarter of a second
+  SAY: 0.45,
+
+  // ---- how each of them is drawn ---------------------------------------
+  SKIN: [
+    { chip: 'otter', face: '#fff2d6', lit: '#fffbee', sill: '#eed3a4', ink: '#4a2b26', text: '#5a3324', side: 1 },
+    { chip: 'manat', face: '#cfe1fb', lit: '#eef6ff', sill: '#9fbce4', ink: '#2f3a52', text: '#2b3852', side: -1 },
+  ],
+
+  _plan: null, _end: 0, _hit: null, _deco: [], _gave: false,
+
+  // lay the timeline out once: every line knows when it starts, how long it
+  // types for and how long it lives
+  plan() {
+    if (this._plan) return this._plan;
+    const out = [];
+    let at = this.LEAD;
+    for (let i = 0; i < this.LINES.length; i++) {
+      const L = this.LINES[i];
+      const type = L.s.length / this.CPS;
+      const dur = this.POP + type + (L.dwell === undefined ? 0.6 : L.dwell) + this.OUT;
+      out.push({ who: L.who, s: L.s, deco: L.deco, t0: at, type: type, dur: dur, w: 0 });
+      // the next bubble starts popping while this one is still shrinking, so
+      // the exchange reads as a conversation and not as a slide show
+      at += dur - this.OVERLAP;
+    }
+    this._end = at + this.OVERLAP + this.TAIL;
+    return this._plan = out;
+  },
 
   reset() {
-    this.t = 0; this.done = false; this.shotFired = false;
-    this._nat = false; this._bail = false; this._shot = -1; this._queued = false;
-    this._flash = 0; this._cut = 1e9; this._hit = {}; this.cinematic = false;
-    if (this._timer) { clearTimeout(this._timer); this._timer = 0; }
-    if (typeof WorldCine !== 'undefined') WorldCine.begin();
+    this.t = 0; this.done = false; this.shotFired = false; this.cinematic = false;
+    this._hit = {}; this._deco.length = 0;
+    this.plan();
+    Cute.bake();
+    // the camera was never ours, but whatever ran before us may have had it.
+    // One clean hand-back here and the arrival is guaranteed to open on the
+    // plain daylit game view with no bars and no zoom.
+    this._gave = false; this.handBack();
   },
-  wc() { return (typeof WorldCine !== 'undefined' && WorldCine.ok()) ? WorldCine : null; },
-  // everything the staging needs to exist before it will take the camera
-  staged() {
+
+  // zoom 1, no bars, no freeze, and no night pushed over the world
+  handBack() {
+    if (this._gave) return;
+    this._gave = true;
+    if (typeof WorldCine !== 'undefined') { WorldCine.night = 0; WorldCine.lamp = 0; WorldCine.red = 0; }
     const g = sceneG();
-    return !!(!this._bail && this.wc() && g && g.player && g.fisherman && g.cineTo && g.pier);
+    if (!g) return;
+    if (g.cineRelease) g.cineRelease(0);
+    if (g.cineBars) g.cineBars(0);
+    if (g.cineFreeze) g.cineFreeze(false);
   },
   once(k) { if (!this._hit) this._hit = {}; if (this._hit[k]) return false; return this._hit[k] = true; },
   sfx(fn) { try { if (typeof Audio_ !== 'undefined') fn(); } catch (e) { } },
+  // a little voice per speaker: the otter chirps up, she answers low and soft
+  chirp(who) {
+    this.sfx(() => {
+      if (who === 0) {
+        Audio_.tone(720, 0.05, 'square', 0.05, 240);
+        setTimeout(() => Audio_.tone(980, 0.05, 'square', 0.04, 160), 55);
+      } else {
+        Audio_.tone(300, 0.11, 'sine', 0.08, 70);
+      }
+    });
+  },
 
   update(dt) {
     if (dt > 1 / 20) dt = 1 / 20;
+    const plan = this.plan();
     // somebody outside pushed us to the end (the boot harnesses do exactly
-    // this): give the camera and the night straight back and fall through to
-    // the plain bubble, so nothing that drives the game from outside changes
-    if (this.done && !this._nat && !this._bail) this.bail();
-    if (!this.staged()) { this.cinematic = false; this.t += dt; if (this.t > 3) this.done = true; return; }
-    this.cinematic = !this.shotFired;
-
-    const g = sceneG(), W = this.wc(), K = this.K;
-    const f = g.fisherman, p = g.player;
+    // this).  Nothing to unwind but the one hand-back, and that is idempotent.
+    if (this.done) { this.cinematic = false; this.handBack(); return; }
+    this.cinematic = false;
     this.t += dt;
-    const T = this.t;
-    this._flash = Math.max(0, this._flash - dt * 8);
-    W.night = Math.min(1, W.night + dt * 3.2);
-    W.lamp = Math.min(1, W.lamp + dt * 0.8);
-    g.cineBars(W.eo3(Math.min(1, T / 0.8)));
 
-    // ---- she comes up the channel.  DRIVEN, not steered: the player's own
-    // update runs immediately after this one, so the position is written
-    // again every frame and whatever the sticks did is overwritten before it
-    // can accumulate.  The velocity is handed over too, so the wake, the
-    // swim cycle and the camera lead all read the move as a real one.
-    if (this._shot < 0 && !p.dead) {
-      const u = W.eo3(clamp(T / (K.spot + 0.55), 0, 1));
-      const nx = lerp(f.x + 152, f.x + 6, u), ny = lerp(f.y + 268, f.y + 62, u);
-      const iv = 1 / Math.max(dt, 1e-3);
-      p.vx = clamp((nx - p.x) * iv, -170, 170); p.vy = clamp((ny - p.y) * iv, -170, 170);
-      p.x = nx; p.y = ny;
-      p.aim = angleTo(p.x, p.y, f.x, f.y - 8);
-      p.facing = p.x > f.x ? -1 : 1;
-      // she comes up the channel UNDER it.  The dive flag is the game's own,
-      // so she is the same half-alpha shadow the ability makes her, and the
-      // camera, the shadow and the wake all already know what it means.
-      if (T < K.dive) { p.dive.active = true; p.dive.t = 0; p.dive.cd = 0; }
+    for (let i = 0; i < plan.length; i++) {
+      const L = plan[i];
+      if (this.t >= L.t0 && this.once('v' + i)) this.chirp(L.who);
+      // the hearts and sparkles come out a beat after the bubble has landed
+      if (L.deco && this.t >= L.t0 + this.POP + 0.14 && this.once('d' + i)) this.puff(L, i);
     }
-    // and breaks the surface.  This is WHY he looks up.
-    if (T >= K.dive && this.once('surface')) {
-      p.dive.active = false; p.dive.t = 0; p.dive.cd = 0;
-      if (g.particles) { g.particles.splash(p.x, p.y, 2.0); g.particles.bubbles(p.x, p.y, 10); }
-      this.sfx(() => Audio_.splash(1.4));
-    }
+    this.stepDeco(dt);
+    if (this.t >= this._end) this.done = true;
+  },
 
-    // ---- he clocks them
-    if (T >= K.spot && this.once('spot')) {
-      g.cineTo(f.x, f.y - 6, 2.5, 0.85);
-      this.sfx(() => { Audio_.tone(300, 0.10, 'square', 0.16, 150); Audio_.tone(450, 0.08, 'square', 0.10, 120); });
+  // ---- the decoration ---------------------------------------------------
+  puff(L, i) {
+    const g = sceneG(), p = g && g.player;
+    if (!p) return;
+    const side = this.SKIN[L.who].side;
+    // just clear of the top of that speaker's bubble
+    const top = p.y - (L.who === 0 ? 58 : 51);
+    for (let k = 0; k < 3; k++) {
+      this._deco.push({
+        art: L.deco,
+        x: p.x + side * 12 + (k - 1) * 10, y: top - k * 2,
+        t: -k * 0.16, life: 1.05,
+        rise: 16 + k * 4, sway: 2 + hash2(i * 7 + k, 3) * 3, ph: hash2(k, i) * 6.28,
+      });
     }
-    // ---- and yells.  The pier hears it before the village does.
-    if (T >= K.shout && this.once('shout')) {
-      this.sfx(() => { Audio_.tone(430, 0.18, 'square', 0.20, -170); Audio_.tone(300, 0.26, 'sawtooth', 0.13, -110); });
-      if (typeof Village !== 'undefined' && Village.panicNear) Village.panicNear(f.x, f.y, 160);
+  },
+  stepDeco(dt) {
+    const d = this._deco;
+    for (let i = d.length - 1; i >= 0; i--) {
+      d[i].t += dt;
+      if (d[i].t > d[i].life) d.splice(i, 1);
     }
-    // ---- the prompt.  Pull to a two-shot: the shot has to be legible.
-    if (T >= K.ready && !this.done) {
-      this.done = true; this._nat = true;
-      g.cineTo((f.x + p.x) / 2, (f.y + p.y) / 2 - 2, 1.85, 0.7);
-    }
-
-    // ---- the otter answers.  game.js sets shotFired on the click; the frame
-    // after, the camera snaps onto him and the rest of the raid is queued.
-    if (this.shotFired && this._shot < 0) {
-      this._shot = T; this._flash = 1;
-      this._cut = Math.max(4, Math.floor((T - K.shout) * 44));     // whatever he got out, he got out
-      g.cineHold(f.x, f.y - 6, 2.9);
-      // and a slow release set on the SAME frame, so a dropped timer or a
-      // lost cut can never leave the player parked in a close-up
-      g.cineTo(null, null, 1, 2.4);
-      g.shake(9);
-      this.queueAlarm(f.x, f.y);
+  },
+  drawDeco(ctx, g) {
+    const d = this._deco;
+    for (let i = 0; i < d.length; i++) {
+      const q = d[i];
+      if (q.t <= 0) continue;
+      const u = q.t / q.life;
+      // eased rise, a sine drift across it, and a fade that is quantized so
+      // it stays a posterized pop-out instead of a smooth blur
+      const sp = g.worldToScreen(q.x + Math.sin(u * 4.4 + q.ph) * q.sway, q.y - Cute.eo2(u) * q.rise);
+      const a = Cute.qa(Math.min(1, u / 0.18) * Math.min(1, (1 - u) / 0.34));
+      if (a <= 0) continue;
+      ctx.globalAlpha = a;
+      Cute.stampC(ctx, q.art, sp.x, sp.y);
+      ctx.globalAlpha = 1;
     }
   },
 
-  // The alarm cannot be started from here directly: game.js flips to 'play'
-  // the instant the projectile lands, which would clobber a cut started
-  // before it.  So this waits for the body to actually drop and then hands
-  // over, with a hard deadline that gives the camera back if it never does.
-  queueAlarm(x, y) {
-    if (this._queued) return;
-    this._queued = true;
-    const nat = this._nat, self = this;
-    let left = nat ? 150 : 0, over = false;
-    const stop = () => { over = true; if (self._timer) { clearTimeout(self._timer); self._timer = 0; } };
-    // ONE chain, polled on the frame clock rather than a timer, so the hand-off
-    // lands on the very next frame after the body drops instead of a tenth of
-    // a second later with the interface flashing back on in between
-    const step = () => {
-      if (over) return;
-      const g = sceneG();
-      if (!g || self._bail) { stop(); return; }
-      if (nat && g.fisherman && !g.fisherman.alive && g.state === 'play' && g.playCut &&
-          g.playCut('village_alarm', { x: x, y: y })) { stop(); return; }
-      if (left-- > 0) { requestAnimationFrame(step); return; }
-      stop();
-      if (typeof WorldCine !== 'undefined') WorldCine.release(0.5);
-    };
-    requestAnimationFrame(step);
-    // and one watchdog, for a frame clock that has stopped -- a hidden tab
-    // pauses requestAnimationFrame, and the camera is not being left parked
-    // in a close-up while it does
-    this._timer = setTimeout(() => {
-      self._timer = 0;
-      if (over) return;
-      over = true;
-      if (typeof WorldCine !== 'undefined') WorldCine.release(0.5);
-    }, 4000);
+  // ---- one speech bubble ------------------------------------------------
+  // Everything is in interface space so the letters stay crisp, but the
+  // anchor is a world point on her back, so the bubbles ride along with her
+  // while you swim.
+  drawLine(ctx, g, p, L, i) {
+    const e = this.t - L.t0;
+    if (e < 0 || e > L.dur) return;
+    const S = this.SKIN[L.who];
+    if (!L.w) L.w = Math.max(46, textWidth(L.s, 7) + 24);
+
+    const w0 = L.w, h0 = 20, r = 5;
+    // ---- pop in with an overshoot, and squash-and-stretch it: the height
+    // lags the width by a frame or two, so it springs out sideways first
+    let kx = 1, ky = 1, lift = 0;
+    if (e < this.POP) {
+      kx = Cute.back(e / this.POP);
+      ky = Cute.back((e - 0.05) / (this.POP - 0.05));
+    } else if (e > L.dur - this.OUT) {
+      const u = (e - (L.dur - this.OUT)) / this.OUT;
+      kx = ky = 1 - u * u;                       // eased down, not cut
+      lift = Math.round(u * 5);                  // and drifting off as it goes
+    }
+    if (kx <= 0.02 || ky <= 0.02) return;
+
+    // the anchor: his side of her back, or hers
+    const wx = p.x + S.side * 15, wy = p.y - (L.who === 0 ? 26 : 19);
+    const sp = g.worldToScreen(wx, wy);
+    const ax = Math.round(sp.x), ay = Math.round(sp.y);
+    // a slow one-pixel float, so a bubble that is only sitting there is still
+    // alive.  Out of phase per line so two on screen never bob together.
+    const bob = Math.round(Math.sin(this.t * 2.3 + i * 1.9) * 1.3);
+
+    const w = Math.max(12, Math.round(w0 * kx)), h = Math.max(7, Math.round(h0 * ky));
+    // it grows out of its own tail rather than out of its middle
+    const tailX = Math.round(ax - S.side * 4);
+    let bx = Math.round(tailX - (tailX - (S.side > 0 ? ax - 10 : ax - w0 + 10)) * (w / w0));
+    let by = Math.round(ay - 8 - h - lift - bob);
+    bx = clamp(bx, 4, 636 - w);
+    by = clamp(by, 30, 300);
+    const tx = clamp(tailX, bx + 6, bx + w - 7);
+
+    // ---- the bubble: ink silhouette, face inside it, a lit lip along the
+    // top and a shaded sill along the bottom, all on the same round corners
+    Cute.rr(ctx, 'rgba(8,14,26,0.25)', bx + 1, by + 2, w, h, r);
+    Cute.rr(ctx, S.ink, bx, by, w, h, r);
+    Cute.rr(ctx, S.face, bx + 1, by + 1, w - 2, h - 2, r);
+    Cute.rrRow(ctx, S.lit, bx + 1, by + 1, w - 2, h - 2, r, 0);
+    Cute.rrRow(ctx, S.lit, bx + 1, by + 1, w - 2, h - 2, r, 1);
+    Cute.rrRow(ctx, S.sill, bx + 1, by + 1, w - 2, h - 2, r, h - 3);
+    // a little shine up in the far corner, clear of the face chip
+    if (w > 30) { ctx.fillStyle = '#ffffff'; ctx.fillRect(bx + w - 8, by + 2, 3, 1); ctx.fillRect(bx + w - 5, by + 3, 1, 1); }
+
+    // ---- the tail, curling back toward whoever said it
+    const TW = [8, 7, 5, 3, 1];
+    for (let k = 0; k < TW.length; k++) {
+      const ww = Math.max(1, Math.round(TW[k] * kx));
+      const rx = Math.round(tx - S.side * k) - (ww >> 1), ry = by + h - 1 + k;
+      ctx.fillStyle = S.ink;
+      ctx.fillRect(rx - 1, ry, 1, 1); ctx.fillRect(rx + ww, ry, 1, 1);
+      if (k === TW.length - 1) ctx.fillRect(rx, ry + 1, ww, 1);
+      ctx.fillStyle = k === TW.length - 1 ? S.sill : S.face;
+      ctx.fillRect(rx, ry, ww, 1);
+    }
+
+    // ---- who said it, and what they said.  Clipped to the inside of the
+    // bubble, so on the way out the box swallows the line as it collapses
+    // into its own tail instead of the text blinking off a frame early.
+    const say = this.POP * this.SAY;
+    if (e < say) return;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(bx + 1, by + 1, w - 2, h - 2); ctx.clip();
+    Cute.stamp(ctx, S.chip, bx + 5, by + 6);
+    const n = Math.floor((e - say) * this.CPS) + 1;
+    pixelText(ctx, L.s.slice(0, Math.min(L.s.length, n)), bx + 16, by + 6, 7, S.text, 'left', false);
+    ctx.restore();
   },
 
-  // drop the staging and hand everything back, whatever state it was in
-  bail() {
-    this._bail = true; this._queued = true; this.cinematic = false;
-    if (this._timer) { clearTimeout(this._timer); this._timer = 0; }
-    if (typeof WorldCine !== 'undefined') WorldCine.release(0.25);
-  },
-  // game.js has no hold-to-skip wired into the dialogue state yet; if it ever
-  // gets one, this is what it drives, and it leaves nothing behind.
-  skip() { this.done = true; this._nat = false; this.bail(); },
-
-  renderWorld(ctx, cam) { /* everything is anchored through the camera in HUD space */ },
-
-  // the plain, un-staged bubble: exactly the one that was here before, kept
-  // so anything that drives the game straight past the arrival still looks
-  // the way it always did
-  plainBubble(ctx, g, f, n) {
-    const text = this.text;
-    const sp = g.worldToScreen(f.x, f.y - 34);
-    const sx = Math.round(sp.x), sy = Math.round(sp.y);
-    n = Math.min(text.length, n);
-    const w = Math.max(70, textWidth(text, 7) + 20);
-    const bx = clamp(sx - w / 2, 6, 634 - w), by = clamp(sy - 26, 44, 300);
-    UIKit.panel(ctx, bx, by, w, 24, 'parchment');
-    ctx.fillStyle = '#e8dcc0';
-    ctx.beginPath(); ctx.moveTo(sx - 6, by + 23); ctx.lineTo(sx + 6, by + 23); ctx.lineTo(sx, by + 33); ctx.fill();
-    ctx.fillStyle = '#2a2016';
-    ctx.beginPath(); ctx.moveTo(sx - 7, by + 24); ctx.lineTo(sx - 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(sx + 7, by + 24); ctx.lineTo(sx + 5, by + 24); ctx.lineTo(sx, by + 34); ctx.fill();
-    pixelText(ctx, text.slice(0, n), bx + 10, by + 8, 7, '#2a2016', 'left', false);
-  },
+  // nothing is drawn into the world layer: the bubbles are anchored through
+  // the camera in interface space, where the letters stay crisp
+  renderWorld(W, cam, t) { },
 
   renderHUD(ctx) {
-    const g = sceneG(); if (!g) return;
-    const f = g.fisherman;
-    const bars = g.cine ? g.cine.bars : 0;
-    const barH = Math.round(46 * bars);
-    const W = this.wc(), on = this.staged();
-
-    // ---- the night, then the lamps the village has lit punching back
-    // through it, then the muzzle flash over the lot
-    if (W && on) {
-      W.veil(ctx, W.night, barH);
-      W.lamps(ctx, W.night * W.lamp, barH, this.t);
-      if (f && f.alive) W.pool(ctx, f.x - 9, f.y - 1, W.night, barH, 1.15, '#ffd67a');
-      if (this._flash > 0.02) W.wash(ctx, '#ffffff', Math.min(0.78, this._flash), barH);
-      // where we are and what hour it is, in the bar the letterbox already put
-      // there.  One line; the bubble carries the rest.
-      if (this.t < 3.1 && this._shot < 0)
-        W.cap(ctx, 'fisher village.  two hours before dawn.',
-          clamp((this.t - 0.45) / 0.3, 0, 1) * clamp((3.1 - this.t) / 0.45, 0, 1), Math.floor((this.t - 0.45) * 38));
-    }
-
-    // ---- what he says, anchored to him through the zoom
-    if (f && f.alive) {
-      if (on) {
-        const K = this.K;
-        if (this.t > K.spot + 0.10 && this.t < K.shout)   // out of the way before the bubble lands
-          W.mark(ctx, f.x, f.y - 21, clamp((this.t - K.spot - 0.10) / 0.20, 0, 1), '#ffe48f');
-        const n = Math.min(this._cut, Math.floor((this.t - K.shout) * 44) + 1);
-        if (this.t > K.shout && n > 0) W.bubble(ctx, f.x, f.y - 30, this.text, n, false);
-      } else if (this.t > 0.6) {
-        this.plainBubble(ctx, g, f, Math.floor((this.t - 0.6) * 30));
-      }
-    }
-
-    if (!this.done || this.shotFired) return;
-    const touch = typeof MobileUI !== 'undefined' && MobileUI.enabled;
-    const py = on ? 266 : 298;
-    UIKit.panel(ctx, 150, py, 340, 34, 'dark');
-    pixelTextOutlined(ctx, touch ? 'TAP FIRE. LET THE OTTER ANSWER.' : 'LEFT CLICK. LET THE OTTER ANSWER.',
-      320, py + 6, 10, Math.floor(this.t * 2) % 2 ? '#ffe48f' : '#ffffff', '#14141c', 'center');
-    pixelText(ctx, touch ? 'Helm to swim   SHIELD to parry   ROLL to dash'
-                         : 'WASD swim   SPACE roll   E / right-click shield   TAB skill tree',
-      320, py + 22, 6, on ? '#8fa6b8' : '#9ab0c0', 'center');
+    const g = sceneG();
+    if (!g || !g.player || !g.worldToScreen || typeof textWidth === 'undefined') return;
+    const p = g.player, plan = this.plan();
+    // oldest first, so a bubble on its way out sits UNDER the one arriving
+    for (let i = 0; i < plan.length; i++) this.drawLine(ctx, g, p, plan[i], i);
+    this.drawDeco(ctx, g);
   },
+
+  // game.js only offers hold-to-skip to a cinematic, and this is not one any
+  // more, so nothing calls this — but it still ends cleanly if anything does.
+  skip() { this.t = this._end; this.done = true; this.handBack(); },
 };
 // ===========================================================================
 //  BOSS CUTSCENES — short cinematic punches around a boss arriving and dying
