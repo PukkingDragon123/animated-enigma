@@ -50,10 +50,6 @@ function tri(ctx, col, ax, ay, bx, by, cx, cy) {
 }
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 function bay(x, y) { return (BAYER[((y & 3) << 2) | (x & 3)] + 0.5) / 16; }
-function mix(a, b, t) {
-  const A = hexToRgb(a), B = hexToRgb(b);
-  return 'rgb(' + R(A[0] + (B[0] - A[0]) * t) + ',' + R(A[1] + (B[1] - A[1]) * t) + ',' + R(A[2] + (B[2] - A[2]) * t) + ')';
-}
 function qa(a) { return Math.max(0, Math.min(1, Math.round(a * 12) / 12)); }   // quantized alpha
 function rgbaq(hex, a) { const c = hexToRgb(hex); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + qa(a) + ')'; }
 
@@ -657,9 +653,9 @@ function manateeFace(ctx, M, exp, blink, t) {
     if (exp === 'angry') { P(ctx, M.dark, ex - 2, ey - 2, e + 3, mh); P(ctx, M.dark, ex + 1, ey - 3, e + 1, mh); }
     else if (exp === 'sad') { P(ctx, M.dark, ex - 3, ey - 3, e + 2, mh); }
   }
-  // The flap runs off whatever clock the caller hands in.  During speech that
-  // is the typing clock (sayT), so the mouth moves with the letters instead
-  // of beating against them at a fixed 7Hz.
+  // The flap runs off the speech clock while anybody is talking -- SAY.mouth
+  // only advances while letters are landing -- so the mouth moves with the
+  // words instead of beating against them at a fixed 7Hz.
   const open = exp === 'wide' || exp === 'pain' || (exp === 'talk' && (Math.floor((SAY.who ? SAY.mouth : t * 7)) & 1));
   if (open) { P(ctx, O, mx - 2, my - 1, mw, mh * 3 + 1); P(ctx, '#2a1218', mx - 1, my, mw - 2, mh * 2); }
   else P(ctx, O, mx - 2, my, mw, mh);
@@ -979,6 +975,12 @@ function blushMark(ctx, M) {
 //  a kick goes in, the spring carries it out over a few frames and settles
 //  back on exactly 1, so the actor is pixel-exact whenever it is at rest.
 function bounce(m, dt) {
+  // her own eyelids.  A single global blink flag had the whole cast shut
+  // their eyes on the same frame, which reads as a glitch rather than a
+  // blink; each actor keeps its own clock now.
+  if (m.blinkT === undefined) m.blinkT = rand(0.4, 3.4);
+  m.blinkT -= dt;
+  if (m.blinkT <= 0) { m.blink = !m.blink; m.blinkT = m.blink ? 0.09 : rand(1.8, 5.4); }
   m.sqv += (-m.sq * 260 - m.sqv * 21) * dt;
   m.sq += m.sqv * dt;
   if (Math.abs(m.sq) < 0.0035 && Math.abs(m.sqv) < 0.04) { m.sq = 0; m.sqv = 0; m.sx = 1; m.sy = 1; return; }
@@ -1609,9 +1611,6 @@ function sayRender(ctx, b, bt) {
 }
 // is this actor the one currently speaking?
 function talking(who) { return SAY.who === who && SAY.typing; }
-// her mouth, driven off the speech clock rather than the wall clock, so the
-// flap lines up with the letters instead of beating against them
-function sayT() { return SAY.mouth / 7; }
 
 // ---- one boat on the surface, with its wash ---------------------------------
 function drawBoat(ctx, x, y, rot, propA, churn, t) {
@@ -1625,11 +1624,18 @@ function drawBoat(ctx, x, y, rot, propA, churn, t) {
 // widest and darkest right under the keel
 function hullShade(ctx, x, y, w, h, a) {
   if (a <= 0) return;
-  for (let i = 0; i < 5; i++) {
-    const k = i / 5;
-    ctx.fillStyle = rgbaq('#0b3a52', qa(a * (1 - k) * 0.5));
-    const ww = R(w * (1 + k * 0.7)), yy = R(y + k * h);
-    ctx.fillRect(R(x - ww / 2), yy, ww, R(h / 5) + 1);
+  const rows = 15, rh = R(h / rows) + 1;
+  for (let i = 0; i < rows; i++) {
+    const k = i / rows;
+    const al = a * (1 - k) * (1 - k) * 0.30;
+    if (al <= 0.03) continue;
+    ctx.fillStyle = rgbaq('#0b3a52', al);
+    // thin bands with a bite out of either end, so the column of shade has a
+    // broken edge instead of reading as a rectangle laid over the water
+    const ww = w * (1 + k * 0.9);
+    const l = R(x - ww / 2 + (hash2(i, 3) - 0.5) * 16);
+    const r = R(x + ww / 2 + (hash2(i, 7) - 0.5) * 16);
+    ctx.fillRect(l, R(y + k * h), Math.max(1, r - l), rh);
   }
 }
 
@@ -1641,8 +1647,8 @@ BEATS.push({
     [3.95, 'you', 'Watch this!'],
   ],
   anchor(who) {
-    if (who === 'mom') return [A.mom.x - 16, A.mom.y - 30, 1];
-    return [A.you.x + 12, A.you.y - 26, 1];
+    if (who === 'mom') return [A.mom.x + 26, A.mom.y - 30, 1];
+    return [A.you.x + 24, A.you.y - 26, 1];
   },
   enter() {
     A.dad = actor(MAN.dad, 112, 158, { beat: 0.95, tailAmp: 0.20 });
@@ -1656,7 +1662,7 @@ BEATS.push({
   },
   update(dt, bt) {
     Intro.scroll += 11 * dt;
-    for (const k of ['dad', 'mom', 'you', 'bro']) { swim(A[k], dt); bounce(A[k], dt); A[k].blink = Intro.blink; }
+    for (const k of ['dad', 'mom', 'you', 'bro']) { swim(A[k], dt); bounce(A[k], dt); }
     // her father, cruising the far side of the meadow
     A.dad.x += 7 * dt;
     A.dad.y = 158 + Math.sin(bt * 0.46) * 7;
@@ -1670,8 +1676,8 @@ BEATS.push({
     const hug = ss2(clamp((bt - 1.70) / 1.45, 0, 1));
     const out = ss2(clamp((bt - 3.55) / 1.00, 0, 1));
     const hx = lerp(330, 380, hug), hy = lerp(240, 250, hug);
-    A.you.x = lerp(hx, 296, out) + Math.sin(bt * 0.72) * 3;
-    A.you.y = lerp(hy, 212, out) + Math.sin(bt * 1.05) * 4;
+    A.you.x = lerp(hx, 298, out) + Math.sin(bt * 0.72) * 3;
+    A.you.y = lerp(hy, 252, out) + Math.sin(bt * 1.05) * 4;
     const roll = clamp((bt - 4.35) / 1.15, 0, 1);
     A.you.rot = Math.sin(bt * 1.05 + 1) * 0.09 + TAU * ss2(roll);
     A.you.beat = lerp(1.7, 5.2, Math.sin(clamp(roll, 0, 1) * Math.PI));
@@ -1710,7 +1716,7 @@ BEATS.push({
     drawManatee(ctx, A.bro, Intro.t);
     FX.render(ctx);
     foreground(ctx, { grade: 'lagoon', scroll: Intro.scroll, t: Intro.t, bedY: 302 });
-    titleCard(ctx, clamp((bt - 0.35) / 6.2, 0, 1), bt);
+    titleCard(ctx, clamp((bt - 0.35) / 5.4, 0, 1), bt);
   },
 });
 
@@ -1722,8 +1728,8 @@ BEATS.push({
     [3.35, 'you', 'Mama!'],
   ],
   anchor(who) {
-    if (who === 'mom') return [A.mom.x - 62, A.mom.y - 26, 1];
-    return [A.you.x + 10, A.you.y - 28, 1];
+    if (who === 'mom') return [A.mom.x + 26, A.mom.y - 42, 1];
+    return [A.you.x + 22, A.you.y - 28, 1];
   },
   enter() {
     SC.surfY = 96; SC.boatX = 454; SC.boatY = 96; SC.propA = 0; SC.far = -140;
@@ -1741,7 +1747,7 @@ BEATS.push({
     SC.propA += dt * 30;
     SC.far += 26 * dt;
     engine(dt, clamp(bt * 0.8, 0, 1)); churnSound(dt, 0.7);
-    for (const k of ['dad', 'mom', 'you', 'bro']) { swim(A[k], dt); bounce(A[k], dt); A[k].blink = Intro.blink; }
+    for (const k of ['dad', 'mom', 'you', 'bro']) { swim(A[k], dt); bounce(A[k], dt); }
     const look = ss(clamp(bt / 0.9, 0, 1));
     A.dad.exp = bt > 0.5 ? 'wide' : 'calm';
     A.bro.exp = bt > 0.5 ? 'wide' : 'calm';
@@ -1826,12 +1832,11 @@ BEATS.push({
   update(dt, bt) {
     Intro.scroll += 7 * dt;
     swim(A.you, dt); bounce(A.you, dt);
-    A.you.blink = Intro.blink;
     // she settles, slowly, the way something gives up settles
     const sink = ss(clamp(bt / 2.6, 0, 1));
     A.you.x = 302 + Math.sin(bt * 0.34) * 5;
     A.you.y = lerp(198, 222, sink) + Math.sin(bt * 0.62) * 3;
-    A.you.rot = smooth(A.you.rot, 0.10 * (1 - sink) + 0.03, 3, dt);
+    A.you.rot = smooth(A.you.rot, bt > 3.2 ? -0.06 : 0.10 * (1 - sink) + 0.03, 3, dt);
     // one slow bubble off her cheek: the only tear this cinematic gets
     if (bt > 1.15 && bt < 2.5 && Math.random() < 1.3 * dt) FX.bubble(A.you.x + 30, A.you.y - 10, 1, 0.35);
     if (!SC.splash && bt >= 2.62) {
@@ -1845,7 +1850,9 @@ BEATS.push({
     const dive = clamp((bt - 2.62) / 1.15, 0, 1), e = outCube(dive);
     SC.ot.x = lerp(474, 394, e);
     SC.ot.y = lerp(SC.surfY - 6, 190, e);
-    SC.ot.rot = TAU * 1.5 * (1 - (1 - dive) * (1 - dive)) * (dive < 1 ? 1 : 0) + (dive >= 1 ? Math.sin(bt * 2.2) * 0.08 : 0);
+    // two WHOLE turns, eased out: landing on a multiple of TAU means the
+    // spin ends where the idle bob begins, with no half-turn snap between
+    SC.ot.rot = TAU * 2 * outCube(dive) + Math.sin(bt * 2.2) * 0.08 * dive;
     SC.ot.phase += dt * (dive < 1 ? 7 : 2.0);
     if (dive > 0 && dive < 1 && Math.random() < 40 * dt) FX.bubble(SC.ot.x + rand(-6, 6), SC.ot.y + rand(-6, 6), 1, 2.2);
     if (!SC.landed && dive >= 1) {
@@ -1856,13 +1863,11 @@ BEATS.push({
       if (typeof Audio_ !== 'undefined') Audio_.tone(700, 0.08, 'triangle', 0.06, 260);
     }
     bounce(SC.ot, dt);
-    SC.ot.blink = Intro.blink;
     SC.ot.exp = talking('otter') ? 'talk' : dive < 1 ? 'surprised' : 'happy';
     SC.ot.armNear = 0.9 + Math.sin(SC.ot.phase * 1.2) * 0.30;
     SC.ot.armFar = -0.9 - Math.sin(SC.ot.phase * 1.1) * 0.24;
     // she looks up at him
-    A.you.exp = bt > 2.7 ? (bt > 3.3 ? 'wide' : 'wide') : 'sad';
-    if (bt > 3.2) A.you.rot = smooth(A.you.rot, -0.06, 3, dt);
+    A.you.exp = bt > 2.68 ? 'wide' : 'sad';
   },
   render(ctx) {
     backdrop(ctx, { mood: 'lagoon', grade: 'noon', scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 306, shafts: 1, causticBed: true });
@@ -1882,11 +1887,11 @@ BEATS.push({
     [0.45, 'otter', 'Hey. Deep breath. In, out.'],
     [2.55, 'you', 'They took my family.'],
     [4.30, 'otter', 'Boats? I rob boats for fun.'],
-    [6.35, 'otter', 'Come on. We get them back.'],
+    [6.35, 'otter', 'Come on. Let\'s go get them.'],
   ],
   anchor(who) {
     if (who === 'otter') return [SC.ot.x + 4, SC.ot.y - 38, 1];
-    return [A.you.x + 16, A.you.y - 30, 1];
+    return [A.you.x + 34, A.you.y - 28, 1];
   },
   enter() {
     A.you = actor(MAN.youBig, 234, 226, { beat: 0.9, exp: 'sad', tailAmp: 0.14, blush: true });
@@ -1897,7 +1902,6 @@ BEATS.push({
   update(dt, bt) {
     Intro.scroll += 9 * dt;
     swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
-    A.you.blink = Intro.blink; SC.ot.blink = Intro.blink;
     A.you.x = smooth(A.you.x, 234, 3, dt) + Math.sin(bt * 0.5) * 0.4;
     A.you.y = 226 + Math.sin(bt * 0.66) * 4;
     A.you.rot = smooth(A.you.rot, bt > 6.6 ? -0.10 : 0.04, 3, dt);
@@ -1956,11 +1960,11 @@ BEATS.push({
   name: 'together', dur: 7.0,
   talk: [
     [0.85, 'you', 'Okay.'],
-    [2.30, 'otter', 'THAT is the spirit. Onwards!'],
+    [2.30, 'otter', 'THAT\'S the spirit! Onwards!'],
   ],
   anchor(who) {
-    if (who === 'otter') return [SC.ot.x + 8, SC.ot.y - 34, 1];
-    return [A.you.x - 18, A.you.y - 32, 1];
+    if (who === 'otter') return [SC.ot.x + 6, SC.ot.y - 34, 1];
+    return [A.you.x + 40, A.you.y - 24, 1];
   },
   enter() {
     A.you = actor(MAN.youBig, 250, 214, { beat: 1.3, exp: 'calm', tailAmp: 0.30, blush: true });
@@ -1971,7 +1975,6 @@ BEATS.push({
   },
   update(dt, bt) {
     swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
-    A.you.blink = Intro.blink; SC.ot.blink = Intro.blink;
     // he climbs aboard, then they go
     const land = ss2(clamp(bt / 1.25, 0, 1));
     const ride = [A.you.x + 4, A.you.y - 21];
@@ -2010,8 +2013,12 @@ BEATS.push({
     drawSchool(ctx, SC.sch2, Intro.t, Intro.dt);
     if (SC.spd > 70) {
       const a = clamp((SC.spd - 70) / 250, 0, 1);
-      speedLines(ctx, A.you.x - 86, A.you.y, R(8 + a * 14), R(34 + a * 54), -1, rgbaq('#f2fdff', 0.24 + a * 0.36), 7);
-      speedLines(ctx, A.you.x - 130, A.you.y, R(5 + a * 8), R(26 + a * 40), -1, rgbaq('#bfeeff', 0.14 + a * 0.24), 21);
+      // speedLines lays its streaks out off a fixed hash, so anchoring them
+      // to a stationary actor pinned them to the screen.  They are towed
+      // backwards through a wrap now, and actually stream.
+      const w1 = (Intro.t * 340) % 74, w2 = (Intro.t * 250) % 58;
+      speedLines(ctx, A.you.x - 84 - w1, A.you.y, R(8 + a * 14), R(34 + a * 54), -1, rgbaq('#f2fdff', 0.24 + a * 0.36), 7);
+      speedLines(ctx, A.you.x - 40 - w2, A.you.y, R(5 + a * 8), R(26 + a * 40), -1, rgbaq('#bfeeff', 0.14 + a * 0.24), 21);
     }
     drawManatee(ctx, A.you, Intro.t);
     drawCapOtter(ctx, SC.ot, Intro.t);
@@ -2023,12 +2030,11 @@ BEATS.push({
 // ============================================================== THE  INTRO =
 const Intro = {
   t: 0, bt: 0, dt: 1 / 60, beat: 0, done: false,
-  scroll: 0, shake: 0, fade: 0, fadeCol: '#fff3d6', grace: 0.35, blink: false, blinkT: 2,
+  scroll: 0, shake: 0, fade: 0, fadeCol: '#fff3d6', grace: 0.35,
   reset() {
     buildIntroArt();
     this.t = 0; this.bt = 0; this.dt = 1 / 60; this.beat = 0; this.done = false;
     this.scroll = 0; this.shake = 0; this.fade = 0; this.grace = 0.4;
-    this.blink = false; this.blinkT = 2;
     sndT = 0; sndT2 = 0;
     FX.clear();
     sayReset();
@@ -2051,8 +2057,6 @@ const Intro = {
     if (!BUILT) { buildIntroArt(); if (!BUILT) { this.done = true; return; } if (BEATS[this.beat].enter) BEATS[this.beat].enter(); }
     if (dt > 1 / 20) dt = 1 / 20;
     this.dt = dt; this.t += dt; this.bt += dt; this.grace -= dt;
-    this.blinkT -= dt;
-    if (this.blinkT <= 0) { this.blink = !this.blink; this.blinkT = this.blink ? 0.10 : rand(1.6, 4.6); }
     // Nothing hurries the cinematic: no skip, no beat advance. It plays through.
     // It reads no input at all -- game.js holds the only way past it.
     this.shake = Math.max(0, this.shake - dt * 30);
