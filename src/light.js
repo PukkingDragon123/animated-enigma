@@ -111,10 +111,11 @@ const Light = {
     this._bctx = this._buf.getContext('2d');
     this._bctx.imageSmoothingEnabled = false;
     this._img = this._bctx.createImageData(LW, LH);
-    // A plain Uint8Array view of the SAME memory. ImageData.data is
-    // Uint8ClampedArray, and the clamp is paid on every one of the 57600
-    // writes a frame; the loop below already guarantees 0..255, so the clamp
-    // is pure overhead. Same buffer, so putImageData still sees the writes.
+    // A plain Uint8Array view of the SAME memory. ImageData.data is a
+    // Uint8ClampedArray and the clamp is paid on all four writes of every cell,
+    // every frame. Every term the loop sums is non-negative and it caps at 255
+    // itself, so the clamp is pure overhead. Same buffer underneath, so
+    // putImageData still sees the writes.
     this._d = new Uint8Array(this._img.data.buffer);
 
     // point-light accumulators: alpha, and colour premultiplied by it
@@ -124,7 +125,7 @@ const Light = {
     this._row = new Float32Array(this._rowN);   // the field, so sample at half rate
 
     // 1/A for a quantized A, so the un-premultiply in the compose costs a
-    // table read instead of a divide, fourteen thousand times a frame.
+    // table read rather than a divide in every cell of every frame.
     this._RCP = new Float32Array(65); this._AB = new Uint8Array(65);
     for (let k = 1; k <= 64; k++) { this._RCP[k] = 64 / k; this._AB[k] = Math.min(255, (k * 255 / 64) | 0); }
     // posterize-in-fives as a table. Doing it as (v/5|0)*5 is three integer
@@ -517,9 +518,11 @@ const Light = {
           if (ba > 0) { al = ba; lr = bncR[b] * ba; lg = bncG[b] * ba; lb = bncB[b] * ba; }
 
           // --- surface caustics, playing over EVERYTHING, not just sand ---
-          // Three warped sine fields posterized into four steps: the same
-          // construction water.js uses on the seabed, one scale coarser, so
-          // the two read as the same sun coming through the same swell.
+          // Three warped sine fields cut into two hard steps and nothing: the
+          // same construction water.js uses on the seabed, at about half its
+          // frequency, so the two read as the same sun through the same swell.
+          // Two sparse steps, not three -- a third step covered most of the
+          // frame and turned the dapple into an even wash.
           const ca = cstA[b];
           if (ca > 0) {
             const s3 = S[(q3 | 0) & M];
