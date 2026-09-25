@@ -158,6 +158,19 @@ const Light = {
 
   BAYER: [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5],
 
+  // Spatial frequencies of the two animated fields, in radians per world unit.
+  // c* are the three warped sine fields the caustics are built from, at roughly
+  // half water.js's own caustic frequency -- this is surface lensing seen from
+  // above over a wide area, not the fine pattern thrown on the sand. s* are the
+  // shafts: nearly vertical, tilting as they go down.
+  FREQ: {
+    c1x: 0.0400, c1y: 0.0400,
+    c2x: -0.0310, c2y: 0.0438,
+    c3x: 0.0156, c3y: -0.0136,
+    s1x: 0.0112, s1y: 0.0047,
+    s2x: 0.0271, s2y: 0.0101,
+  },
+
   // ---- colour ladders, derived from whatever water.js currently is -------
   // Re-baked if the ocean's palette is ever rebuilt, the same way wildlife.js
   // rederives from Ocean.visLUT rather than carrying its own copy.
@@ -219,6 +232,15 @@ const Light = {
       this._sunR[b] = q(c[0] * 1.15 + 150 - dd * 46);
       this._sunG[b] = q(c[1] * 1.15 + 120);
       this._sunB[b] = q(c[2] * 1.15 + 96 + dd * 34);
+    }
+    // Anything that cannot move the output by a single level is not worth the
+    // sine lookups it would cost. Zeroing those entries means the caustic and
+    // shaft blocks are skipped outright over deep water, which is most of the
+    // frame in most of the fighting.
+    for (let b = 0; b < 16; b++) {
+      if (this._cstA[b] < 0.006) this._cstA[b] = 0;
+      if (this._shfA[b] < 0.006) this._shfA[b] = 0;
+      if (this._bncA[b] < 0.004) this._bncA[b] = 0;
     }
     // the corners fall off toward the bottom of the ramp, not toward black:
     // this sea never bottoms out at black and neither should the vignette
@@ -329,18 +351,19 @@ const Light = {
   // Hand-rasterized into the field: three hard bands, no arc(), no gradient.
   // There is a cell budget, so a screen full of explosions costs about what two
   // cost -- the same bargain particles.js strikes with its gore.
-  _splat(L, wx0, wy0, wpc) {
+  _splat(L, wx0, wy0, wpcX, wpcY) {
     if (!L.length) return false;
     const LW = this.LW, LH = this.LH;
     const pA = this._pA, pR = this._pR, pG = this._pG, pB = this._pB;
-    const inv = 1 / wpc;                    // world units -> cells
+    const ivx = 1 / wpcX, ivy = 1 / wpcY;   // world units -> cells, per axis
     let budget = 26000, any = false;
     if (L.length > 1) L.sort((a, b) => b.a * b.w - a.a * a.w);
     for (let i = 0; i < L.length; i++) {
       const l = L[i]; if (l.a <= 0.004 || l.r <= 0) continue;
-      const cx = (l.x - wx0) * inv, cy = (l.y - wy0) * inv, cr = l.r * inv;
+      const cx = (l.x - wx0) * ivx, cy = (l.y - wy0) * ivy, cr = l.r * ivx;
+      const cry = l.r * ivy;
       let x0 = Math.floor(cx - cr), x1 = Math.ceil(cx + cr);
-      let y0 = Math.floor(cy - cr), y1 = Math.ceil(cy + cr);
+      let y0 = Math.floor(cy - cry), y1 = Math.ceil(cy + cry);
       if (x1 < 0 || y1 < 0 || x0 >= LW || y0 >= LH) continue;
       if (x0 < 0) x0 = 0;
       if (y0 < 0) y0 = 0;
@@ -349,9 +372,9 @@ const Light = {
       const cells = (x1 - x0) * (y1 - y0); if (cells <= 0) continue;
       budget -= cells; if (budget < 0) break;
       any = true;
-      const r2 = cr * cr, la = l.a, lr = l.R, lg = l.G, lb = l.B;
+      const r2 = cr * cr, sq = cr / cry, la = l.a, lr = l.R, lg = l.G, lb = l.B;
       for (let y = y0; y < y1; y++) {
-        const dy = y + 0.5 - cy, dy2 = dy * dy;
+        const dy = (y + 0.5 - cy) * sq, dy2 = dy * dy;
         let idx = y * LW + x0;
         for (let x = x0; x < x1; x++, idx++) {
           const dx = x + 0.5 - cx;
@@ -420,7 +443,7 @@ const Light = {
     pA.fill(0); pR.fill(0); pG.fill(0); pB.fill(0);
     const prof = this.profile, C = this.cost;
     let T0 = prof ? performance.now() : 0, T1;
-    const lit = this._splat(this._gather(G, t), wx0, wy0, wpcX);
+    const lit = this._splat(this._gather(G, t), wx0, wy0, wpcX, wpcY);
     if (prof) { T1 = performance.now(); C.lights = T1 - T0; T0 = T1; }
 
     // ---- the field -------------------------------------------------------
@@ -443,10 +466,15 @@ const Light = {
     const hx = pl ? (pl.x - wx0) / wpcX : -9999, hy = pl ? (pl.y - wy0) / wpcY : -9999;
     const hr2 = 26 * 26, heroK = (pl && !pl.dead) ? this.HERO : 0;
 
-    // caustic and shaft phase steps, built the way water.js builds its own so
-    // the two fields drift together instead of beating against each other
-    const e1 = 0.0400 * wpcX * SK, e2 = -0.0310 * wpcX * SK, e3 = 0.0156 * wpcX * SK;
-    const g1 = 0.0112 * wpcX * SK, h1 = 0.0271 * wpcX * SK;
+    // Caustic and shaft frequencies, built the way water.js builds its own so
+    // the two fields drift together instead of beating against each other.
+    // Each one is used twice -- once as the row's starting phase, once as the
+    // per-cell step -- so they live in one place: if the pair ever drifts the
+    // field shears diagonally, which is nearly invisible and impossible to
+    // reason about afterwards.
+    const F = this.FREQ;
+    const e1 = F.c1x * wpcX * SK, e2 = F.c2x * wpcX * SK, e3 = F.c3x * wpcX * SK;
+    const g1 = F.s1x * wpcX * SK, h1 = F.s2x * wpcX * SK;
     const swell = Math.sin(t * 0.23) * 0.9;
 
     let p = 0;
@@ -455,11 +483,11 @@ const Light = {
       const land = wy < shore - 10;
       if (!land) oc.fillRow(row, oc.depth, wy, wx0, rowN, wpcX * 2);
       // per-row phases: x is stepped inside the loop, y is folded in here
-      let q1 = (wx0 * 0.0400 + wy * 0.0400 + t * 0.74) * SK;
-      let q2 = (-wx0 * 0.0310 + wy * 0.0438 - t * 0.61) * SK;
-      let q3 = (wx0 * 0.0156 - wy * 0.0136 + t * 0.35) * SK;
-      let r1 = (wx0 * 0.0112 + (wy - shore) * 0.0047 + t * 0.085 + swell) * SK;
-      let r2 = (wx0 * 0.0271 + (wy - shore) * 0.0101 - t * 0.052) * SK;
+      let q1 = (wx0 * F.c1x + wy * F.c1y + t * 0.74) * SK;
+      let q2 = (wx0 * F.c2x + wy * F.c2y - t * 0.61) * SK;
+      let q3 = (wx0 * F.c3x + wy * F.c3y + t * 0.35) * SK;
+      let r1 = (wx0 * F.s1x + (wy - shore) * F.s1y + t * 0.085 + swell) * SK;
+      let r2 = (wx0 * F.s2x + (wy - shore) * F.s2y - t * 0.052) * SK;
       const bry = (cy & 3) * 4;
       const rowBase = cy * LW;
 
