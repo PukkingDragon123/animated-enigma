@@ -1301,9 +1301,9 @@ function buildManateeSideBody(hurt) {
     const hgt = y1 - y0;
     for (let y = y0 + 1; y < y1; y++) {
       const k = (y - y0) / hgt;
-      if (k < 0.52) continue;
-      if (k < 0.62) { if (hash2(x * 3, y * 5) > (k - 0.52) * 10) continue; px(ctx, CPAL.belly, x, y); continue; }
-      px(ctx, k > 0.92 ? '#8b98a8' : k > 0.78 ? '#b2c0cf' : CPAL.belly, x, y);
+      if (k < 0.58) continue;
+      if (k < 0.66) { if (hash2(x * 3, y * 5) > (k - 0.58) * 12) continue; px(ctx, CPAL.belly, x, y); continue; }
+      px(ctx, k > 0.93 ? '#8b98a8' : k > 0.80 ? '#b2c0cf' : CPAL.belly, x, y);
     }
     px(ctx, CPAL.manL, x, y0 + 1);          // one lit row along the back and
     px(ctx, CPAL.out2, x, y1);              // one dark keel, so she turns
@@ -1415,26 +1415,27 @@ function buildManateeSideBody(hurt) {
 //  and not a leaf. `bitten` cuts a chunk out of the trailing edge and packs
 //  meat behind the raw rim; without it the trailing edge is whole, because
 //  the natural edge of a fluke is not a wound and must not be inked like one.
-const MFLUKE_W = 30, MFLUKE_H = 26;
+const MFLUKE_W = 28, MFLUKE_H = 24;
 function buildSideFluke(bitten) {
-  const W = MFLUKE_W, H = MFLUKE_H, cy = 13;
+  const W = MFLUKE_W, H = MFLUKE_H, cy = 12;
   const f = blobField(W, H, [
-    { x: 28, y: cy,     rx: 4.0, ry: 3.6 },   // the stock, where it meets her
-    { x: 23, y: cy,     rx: 5.5, ry: 6.0 },
-    { x: 17, y: cy,     rx: 7.0, ry: 9.6 },
-    { x: 10, y: cy,     rx: 8.0, ry: 12.0 },  // the paddle
-    { x: 4,  y: cy,     rx: 6.0, ry: 11.0 },
-    { x: 1,  y: cy,     rx: 3.5, ry: 8.6 },
+    { x: 26, y: cy, rx: 3.5, ry: 3.2 },   // the stock, where it meets her
+    { x: 21, y: cy, rx: 5.0, ry: 5.4 },
+    { x: 15, y: cy, rx: 6.5, ry: 8.4 },
+    { x: 9,  y: cy, rx: 7.0, ry: 10.2 },  // the paddle
+    { x: 4,  y: cy, rx: 5.5, ry: 9.4 },
+    { x: 1,  y: cy, rx: 3.0, ry: 7.0 },
   ]);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man], { outline: CPAL.out, lift: 0.16, smooth: 2, contrast: 0.7 });
-  // two long creases fanning out of the stock, the way the flesh folds
-  for (let i = -1; i <= 1; i += 2) for (let x = 4; x < 24; x++) {
-    const y = cy + i * 4 + Math.round((24 - x) * i * 0.22);
-    if (y > 0 && y < H && f[y * W + x] > 0.06) px(ctx, CPAL.manDD, x, y);
+  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manD, CPAL.man, CPAL.manL], { outline: CPAL.out, lift: 0.26, smooth: 3, contrast: 0.62 });
+  const has = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0.05;
+  // four creases fanning out of the stock, the way the flesh of a fluke folds
+  for (const sl of [-0.26, 0.26]) for (let x = 6; x < 22; x++) {
+    const y = cy + Math.round((22 - x) * sl);
+    if (has(x, y) && has(x, y + 2) && has(x, y - 2)) px(ctx, CPAL.manD, x, y);
   }
   // the trailing edge catches the light all the way round
-  for (let y = 2; y < H - 2; y++) for (let x = 0; x < 5; x++) {
-    if (f[y * W + x] > 0.02 && (x === 0 || f[y * W + x - 1] <= 0.02)) { px(ctx, CPAL.manL, x, y); break; }
+  for (let y = 1; y < H - 1; y++) for (let x = 0; x < 6; x++) {
+    if (has(x, y)) { px(ctx, CPAL.manL, x, y); break; }
   }
   if (!bitten) return spriteFrom(c, W - 3, cy);
   // ---- a chunk out of the trailing edge. The field `f` is what says where
@@ -1449,7 +1450,7 @@ function buildSideFluke(bitten) {
       f[y * W + x] = 0; ctx.clearRect(x, y, 1, 1);
     }
   };
-  bit(2, 6, 4.2);                       // one clean bite, not a serrated edge
+  bit(2, 5, 4.0);                       // one clean bite, not a serrated edge
   for (let y = 0; y < H; y++) for (let x = 0; x < 14; x++) {
     if (f[y * W + x] <= 0) continue;
     const wasCut = (qx, qy) => qx >= 0 && qy >= 0 && qx < W && qy < H && cut[qy * W + qx];
@@ -1468,23 +1469,24 @@ function buildSideFluke(bitten) {
 //  barrel strapped under her chin. `dark` is the far one, one band back.
 function buildSideFlipper(dark) {
   const W = 16, H = 10;
-  // Short, round and BLUNT, held in hide tones: the old one ramped down into
-  // the near-blacks and, hanging under her chin, read as a gun barrel. The
-  // root is at (2,4) -- the shoulder -- and the paddle sweeps down and aft.
+  // Small, round and BLUNT, and outlined in her own darkest HIDE instead of
+  // the universal near-black: the old one was a hard-edged 16-long slab in
+  // near-blacks and, hanging across her pale belly, read as a gun barrel
+  // strapped under her chin. The root is at (2,4) -- the shoulder.
   const f = blobField(W, H, [
-    { x: 3,  y: 4, rx: 3.0, ry: 3.8 },
-    { x: 6,  y: 5, rx: 3.4, ry: 4.0 },
-    { x: 9,  y: 6, rx: 3.2, ry: 3.4 },
-    { x: 11, y: 7, rx: 2.4, ry: 2.6 },
+    { x: 3,   y: 4,   rx: 2.8, ry: 3.4 },
+    { x: 5.5, y: 4.6, rx: 3.0, ry: 3.4 },
+    { x: 8,   y: 5.4, rx: 2.8, ry: 2.9 },
+    { x: 10,  y: 6,   rx: 2.0, ry: 2.2 },
   ]);
-  const ramp = dark ? [CPAL.manDD, CPAL.manD, CPAL.man] : [CPAL.manD, CPAL.man, CPAL.manL];
-  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: CPAL.out, lift: 0.34, smooth: 2, contrast: 0.58 });
-  const has = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0.02;
-  // the shoulder end takes the light; the leading edge keeps a lit lip
-  for (let y = 1; y < H - 1; y++) if (has(2, y)) px(ctx, dark ? CPAL.man : CPAL.manLL, 2, y);
-  for (let x = 3; x < 11; x++) for (let y = 0; y < H; y++) if (has(x, y)) { px(ctx, dark ? CPAL.manD : CPAL.manL, x, y); break; }
-  // three little nails on the tip, the way a manatee's flipper ends
-  if (!dark) for (let i = 0; i < 3; i++) { const x = 10 + (i & 1), y = 5 + i; if (has(x, y)) px(ctx, CPAL.bone, x, y); }
+  const ramp = dark ? [CPAL.manDD, CPAL.manD, CPAL.manD] : [CPAL.manD, CPAL.man, CPAL.manL];
+  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: dark ? CPAL.out2 : CPAL.manDD, lift: 0.34, smooth: 2, contrast: 0.56 });
+  const has = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0.04;
+  // the leading edge keeps a lit lip all the way to the tip
+  for (let x = 2; x < 12; x++) for (let y = 0; y < H; y++) if (has(x, y)) { px(ctx, dark ? CPAL.manD : CPAL.manL, x, y); break; }
+  // one hint of the nails on the tip. Three bone-white pixels here is all it
+  // took to make a flipper read as a machined part at her actual screen size.
+  if (!dark && has(10, 6)) px(ctx, CPAL.manLL, 10, 6);
   return spriteFrom(c, 2, 4);
 }
 // ---- the side-on set -------------------------------------------------------
@@ -1512,7 +1514,7 @@ function buildManateeSideSet() {
     // anchors, in sprite-local world units (0,0 = her centre)
     eye: [81 - MSIDE_CX, 16 - MSIDE_CY],
     mouth: [91 - MSIDE_CX, 26 - MSIDE_CY],
-    tailX: 8 - MSIDE_CX, shoX: 73 - MSIDE_CX, shoY: 30 - MSIDE_CY,
+    tailX: 8 - MSIDE_CX, shoX: 73 - MSIDE_CX, shoY: 27 - MSIDE_CY,
     len: MSIDE_W,
   };
 }
@@ -1634,12 +1636,13 @@ function buildOtterStand(peg) {
   //      Written as a row loop rather than a stamp so the shank can actually
   //      taper into the ankle instead of being a rectangle with a foot on it.
   const hindLeg = (hx, far) => {
-    const mid = far ? CPAL.furDD : CPAL.furD;
-    const lit = far ? CPAL.furD  : CPAL.fur;
-    const hi  = far ? CPAL.furD  : CPAL.furL;
+    const mid = far ? '#57270f'  : CPAL.furD;    // the far leg is a band and a
+    const lit = far ? CPAL.furDD : CPAL.fur;     // half darker than the near
+    const hi  = far ? CPAL.furD  : CPAL.furL;    // one, or the pair reads as
+    const toe = far ? '#57270f'  : CPAL.creamD;  // one leg and its own shadow
     for (let y = 26; y <= 37; y++) {
       const k = (y - 26) / 11;
-      const hw = Math.round(4 - k * 1.7);             // haunch 4 -> ankle 2
+      const hw = Math.round(4 - k * 1.9);             // haunch 4 -> ankle 2
       const cxl = hx + 3 + Math.round(k * 1.2);       // and it drifts forward
       const x0 = cxl - hw, w = hw * 2;
       px(ctx, CPAL.out, x0, y, w, 1);
@@ -1648,14 +1651,15 @@ function buildOtterStand(peg) {
       if (y < 31 && w > 5) px(ctx, hi, x0 + 2, y, 2, 1);
     }
     px(ctx, CPAL.furDD, hx + 1, 31, 5, 1);            // the knee
-    // the webbed foot, flat on the ground with the toes forward
-    const fy = 38;
-    px(ctx, CPAL.out, hx - 2, fy, 13, 6);
-    px(ctx, mid, hx - 1, fy + 1, 11, 4);
-    px(ctx, lit, hx - 1, fy + 1, 9, 2);
-    px(ctx, CPAL.furDD, hx - 1, fy + 4, 11, 1);       // the sole, in its own shadow
-    for (let i = 0; i < 4; i++) px(ctx, CPAL.out, hx + 2 + i * 2, fy + 1, 1, 3);
-    if (!far) for (let i = 0; i < 4; i++) px(ctx, CPAL.creamD, hx + 3 + i * 2, fy + 1, 1, 1);
+    // the webbed foot, flat on the ground with the toes forward. The far one
+    // is shorter and set back, so the two do not merge into one wide slab.
+    const fy = 38, fx = far ? hx - 4 : hx - 2, fw = far ? 11 : 13;
+    px(ctx, CPAL.out, fx, fy, fw, 6);
+    px(ctx, mid, fx + 1, fy + 1, fw - 2, 4);
+    px(ctx, lit, fx + 1, fy + 1, fw - 4, 2);
+    px(ctx, CPAL.furDD, fx + 1, fy + 4, fw - 2, 1);   // the sole, in its own shadow
+    for (let i = 0; i < 4; i++) px(ctx, CPAL.out, fx + 4 + i * 2, fy + 1, 1, 3);
+    for (let i = 0; i < 4; i++) px(ctx, toe, fx + 5 + i * 2, fy + 1, 1, 1);
   };
   hindLeg(11, true);                                  // the far one, a band back
   if (peg) {

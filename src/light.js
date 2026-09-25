@@ -80,10 +80,11 @@ const Light = {
   LW: 160, LH: 90,
 
   FOG: 0.30,      // how far the deep end pulls the frame toward its own water
-  BOUNCE: 0.150,  // warm light the sand shelf throws back up at everything
-  CAUST: 0.115,   // surface caustics playing over the top of everything
-  SHAFT: 0.052,   // broad shafts coming down off the swell
-  VIG: 0.28,      // corner falloff
+  BOUNCE: 0.060,  // warm light the sand shelf throws back up at everything
+  CAUST: 0.100,   // surface caustics playing over the top of everything
+  SHAFT: 0.045,   // broad shafts coming down off the swell
+  VIG: 0.22,      // corner falloff
+  PMAX: 0.45,     // a ceiling on point light, so a flash can never flatten the frame
   LAND: 0.105,    // direct sun on the village, above the waterline
   HERO: 0.45,     // how much of the depth push the hero is spared, so she reads
 
@@ -174,12 +175,15 @@ const Light = {
       this._fogR[b] = q(c[0] * dk * 0.80);      // red goes first, as absR does
       this._fogG[b] = q(c[1] * dk * 0.97);
       this._fogB[b] = q(c[2] * dk * 1.06);
-      // --- the shallow bounce: warm sand light carrying the band's own cast,
-      // so it never reads as a yellow filter laid over teal water.
+      // --- the shallow bounce: warm sand light carrying the band's own cast.
+      // The colour is THIS BAND'S WATER, opened up, with a warm push -- not a
+      // flat cream. Lerping toward a brightened version of the scene's own hue
+      // lifts value without bleaching it; lerping toward cream turns a lagoon
+      // into milk, which is what the first tuning of this did.
       this._bncA[b] = k * k * this.BOUNCE;
-      this._bncR[b] = q(171 + c[0] * 0.95);
-      this._bncG[b] = q(167 + c[1] * 0.62);
-      this._bncB[b] = q(141 + c[2] * 0.62);
+      this._bncR[b] = q(c[0] * 1.30 + 96);
+      this._bncG[b] = q(c[1] * 1.30 + 60);
+      this._bncB[b] = q(c[2] * 1.30 + 40);
       // --- caustics live where the surface can still focus light onto things
       this._cstA[b] = k * k * k * this.CAUST;
       // --- shafts read in the middle water: no room at the shore, no light
@@ -191,8 +195,10 @@ const Light = {
     // absR/absG/absB eat the warm end out of it on the way down
     this._sunR = new Float32Array(16); this._sunG = new Float32Array(16); this._sunB = new Float32Array(16);
     for (let b = 0; b < 16; b++) {
-      const dd = b / 15;
-      this._sunR[b] = q(255 - dd * 74); this._sunG[b] = q(250 - dd * 16); this._sunB[b] = q(219 + dd * 36);
+      const c = ramp[b], dd = b / 15;
+      this._sunR[b] = q(c[0] * 1.15 + 150 - dd * 46);
+      this._sunG[b] = q(c[1] * 1.15 + 120);
+      this._sunB[b] = q(c[2] * 1.15 + 96 + dd * 34);
     }
     // the corners fall off toward the bottom of the ramp, not toward black:
     // this sea never bottoms out at black and neither should the vignette
@@ -219,8 +225,8 @@ const Light = {
         const e = ex[i];
         const k = 1 - e.life / e.dur; if (k <= 0) continue;
         const kk = k * k;
-        L.push({ x: e.x, y: e.y, r: e.maxR * (1.5 + (1 - k) * 2.2) + 40,
-          R: 255, G: (210 + 40 * kk) | 0, B: (120 + 90 * kk) | 0, a: 0.62 * kk, w: 100 + e.maxR });
+        L.push({ x: e.x, y: e.y, r: e.maxR * (0.6 + (1 - k) * 0.9) + 10,
+          R: 255, G: (210 + 40 * kk) | 0, B: (120 + 90 * kk) | 0, a: 0.30 * kk, w: 100 + e.maxR });
       }
     }
 
@@ -243,8 +249,8 @@ const Light = {
       for (let j = 0; j < B.length && L.length < 14; j++) {
         const f = B[j]; if (f.w < 0.05) continue;
         const s = Math.min(1, f.w / 3.2);
-        L.push({ x: f.x / f.w, y: f.y / f.w, r: 60 + 92 * s,
-          R: 255, G: 186, B: 96, a: 0.20 + 0.30 * s, w: 60 * s });
+        L.push({ x: f.x / f.w, y: f.y / f.w, r: 14 + 22 * s,
+          R: 255, G: 186, B: 96, a: 0.08 + 0.14 * s, w: 60 * s });
       }
     }
 
@@ -255,13 +261,13 @@ const Light = {
       const mf = fl ? Math.max(fl.primary || 0, fl.sidearm || 0) : 0;
       if (mf > 0) {
         const k = Math.min(1, mf / 0.07), a = pl.aim || 0;
-        L.push({ x: pl.x + Math.cos(a) * 12, y: pl.y + Math.sin(a) * 12, r: 96,
-          R: 255, G: 244, B: 196, a: 0.46 * k, w: 90 });
+        L.push({ x: pl.x + Math.cos(a) * 12, y: pl.y + Math.sin(a) * 12, r: 22,
+          R: 255, G: 244, B: 196, a: 0.20 * k, w: 90 });
       }
       const af = pl.absorb ? pl.absorb.flash : 0;
       if (af > 0) {
         const k = Math.min(1, af / 0.25);
-        L.push({ x: pl.x, y: pl.y, r: 150, R: 190, G: 236, B: 255, a: 0.40 * k, w: 90 });
+        L.push({ x: pl.x, y: pl.y, r: 44, R: 190, G: 236, B: 255, a: 0.18 * k, w: 90 });
       }
     }
 
@@ -293,7 +299,7 @@ const Light = {
           const m = lamps[i];
           if (m.x < x0 || m.x > x1 || m.y < y0 || m.y > y1) continue;
           const f = 0.74 + 0.15 * Math.sin(t * 2.3 + m.ph) + 0.11 * Math.sin(t * 11.7 + m.ph * 3);
-          L.push({ x: m.x, y: m.y + 4, r: 34 * m.k, R: 255, G: 198, B: 118, a: 0.30 * f, w: 20 });
+          L.push({ x: m.x, y: m.y + 4, r: 16 * m.k, R: 255, G: 198, B: 118, a: 0.18 * f, w: 20 });
         }
       }
     }
@@ -331,8 +337,10 @@ const Light = {
           const dx = x + 0.5 - cx;
           const qq = 1 - (dx * dx + dy2) / r2;
           if (qq <= 0.05) continue;
-          // three hard steps, so the disc is banded pixel art and not a blur
-          const s = qq > 0.60 ? 1 : qq > 0.28 ? 0.58 : 0.24;
+          // four hard steps with a hot core, so the disc is banded pixel art
+          // and not a blur. At this cell size the steps land two or three cells
+          // apart, which is what makes them read as rings instead of a gradient.
+          const s = qq > 0.72 ? 1 : qq > 0.46 ? 0.62 : qq > 0.22 ? 0.34 : 0.14;
           const a = la * s;
           pA[idx] += a; pR[idx] += lr * a; pG[idx] += lg * a; pB[idx] += lb * a;
         }
@@ -401,7 +409,7 @@ const Light = {
     const cstA = this._cstA, shfA = this._shfA;
     const sunR = this._sunR, sunG = this._sunG, sunB = this._sunB;
     const vigR = this._vigR, vigG = this._vigG, vigB = this._vigB;
-    const VIG = this.VIG, LANDA = this.LAND;
+    const VIG = this.VIG, LANDA = this.LAND, PMAX = this.PMAX;
     const shore = oc.shoreY;
 
     // The hero keeps a bubble of clearer water around her: less of the depth
@@ -467,7 +475,7 @@ const Light = {
             const s1 = S[((q1 + s3 * 232) | 0) & M];
             const s2 = S[((q2 - s3 * 188) | 0) & M];
             const cv = s1 + s2 + s3 * 0.55;
-            const cl = cv > 1.92 ? 1 : cv > 1.44 ? 0.55 : cv > 0.92 ? 0.22 : 0;
+            const cl = cv > 1.92 ? 1 : cv > 1.50 ? 0.40 : 0;
             if (cl > 0) {
               const a = ca * cl;
               al += a; lr += sunR[b] * a; lg += sunG[b] * a; lb += sunB[b] * a;
@@ -492,7 +500,7 @@ const Light = {
           let pa = pA[i];
           if (pa > 0.002) {
             let sr = pR[i], sg = pG[i], sb = pB[i];
-            if (pa > 1) { const s = 1 / pa; sr *= s; sg *= s; sb *= s; pa = 1; }
+            if (pa > PMAX) { const s = PMAX / pa; sr *= s; sg *= s; sb *= s; pa = PMAX; }
             al += pa; lr += sr; lg += sg; lb += sb;
           }
         }

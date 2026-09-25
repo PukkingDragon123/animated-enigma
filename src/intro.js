@@ -775,7 +775,8 @@ function buildManatee(len, who) {
     // resampled, so it is painted live at whichever size the body came out.
     ek: len > 74 ? 3 : len > 34 ? 2 : 1,
     body: body, bodyScar: part(S.bodyScar), flashS: whiteMask(body),
-    fluke: part(S.fluke), flip: part(S.flip), flipFar: part(S.flipFar),
+    fluke: part(S.fluke), flukeScar: part(S.flukeScar || S.fluke),
+    flip: part(S.flip), flipFar: part(S.flipFar),
     eye: [S.eye[0] * k, S.eye[1] * k], mouth: [S.mouth[0] * k, S.mouth[1] * k],
     tailX: S.tailX * k, shoX: S.shoX * k, shoY: S.shoY * k,
   };
@@ -825,7 +826,11 @@ function drawManatee(ctx, m, t) {
   ctx.save(); ctx.translate(M.shoX - 5 * k, M.shoY - 4 * k); ctx.rotate(fa - 0.22);
   ctx.drawImage(M.flipFar.c, -M.flipFar.ax, -M.flipFar.ay); ctx.restore();
   ctx.save(); ctx.translate(M.tailX, 0); ctx.rotate(Math.sin(ph) * amp);
-  const fl = M.fluke; ctx.drawImage(fl.c, -fl.ax, -fl.ay); ctx.restore();
+  // Clean or marked, body and fluke go together: an animal nothing has
+  // happened to yet has a whole trailing edge on her tail as well as an
+  // unbroken hide, which is the cast's own rule (CH.side.flukeScar).
+  const fl = m.scarred ? M.flukeScar : M.fluke;
+  ctx.drawImage(fl.c, -fl.ax, -fl.ay); ctx.restore();
   const b = m.scarred ? M.bodyScar : M.body;
   ctx.drawImage(b.c, -b.ax, -b.ay);
   // The hit flash.  This used to composite 'source-atop' straight onto the
@@ -1408,7 +1413,7 @@ function drawNet(ctx, o) {
     pts.push(row);
   }
   const hole = o.hole;
-  const knot = '#a9bdb0', dk = '#2c3f38';
+  const knot = '#7e948a', dk = '#1d2b26';
   for (let j = 0; j <= N; j++) for (let i = 0; i < M; i++) {
     if (hole && j >= hole.j && j < hole.j + hole.h && i >= hole.i && i < hole.i + hole.w) continue;
     LN(ctx, (i & 1) ? knot : dk, R(pts[j][i][0]), R(pts[j][i][1]), R(pts[j][i + 1][0]), R(pts[j][i + 1][1]));
@@ -3127,7 +3132,7 @@ BEATS.push({
   name: 'raid', dur: 8.0,
   talk: [
     [0.50, 'mom', 'Under the reef! GO!'],
-    [2.60, 'bro', 'It missed me — RUN!'],
+    [2.60, 'bro', 'It missed me! RUN!'],
     [4.35, 'you', 'MAMA!'],
   ],
   anchor(who) {
@@ -3349,7 +3354,7 @@ BEATS.push({
     return [A.you.x + 22, A.you.y - 26, 1];
   },
   enter() {
-    SC.surfY = 132; SC.yX = -260; SC.yY = 132; SC.spot = 0; SC.gore = 0.44;
+    SC.surfY = 142; SC.yX = -260; SC.yY = 142; SC.spot = 0; SC.gore = 0.44;
     // she came out of the reef opened along the flank; he did not get touched
     A.you = actor(MAN.you, 240, 244, { beat: 2.4, exp: 'wide', scarred: true, tailAmp: 0.18 });
     A.you.wounds = [{ x: 5, y: -2, r: 3 }];
@@ -3438,7 +3443,7 @@ BEATS.push({
     [0.45, 'you', 'NET! GO DEEP!'],
     [3.10, 'you', 'Here! A tear!'],
     [5.00, 'bro', 'I can\'t fit!'],
-    [6.70, 'you', 'NO — HOLD ON!'],
+    [6.70, 'you', 'NO! HOLD ON!'],
   ],
   anchor(who) {
     if (who === 'bro') return [clamp(A.bro.x + 14, 70, 570), A.bro.y - 30, 1];
@@ -3545,7 +3550,7 @@ BEATS.push({
 BEATS.push({
   name: 'captured', dur: 8.0,
   talk: [
-    [0.30, 'you', 'What is that—'],
+    [0.30, 'you', 'What is THAT.'],
     [2.50, 'you', 'LET GO!'],
   ],
   anchor() { return [clamp(A.you.x + 16, 70, 570), A.you.y - 30, 1]; },
@@ -3729,7 +3734,7 @@ BEATS.push({
     for (let i = 0; i < 30; i++) looseAdd(SC.loose, { x: rand(20, 620), y: pileFrontTop(300) - 30, vx: rand(-16, 16), vy: rand(0, 40), r: rand(0, TAU), vr: rand(-4, 4), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
     A.you = actor(MAN.youBig, 286, 254, { beat: 0.6, exp: 'wide', tailAmp: 0.06, rot: 0.06, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
-    SC.manX = 560; SC.manY = 300; SC.manLook = 0;
+    SC.manX = 596; SC.manY = 326; SC.manLook = 0;
   },
   update(dt, bt) {
     swim(A.you, dt); bounce(A.you, dt);
@@ -3755,7 +3760,7 @@ BEATS.push({
     SC.clank = Math.max(0, SC.clank - dt * 5);
     // he comes up the hold to the bolt, and at the end he stops and looks in
     SC.reveal = clamp((bt - 4.5) / 0.7, 0, 1);
-    SC.manX = lerp(600, 546, ss(SC.reveal));
+    SC.manX = lerp(596, 530, ss(SC.reveal));
     SC.manLook = clamp((bt - 5.0) / 0.5, 0, 1);
   },
   render(ctx, bt) {
@@ -3765,29 +3770,24 @@ BEATS.push({
     looseRender(ctx, SC.loose);
     // the deck hand working the bolt, on the far side of the slats: a
     // silhouette, half swallowed by the boards, at the cast's own rig
-    if (bt > 1.6) {
+    if (bt > 1.4) {
       ctx.save();
-      ctx.globalAlpha = qa(0.40 + SC.reveal * 0.60);
+      // he is on the far side of the slats: he comes up out of them rather
+      // than standing in front of them, so the alpha climbs with the reveal
+      ctx.globalAlpha = qa(0.34 + SC.reveal * 0.58);
       const sw = Math.sin(bt * 5) * (1 - SC.manLook);
-      figure(ctx, SC.manX, SC.manY, 96, {
-        facing: -1, lean: 0.16 - SC.manLook * 0.30,
-        armA: 1.15 + sw * 0.45, foreA: 1.30 + sw * 0.50,
-        armB: 0.85, foreB: 1.05,
+      figure(ctx, SC.manX, SC.manY, 74, {
+        facing: -1, lean: 0.20 - SC.manLook * 0.34,
+        armA: 1.20 + sw * 0.50, foreA: 1.34 + sw * 0.55,
+        armB: 0.88, foreB: 1.08,
         legA: 0.34, legB: -0.36, kneeA: -0.10, kneeB: 0.12,
-        head: -0.24 - SC.manLook * 0.45,
-      }, '#0b0d12', '#2e3a4c');
+        head: -0.22 - SC.manLook * 0.52,
+      }, '#0b0d12', '#33415a');
+      // the bar in his fist, swinging until he stops and looks
+      ctx.translate(R(SC.manX - 23), R(SC.manY - 41));
+      ctx.rotate(1.05 + sw * 0.55);
+      P(ctx, '#0b0d12', -4, -2, 26, 5); P(ctx, '#46566f', -3, -1, 24, 3);
       ctx.restore();
-      // the bar in his fist
-      ctx.save(); ctx.translate(R(SC.manX - 26), R(SC.manY - 56));
-      ctx.rotate(1.1 + Math.sin(bt * 5) * 0.5 * (1 - SC.manLook));
-      P(ctx, '#0b0d12', -4, -2, 30, 5); P(ctx, '#3c4658', -3, -1, 28, 3);
-      ctx.restore();
-      // and his eye, once he has stopped and put it to the gap
-      if (SC.manLook > 0.5) {
-        P(ctx, '#0b0d12', 512, 226, 9, 5);
-        P(ctx, '#e8e4d8', 513, 227, 7, 3);
-        P(ctx, '#0b0d12', 515 + (Math.floor(bt * 3) & 1), 227, 2, 3);
-      }
     }
     // sparks at the bolt, and the bolt itself
     P(ctx, IP.ink, 496, 232, 14, 14); P(ctx, '#5d6675', 497, 233, 12, 12);
@@ -3866,13 +3866,13 @@ BEATS.push({
     } else if (bt < 7.4) {                             // out through the hull
       const k = clamp((bt - 5.2) / 2.2, 0, 1);
       SC.boatX = 214 - k * 26;
-      A.you.x = lerp(330, 556, k); A.you.y = lerp(226, 300, inCube(k));
-      A.you.rot = lerp(-0.34, 0.5, k); A.you.beat = 9;
+      A.you.x = lerp(SC.boatX + 96, 570, k); A.you.y = lerp(272, 308, ss(k));
+      A.you.rot = lerp(-0.22, 0.16, k); A.you.beat = 9;
       if (k < 0.3 && Math.random() < 40 * dt) FX.chunks(A.you.x, A.you.y, 2);
-      if (Math.random() < 50 * dt) FX.drops(A.you.x + rand(-16, 16), A.you.y + rand(-10, 10), 1, 0.6);
-      if (!SC.splash && A.you.y > 248) {
+      if (Math.random() < 26 * dt) FX.bubble(A.you.x - 26, A.you.y + rand(-8, 8), 1, 2.4);
+      if (!SC.splash && k > 0.06) {
         SC.splash = true; Intro.shake = 10;
-        FX.drops(A.you.x, 252, 90, 1.3); FX.foam(A.you.x, 252, 44, 1.6);
+        FX.drops(A.you.x, 260, 60, 1.3); FX.foam(A.you.x, 268, 40, 1.6);
         if (typeof Audio_ !== 'undefined') Audio_.splash(3);
       }
     } else {                                           // clear water, and gone
@@ -3927,7 +3927,8 @@ BEATS.push({
         drawAir(ctx, 252, Intro.scroll, Intro.t, 'day');
         ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY + 94)); ctx.rotate(0.04);
         ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
-        hullHole(ctx, R(SC.boatX + 108), R(SC.boatY + 88), 26, 31);
+        // the hole, in the part of the hull that is actually in the water
+        hullHole(ctx, R(SC.boatX + 86), 274, 27, 31);
         drawManatee(ctx, A.you, Intro.t);
       } else {
         const k = clamp((bt - 7.4) / 2.6, 0, 1);
@@ -4149,7 +4150,10 @@ BEATS.push({
   enter() {
     A.you = actor(MAN.youBig, 250, 214, { beat: 1.3, exp: 'angry', tailAmp: 0.30, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
-    SC.ot = { x: 300, y: 152, phase: 0, rot: 0, exp: 'angry', flip: false, ride: true,
+    // He is on his FEET for the charge, not folded into the riding torso:
+    // this is the one beat where he is stood up on her back, and it is the
+    // beat that has to show the legs the cast gives him.
+    SC.ot = { x: 300, y: 152, phase: 0, rot: 0, exp: 'angry', flip: false, ride: false,
               sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -1.4, bladeWet: 1 };
     SC.sch1 = makeSchool(12, 560, 168, 64, 0, 1, -28);
     SC.sch2 = makeSchool(7, 660, 262, 42, 1, 0, -24);
@@ -4160,7 +4164,7 @@ BEATS.push({
     SC.gore = smooth(SC.gore, 0.14, 0.6, dt);
     // he climbs aboard, gets the colours up, and then they go
     const land = ss2(clamp(bt / 1.20, 0, 1));
-    const ride = [A.you.x + 4, A.you.y - 21];
+    const ride = [A.you.x + 4, A.you.y - 27];   // feet on her back, not sunk into it
     SC.ot.x = smooth(SC.ot.x, lerp(300, ride[0], land), 11, dt);
     SC.ot.y = smooth(SC.ot.y, lerp(152, ride[1], land), 11, dt);
     SC.ot.phase += dt * (2 + SC.spd * 0.012);
