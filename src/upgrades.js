@@ -2646,7 +2646,8 @@
     },
     face(e, dur, then) { this.exp = e; this.expT = dur || 0; this.expTo = then || this.expTo; },
     heartPop(n) {
-      for (let i = 0; i < (n || 1); i++) this.hearts.push({ x: this.x + rand(-6, 6), y: this.y - 20 - i * 7, vy: rand(-22, -15), ph: rand(0, TAU), life: 1.3 + i * 0.15 });
+      // off the top of her reach, so they never sit over him on her back
+      for (let i = 0; i < (n || 1); i++) this.hearts.push({ x: this.x + rand(-8, 8), y: Math.max(102, this.y - 36 - i * 8), vy: rand(-20, -13), ph: rand(0, TAU), life: 1.2 + i * 0.15 });
     },
     popFx(x, y, big) { this.fx.push({ x, y, life: 0.32, max: 0.32, r: big ? 9 : 6 }); },
     startRoll(turns, dur) {
@@ -2656,7 +2657,7 @@
     },
     fishInPen() {
       const c = [];
-      for (const f of this.fish) if (f.hold <= 0 && f.x > PEN.x0 - 30 && f.x < PEN.x1 + 30 && f.y > PEN.y0 - 10 && f.y < PEN.y1 + 16) c.push(f);
+      for (const f of this.fish) if (f.hold <= 0 && f.x > PEN.x0 + 16 && f.x < PEN.x1 - 16 && f.y > PEN.y0 - 6 && f.y < PEN.y1 + 6) c.push(f);
       return c;
     },
 
@@ -2829,24 +2830,29 @@
           if (M.st === 0) {
             const a = Math.atan2(f.y - this.y, f.x - this.x);
             seek(f.x - Math.cos(a) * (NOSE + 14), f.y - Math.sin(a) * (NOSE + 14), 110, true);
-            this.look = a; this.wMax = 2.6;
-            if (nd < 26) { M.st = 1; M.t2 = M.t; f.hold = 6; f.face = this.x < f.x ? -1 : 1; this.face('idle'); }
-            if (M.t > 4 || f.x < PEN.x0 - 40 || f.x > PEN.x1 + 40) { this.next(); break; }
+            this.look = a; this.wMax = 2.6; this.tcDn = 0.35;
+            // it notices her coming and stops to look, so she can come in slow
+            if (nd < 80 && f.hold <= 0) { f.hold = 6; f.face = this.x < f.x ? -1 : 1; f.fx = f.fy = 0; }
+            if (nd < 26 && this.v < 55) { M.st = 1; M.t2 = M.t; f.hold = 6; f.face = this.x < f.x ? -1 : 1; this.face('idle'); }
+            if (M.t > 5 || f.x < PEN.x0 - 40 || f.x > PEN.x1 + 40) { this.next(); break; }
           } else {
             f.hold = Math.max(f.hold, 1);
             const a = Math.atan2(f.y - this.y, f.x - this.x);
             hd = a; this.look = a; this.wMax = 2.4;
             const k = ((M.t - M.t2) % 0.7) / 0.7;
             // a little lunge, then back off, in a rhythm
-            vd = k < 0.28 ? 60 : (nd < 18 ? -14 : 0);
+            const facing = Math.abs(angleDiff(this.h, a)) < 0.5;
+            vd = !facing ? (nd < 22 ? -18 : 0) : k < 0.28 ? 60 : (nd < 18 ? -14 : 0);
             this.tcUp = 0.1; this.tcDn = 0.2;
-            if (k < 0.28 && nd < 9 && !M.hit) {
+            if (facing && k < 0.28 && nd < 9 && !M.hit) {
               M.hit = true; M.boops++;
-              f.fx += Math.cos(a) * 40; f.fy += Math.sin(a) * 28;
+              f.fx += Math.cos(a) * 26; f.fy += Math.sin(a) * 18;
               this.heartPop(1); this.face('talk', 0.45, 'happy');
             }
             if (k >= 0.28) M.hit = false;
-            if (M.boops >= 3 || M.t - M.t2 > 5) {
+            // it drifted out of reach of her snout: that will do
+            M.far = nd > 40 ? (M.far || 0) + dt : 0;
+            if (M.boops >= 3 || M.t - M.t2 > 5 || M.far > 0.6) {
               f.hold = 0; f.s = Math.abs(f.s) * (Math.cos(a) >= 0 ? 1 : -1); this.scare(f, 80);
               this.cheer = 0.8; this.face('happy', 0, 'happy');
               this.startRoll(1, 0.65);
@@ -2947,7 +2953,8 @@
       for (let i = this.hearts.length - 1; i >= 0; i--) {
         const h = this.hearts[i];
         h.life -= dt; h.y += h.vy * dt; h.vy *= Math.exp(-dt * 0.8); h.ph += dt * 3;
-        if (h.life <= 0) this.hearts.splice(i, 1);
+        // and never up into the title plate
+        if (h.life <= 0 || h.y < 96) this.hearts.splice(i, 1);
       }
       for (let i = this.fx.length - 1; i >= 0; i--) { this.fx[i].life -= dt; if (this.fx[i].life <= 0) this.fx.splice(i, 1); }
 
