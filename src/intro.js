@@ -4006,7 +4006,8 @@ BEATS.push({
     // once he is aboard he rides her, on his feet, for every frame of it
     if (bt >= 1.35) {
       SC.ot.flip = false;
-      const rx = A.you.x + 4, ry = A.you.y - 27;
+      // feet on her back wherever her back is: read off her sprite (riderY)
+      const rx = A.you.x + 4, ry = A.you.y + riderY(A.you);
       SC.ot.x = smooth(SC.ot.x, lerp(SC.ot.x, rx, aboard), 16, dt);
       SC.ot.y = smooth(SC.ot.y, lerp(SC.ot.y, ry, aboard), 16, dt);
       SC.ot.rot = smooth(SC.ot.rot, A.you.rot, 9, dt);
@@ -4100,7 +4101,7 @@ BEATS.push({
   enter() {
     A.you = actor(MAN.youBig, 268, 206, { beat: 0.80, exp: 'pain', tailAmp: 0.12, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
-    SC.ot = { x: 272, y: 179, phase: 0, rot: 0, exp: 'idle', flip: false, ride: false,
+    SC.ot = { x: 272, y: 206 + riderY(A.you), phase: 0, rot: 0, exp: 'idle', flip: false, ride: false,
               sq: 0, sqv: 0, sx: 1, sy: 1, blink: false, blade: 1, bladeR: -1.0, bladeWet: 1 };
     SC.sch1 = makeSchool(7, 600, 140, 40, 0, 2, -15);
     SC.surfY = 62; SC.gore = 0.58; SC.seen = false;
@@ -4123,7 +4124,7 @@ BEATS.push({
     A.you.exp = talking('you') ? 'talk' : bt > 5.0 ? 'sad' : 'pain';
     // he rides her, and for once he keeps still
     SC.ot.x = smooth(SC.ot.x, A.you.x + 4, 11, dt);
-    SC.ot.y = smooth(SC.ot.y, A.you.y - 27, 11, dt);
+    SC.ot.y = smooth(SC.ot.y, A.you.y + riderY(A.you), 11, dt);
     SC.ot.rot = smooth(SC.ot.rot, A.you.rot, 9, dt);
     SC.ot.phase += dt * 1.6;
     SC.ot.exp = talking('otter') ? 'talk' : bt > 6.8 ? 'angry' : 'idle';
@@ -4286,7 +4287,7 @@ BEATS.push({
     SC.gore = smooth(SC.gore, 0.14, 0.6, dt);
     // he climbs aboard, gets the colours up, and then they go
     const land = ss2(clamp(bt / 1.20, 0, 1));
-    const ride = [A.you.x + 4, A.you.y - 27];   // feet on her back, not sunk into it
+    const ride = [A.you.x + 4, A.you.y + riderY(A.you)];   // feet on her back, read off her sprite
     SC.ot.x = smooth(SC.ot.x, lerp(300, ride[0], land), 11, dt);
     SC.ot.y = smooth(SC.ot.y, lerp(152, ride[1], land), 11, dt);
     SC.ot.phase += dt * (2 + SC.spd * 0.012);
