@@ -1243,25 +1243,46 @@ function buildManateeBelly(src) {
 // ===========================================================================
 //  SIDE-ON MANATEE — facing RIGHT. The cinematics' hero.
 // ===========================================================================
-const MSIDE_W = 98, MSIDE_H = 40, MSIDE_CX = 49, MSIDE_CY = 20;
-function buildManateeSideBody(scarred) {
+// She is authored on a 98 x 46 grid instead of the old 98 x 40: a real
+// manatee is a BARREL, and the extra six rows are the belly the old wedge
+// did not have room for. Everything outside this file reads her size and her
+// anchors off the record (S.body.w/h, S.eye, S.shoX/shoY, S.len), so the
+// deeper body lands correctly everywhere without a single offset being
+// retyped. S.len stays 98, which is what the intro scales the family by.
+const MSIDE_W = 98, MSIDE_H = 46, MSIDE_CX = 49, MSIDE_CY = 23;
+// ---- her profile, as lobes -------------------------------------------------
+//  Written as (x, halfLength, halfDepth, drop). `drop` pushes a lobe's centre
+//  DOWN the canvas, which is the whole trick: a manatee's back is a long
+//  shallow arc and all of her weight hangs underneath it, so the mid-body
+//  lobes ride low and the head rides high. Give every lobe the same centre
+//  and you get a fish.
+const MSIDE_LOBES = [
+  // x    rx     ry    drop
+  [ 4,   5.0,   5.2,  0.6],   // tail stock: thick, not a whip
+  [ 12,  7.5,   8.8,  1.1],
+  [ 21,  9.5,  12.6,  1.5],
+  [ 31, 11.5,  15.8,  1.7],
+  [ 42, 12.5,  17.5,  1.6],   // the barrel
+  [ 54, 12.5,  18.0,  1.1],   // deepest: belly-heavy, just aft of the shoulder
+  [ 65, 12.0,  16.8,  0.3],
+  [ 74, 11.0,  15.0, -0.7],
+  [ 82, 10.0,  13.4, -1.5],   // the head is nearly as deep as the barrel
+  [ 89,  8.5,  11.6, -1.3],
+  [ 94,  6.5,   9.8, -0.7],   // and it ends in a wall, not a point
+];
+// Everything she is wearing that is NOT a wound: the algae that grows on a
+// wild manatee's back and the barnacles on her shoulder. Kept on both the
+// clean body and the hurt one, because they are the real animal, not damage.
+function buildManateeSideBody(hurt) {
   const W = MSIDE_W, H = MSIDE_H, cy = MSIDE_CY;
-  const lobes = [
-    { x: 8,  y: cy,     rx: 4.5,  ry: 4.0 },
-    { x: 16, y: cy,     rx: 6.5,  ry: 6.4 },
-    { x: 26, y: cy,     rx: 8.5,  ry: 9.2 },
-    { x: 38, y: cy,     rx: 11.0, ry: 12.0 },
-    { x: 52, y: cy,     rx: 12.0, ry: 13.0 },
-    { x: 64, y: cy - 1, rx: 11.0, ry: 12.0 },
-    { x: 74, y: cy - 2, rx: 9.0,  ry: 10.2 },
-    { x: 83, y: cy - 2, rx: 7.0,  ry: 8.2 },
-    { x: 90, y: cy - 1, rx: 5.0,  ry: 6.2 },
-  ];
+  const lobes = MSIDE_LOBES.map(l => ({ x: l[0], y: cy + l[3], rx: l[1], ry: l[2] }));
   const f = blobField(W, H, lobes);
   const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man, CPAL.manL],
     { outline: CPAL.out, lx: -0.25, ly: -0.92, contrast: 0.74, lift: 0.26, smooth: 2 });
   const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
-  // ---- pale belly: the bottom third of every column, in two bands
+  // ---- the belly. Three bands over the bottom two fifths of every column
+  //      instead of two over the bottom third: a round animal needs the
+  //      turn-under shaded, or the extra depth just reads as a taller wedge.
   for (let x = 0; x < W; x++) {
     let y0 = -1, y1 = -1;
     for (let y = 0; y < H; y++) if (inside(x, y)) { if (y0 < 0) y0 = y; y1 = y; }
@@ -1269,28 +1290,66 @@ function buildManateeSideBody(scarred) {
     const hgt = y1 - y0;
     for (let y = y0 + 1; y < y1; y++) {
       const k = (y - y0) / hgt;
-      if (k < 0.66) continue;
-      px(ctx, k > 0.82 ? '#b2c0cf' : CPAL.belly, x, y);
+      if (k < 0.58) continue;
+      px(ctx, k > 0.88 ? '#a8b6c6' : k > 0.72 ? '#b2c0cf' : CPAL.belly, x, y);
     }
     px(ctx, CPAL.manL, x, y0 + 1);          // lit back
-    px(ctx, CPAL.out2, x, y1);              // dark keel
+    px(ctx, CPAL.manLL, x, y0 + 2);         // and a second row of it, so the
+    px(ctx, CPAL.out2, x, y1);              // barrel turns instead of edging
   }
-  // ---- three transverse folds, bowed with the barrel
-  for (const fx of [34, 48, 62]) for (let y = 2; y < H - 2; y++) {
-    const x = fx + Math.round(Math.sin((y - cy) / 14) * 2);
-    if (!inside(x, y) || !inside(x, y + 1) || !inside(x - 2, y)) continue;
-    px(ctx, CPAL.manDD, x, y);
+  // ---- hide grain: sparse single pixels one band off their own, so she has
+  //      the texture of an animal and not of a painted hull.
+  for (let x = 4; x < W - 3; x++) for (let y = 3; y < H - 3; y++) {
+    if (!inside(x, y) || !inside(x, y + 2) || !inside(x, y - 2)) continue;
+    const r = hash2(x * 7 + 3, y * 13 + 5);
+    if (r > 0.972) px(ctx, CPAL.manDD, x, y);
+    else if (r < 0.014) px(ctx, CPAL.manLL, x, y);
   }
-  // ---- algae on the back, barnacles on the shoulder
-  for (const [bx, by] of [[44, 10], [58, 9], [30, 13]]) {
+  // ---- neck folds. A manatee's wrinkles are on the NECK and the shoulder,
+  //      not evenly spaced down the barrel like a caterpillar's segments, so
+  //      they are short, close together and forward, with one long one where
+  //      the barrel creases behind the flipper.
+  const fold = (fx, y0, y1, bow) => {
+    for (let y = y0; y <= y1; y++) {
+      const x = fx + Math.round(Math.sin((y - cy) / 16) * bow);
+      if (!inside(x, y) || !inside(x, y + 2) || !inside(x - 2, y)) continue;
+      px(ctx, CPAL.manDD, x, y);
+      if (inside(x + 1, y)) px(ctx, CPAL.manL, x + 1, y);
+    }
+  };
+  fold(69, 10, 34, 2); fold(74, 11, 33, 2); fold(79, 13, 31, 2);
+  fold(50, 9, 37, 3);
+  // ---- algae on her back, barnacles on her shoulder. Real, not damage: the
+  //      greens survive the intro's hide shift on purpose.
+  for (const [bx, by] of [[41, 10], [55, 9], [28, 14], [63, 10]]) {
     px(ctx, '#3f6b4c', bx, by, 3, 1); px(ctx, '#2d4f38', bx + 1, by + 1, 2, 1);
   }
-  for (const [bx, by] of [[68, 12], [40, 14]]) { px(ctx, CPAL.manDD, bx, by, 3, 3); px(ctx, CPAL.bone, bx + 1, by + 1, 2, 2); }
-  // ---- what the fleet has done to her, in the cinematics' own units. Three
-  //      propeller rakes across the flank: torn hide standing pale on the lit
-  //      lip, meat under it, blood in the deep of the run, and a dried smear
-  //      dragged aft. This is the BASE body, not the `scarred` variant — she
-  //      does not get a clean version of herself any more.
+  for (const [bx, by] of [[66, 13], [37, 16]]) { px(ctx, CPAL.manDD, bx, by, 3, 3); px(ctx, CPAL.bone, bx + 1, by + 1, 2, 2); }
+  // ---- the flipper socket crease, low on the chest where it belongs
+  for (let i = 0; i < 7; i++) px(ctx, CPAL.manDD, 70 + i, 29 + (i >> 1));
+  // ---- the head. Blunt muzzle, downturned upper lip, whisker pad, tiny dot
+  //      eye set high and well back. This is the calm face of the real animal
+  //      and it is on BOTH bodies -- what the fleet did to her goes on below.
+  px(ctx, CPAL.out, 92, 17, 6, 2);                          // the brow of the muzzle
+  px(ctx, CPAL.manD, 92, 19, 6, 2);
+  px(ctx, CPAL.out, 91, 21, 2, 2);                          // nostril, on top of the snout
+  px(ctx, CPAL.manL, 87, 26, 8, 1);                         // lit whisker pad
+  px(ctx, CPAL.manD, 87, 27, 9, 2);                         // the pad itself, hanging
+  px(ctx, CPAL.out2, 87, 29, 9, 1);                         // and the soft mouth line
+  px(ctx, CPAL.out, 93, 30, 4, 2);                          // the downturned lip
+  for (const [wx, wy] of [[96, 25], [96, 28], [95, 23], [94, 31]]) px(ctx, CPAL.bone, wx, wy, 2, 1);
+  // ---- the DOT eye, exactly as asked for: three pixels of pupil, one shine,
+  //      one lit lid over it. No brow, no scowl -- she is calm here.
+  px(ctx, CPAL.out, 80, 15, 4, 4); px(ctx, CPAL.eye, 80, 15, 3, 3); px(ctx, CPAL.shine, 81, 16);
+  px(ctx, CPAL.manL, 80, 14, 4, 1);
+  // =======================================================================
+  //  WOUNDED ONLY, from here down. `hurt` false leaves her completely clean:
+  //  no propeller runs, no wire seam, no blood, no scarred brow.
+  // =======================================================================
+  if (!hurt) return spriteFrom(c, MSIDE_CX, MSIDE_CY);
+  // Three propeller rakes across the flank: torn hide standing pale on the
+  // lit lip, meat under it, blood in the deep of the run, and a dried smear
+  // dragged aft.
   const rake = (x0, y0, n, dy, open) => {
     for (let i = 0; i < n; i++) {
       const x = x0 + i, y = y0 + Math.round(i * dy);
@@ -1306,55 +1365,58 @@ function buildManateeSideBody(scarred) {
       }
     }
   };
-  rake(42, 13, 16, 0.42, 1);
-  rake(56, 26, 12, -0.34, 1);
-  rake(30, 20, 10, 0.30, 0);
+  rake(40, 14, 18, 0.46, 1);
+  rake(54, 30, 13, -0.34, 1);
+  rake(28, 22, 11, 0.30, 0);
   // a seam somebody sewed shut with wire, and it held
-  for (let i = 0; i < 18; i++) {
-    const x = 50 + i, y = 24 + Math.round(Math.sin(i * 0.3) * 1.5);
+  for (let i = 0; i < 20; i++) {
+    const x = 48 + i, y = 28 + Math.round(Math.sin(i * 0.3) * 1.5);
     if (!inside(x, y) || !inside(x, y + 2)) continue;
     px(ctx, CPAL.meatD, x, y);
     if (i % 5 === 1) { px(ctx, CPAL.bone, x, y - 2, 1, 2); px(ctx, CPAL.manDD, x, y + 1, 1, 2); }
   }
-  // ---- flipper socket crease
-  for (let i = 0; i < 6; i++) px(ctx, CPAL.manDD, 72 + i, 24 + (i >> 1));
-  // ---- head: the DOT eye, the nostril and the mouth crease
-  px(ctx, CPAL.out, 81, 13, 4, 4); px(ctx, CPAL.eye, 81, 13, 3, 3); px(ctx, CPAL.shine, 82, 14);
-  px(ctx, CPAL.manL, 81, 12, 4, 1);
   // a scar through the brow, so the dot eye reads as a hard one
-  px(ctx, CPAL.manDD, 79, 10, 1, 4); px(ctx, CPAL.manLL, 80, 10, 1, 4);
-  px(ctx, CPAL.manDD, 84, 17, 3, 1); px(ctx, CPAL.bloodD, 85, 18, 2, 1);
-  px(ctx, CPAL.out, 92, 15, 2, 2);                          // nostril
-  px(ctx, CPAL.manL, 88, 20, 6, 1);                         // lit whisker pad
-  px(ctx, CPAL.out2, 88, 23, 6, 1);                         // mouth crease
-  for (const [wx, wy] of [[95, 19], [95, 22], [94, 17]]) px(ctx, CPAL.bone, wx, wy, 2, 1);
-  if (scarred) {
-    for (let i = 0; i < 3; i++) for (let j = 0; j < 7; j++) {
-      const x = 44 + i * 7 + Math.round(j * 0.5), y = 9 + j;
-      if (!inside(x, y)) continue;
-      px(ctx, CPAL.blood, x, y, 2, 1); px(ctx, CPAL.bloodD, x, y + 1, 2, 1);
-    }
+  px(ctx, CPAL.manDD, 78, 12, 1, 4); px(ctx, CPAL.manLL, 79, 12, 1, 4);
+  px(ctx, CPAL.manDD, 83, 19, 3, 1); px(ctx, CPAL.bloodD, 84, 20, 2, 1);
+  // and the streaks that used to be the `scarred` variant, folded in: there
+  // are two bodies now, clean and hurt, not three degrees of hurt.
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 7; j++) {
+    const x = 42 + i * 7 + Math.round(j * 0.5), y = 11 + j;
+    if (!inside(x, y)) continue;
+    px(ctx, CPAL.blood, x, y, 2, 1); px(ctx, CPAL.bloodD, x, y + 1, 2, 1);
   }
   return spriteFrom(c, MSIDE_CX, MSIDE_CY);
 }
-function buildSideFluke() {
-  const W = 26, H = 18;
+// ---- the fluke -------------------------------------------------------------
+//  A manatee's tail is a broad ROUND paddle -- a spade, not a shark's fork
+//  and not a leaf. `bitten` cuts a chunk out of the trailing edge and packs
+//  meat behind the raw rim; without it the trailing edge is whole, because
+//  the natural edge of a fluke is not a wound and must not be inked like one.
+const MFLUKE_W = 30, MFLUKE_H = 26;
+function buildSideFluke(bitten) {
+  const W = MFLUKE_W, H = MFLUKE_H, cy = 13;
   const f = blobField(W, H, [
-    { x: 23, y: 9, rx: 3.5, ry: 3.0 },
-    { x: 18, y: 9, rx: 5.0, ry: 5.0 },
-    { x: 12, y: 9, rx: 6.0, ry: 7.0 },
-    { x: 6,  y: 9, rx: 6.0, ry: 8.4 },
-    { x: 2,  y: 9, rx: 3.5, ry: 6.5 },
+    { x: 28, y: cy,     rx: 4.0, ry: 3.6 },   // the stock, where it meets her
+    { x: 23, y: cy,     rx: 5.5, ry: 6.0 },
+    { x: 17, y: cy,     rx: 7.0, ry: 9.6 },
+    { x: 10, y: cy,     rx: 8.0, ry: 12.0 },  // the paddle
+    { x: 4,  y: cy,     rx: 6.0, ry: 11.0 },
+    { x: 1,  y: cy,     rx: 3.5, ry: 8.6 },
   ]);
   const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man], { outline: CPAL.out, lift: 0.16, smooth: 2, contrast: 0.7 });
-  for (let i = -1; i <= 1; i += 2) for (let x = 3; x < 20; x++) {
-    const y = 9 + i * 3 + Math.round((20 - x) * i * 0.12);
-    if (f[y * W + x] > 0.06) px(ctx, CPAL.manDD, x, y);
+  // two long creases fanning out of the stock, the way the flesh folds
+  for (let i = -1; i <= 1; i += 2) for (let x = 4; x < 24; x++) {
+    const y = cy + i * 4 + Math.round((24 - x) * i * 0.22);
+    if (y > 0 && y < H && f[y * W + x] > 0.06) px(ctx, CPAL.manDD, x, y);
   }
-  for (let y = 3; y < 15; y++) if (f[y * W + 1] > 0.02) px(ctx, CPAL.manL, 1, y);
-  // ---- a chunk out of the trailing edge, to match the top-down body. The
-  //      field `f` is what says where she is, so the bite is cut out of the
-  //      raster and the raw rim is re-inked off the same field.
+  // the trailing edge catches the light all the way round
+  for (let y = 2; y < H - 2; y++) for (let x = 0; x < 5; x++) {
+    if (f[y * W + x] > 0.02 && (x === 0 || f[y * W + x - 1] <= 0.02)) { px(ctx, CPAL.manL, x, y); break; }
+  }
+  if (!bitten) return spriteFrom(c, W - 3, cy);
+  // ---- a chunk out of the trailing edge. The field `f` is what says where
+  //      she is, so the bite is cut out of the raster and the raw rim is
+  //      re-inked off the same field.
   const cut = new Uint8Array(W * H);
   const bit = (bx, byc, r) => {
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -1364,10 +1426,8 @@ function buildSideFluke() {
       f[y * W + x] = 0; ctx.clearRect(x, y, 1, 1);
     }
   };
-  bit(2, 5, 3.2);                       // one clean bite, not a serrated edge
-  // Only the BITE rim gets meat packed behind it — the natural trailing edge
-  // of the fluke is not a wound and must not be painted like one.
-  for (let y = 0; y < H; y++) for (let x = 0; x < 12; x++) {
+  bit(2, 6, 4.2);                       // one clean bite, not a serrated edge
+  for (let y = 0; y < H; y++) for (let x = 0; x < 14; x++) {
     if (f[y * W + x] <= 0) continue;
     const wasCut = (qx, qy) => qx >= 0 && qy >= 0 && qx < W && qy < H && cut[qy * W + qx];
     if (!(wasCut(x - 1, y) || wasCut(x + 1, y) || wasCut(x, y - 1) || wasCut(x, y + 1))) continue;
@@ -1377,34 +1437,53 @@ function buildSideFluke() {
       px(ctx, k === 1 ? CPAL.meat : k === 2 ? CPAL.gore : CPAL.goreD, x + k, y);
     }
   }
-  return spriteFrom(c, W - 2, 9);
+  return spriteFrom(c, W - 3, cy);
 }
+// ---- the pectoral flipper ---------------------------------------------------
+//  A short rounded paddle with three little nails on the tip, held in HIDE
+//  tones: the old one was ramped down into the near-blacks and read as a gun
+//  barrel strapped under her chin. `dark` is the far one, one band back.
 function buildSideFlipper(dark) {
   const W = 16, H = 10;
   const f = blobField(W, H, [
-    { x: 3,  y: 4, rx: 3.4, ry: 4.2 },
-    { x: 7,  y: 5, rx: 4.0, ry: 4.0 },
-    { x: 11, y: 6, rx: 3.6, ry: 3.2 },
-    { x: 14, y: 6, rx: 2.2, ry: 2.2 },
+    { x: 3,  y: 4, rx: 3.2, ry: 4.4 },
+    { x: 6,  y: 5, rx: 3.8, ry: 4.6 },
+    { x: 9,  y: 5, rx: 3.8, ry: 4.2 },
+    { x: 12, y: 6, rx: 3.4, ry: 3.4 },
   ]);
-  const ramp = dark ? [CPAL.manDD, CPAL.manDD, CPAL.manD] : [CPAL.manDD, CPAL.manD, CPAL.man];
-  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: CPAL.out, lift: 0.12, smooth: 1, contrast: 0.7 });
+  const ramp = dark ? [CPAL.manDD, CPAL.manD, CPAL.man] : [CPAL.manD, CPAL.man, CPAL.manL];
+  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: CPAL.out, lift: 0.30, smooth: 1, contrast: 0.62 });
+  // the shoulder end takes the light, the paddle end falls away
+  for (let y = 1; y < H - 1; y++) if (f[y * W + 2] > 0.04) px(ctx, dark ? CPAL.man : CPAL.manLL, 2, y);
   if (!dark) for (let i = 0; i < 3; i++) px(ctx, CPAL.bone, 12 + (i & 1), 4 + i * 2);
   return spriteFrom(c, 2, 4);
 }
+// ---- the side-on set -------------------------------------------------------
+//  TWO BODIES, and the caller picks:
+//    S.body      CLEAN -- no propeller runs, no wire seam, no blood, no
+//                scarred brow, and a fluke with its trailing edge whole.
+//                This is "not hurt yet": the opening beats, the family.
+//    S.bodyScar  WOUNDED -- the same animal with everything the fleet did to
+//                her, and S.flukeScar is the tail with a bite out of it.
+//  Every part is the same size and the same anchors in both, so a beat can
+//  cut from one to the other on a single frame without anything moving.
 function buildManateeSideSet() {
   const body = buildManateeSideBody(false);
+  const scar = buildManateeSideBody(true);
   return {
-    body, bodyScar: buildManateeSideBody(true),
-    belly: buildManateeBelly(body),
+    body, bodyScar: scar,
+    // belly-up is a late beat, so it is the hurt body drained of its back
+    belly: buildManateeBelly(scar),
+    bellyClean: buildManateeBelly(body),
     hurt: tintFlat(body, '#ffffff', 0.85),
-    fluke: buildSideFluke(),
+    fluke: buildSideFluke(false),          // whole trailing edge
+    flukeScar: buildSideFluke(true),       // a chunk bitten out of it
     flip: buildSideFlipper(false),
     flipFar: buildSideFlipper(true),
     // anchors, in sprite-local world units (0,0 = her centre)
-    eye: [82 - MSIDE_CX, 14 - MSIDE_CY],
-    mouth: [91 - MSIDE_CX, 23 - MSIDE_CY],
-    tailX: 8 - MSIDE_CX, shoX: 74 - MSIDE_CX, shoY: 25 - MSIDE_CY,
+    eye: [81 - MSIDE_CX, 16 - MSIDE_CY],
+    mouth: [91 - MSIDE_CX, 26 - MSIDE_CY],
+    tailX: 8 - MSIDE_CX, shoX: 73 - MSIDE_CX, shoY: 30 - MSIDE_CY,
     len: MSIDE_W,
   };
 }
@@ -1454,9 +1533,15 @@ function drawManateeSide(ctx, m, t) {
   // far flipper, then tail, then body, then near flipper, then the face
   ctx.save(); ctx.translate(S.shoX - 5, S.shoY - 4); ctx.rotate(fa - 0.22);
   ctx.drawImage(S.flipFar.c, -S.flipFar.ax, -S.flipFar.ay); ctx.restore();
+  // Clean or wounded, body and fluke together. `scarred: false` is the only
+  // thing that asks for the CLEAN animal -- leaving the flag off keeps the
+  // wounded one, so every call site that predates the split (src/death.js's
+  // shore scene) draws exactly what it drew before.
+  const wounded = m.scarred !== false;
+  const fl = wounded ? (S.flukeScar || S.fluke) : S.fluke;
   ctx.save(); ctx.translate(S.tailX, 0); ctx.rotate(Math.sin(ph) * amp);
-  ctx.drawImage(S.fluke.c, -S.fluke.ax, -S.fluke.ay); ctx.restore();
-  const b = m.hurt ? S.hurt : m.belly ? S.belly : m.scarred ? S.bodyScar : S.body;
+  ctx.drawImage(fl.c, -fl.ax, -fl.ay); ctx.restore();
+  const b = m.hurt ? S.hurt : m.belly ? (wounded ? S.belly : S.bellyClean) : wounded ? S.bodyScar : S.body;
   ctx.drawImage(b.c, -b.ax, -b.ay);
   ctx.save(); ctx.translate(S.shoX, S.shoY); ctx.rotate(fa);
   ctx.drawImage(S.flip.c, -S.flip.ax, -S.flip.ay); ctx.restore();
@@ -1472,7 +1557,17 @@ function drawManateeSide(ctx, m, t) {
 //  16 x 22 world units, anchored at world (8, 12) — unchanged, so the shore
 //  scene's joints still land. CH.otterStand is the 1x bake of this (see
 //  bake1x); CH.otterStandHi is what actually gets drawn.
-function buildOtterStand() {
+//
+//  LEGS. He stands on a PAIR of hind legs: a haunch, a shank and a webbed
+//  foot each, the far one a band darker and set back so the two read as two.
+//  `peg` builds the old variant instead — far leg plus the wooden peg — and
+//  it is kept as CH.otterStandPeg/CH.otterStandPegHi and reached with
+//  `{ peg: true }` on CH.drawOtterStanding. Both variants put both soles on
+//  the same canvas row the peg's brass ferrule used to sit on, and both are
+//  drawn inside the same 32 x 44 canvas, so his record — 16 x 22 world units,
+//  anchored (8, 12) — is byte-identical either way and nothing that stands
+//  him on anything moved.
+function buildOtterStand(peg) {
   const c = newCanHi(16, 22), ctx = c.getContext('2d');
   const M = { k: CPAL.out, C: CPAL.cape, c: CPAL.capeD, L: CPAL.capeL, f: CPAL.fur, d: CPAL.furD,
               D: CPAL.furDD, l: CPAL.furL, r: CPAL.cream, R: CPAL.creamD, e: CPAL.lea, E: CPAL.leaL };
@@ -1506,27 +1601,53 @@ function buildOtterStand() {
     else if (hash2(x * 13, y * 3) > 0.975) px(ctx, CPAL.furL, x, y);
   }
   for (let i = 0; i < 9; i++) px(ctx, CPAL.creamD, 20 - (i >> 2), 12 + i);
-  // hind leg, webbed foot — one of them. He has the other one in a jar.
-  stampUp(ctx, ['kddk', 'kdfk', 'kddk', 'kkkk'], 10, 24, M);
-  px(ctx, CPAL.out, 8, 32, 14, 6);
-  px(ctx, CPAL.furD, 10, 34, 10, 2); px(ctx, CPAL.furDD, 10, 36, 10, 1);
-  for (let i = 0; i < 3; i++) px(ctx, CPAL.furDD, 11 + i * 3, 34, 1, 3);
-  // ---- the near leg is a PEG. The stump is strapped into a socket, the
-  //      shank is a turned bit of somebody's boat and there is a brass
-  //      ferrule on the end where it takes the deck. Same footprint as the
-  //      webbed foot it replaces, so nothing that places him moved.
-  px(ctx, CPAL.out, 15, 29, 10, 5);
-  px(ctx, CPAL.leaD, 16, 30, 8, 3); px(ctx, CPAL.lea, 16, 30, 8, 1);
-  px(ctx, CPAL.creamD, 17, 32, 1, 1); px(ctx, CPAL.creamD, 22, 32, 1, 1);
-  for (let i = 0; i < 9; i++) {
-    const w = 6 - ((i * 4) / 9 | 0), x = 17 + (((i * 4) / 9 | 0) >> 1);
-    px(ctx, CPAL.out, x, 33 + i, w, 1);
-    px(ctx, CPAL.woodDD, x + 1, 33 + i, Math.max(1, w - 2), 1);
-    px(ctx, CPAL.woodD, x + 1, 33 + i, Math.max(1, w - 3), 1);
-    if (i < 4) px(ctx, CPAL.wood, x + 1, 33 + i, 1, 1);
+  // ---- a hind leg: haunch into shank into a webbed foot, sole on row 43.
+  //      Written as a row loop rather than a stamp so the shank can actually
+  //      taper into the ankle instead of being a rectangle with a foot on it.
+  const hindLeg = (hx, far) => {
+    const mid = far ? CPAL.furDD : CPAL.furD;
+    const lit = far ? CPAL.furD  : CPAL.fur;
+    const hi  = far ? CPAL.furD  : CPAL.furL;
+    for (let y = 26; y <= 37; y++) {
+      const k = (y - 26) / 11;
+      const hw = Math.round(4 - k * 1.7);             // haunch 4 -> ankle 2
+      const cxl = hx + 3 + Math.round(k * 1.2);       // and it drifts forward
+      const x0 = cxl - hw, w = hw * 2;
+      px(ctx, CPAL.out, x0, y, w, 1);
+      px(ctx, mid, x0 + 1, y, w - 2, 1);
+      if (w > 4) px(ctx, lit, x0 + 2, y, w - 4, 1);
+      if (y < 31 && w > 5) px(ctx, hi, x0 + 2, y, 2, 1);
+    }
+    px(ctx, CPAL.furDD, hx + 1, 31, 5, 1);            // the knee
+    // the webbed foot, flat on the ground with the toes forward
+    const fy = 38;
+    px(ctx, CPAL.out, hx - 2, fy, 13, 6);
+    px(ctx, mid, hx - 1, fy + 1, 11, 4);
+    px(ctx, lit, hx - 1, fy + 1, 9, 2);
+    px(ctx, CPAL.furDD, hx - 1, fy + 4, 11, 1);       // the sole, in its own shadow
+    for (let i = 0; i < 4; i++) px(ctx, CPAL.out, hx + 2 + i * 2, fy + 1, 1, 3);
+    if (!far) for (let i = 0; i < 4; i++) px(ctx, CPAL.creamD, hx + 3 + i * 2, fy + 1, 1, 1);
+  };
+  hindLeg(11, true);                                  // the far one, a band back
+  if (peg) {
+    // ---- the PEG variant. The stump is strapped into a socket, the shank is
+    //      a turned bit of somebody's boat and there is a brass ferrule on the
+    //      end where it takes the deck.
+    px(ctx, CPAL.out, 15, 29, 10, 5);
+    px(ctx, CPAL.leaD, 16, 30, 8, 3); px(ctx, CPAL.lea, 16, 30, 8, 1);
+    px(ctx, CPAL.creamD, 17, 32, 1, 1); px(ctx, CPAL.creamD, 22, 32, 1, 1);
+    for (let i = 0; i < 9; i++) {
+      const w = 6 - ((i * 4) / 9 | 0), x = 17 + (((i * 4) / 9 | 0) >> 1);
+      px(ctx, CPAL.out, x, 33 + i, w, 1);
+      px(ctx, CPAL.woodDD, x + 1, 33 + i, Math.max(1, w - 2), 1);
+      px(ctx, CPAL.woodD, x + 1, 33 + i, Math.max(1, w - 3), 1);
+      if (i < 4) px(ctx, CPAL.wood, x + 1, 33 + i, 1, 1);
+    }
+    px(ctx, CPAL.out, 17, 41, 5, 3);
+    px(ctx, CPAL.goldD, 18, 42, 3, 1); px(ctx, CPAL.gold, 18, 42, 2, 1);
+  } else {
+    hindLeg(17, false);                               // the near one, in the light
   }
-  px(ctx, CPAL.out, 17, 41, 5, 3);
-  px(ctx, CPAL.goldD, 18, 42, 3, 1); px(ctx, CPAL.gold, 18, 42, 2, 1);
   // belt, buckle and the cutlass on his hip
   px(ctx, CPAL.leaD, 10, 22, 12, 5); px(ctx, CPAL.lea, 10, 22, 12, 3); px(ctx, CPAL.leaL, 10, 22, 12, 1);
   for (let x = 11; x < 22; x += 3) px(ctx, CPAL.creamD, x, 25);
@@ -1537,12 +1658,14 @@ function buildOtterStand() {
   px(ctx, CPAL.out, 5, 20, 7, 6);
   px(ctx, CPAL.goldD, 6, 21, 5, 4); px(ctx, CPAL.gold, 6, 21, 4, 2); px(ctx, CPAL.goldL, 6, 21, 3, 1);
   px(ctx, CPAL.out, 8, 22, 2, 2);
+  //      (Two art pixels further aft than it used to hang, so it clears the
+  //      far leg instead of being drawn across it.)
   for (let i = 0; i < 14; i++) {
-    const x = 7 - (i >> 3), y = 26 + i;
+    const x = 5 - (i >> 3), y = 26 + i;
     px(ctx, CPAL.out, x, y, 4, 1);
     px(ctx, CPAL.metL, x + 1, y, 2, 1); px(ctx, CPAL.metLL, x + 1, y, 1, 1);
   }
-  px(ctx, CPAL.out, 5, 40, 4, 2); px(ctx, CPAL.bloodD, 6, 40, 2, 1);
+  px(ctx, CPAL.out, 3, 40, 4, 2); px(ctx, CPAL.bloodD, 4, 40, 2, 1);
   return spriteFromHi(c, 16, 24);
 }
 // o: {x, y, scale, facing, exp, blink, t, rage, arms:[near,far], hold, tail, alpha}
@@ -1561,7 +1684,8 @@ function drawOtterStanding(ctx, o, t) {
   // far arm
   ctx.save(); ctx.translate(1, -1); ctx.rotate(arms[1]);
   ctx.drawImage(CH.otterArm.c, -CH.otterArm.ax, -CH.otterArm.ay); ctx.restore();
-  const stand = CH.otterStandHi || CH.otterStand;
+  const stand = o.peg ? (CH.otterStandPegHi || CH.otterStandPeg || CH.otterStandHi)
+                      : (CH.otterStandHi || CH.otterStand);
   ctx.drawImage(stand.c, -stand.ax, -stand.ay);
   // near arm, and whatever is in his paw
   ctx.save(); ctx.translate(2, -2); ctx.rotate(arms[0]);
@@ -1662,8 +1786,12 @@ function buildCharacters() {
   _headKey = '';
   // ---- the side-on set every cinematic shares ----------------------------
   CH.side = buildManateeSideSet();
-  CH.otterStandHi = buildOtterStand();
+  CH.otterStandHi = buildOtterStand(false);
   CH.otterStand = bake1x(CH.otterStandHi);
+  // the peg-leg variant is still here, opt-in: CH.drawOtterStanding(ctx,
+  // { peg: true }) draws it, and it carries the same record as the pair.
+  CH.otterStandPegHi = buildOtterStand(true);
+  CH.otterStandPeg = bake1x(CH.otterStandPegHi);
   CH.drawManateeSide = drawManateeSide;
   CH.sideFace = manateeSideFace;
   CH.drawOtter = drawOtter;
