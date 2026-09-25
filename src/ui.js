@@ -150,6 +150,16 @@ const BANTER = {
   shop: [
     [['o', 'Plunder! New teeth!', 'cutlass'], ['m', 'After the killing.']],
   ],
+  // she has gone belly-up and he is in the water on his own
+  downed: [
+    [['o', 'GET UP, you cow!', 'blood']],
+    [['o', 'Nobody kills her but me!', 'cutlass']],
+    [['o', 'Right. My turn.', 'skull']],
+  ],
+  revived: [
+    [['m', 'Again.'], ['o', 'Never do that again.']],
+    [['m', 'Who bleeds now.'], ['o', 'That is my girl!', 'skull']],
+  ],
   idle: [
     [['o', 'My favourite warship.', 'skull'], ['m', 'Not a ship.']],
     [['o', 'Good day for killing.'], ['m', 'Mm.', 'blood']],
@@ -160,8 +170,8 @@ const BANTER = {
 // How loudly each topic asks to be heard, and how long before it may repeat.
 // The start of a wave and a net round the fluke are the two things allowed to
 // cut somebody off mid-sentence.
-const BANTER_PRI = { netted: 6, wave: 5, hurt: 4, rampage: 4, big: 4, cleared: 4, last: 4, objdone: 3, firstkill: 2, ready: 2, parry: 1, shop: 1, idle: 0 };
-const BANTER_GAP = { netted: 12, hurt: 18, rampage: 20, big: 8, wave: 0, cleared: 0, last: 0, objdone: 0, firstkill: 999, parry: 22, ready: 45, shop: 90, idle: 34 };
+const BANTER_PRI = { downed: 9, revived: 8, netted: 6, wave: 5, hurt: 4, rampage: 4, big: 4, cleared: 4, last: 4, objdone: 3, firstkill: 2, ready: 2, parry: 1, shop: 1, idle: 0 };
+const BANTER_GAP = { downed: 0, revived: 0, netted: 12, hurt: 18, rampage: 20, big: 8, wave: 0, cleared: 0, last: 0, objdone: 0, firstkill: 999, parry: 22, ready: 45, shop: 90, idle: 34 };
 
 const Banter = {
   cur: null, queue: [], pri: -1, cool: 0, last: {}, t: 0, idleT: 0, pick: {},
@@ -175,6 +185,8 @@ const Banter = {
     let topic = opts.lines;
     if (!topic && pool) topic = opts.idx != null ? pool[clamp(opts.idx, 0, pool.length - 1)] : this.rotate(kind, pool);
     if (!topic || !topic.length) return false;
+    // she is face-down in the water: she has nothing to say until he gets her up
+    if (typeof G !== 'undefined' && G && G.player && G.player.downed && topic.some(l => l[0] === 'm')) return false;
     const pri = opts.pri != null ? opts.pri : (BANTER_PRI[kind] || 0);
     const gap = BANTER_GAP[kind] != null ? BANTER_GAP[kind] : 20;
     // a topic that just ran keeps quiet; a quiet topic waits for the floor
@@ -386,6 +398,9 @@ const UI = {
     const hpk = clamp(p.hp / st.maxHp, 0, 1);
     // the ghost trails the real value so a big hit reads as a wound, not a jump
     this.hpGhost = this.hpGhost > hpk ? Math.max(hpk, this.hpGhost - dt * 0.55) : lerp(this.hpGhost, hpk, 0.25);
+    // with her down the panel is his: how long she has left, and his pips
+    if (p.downed && p.body && p.ot) this.drawDownedPanel(ctx, t, p, touch);
+    else {
     drawSprite(ctx, HUD_SP.vital, 13, 12);
     UIKit.bar(ctx, 20, 7, 100, 10, hpk, hpk > 0.5 ? '#6fd88e' : hpk > 0.25 ? '#ffe48f' : '#ff6161', '#1b2028');
     // the wound the bar has not caught up with yet, painted inside the frame
@@ -435,6 +450,7 @@ const UI = {
         ctx.fillStyle = k >= 1 ? col : '#7d8fa0'; ctx.fillRect(ax + 2, ay + 10, Math.round((w - 4) * clamp(k, 0, 1)), 2);
         ax += w + 3;
       }
+    }
     }
 
     // ---------- top-centre: where you are, and what the wave wants ----------
@@ -505,8 +521,9 @@ const UI = {
 
     // ---------- bottom-left: the belt ----------
     // The gun the otter is holding is already on screen, so this is only here
-    // to say which number key swaps to what.
-    if (!touch) {
+    // to say which number key swaps to what. (Not while she is down: the gun
+    // went under with her.)
+    if (!touch && !p.downed) {
       const wl = G.tree.weaponsUnlocked();
       const CW = 26, CH = 21, y0 = 336;
       wl.forEach((k, i) => {
@@ -562,10 +579,96 @@ const UI = {
       pixelTextOutlined(ctx, label, 320, 308, 8, pulse ? '#ffffff' : '#ffe48f', '#14141c', 'center');
     }
 
-    if (hpk < 0.3) { ctx.fillStyle = `rgba(200,20,20,${(0.12 + Math.sin(t * 6) * 0.08).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
+    if (hpk < 0.3 && !p.downed) { ctx.fillStyle = `rgba(200,20,20,${(0.12 + Math.sin(t * 6) * 0.08).toFixed(2)})`; ctx.fillRect(0, 0, 640, 360); }
+    // ---------- her, down: the revive ring on her, or an arrow to her ----------
+    if (p.downed && p.body) this.drawDownedWorld(ctx, t, p);
 
     // ---------- the pair, talking ----------
     Banter.draw(ctx, t);
+  },
+
+  // ---- OVERBOARD. No words anywhere: a drop of her blood and a bar that
+  // drains, his face and his pips, and a pip for the dash.
+  drawDownedPanel(ctx, t, p, touch) {
+    const b = p.body, o = p.ot;
+    const k = clamp(b.bleed / b.bleedMax, 0, 1);
+    // the drop beats with her heart
+    const pop = b.beat > 0.55 ? 2 : 1;
+    drawSprite(ctx, HUD_SP.vital, 13, 12, 0, pop, pop);
+    const low = k < 0.3, flash = Math.floor(t * (low ? 8 : 3)) % 2 === 0;
+    UIKit.bar(ctx, 20, 7, 100, 10, k, low ? (flash ? '#ff6161' : '#7c1414') : '#c8302e', '#1b2028');
+    if (b.beat > 0.6) { ctx.fillStyle = '#ffb0a8'; ctx.fillRect(22, 9, Math.max(1, Math.round(96 * k)), 1); }
+    // the haul, filling gold along the bottom of the same bar
+    if (b.revive > 0) { ctx.fillStyle = '#ffe48f'; ctx.fillRect(22, 15, Math.round(96 * clamp(b.revive, 0, 1)), 1); }
+    // his face, then a pip for every hit he can still take
+    ctx.drawImage(FACE_SP.o.c, 9, 20);
+    for (let i = 0; i < o.maxHp; i++) {
+      const x = 20 + i * 11, on = i < o.hp;
+      const lost = !on && i < o.hp + 2 && o.hurtT > 0 && Math.floor(t * 20) % 2 === 0;
+      ctx.fillStyle = '#14141c'; ctx.fillRect(x, 20, 9, 8);
+      ctx.fillStyle = lost ? '#ffffff' : on ? '#c8302e' : '#2c3440'; ctx.fillRect(x + 1, 21, 7, 6);
+      if (on) { ctx.fillStyle = '#ff6161'; ctx.fillRect(x + 1, 21, 7, 2); ctx.fillStyle = '#7c1414'; ctx.fillRect(x + 1, 26, 7, 1); }
+    }
+    if (!touch) {
+      // the dash: one pip that refills
+      const dk = o.dashCd > 0 ? 1 - o.dashCd / OVERBOARD.dashCd : 1;
+      ctx.fillStyle = '#14141c'; ctx.fillRect(20, 31, 7, 7);
+      ctx.fillStyle = dk >= 1 ? '#6fd88e' : '#2c3440'; ctx.fillRect(21, 32, 5, 5);
+      if (dk >= 1) { ctx.fillStyle = '#b6f5cd'; ctx.fillRect(21, 32, 5, 2); }
+      else { ctx.fillStyle = '#6fd88e'; ctx.fillRect(21, 37, Math.round(5 * clamp(dk, 0, 1)), 1); }
+      // and the cutlass beside it, lit while it is ready to swing again
+      const ready = o.sl.phase === 'idle' && o.sl.cd <= 0;
+      ctx.globalAlpha = ready ? 1 : 0.45;
+      ctx.drawImage(EMO_SP.cutlass.c, 31, 30);
+      ctx.globalAlpha = 1;
+    }
+  },
+  drawDownedWorld(ctx, t, p) {
+    const b = p.body, o = p.ot;
+    const k = clamp(b.bleed / b.bleedMax, 0, 1);
+    // the heartbeat at the edges of the screen, harder as she empties
+    if (b.beat > 0.01) {
+      const a = b.beat * (0.10 + (1 - k) * 0.22);
+      ctx.fillStyle = `rgba(160,10,18,${a.toFixed(3)})`;
+      ctx.fillRect(0, 0, 640, 8); ctx.fillRect(0, 352, 640, 8); ctx.fillRect(0, 8, 8, 344); ctx.fillRect(632, 8, 8, 344);
+      ctx.fillStyle = `rgba(160,10,18,${(a * 0.5).toFixed(3)})`;
+      ctx.fillRect(8, 8, 624, 6); ctx.fillRect(8, 346, 624, 6); ctx.fillRect(8, 14, 6, 332); ctx.fillRect(626, 14, 6, 332);
+    }
+    const sp = G.worldToScreen(b.x, b.y);
+    const on = sp.x > -10 && sp.x < 650 && sp.y > -10 && sp.y < 370;
+    if (on) {
+      // the ring on her: gold fills as he hauls, dark red where it has not
+      const cx = Math.round(sp.x), cy = Math.round(sp.y), R = 30;
+      const near = o && (o.hauling || p.touchingHer(40));
+      for (let i = 0; i < 28; i++) {
+        const a = -Math.PI / 2 + (i / 28) * TAU;
+        const filled = (i / 28) < b.revive;
+        ctx.fillStyle = filled ? (i & 1 ? '#ffe48f' : '#ffffff') : near ? '#e8515a' : 'rgba(150,24,32,0.85)';
+        ctx.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R * 0.62) - 1, 2, 2);
+      }
+      // and her blood drop over her, beating, so you can find her in a fight
+      const bob = Math.round(Math.sin(t * 3) * 1.5);
+      const pop = b.beat > 0.55 ? 2 : 1;
+      drawSprite(ctx, HUD_SP.vital, cx, cy - R * 0.62 - 8 + bob, 0, pop, pop);
+      return;
+    }
+    // off-screen: a hard arrow at the edge pointing at her, with her face
+    const a = angleTo(320, 180, sp.x, sp.y);
+    const ex = Math.round(clamp(320 + Math.cos(a) * 400, 16, 624)), ey = Math.round(clamp(180 + Math.sin(a) * 400, 56, 344));
+    const beat = b.beat > 0.55;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const inside = (lx, ly) => lx >= -5 && lx <= 8 && Math.abs(ly) <= (8 - lx) * 0.6;
+    for (let dy = -10; dy <= 10; dy++) for (let dx = -10; dx <= 10; dx++) {
+      const lx = dx * ca + dy * sa, ly = -dx * sa + dy * ca;
+      if (inside(lx, ly)) { ctx.fillStyle = beat ? '#ff8a80' : '#e0282e'; ctx.fillRect(ex + dx, ey + dy, 1, 1); }
+      else if (inside(lx + 1, ly) || inside(lx - 1, ly) || inside(lx, ly + 1) || inside(lx, ly - 1)) { ctx.fillStyle = '#14141c'; ctx.fillRect(ex + dx, ey + dy, 1, 1); }
+    }
+    const fx = Math.round(ex - ca * 17) - 4, fy = Math.round(ey - sa * 17) - 4;
+    ctx.fillStyle = '#14141c'; ctx.fillRect(fx - 1, fy - 1, 10, 10);
+    ctx.drawImage(FACE_SP.m.c, fx, fy);
+    // a sliver of how long she has, under her face
+    ctx.fillStyle = '#14141c'; ctx.fillRect(fx - 1, fy + 10, 10, 3);
+    ctx.fillStyle = k < 0.3 ? '#ff6161' : '#c8302e'; ctx.fillRect(fx, fy + 11, Math.max(1, Math.round(8 * k)), 1);
   },
 
   // sixteen pips, one per wave: filled behind you, bright under you, dim ahead

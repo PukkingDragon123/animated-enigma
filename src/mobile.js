@@ -678,6 +678,9 @@ const MobileUI = {
       b.visible = !b.req || !!(st && st[b.req]);
       b.frac = 1; b.ready = true; b.active = 0; b.charges = 0; b.maxCharges = 1; b.meter = 0;
       if (!p) { if (b.req) b.visible = false; continue; }
+      // with her down only the otter's two moves are live: the cutlass (the
+      // melee button, and the stick) and the dash (the roll button)
+      if (p.downed) b.visible = b.name === 'melee' || b.name === 'roll';
       const cdm = (x) => (p.cd ? p.cd(x) : x) || 1e-6;
       switch (b.name) {
         case 'fire': {
@@ -703,6 +706,12 @@ const MobileUI = {
           break;
         }
         case 'roll': {
+          if (p.downed && p.ot) {       // the otter's dash, not her roll
+            const dcd = (typeof OVERBOARD !== 'undefined' ? OVERBOARD.dashCd : 0.9);
+            b.frac = p.ot.dashCd > 0 ? clamp(1 - p.ot.dashCd / dcd, 0, 1) : 1;
+            b.ready = p.ot.dashCd <= 0; b.active = p.ot.dashT > 0 ? 1 : 0;
+            break;
+          }
           const maxC = (st && st.rollCharges) || 1;
           const ch = (p.roll && p.roll.charges !== undefined) ? p.roll.charges : maxC;
           b.charges = ch; b.maxCharges = maxC;

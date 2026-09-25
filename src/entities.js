@@ -35,7 +35,11 @@ class Rock {
 // Salvage the boats leave behind that is not scrap: kit you use on the spot.
 const ITEM_KINDS = {
   repair: { name: 'BOAT FIXER', color: '#6fd88e', sound: 4,
-    take(p) { const h = Math.round(p.stats.maxHp * 0.30); p.hp = Math.min(p.stats.maxHp, p.hp + h); return '+' + h + ' HULL'; } },
+    take(p) {
+      // with her down, a fixer patches the otter instead
+      if (p.downed && p.ot) { p.ot.hp = Math.min(p.ot.maxHp, p.ot.hp + 2); return '+2'; }
+      const h = Math.round(p.stats.maxHp * 0.30); p.hp = Math.min(p.stats.maxHp, p.hp + h); return '+' + h + ' HULL';
+    } },
   plate:  { name: 'HULL PLATE', color: '#dde5ee', sound: 0,
     take(p) { p.platingT = 12; return 'PLATED'; } },
   tonic:  { name: 'FUEL CAN', color: '#ff9a3c', sound: 2,
@@ -133,7 +137,8 @@ class Projectile {
       if (p.dead) return;
       const d = dist(this.x, this.y, p.x, p.y);
       if (p.absorb.active && this.absorbable && d < 54) { p.absorbHit(this); this.dead = true; return; }
-      if (d < 12 + this.size && !p.diving) {
+      // the otter in the water is a much smaller target than she is
+      if (d < (p.downed ? 7 : 12) + this.size && !p.diving) {
         if (p.rolling) { this.dead = true; G.particles.sparks(this.x, this.y, 3); return; }
         // a winch hook does almost no damage: what it does is take the wheel
         if (this.grapple && !this.grapple.dead) { p.hooked(this.grapple, this); this.dead = true; return; }
@@ -986,6 +991,33 @@ class Buoy {
   render(ctx, cam, t) { drawSprite(ctx, SP.buoy, this.x - cam.x, this.y - cam.y + Math.sin(t * 4) * 1.5); ctx.fillStyle = Math.floor(t * 4) % 2 ? '#ff6161' : '#fff'; ctx.fillRect(Math.round(this.x - cam.x), Math.round(this.y - cam.y - 4 + Math.sin(t * 4) * 1.5), 1, 1); }
 }
 
+// ============================ OVERBOARD ===================================
+// Her HP running out puts her DOWN, not dead: she floats belly-up bleeding
+// into the water and the otter goes over the side and fights on alone with
+// his cutlass. He can haul her back up; if she bleeds out first, or the
+// fleet kills him, that is the real death and the death scene plays.
+const OVERBOARD = {
+  hp: 6,               // his pips. A hit costs one, a big one (24+) costs two
+  iframes: 1.0,        // seconds untouchable after he is hit
+  speed: 112,          // swimming, world units per second
+  sprint: 150,         // after a moment of swimming the same way he opens up
+  sprintAfter: 0.7,
+  dashSpeed: 330, dashT: 0.24, dashCd: 0.9,   // [SPACE]: a burst he cannot be hit in
+  slashDmg: 26,        // per boat caught in the arc, before the tree's damage
+  heavyMul: 1.6,       // every third cut in a chain is a heavy one
+  arc: 2.3, heavyArc: 3.0,
+  range: 30, heavyRange: 36,
+  wind: 0.05, swing: 0.11, recover: 0.14,
+  cd: 0.30, heavyCd: 0.50, chain: 0.7,
+  knock: 260, heavyKnock: 420,                // small boats; big ones take a third
+  bleed: 22, bleedStep: 5, bleedMin: 10,      // seconds; shorter every time she goes down
+  revive: 2.5,         // seconds of hauling in contact with her
+  reviveHold: 1.25,    // holding [G]/[X] hauls faster and from a little further off
+  reviveDrain: 0.5,    // progress lost per second when he lets go
+  hitSetback: 0.30,    // a hit on him while he hauls costs this much progress
+  reviveHp: 0.40, reviveInvuln: 2.2,
+};
+
 // ============================ PLAYER (manatee + otter) ==================
 class Player {
   constructor(x, y, tree) {
@@ -1008,8 +1040,17 @@ class Player {
     this.swimPhase = 0; this.joyT = 0; this.regenAcc = 0; this.secondWindUsed = false; this.usedSecondWind = false;
     this.wake = G.ocean.newWake(this, 8);
     this.bob = 0;
+    // ---- overboard: when her HP runs out she goes DOWN rather than dead, and
+    // the otter carries on in the water on his own (see goDown below).
+    // While she is down this.x/this.y ARE the otter -- every boat, shell and
+    // boss in the game aims at G.player.x/y, so they all go after him with no
+    // changes of their own -- and her body is a prop at this.body.x/y.
+    this.downed = false; this.downs = 0; this.body = null; this.ot = null; this.remount = null;
+    if (typeof OtterSwim !== 'undefined') OtterSwim.build();
   }
-  get rolling() { return this.roll.active; }
+  // the otter's dash counts as a roll to everything that asks: shots glance
+  // off, rams miss, a boarder clinging on is thrown clear
+  get rolling() { return this.roll.active || !!(this.downed && this.ot && this.ot.dashT > 0); }
   get diving() { return this.dive.active; }
   refreshStats() {
     const old = this.stats; this.stats = this.tree.stats();
@@ -1019,6 +1060,16 @@ class Player {
   cd(v) { return v * this.stats.cdMult; }
   update(dt, t) {
     if (this.dead) return;
+    if (this.downed) { this.updateDowned(dt, t); return; }
+    if (this.remount) {
+      // the otter is still in the air on his way back into the saddle
+      this.remount.t += dt;
+      if (this.remount.t >= this.remount.dur) {
+        this.remount = null;
+        G.particles.splash(this.x + this.facing * 7, this.y - 2, 0.6);
+        Audio_.tone(320, 0.08, 'square', 0.1, 180);
+      }
+    }
     const st = this.stats, inp = Input.axis();
     // ---- timers
     this.invuln -= dt; this.hurt -= dt; this.joyT -= dt; this.boost -= dt; this.slowed -= dt; this.platingT -= dt; this.absorb.cd -= dt; this.absorb.flash -= dt; this.dive.cd -= dt; this.decoyCd -= dt; this.tidalCd -= dt; this.melee.cd -= dt;
@@ -1119,8 +1170,9 @@ class Player {
     if (G.ocean.disturb && sp > 12) G.ocean.disturb(this.x, this.y, Math.min(2.0, sp / 90) * (this.roll.active ? 2.6 : 1), this.vx, this.vy);
     // wake
     if (sp > 40 && !this.dive.active) { const last = this.wake.pts[this.wake.pts.length - 1]; if (!last || dist(last.x, last.y, this.x, this.y) > 6) this.wake.pts.push({ x: this.x - this.vx / sp * 10, y: this.y - this.vy / sp * 10, t }); if (Math.random() < sp / 500) G.ocean.addFoam(this.x - this.vx / sp * 12, this.y - this.vy / sp * 12, 0.06); }
-    // ---- otter: aiming & shooting
-    this.updateWeapons(dt, t);
+    // ---- otter: aiming & shooting (not while he is still in the air on his
+    // way back into the saddle)
+    if (!this.remount) this.updateWeapons(dt, t);
   }
   // ---- MELEE: the manatee's tail sweep -----------------------------------
   // Three beats, because a two-tonne animal does not flick. She hauls the
@@ -1252,6 +1304,8 @@ class Player {
   // ---- being winched in ---------------------------------------------------
   hooked(boat, proj) {
     if (this.dead || this.rolling || this.dive.active) return;
+    // there is nothing on the otter worth winching: the hook just hurts
+    if (this.downed) { this.damage(proj.dmg, proj.x, proj.y); return; }
     this.tether = { e: boat, t: 2.2 };
     this.damage(proj.dmg, proj.x, proj.y);
     G.particles.text(this.x, this.y - 26, 'HOOKED!', '#ff9a3c', 9);
@@ -1325,6 +1379,7 @@ class Player {
     }
   }
   damage(amt, sx, sy) {
+    if (this.downed) { this.otterHurt(amt, sx, sy); return; }
     if (this.dead || this.invuln > 0 || this.roll.active || this.dive.active) return;
     amt *= (1 - Math.min(0.7, this.stats.armor));
     if (this.platingT > 0) { amt *= 0.45; G.particles.sparks(this.x, this.y, 4); }
@@ -1344,8 +1399,456 @@ class Player {
         for (const pr of G.projectiles) if (pr.owner === 'enemy') pr.dead = true;
         return;
       }
-      this.hp = 0; this.dead = true; G.onPlayerDeath();
+      // not dead yet: she goes belly-up and the otter goes over the side
+      this.hp = 0; this.goDown();
     }
+  }
+  // ======================================================================
+  //  OVERBOARD -- she is down, he is in the water
+  // ======================================================================
+  goDown() {
+    const OB = OVERBOARD;
+    this.downs++;
+    const bleedMax = Math.max(OB.bleedMin, OB.bleed - (this.downs - 1) * OB.bleedStep);
+    // everything of hers that was running stops
+    this.roll.active = false; this.absorb.active = false; this.dive.active = false;
+    this.rampage.active = false; this.melee.phase = 'idle'; this.slowed = 0; this.boost = 0;
+    if (this.tether) this.freeTether(null);
+    if (typeof Wildlife !== 'undefined' && Wildlife.riding) Wildlife.riding = null;
+    const bx = this.x, by = this.y;
+    this.body = {
+      x: bx, y: by, vx: this.vx * 0.35, vy: this.vy * 0.35, facing: this.facing,
+      ang: clamp(this.tilt, -0.5, 0.5), t: 0, bleed: bleedMax, bleedMax, revive: 0,
+      beatT: 0.2, beat: 0, hauled: false, rollIn: 0,
+    };
+    // he is thrown clear off her back, the way she was going
+    const mv = Math.hypot(this.vx, this.vy);
+    const a = (mv > 30 ? Math.atan2(this.vy, this.vx) : (this.facing === 1 ? 0 : Math.PI)) + rand(-0.7, 0.7);
+    const fx = bx + this.facing * 8, fy = by - 3;
+    const tx = clamp(fx + Math.cos(a) * 58, 30, G.ocean.W - 30), ty = clamp(fy + Math.sin(a) * 58, WATER_TOP + 8, G.ocean.H - 20);
+    this.ot = {
+      hp: OB.hp, maxHp: OB.hp, heading: a, flip: Math.cos(a) < 0 ? -1 : 1, phase: 0,
+      jump: { t: 0, dur: 0.55, fx, fy, tx, ty }, z: 0,
+      dashT: 0, dashCd: 0, dashX: 1, dashY: 0, moveT: 0, hurtT: 0, hauling: false, mode: 'leap',
+      sl: { phase: 'idle', t: 0, cd: 0, side: -1, wside: 1, dir: 0, hits: null, chain: 0, chainT: 0, heavy: false, arc: OB.arc, range: OB.range },
+      aim: a, splashT: 0,
+    };
+    this.x = fx; this.y = fy; this.vx = 0; this.vy = 0;
+    this.invuln = 0.8; this.hurt = 0;
+    this.downed = true;
+    // and she opens up
+    G.particles.gore(bx, by, 1.6); G.particles.blood(bx, by, 3.2);
+    G.particles.gib(bx, by, 5, undefined, { spread: TAU, speed: 120 });
+    G.particles.bleed(bx, by, 3.2, bleedMax, 20);
+    if (typeof Gore !== 'undefined' && Gore.burst) Gore.burst(bx, by, 1.8);
+    G.particles.splash(bx, by, 2.6); G.ocean.ripple(bx, by, 90, 220, 1);
+    Toon.impact(bx, by, 2.2, '#ff8a8a'); Toon.shock(bx, by, 100, 0.55, '#e8515a');
+    G.shake(14); Audio_.hurt(); Audio_.splash(2); Audio_.tone(70, 1.1, 'sawtooth', 0.28, -40);
+    if (typeof UI !== 'undefined' && UI.banterEvent) UI.banterEvent('downed');
+  }
+  // where he is in contact with her: her body as an ellipse along her length
+  touchingHer(margin) {
+    const b = this.body; if (!b) return false;
+    const dx = this.x - b.x, dy = this.y - b.y;
+    const a = b.ang, c = Math.cos(a), s = Math.sin(a);     // her long axis (an ellipse: facing is moot)
+    const lx = dx * c + dy * s, ly = -dx * s + dy * c;
+    const rx = 33 + margin, ry = 14 + margin;
+    return (lx * lx) / (rx * rx) + (ly * ly) / (ry * ry) < 1;
+  }
+  updateDowned(dt, t) {
+    const OB = OVERBOARD, b = this.body, o = this.ot;
+    this.invuln -= dt; this.hurt -= dt; this.joyT -= dt; this.slowed -= dt; this.platingT -= dt; this.boost -= dt;
+    o.dashT -= dt; o.dashCd -= dt; o.hurtT -= dt; o.sl.cd -= dt; o.sl.chainT -= dt;
+    // the clock only runs while there is a fight on: a boss dying, a cinematic
+    // or the victory wait must not bleed her out in the background
+    const live = G.state === 'play';
+    // ---- her: adrift, belly-up, bleeding
+    b.t += dt; b.rollIn = Math.min(1, b.rollIn + dt / 0.4);
+    const fl = G.ocean.flow(b.x, b.y);
+    b.vx += fl.x * dt * 0.35; b.vy += fl.y * dt * 0.35;
+    const dk = Math.pow(0.35, dt); b.vx *= dk; b.vy *= dk;
+    b.x = clamp(b.x + b.vx * dt, 30, G.ocean.W - 30); b.y = clamp(b.y + b.vy * dt, WATER_TOP + 6, G.ocean.H - 24);
+    for (const r of G.rocks) { const d = dist(b.x, b.y, r.x, r.y); if (d < r.r + 18) { const a = angleTo(r.x, r.y, b.x, b.y); b.x = r.x + Math.cos(a) * (r.r + 18); b.y = r.y + Math.sin(a) * (r.r + 18); b.vx *= 0.3; b.vy *= 0.3; } }
+    b.ang = clamp(b.ang + Math.sin(b.t * 0.37) * 0.04 * dt, -0.6, 0.6);
+    if (live) b.bleed -= dt;
+    const k = clamp(b.bleed / b.bleedMax, 0, 1);
+    // a heartbeat: it quickens as she empties, and every beat pumps more out
+    b.beatT -= dt; b.beat = Math.max(0, b.beat - dt * 5);
+    if (b.beatT <= 0) {
+      b.beatT = 0.36 + 0.74 * k; b.beat = 1;
+      const wx = b.x + rand(-12, 12), wy = b.y + rand(-7, 7);
+      G.particles.blood(wx, wy, 0.35 + (1 - k) * 0.4);
+      if (G.ocean.splatBlood) G.ocean.splatBlood(b.x + rand(-8, 8), b.y + rand(-5, 5), 0.35, 12);
+      Audio_.tone(52, 0.14, 'sine', 0.2 + (1 - k) * 0.14, -18);
+      if (k < 0.35) setTimeout(() => Audio_.tone(46, 0.1, 'sine', 0.14, -12), 120);
+    }
+    if (b.bleed <= 0) { this.trueDeath(false); return; }
+    // a wave cleared while she is down waits for her: the tree does not open
+    // over the top of a revive
+    if (G.autoTree > 0) G.autoTree = Math.max(G.autoTree, 0.5);
+
+    // ---- him: over the side
+    if (o.jump) {
+      const j = o.jump; j.t += dt;
+      const u = clamp(j.t / j.dur, 0, 1);
+      this.x = lerp(j.fx, j.tx, u); this.y = lerp(j.fy, j.ty, u);
+      o.z = Math.sin(u * Math.PI) * 15; o.mode = 'leap'; o.phase += dt * 6;
+      o.heading = angleTo(j.fx, j.fy, j.tx, j.ty); o.flip = Math.cos(o.heading) < 0 ? -1 : 1;
+      if (u >= 1) {
+        o.jump = null; o.z = 0;
+        G.particles.splash(this.x, this.y, 1.8); G.ocean.ripple(this.x, this.y, 40, 120, 0.8);
+        G.particles.bubbles(this.x, this.y, 8); Audio_.splash(1.3);
+        if (G.ocean.disturb) G.ocean.disturb(this.x, this.y, 3, 0, 0);
+      }
+      return;
+    }
+    const inp = Input.axis(), mag = Math.hypot(inp.x, inp.y);
+    // [SPACE] / the roll button: a burst he cannot be hit in
+    if (Input.actHit('roll') && o.dashCd <= 0 && o.sl.phase === 'idle') {
+      let dx = inp.x, dy = inp.y;
+      if (mag < 0.1) { dx = Math.cos(o.heading); dy = Math.sin(o.heading); }
+      const l = Math.hypot(dx, dy) || 1;
+      o.dashX = dx / l; o.dashY = dy / l; o.dashT = OB.dashT; o.dashCd = OB.dashCd;
+      G.particles.splash(this.x, this.y, 1); Audio_.roll();
+      Toon.shock(this.x, this.y, 30, 0.25);
+      for (let i = 0; i < 3; i++) Toon.speed(this.x, this.y, Math.atan2(o.dashY, o.dashX), 2);
+    }
+    // the cutlass: [C], or the fire button now his gun has gone down with her.
+    // Holding fire keeps cutting.
+    const wantCut = Input.actHit('melee') || (!G.holdFire && (Input.actHit('fire') || Input.act('fire')));
+    if (wantCut && o.sl.phase === 'idle' && o.sl.cd <= 0) this.otterStartSlash(Input.actHit('melee') && !Input.act('fire'));
+    this.otterUpdateSlash(dt);
+    // ---- movement
+    if (mag > 0.1) o.moveT += dt; else o.moveT = 0;
+    const sph = o.sl.phase;
+    const drag = sph === 'wind' ? 0.4 : sph === 'strike' ? 0.7 : sph === 'recover' ? 0.8 : 1;
+    const sprintK = clamp((o.moveT - OB.sprintAfter) / 0.5, 0, 1);
+    const max = lerp(OB.speed, OB.sprint, sprintK) * (this.slowed > 0 ? 0.5 : 1) * drag;
+    if (o.dashT > 0) {
+      this.vx = o.dashX * OB.dashSpeed; this.vy = o.dashY * OB.dashSpeed;
+      if (Math.random() < 0.7) G.particles.spray(this.x - o.dashX * 6, this.y - o.dashY * 6, Math.atan2(-o.dashY, -o.dashX), 1, 90);
+      G.ocean.addFoam(this.x, this.y, 0.2);
+    } else {
+      this.vx = approach(this.vx, inp.x * max, 760 * dt); this.vy = approach(this.vy, inp.y * max, 760 * dt);
+      if (mag < 0.1) { const f = Math.pow(0.04, dt); this.vx *= f; this.vy *= f; }
+    }
+    // the dredger, a whirl, the current: the sea pushes him about
+    const f2 = G.ocean.flow(this.x, this.y);
+    this.vx += f2.x * dt * 0.5; this.vy += f2.y * dt * 0.5;
+    // ---- hauling her up. Touching her is enough (so a thumb on a touch
+    //      screen can do it); holding interact is quicker and reaches further
+    const holding = Input.act('interact');
+    const contact = this.touchingHer(8) || (holding && this.touchingHer(18));
+    o.hauling = contact && o.sl.phase === 'idle' && o.dashT <= 0;
+    if (o.hauling) {
+      b.revive += dt / OB.revive * (holding ? OB.reviveHold : 1);
+      b.hauled = true;
+      // he takes hold: drifts with her and leans into the pull
+      if (mag < 0.1) { this.vx = lerp(this.vx, b.vx, 0.2); this.vy = lerp(this.vy, b.vy, 0.2); }
+      if (Math.random() < dt * 6) G.particles.spray(this.x, this.y, angleTo(b.x, b.y, this.x, this.y), 1, 60);
+    } else b.revive = Math.max(0, b.revive - dt * OB.reviveDrain);
+    this.x += this.vx * dt; this.y += this.vy * dt;
+    this.x = clamp(this.x, 16, G.ocean.W - 16); this.y = clamp(this.y, WATER_TOP, G.ocean.H - 16);
+    for (const r of G.rocks) { const d = dist(this.x, this.y, r.x, r.y); if (d < r.r + 5) { const a = angleTo(r.x, r.y, this.x, this.y); this.x = r.x + Math.cos(a) * (r.r + 5); this.y = r.y + Math.sin(a) * (r.r + 5); this.vx *= 0.4; this.vy *= 0.4; if (o.dashT > 0) o.dashT = 0; } }
+    for (let i = 0; i < G.wrecks.length; i++) {
+      const w = G.wrecks[i]; if (!w.bump) continue;
+      const reach = w.radius + 10;
+      if (Math.abs(w.x - this.x) > reach || Math.abs(w.y - this.y) > reach) continue;
+      w.bump(this, 5, dt);
+    }
+    if (b.revive >= 1) { this.reviveHer(); return; }
+    // ---- which way he is pointed, and how
+    const sp = Math.hypot(this.vx, this.vy);
+    let want = o.heading;
+    if (o.sl.phase !== 'idle') want = o.sl.dir;
+    else if (o.hauling) want = angleTo(this.x, this.y, b.x, b.y);
+    else if (sp > 14) want = Math.atan2(this.vy, this.vx);
+    o.heading = angleLerp(o.heading, want, 1 - Math.pow(o.sl.phase !== 'idle' ? 1e-9 : 0.0008, dt));
+    const cs = Math.cos(o.heading);
+    const flipTo = cs < -0.12 ? -1 : cs > 0.12 ? 1 : (o.flip < 0 ? -1 : 1);
+    o.flip = approach(o.flip, flipTo, dt / 0.16 * 2);
+    if (Math.abs(cs) > 0.25 || o.sl.phase !== 'idle') { this.facing = cs < 0 ? -1 : 1; }
+    o.mode = o.hauling ? 'haul' : (o.dashT > 0 || sp > 138) ? 'dash' : sp > 26 ? 'swim' : 'tread';
+    o.phase += dt * (o.mode === 'tread' ? 3.4 : o.mode === 'swim' ? 4.5 + sp / 22 : o.mode === 'dash' ? 13 : 7.5);
+    // the water he moves
+    if (G.ocean.disturb && sp > 10) G.ocean.disturb(this.x, this.y, Math.min(1.4, sp / 110), this.vx, this.vy);
+    o.splashT -= dt;
+    if (sp > 40 && o.splashT <= 0) {
+      o.splashT = o.mode === 'dash' ? 0.05 : 0.12;
+      G.ocean.addFoam(this.x - this.vx / sp * 10, this.y - this.vy / sp * 10, o.mode === 'dash' ? 0.12 : 0.06);
+      if (o.mode === 'dash' && Math.random() < 0.5) G.particles.spray(this.x - this.vx / sp * 14, this.y - this.vy / sp * 14, Math.atan2(-this.vy, -this.vx) + rand(-0.5, 0.5), 1, 60);
+    }
+    if (o.mode === 'tread' && Math.random() < dt * 0.8) G.ocean.ripple(this.x, this.y + 2, 18, 40, 0.35);
+    // a boarder clinging to him is thrown clear by a dash (the `rolling`
+    // getter does that); nothing else of hers runs while she is down
+  }
+  // which way the cut goes: the cursor or the touch stick when the player is
+  // pointing, the boat in reach when he is not -- with a little help, so a
+  // cut aimed near a boat lands on it
+  otterAimCut(preferNear) {
+    const o = this.ot, OB = OVERBOARD;
+    const reach = OB.range + 18;
+    let near = null, nd = 1e9;
+    for (const e of G.enemies) { if (e.dead) continue; const d = dist(this.x, this.y, e.x, e.y) - e.radius; if (d < reach && d < nd) { nd = d; near = e; } }
+    const bs = G.boss;
+    if (bs && !bs.dead) { const d = dist(this.x, this.y, bs.x, bs.y) - bs.radius; if (d < reach && d < nd) { nd = d; near = bs; } }
+    if (typeof Hazards !== 'undefined' && Hazards.swimmers) for (const s of Hazards.swimmers) {
+      if (s.dead || s.z > 6) continue; const d = dist(this.x, this.y, s.x, s.y); if (d < reach && d < nd) { nd = d; near = s; }
+    }
+    let raw = null;
+    const touchAim = (typeof MobileUI !== 'undefined' && MobileUI.enabled) ? MobileUI.aimAt() : null;
+    if (touchAim) { const w = G.screenToWorld(touchAim.x, touchAim.y); raw = angleTo(this.x, this.y, w.x, w.y); }
+    else if (!preferNear && (Input.mouse.moved || Input.mouse.down)) { const w = G.screenToWorld(Input.mouse.x, Input.mouse.y); raw = angleTo(this.x, this.y, w.x, w.y); }
+    if (near) {
+      const a = angleTo(this.x, this.y, near.x, near.y);
+      if (raw === null || Math.abs(angleDiff(raw, a)) < 0.8) return a;
+    }
+    return raw === null ? o.heading : raw;
+  }
+  otterStartSlash(preferNear) {
+    const OB = OVERBOARD, o = this.ot, sl = o.sl;
+    sl.chain = sl.chainT > 0 ? (sl.chain + 1) % 3 : 0;
+    sl.heavy = sl.chain === 2;
+    sl.arc = sl.heavy ? OB.heavyArc : OB.arc; sl.range = sl.heavy ? OB.heavyRange : OB.range;
+    sl.phase = 'wind'; sl.t = 0; sl.hits = new Set();
+    sl.side = -sl.side;                                 // forehand, backhand
+    sl.dir = this.otterAimCut(preferNear);
+    sl.cd = sl.heavy ? OB.heavyCd : OB.cd;
+    // he whips round to face it: a cut is a lunge, not a flick of the wrist
+    o.heading = sl.dir; o.flip = Math.cos(sl.dir) < 0 ? -1 : 1;
+    sl.wside = sl.side * o.flip;
+    this.facing = o.flip;
+    Audio_.noise(0.07, 0.14, 2600, 700);
+  }
+  otterUpdateSlash(dt) {
+    const OB = OVERBOARD, o = this.ot, sl = o.sl;
+    if (sl.phase === 'idle') return;
+    sl.t += dt;
+    if (sl.phase === 'wind') {
+      if (sl.t >= OB.wind) {
+        sl.phase = 'strike'; sl.t = 0;
+        this.vx += Math.cos(sl.dir) * (sl.heavy ? 150 : 105); this.vy += Math.sin(sl.dir) * (sl.heavy ? 150 : 105);
+        Audio_.noise(0.12, sl.heavy ? 0.34 : 0.24, 4200, 900); Audio_.tone(sl.heavy ? 180 : 240, 0.09, 'triangle', 0.1, 260);
+        if (sl.heavy) { G.shake(2.5); Toon.shock(this.x, this.y, sl.range * 1.6, 0.25, '#eaf8ff'); }
+      }
+    } else if (sl.phase === 'strike') {
+      this.otterSweep();
+      if (sl.t >= OB.swing) { sl.phase = 'recover'; sl.t = 0; }
+    } else if (sl.t >= OB.recover) { sl.phase = 'idle'; sl.t = 0; sl.chainT = OB.chain; }
+  }
+  // the arc really sweeps: a boat is cut when the blade reaches its bearing
+  otterSweep() {
+    const OB = OVERBOARD, o = this.ot, sl = o.sl;
+    const k = clamp(sl.t / OB.swing, 0, 1), ease = k * k * (3 - 2 * k);
+    const arc = sl.arc, range = sl.range, side = sl.wside;
+    const reached = tgt => {
+      const rel = angleDiff(sl.dir, angleTo(this.x, this.y, tgt.x, tgt.y)) * side;
+      if (Math.abs(rel) > arc / 2) return false;
+      return ease >= (rel + arc / 2) / arc;
+    };
+    // the water the blade is going through
+    const edge = sl.dir + side * (-arc / 2 + arc * ease);
+    const ex = this.x + Math.cos(edge) * range * 0.75, ey = this.y + Math.sin(edge) * range * 0.75;
+    if (Math.random() < 0.6) G.particles.spray(ex, ey, edge + side * 1.4, 1, 90);
+    G.ocean.addFoam(ex, ey, 0.12);
+    for (const e of G.enemies) {
+      if (e.dead || sl.hits.has(e)) continue;
+      if (dist(this.x, this.y, e.x, e.y) > range + e.radius) continue;
+      if (!reached(e)) continue;
+      sl.hits.add(e); this.otterHitBoat(e);
+    }
+    const bs = G.boss;
+    if (bs && !bs.dead && !sl.hits.has(bs) && dist(this.x, this.y, bs.x, bs.y) <= range + bs.radius && reached(bs)) { sl.hits.add(bs); this.otterHitBoat(bs); }
+    // the boarders in the water with him
+    if (typeof Hazards !== 'undefined' && Hazards.swimmers) for (const s of Hazards.swimmers) {
+      if (s.dead || s.z > 6 || sl.hits.has(s)) continue;
+      if (dist(this.x, this.y, s.x, s.y) > range + 5 || !reached(s)) continue;
+      sl.hits.add(s); this.otterHitSwimmer(s);
+    }
+    // and anything thrown at him that the blade goes through is cut out of
+    // the air (a mine is left well alone)
+    for (const pr of G.projectiles) {
+      if (pr.dead || pr.owner !== 'enemy' || pr instanceof Mine || (pr.arc && pr.z > 4)) continue;
+      if (dist(this.x, this.y, pr.x, pr.y) > range + 4 || !reached(pr)) continue;
+      pr.dead = true;
+      G.particles.sparks(pr.x, pr.y, 6, angleTo(this.x, this.y, pr.x, pr.y), 1.4);
+      Toon.impact(pr.x, pr.y, 0.8, '#eaf8ff');
+      Audio_.tone(1400, 0.05, 'square', 0.07, -600);
+    }
+  }
+  otterCutDamage(heavy) {
+    const OB = OVERBOARD, st = this.stats;
+    return OB.slashDmg * (heavy ? OB.heavyMul : 1) * (1 + ((st.dmg || 1) - 1) * 0.5);
+  }
+  otterHitBoat(e) {
+    const OB = OVERBOARD, sl = this.ot.sl;
+    const a = angleTo(this.x, this.y, e.x, e.y);
+    const kn = sl.heavy ? OB.heavyKnock : OB.knock;
+    e.hit(this.otterCutDamage(sl.heavy), Math.cos(a) * kn, Math.sin(a) * kn, null);
+    // a cutlass through whoever was at the rail: it opens them up along the
+    // line of the cut, so you can read which way the blade went
+    const r = e.radius || 12;
+    const hx = e.x - Math.cos(a) * r * 0.45, hy = e.y - Math.sin(a) * r * 0.45;
+    const along = a + sl.wside * Math.PI / 2;
+    G.particles.gore(hx, hy, sl.heavy ? 1.2 : 0.75, along);
+    G.particles.sparks(hx, hy, 4, a + Math.PI, 1.6);
+    G.particles.debris(hx, hy, 4, ['#b57d3f', '#8f5c2c', '#5c3a1c']);
+    if (sl.heavy) G.particles.gib(hx, hy, 3, along, { spread: 1.2, speed: 150 });
+    if (typeof Gore !== 'undefined' && Gore.burst) Gore.burst(hx, hy, sl.heavy ? 1.1 : 0.7, along, 3);
+    Toon.impact(hx, hy, sl.heavy ? 1.5 : 1.1, '#ffffff');
+    G.particles.splash((this.x + e.x) / 2, (this.y + e.y) / 2, 0.7);
+    if (G.ocean.disturb) G.ocean.disturb(e.x, e.y, 3, Math.cos(a) * 180, Math.sin(a) * 180);
+    G.shake(sl.heavy ? 6 : 3.5);
+    Audio_.noise(0.1, 0.3, 3000, 500); Audio_.tone(sl.heavy ? 150 : 210, 0.08, 'square', 0.14, -110);
+  }
+  otterHitSwimmer(s) {
+    const sl = this.ot.sl, a = angleTo(this.x, this.y, s.x, s.y);
+    const dmg = this.otterCutDamage(sl.heavy);
+    if (s.hp - dmg <= 0 && Hazards.killSwimmer) { Hazards.killSwimmer(s, a, sl.heavy ? 1.5 : 1.2); return; }
+    s.hp -= dmg; s.flash = 0.09; s.bloody = 1; s.hatLost = true;
+    s.vx = (s.vx || 0) + Math.cos(a) * 220; s.vy = (s.vy || 0) + Math.sin(a) * 220;
+    if (s.state === 'cling') { s.state = 'stun'; s.stateT = 0; s.stun = 0.7; s.cling = 0; }
+    G.particles.blood(s.x, s.y, 0.9, a); Toon.impact(s.x, s.y, 1, '#ffffff'); Audio_.hit();
+  }
+  otterHurt(amt, sx, sy) {
+    const o = this.ot;
+    if (!o || o.jump || this.invuln > 0 || o.dashT > 0 || !(amt > 0)) return;
+    if (G.state !== 'play') return;
+    const pips = amt >= 24 ? 2 : 1;
+    o.hp = Math.max(0, o.hp - pips); this.invuln = OVERBOARD.iframes; this.hurt = 0.2; o.hurtT = 0.35;
+    const a = sx !== undefined ? angleTo(sx, sy, this.x, this.y) : rand(0, TAU);
+    this.vx += Math.cos(a) * 160; this.vy += Math.sin(a) * 160;
+    G.particles.blood(this.x, this.y, 0.9, a); G.particles.gore(this.x, this.y, 0.45, a);
+    G.particles.splash(this.x, this.y, 0.7);
+    Toon.impact(this.x, this.y, 1.1, '#ff6161'); Toon.emote(this.x + 8, this.y - 20, '!');
+    G.shake(Math.min(9, 4 + pips * 2)); Audio_.hurt();
+    G.stats.damageTaken += amt;
+    if (this.body) this.body.revive = Math.max(0, this.body.revive - OVERBOARD.hitSetback);
+    if (o.hp <= 0) {
+      // and that is the last of him
+      G.particles.gore(this.x, this.y, 1.8, a); G.particles.gib(this.x, this.y, 6, a, { spread: 2, speed: 140 });
+      G.particles.blood(this.x, this.y, 2.4, a); G.particles.mist(this.x, this.y, 6);
+      if (typeof Gore !== 'undefined' && Gore.burst) Gore.burst(this.x, this.y, 1.4, a, 4);
+      this.trueDeath(true);
+    }
+  }
+  reviveHer() {
+    const OB = OVERBOARD, b = this.body, o = this.ot;
+    const ox = this.x, oy = this.y;
+    this.downed = false;
+    this.x = b.x; this.y = b.y; this.facing = b.facing; this.vx = b.vx; this.vy = b.vy;
+    this.tilt = 0;
+    this.hp = Math.max(1, Math.round(this.stats.maxHp * OB.reviveHp));
+    this.invuln = OB.reviveInvuln; this.hurt = 0; this.slowed = 0;
+    this.remount = { t: 0, dur: 0.42, fx: ox, fy: oy, heading: o.heading, flip: o.flip, phase: o.phase };
+    this.body = null; this.ot = null;
+    // she rights herself with a heave that shoves the whole water back
+    const x = this.x, y = this.y;
+    G.particles.splash(x, y, 3.2); G.ocean.ripple(x, y, 120, 260, 1); G.ocean.ripple(x, y, 80, 180, 0.7);
+    if (G.ocean.disturb) G.ocean.disturb(x, y, 6, 0, 0);
+    Toon.shock(x, y, 130, 0.55, '#eaf8ff'); Toon.burst(x, y, 1.6, '#ffe48f');
+    G.shake(9); Audio_.roar(); Audio_.splash(2.2);
+    for (const e of G.enemies) if (!e.dead && dist(x, y, e.x, e.y) < 110 + e.radius) { const a = angleTo(x, y, e.x, e.y); e.hit(12, Math.cos(a) * 380, Math.sin(a) * 380, null); }
+    for (const pr of G.projectiles) if (pr.owner === 'enemy' && !(pr instanceof Mine) && dist(x, y, pr.x, pr.y) < 90) pr.dead = true;
+    if (typeof UI !== 'undefined' && UI.banterEvent) UI.banterEvent('revived');
+  }
+  trueDeath(byOtter) {
+    const b = this.body;
+    this.downed = false; this.ot = null; this.remount = null;
+    if (b) { this.x = b.x; this.y = b.y; this.facing = b.facing; }
+    this.vx = 0; this.vy = 0; this.body = null;
+    this.hp = 0; this.dead = true;
+    G.onPlayerDeath();
+  }
+  // under-layer shadows while she is down: her body, and the little one
+  renderShadows(ctx, cam, t) {
+    const b = this.body;
+    if (b) G.ocean.shadow(ctx, cam, b.x, b.y, 60, 26, t, 1.0);
+    if (this.ot && !(this.ot.jump)) G.ocean.shadow(ctx, cam, this.x, this.y, 18, 10, t, 1.1);
+  }
+  otterExpression() {
+    const o = this.ot;
+    if (o.hurtT > 0) return 'surprised';
+    if (o.sl.phase !== 'idle' || o.hauling || o.mode === 'dash') return 'angry';
+    if (G.nearestEnemy(this.x, this.y, 130)) return 'angry';
+    return 'idle';
+  }
+  renderDowned(ctx, cam, t) {
+    const b = this.body, o = this.ot;
+    // ---- her, belly-up. As he hauls she starts to come over, rocking.
+    if (b && CH.manateeBellyA) {
+      const spr = CH.manateeBellyA;
+      const r = b.revive;
+      const heave = Math.sin(t * 1.6) * 0.8 + b.beat * 0.7;
+      ctx.save();
+      ctx.translate(Math.round((b.x - cam.x) * DETAIL) / DETAIL, Math.round((b.y - cam.y + heave) * DETAIL) / DETAIL);
+      ctx.scale(b.facing, 1);
+      // the same yaw convention as the rig, so she goes down lying the way she was
+      ctx.rotate(b.ang * b.facing + Math.sin(b.t * 0.7) * 0.03 + (r > 0.02 ? Math.sin(t * 17) * 0.035 * r : 0));
+      // she rolls over as she goes (her back, edge-on, then her belly), so
+      // belly-up she is mirrored along her length; hauling rolls her back
+      // toward edge-on
+      const u = b.rollIn;
+      if (u < 0.5) {
+        ctx.scale(1, Math.max(0.1, Math.cos(u * Math.PI)));
+        const back = CH.manateeArmor || spr;
+        ctx.drawImage(back.c, -back.ax, -back.ay);
+        ctx.restore();
+        if (o) this.renderOtter(ctx, cam, t);
+        return;
+      }
+      const roll = (1 - clamp(r, 0, 1) * 0.5) * Math.max(0.1, -Math.cos(u * Math.PI));
+      ctx.scale(1, -roll);
+      ctx.drawImage(spr.c, -spr.ax, -spr.ay);
+      // the flippers, limp, stuck up out of the water
+      for (const side of [-1, 1]) {
+        ctx.save();
+        ctx.translate(15, side * 12); ctx.scale(1, side);
+        ctx.rotate(1.25 + Math.sin(t * 1.1 + side) * 0.08 + b.beat * 0.1);
+        ctx.drawImage(CH.flipper.c, -CH.flipper.ax, -CH.flipper.ay);
+        ctx.restore();
+      }
+      // what put her there: harpoons still in her, and the holes weeping
+      ctx.save(); ctx.scale(1 / DETAIL, 1 / DETAIL);
+      for (const [hx, hy, ha, hl] of [[-10, -8, -2.3, 20], [14, 6, 2.5, 16], [30, -4, -1.2, 13]]) {
+        const ca = Math.cos(ha), sa = Math.sin(ha);
+        for (let i = 0; i < hl; i++) px(ctx, CPAL.out, Math.round(hx + ca * i) - 1, Math.round(hy + sa * i) - 1, 3, 3);
+        for (let i = 0; i < hl; i++) px(ctx, i > hl - 3 ? CPAL.metL : (i & 1) ? CPAL.woodD : CPAL.wood, Math.round(hx + ca * i), Math.round(hy + sa * i), 1, 1);
+        px(ctx, CPAL.out, hx - 3, hy - 2, 6, 5);
+        px(ctx, CPAL.gore, hx - 2, hy - 1, 4, 3); px(ctx, CPAL.goreL, hx - 2, hy - 1, 2, 1);
+        if (b.beat > 0.4) px(ctx, CPAL.goreL, hx + 1, hy + 1, 2, 2);
+      }
+      ctx.restore();
+      ctx.restore();
+    }
+    if (o) this.renderOtter(ctx, cam, t);
+  }
+  renderOtter(ctx, cam, t) {
+    const o = this.ot;
+    // ---- him. The i-frames flicker; a fresh hit is a white frame.
+    const flick = this.invuln > 0 && o.hurtT <= 0 && Math.floor(t * 14) % 2 === 0;
+    const sl = o.sl;
+    const phK = sl.phase === 'wind' ? sl.t / OVERBOARD.wind : sl.phase === 'strike' ? sl.t / OVERBOARD.swing : sl.phase === 'recover' ? sl.t / OVERBOARD.recover : 0;
+    const sx = this.x - cam.x, sy = this.y - cam.y;
+    OtterSwim.draw(ctx, sx, sy, {
+      t, heading: o.heading, flip: o.flip, phase: o.phase, mode: o.mode, z: o.z,
+      exp: this.otterExpression(), blink: Rig.blink, hurt: o.hurtT > 0.2,
+      alpha: flick ? 0.45 : 1,
+      slash: sl.phase !== 'idle' ? { phase: sl.phase, k: phK, side: sl.side, arc: sl.arc } : null,
+    });
+    if (sl.phase !== 'idle') OtterSwim.drawSlash(ctx, sx, sy, { phase: sl.phase, k: phK, dir: sl.dir, wside: sl.wside, arc: sl.arc, range: sl.range * 0.72, off: 5, heavy: sl.heavy });
+    if (this.slowed > 0) { ctx.globalAlpha = 0.8; drawSprite(ctx, SP.net, sx, sy - 2, 0, 1, 1); ctx.globalAlpha = 1; }
+  }
+  // back into the saddle: a hop from wherever he was to her back
+  renderRemount(ctx, cam, t) {
+    const r = this.remount, u = clamp(r.t / r.dur, 0, 1);
+    const tx = this.x + this.facing * 7, ty = this.y - 3;
+    const x = lerp(r.fx, tx, u), y = lerp(r.fy, ty, u);
+    const hd = angleTo(r.fx, r.fy, tx, ty);
+    OtterSwim.draw(ctx, x - cam.x, y - cam.y, {
+      t, heading: hd, flip: Math.cos(hd) < 0 ? -1 : 1, phase: r.phase + r.t * 6, mode: 'leap',
+      z: Math.sin(u * Math.PI) * 16, exp: 'happy', blink: false,
+    });
   }
   // ---- weapons ----------------------------------------------------------
   updateWeapons(dt, t) {
@@ -1488,6 +1991,7 @@ class Player {
 
   render(ctx, cam, t) {
     if (this.dead) return;
+    if (this.downed) { this.renderDowned(ctx, cam, t); return; }
     const sx = this.x - cam.x, sy = this.y - cam.y;
     const st = this.stats;
 
@@ -1554,9 +2058,12 @@ class Player {
       rollDirX: this.roll.dirx, rollDirY: this.roll.diry,
       boost: this.boost,
       gunSprite: SP.guns[this.tree.primary] || SP.guns.revolver,
+      // the saddle stays empty until the otter lands back in it
+      riderHidden: !!this.remount,
     });
     ctx.restore();
     ctx.globalAlpha = 1;
+    if (this.remount) this.renderRemount(ctx, cam, t);
 
     if (this.melee.phase !== 'idle') this.renderMelee(ctx, sx, sy);
     if (this.slowed > 0) { ctx.globalAlpha = 0.8; drawSprite(ctx, SP.net, sx, sy - 4, 0, 2, 2); ctx.globalAlpha = 1; }
