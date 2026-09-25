@@ -1,15 +1,31 @@
 // ===========================================================================
 //  INTRO — "MANATEE VS BOATS" opening cinematic.
-//  Five beats of side-scrolling 640x360 pixel art, about half a minute long,
-//  all of it in daylight, all of it spoken by the two animals the player is
-//  about to be handed.  Every layer is generated procedurally at load and
-//  scrolled; nothing is rebuilt per frame.
-//  This is the only cutscene the game keeps, so it carries the whole setup:
-//  she had a family, the fleet put steel through all three of them in front
-//  of her, and the pirate who turned up wants the fleet dead too.
+//  Eleven beats of side-scrolling 640x360 pixel art, about a minute and a
+//  half of it, nearly all in daylight, all of it spoken by the animals in
+//  shot rather than narrated over them.  Every layer is generated
+//  procedurally at load and scrolled; nothing is rebuilt per frame.
+//  This is the only cutscene the game keeps, so it carries the whole setup,
+//  in order:
+//    1  home        a whole family, unmarked, in clean water
+//    2  raid        the fleet takes her father and her mother, and opens her
+//    3  yacht       the white boat, and the man who puts a price on calves
+//    4  net         her brother is taken alive; she finds the tear
+//    5  captured    the crane does not miss.  Out of the water, and out
+//    6  crate       she wakes in a box in a fish hold, under the catch
+//    7  noise       something is working at the crate's iron, and it looks in
+//    8  breakout    the boards let go, and she leaves through the hull
+//    9  alone       home, still red, and something drops through the surface
+//   10  pact        the pirate wants the fleet dead too, and she wants him back
+//   11  colours     black flag up, and they turn and run AT the fleet
+//  NOTHING IS PRE-DAMAGED.  Every actor enters beat 1 with `scarred` false
+//  and no wounds; the flag is set on the frame the steel goes in, in beat 2,
+//  on whoever it went into.  The opening seven seconds have to read as safe
+//  or the rest of it costs nothing.
 //  It is played in bright sun on purpose.  A harpoon going into a mother in
 //  full daylight, with the sky still blue over it, is worse than the same
 //  thing in the dark, and the only thing that goes red in here is the water.
+//  The one exception is the hold: beats 6-8 are inside a boat, and the
+//  inside of a boat is one bulb and a lot of cold dark.
 //  Public API:  Intro.reset() / Intro.update(dt) / Intro.render(ctx) /
 //               Intro.done / Intro.skip()
 // ===========================================================================
@@ -526,7 +542,7 @@ function buildGrass(H, ramp, dens, tall, seed) {
   }
   return c;
 }
-function buildShallowMid(seed) {
+function buildShallowMid(seed, bones) {
   const H = 190, c = can(LW, H), x = cx2(c), rng = new SeededRandom(seed);
   for (let i = 0; i < 11; i++) drawRockForm(x, R(rng.range(0, LW)), H - R(rng.range(0, 7)), R(rng.range(20, 52)), R(rng.range(12, 30)), IP.rockWarm, false);
   for (let i = 0; i < 12; i++) {
@@ -539,6 +555,9 @@ function buildShallowMid(seed) {
   for (let i = 0; i < 6; i++) drawStaghorn(x, R(rng.range(0, LW)), H - 4, rng.range(9, 14), IP.coralB, -Math.PI / 2 + rng.range(-0.3, 0.3), 0);
   // ---- and the bones.  Three picked-over ribcages, four skulls and three
   // spent harpoons, laid along the reef where the fleet has already worked.
+  // The opening beat asks for this reef WITHOUT them: nothing bad has
+  // happened to this family yet and the set must not say otherwise.
+  if (bones === false) return c;
   for (let i = 0; i < 3; i++) drawRibcage(x, R(rng.range(40, LW - 90)), H - R(rng.range(4, 14)), R(rng.range(26, 46)), R(rng.range(9, 15)), rng.next() > 0.5);
   for (let i = 0; i < 4; i++) drawSkullBone(x, R(rng.range(20, LW - 40)), H - R(rng.range(8, 18)), R(rng.range(9, 15)));
   for (let i = 0; i < 3; i++) drawSpentHarpoon(x, R(rng.range(60, LW - 60)), H - R(rng.range(2, 10)), rng.range(0.9, 1.5));
@@ -1100,9 +1119,320 @@ function drawProp(ctx, x, y, r, ang, churn) {
   P(ctx, IP.ink, -3, -4, 7, 9); P(ctx, '#9aa6b6', -2, -3, 5, 7); P(ctx, '#d8e2ee', -2, -3, 2, 7);
   ctx.restore();
 }
+// =================================================================== YACHT ==
+//  The white boat.  Recovered with the beats that needed it: the fishing
+//  fleet does the killing, this one does the buying, and it is drawn in the
+//  same ink and the same banded light as the trawler so the two read as the
+//  same world rather than as two art passes.
+const YACHT_WL = 70;
+function buildYacht() {
+  const W = 392, H = 156, c = can(W, H), x = cx2(c);
+  // hull: bow at the RIGHT, transom at the LEFT
+  const sheer = [[22, 36], [120, 30], [250, 22], [340, 10], [368, 4]];
+  const keel = [[22, 72], [66, 94], [150, 106], [250, 100], [320, 82], [356, 62]];
+  const stem = xx => 4 + (368 - xx) * 2.9;
+  for (let xx = 22; xx <= 368; xx++) {
+    const t0 = R(curveAt(sheer, xx)), b0 = R(Math.min(stem(xx), curveAt(keel, xx)));
+    if (b0 <= t0) continue;
+    for (let y = t0; y <= b0; y++) {
+      let col;
+      if (y < YACHT_WL - 10) col = '#e6ecf2';
+      else if (y < YACHT_WL - 6) col = '#c0c9d4';
+      else if (y < YACHT_WL - 2) col = '#1c2a44';
+      else if (y < YACHT_WL + 2) col = '#c8a63a';
+      else col = ((y % 8) === 0) ? '#101826' : '#1b2636';
+      if (y === t0 || y === b0) col = IP.ink;
+      P(x, col, xx, y);
+    }
+  }
+  // bulbous bow
+  for (let yy = -7; yy <= 7; yy++) for (let xx = -11; xx <= 11; xx++) {
+    const d = Math.hypot(xx / 11, yy / 7);
+    if (d > 1) continue;
+    P(x, d > 0.86 ? IP.ink : yy < -2 ? '#2c3a52' : '#1b2636', 352 + xx, 66 + yy);
+  }
+  // skeg, shaft and rudder aft
+  P(x, IP.ink, 92, 100, 40, 10); P(x, '#141c2a', 93, 101, 38, 8);
+  LN(x, IP.ink, 60, 94, 96, 104); LN(x, '#4a5568', 61, 94, 97, 104);
+  P(x, IP.ink, 50, 88, 6, 20); P(x, '#222c3e', 51, 89, 4, 18); P(x, '#4a5568', 51, 89, 1, 18);
+  // long tinted window band
+  for (let xx = 60; xx <= 300; xx++) {
+    const t0 = R(curveAt(sheer, xx));
+    P(x, IP.ink, xx, t0 + 9, 1, 9);
+    P(x, '#16202f', xx, t0 + 10, 1, 7);
+    if ((xx % 31) < 9) P(x, '#41546e', xx, t0 + 10, 1, 7);
+    P(x, '#8e99a8', xx, t0 + 10, 1, 1);
+  }
+  // ---- superstructure
+  const deck = xx => R(curveAt(sheer, xx));
+  const c1 = { x: 74, w: 196, h: 36 }, cy1 = deck(170) - c1.h;
+  P(x, IP.ink, c1.x - 1, cy1 - 1, c1.w + 2, c1.h + 2);
+  P(x, '#f2f6fa', c1.x, cy1, c1.w, c1.h);
+  P(x, '#cfd8e2', c1.x, cy1 + c1.h - 5, c1.w, 5);
+  for (let i = 0; i < 9; i++) { P(x, IP.ink, c1.x + 8 + i * 21, cy1 + 8, 17, 15); P(x, '#1a2739', c1.x + 9 + i * 21, cy1 + 9, 15, 13); P(x, '#4e627c', c1.x + 9 + i * 21, cy1 + 9, 15, 3); }
+  // flybridge
+  const c2 = { x: 128, w: 108, h: 22 }, cy2 = cy1 - c2.h;
+  P(x, IP.ink, c2.x - 1, cy2 - 1, c2.w + 2, c2.h + 2);
+  P(x, '#f2f6fa', c2.x, cy2, c2.w, c2.h);
+  P(x, '#1a2739', c2.x + 6, cy2 + 5, c2.w - 12, 10);
+  P(x, '#4e627c', c2.x + 6, cy2 + 5, c2.w - 12, 2);
+  // radar arch + antennae
+  P(x, IP.ink, c2.x + 12, cy2 - 16, 5, 16); P(x, IP.ink, c2.x + c2.w - 18, cy2 - 16, 5, 16);
+  P(x, '#dbe3ec', c2.x + 13, cy2 - 15, 3, 15); P(x, '#dbe3ec', c2.x + c2.w - 17, cy2 - 15, 3, 15);
+  P(x, IP.ink, c2.x + 12, cy2 - 18, c2.w - 24, 4); P(x, '#dbe3ec', c2.x + 13, cy2 - 17, c2.w - 26, 2);
+  P(x, IP.ink, c2.x + 44, cy2 - 26, 16, 8); P(x, '#b9c4d0', c2.x + 45, cy2 - 25, 14, 6);
+  P(x, '#dbe3ec', c2.x + 70, cy2 - 34, 1, 18);
+  // foredeck rails
+  for (let xx = 276; xx < 356; xx += 12) { const d = deck(xx); P(x, '#c3ccd8', xx, d - 13, 1, 13); P(x, IP.ink, xx, d - 14, 1, 1); }
+  for (let xx = 274; xx < 358; xx++) { const d = deck(xx); P(x, '#dfe6ee', xx, d - 13, 1, 1); P(x, '#9aa6b6', xx, d - 7, 1, 1); }
+  // aft deck rails
+  for (let xx = 26; xx < 72; xx += 11) { const d = deck(xx); P(x, '#c3ccd8', xx, d - 13, 1, 13); }
+  for (let xx = 24; xx < 74; xx++) { const d = deck(xx); P(x, '#dfe6ee', xx, d - 13, 1, 1); P(x, '#9aa6b6', xx, d - 7, 1, 1); }
+  return { s: spr(c, W / 2, YACHT_WL), W: W, H: H, deck: deck, cy1: cy1, c1: c1, rail: [300 - W / 2, deck(300) - 13 - YACHT_WL], aft: [48 - W / 2, deck(48) - 13 - YACHT_WL] };
+}
+
+// =========================================================== BUSINESSMAN ====
+//  The buyer.  He never touches the water and he never stops smiling; the
+//  only thing he does in the whole cinematic is point at two calves and put
+//  a price on them.
+function buildBiz() {
+  const SUIT = ['#151928', '#20263c', '#2d3450', '#3c4568', '#4e588a'];
+  const SKIN = ['#8a5a3a', '#b47a52', '#d79a6e', '#e9b78c', '#f6d0aa'];
+  // ---- body: narrow shoulders, enormous belly
+  const W = 34, H = 40;
+  const f = blobField(W, H, [
+    { x: 15, y: 8, rx: 8.5, ry: 6.5 },
+    { x: 16, y: 16, rx: 11.5, ry: 8.5 },
+    { x: 16, y: 24, rx: 13.0, ry: 9.5 },
+    { x: 15, y: 31, rx: 10.5, ry: 7.0 },
+  ]);
+  const o = shadeBlob(W, H, f, SUIT, { outline: IP.ink, lift: 0.22, smooth: 3 });
+  const b = o.ctx;
+  // shirt + tie down the belly
+  for (let y = 4; y < 30; y++) {
+    const half = Math.max(1, R(4 - (y - 4) * 0.02));
+    P(b, '#eef3f8', 15 - half, y, half * 2, 1);
+  }
+  P(b, IP.ink, 14, 4, 2, 26); P(b, IP.ink, 17, 4, 2, 26);
+  for (let y = 7; y < 30; y++) { const w2 = Math.max(1, R(1.4 + (y - 7) * 0.12)); P(b, '#a8151f', 16 - (w2 >> 1), y, w2, 1); P(b, '#c4202c', 16 - (w2 >> 1), y, 1, 1); }
+  P(b, '#e8515a', 15, 5, 3, 3); P(b, IP.ink, 15, 4, 3, 1);
+  // lapels
+  LN(b, SUIT[4], 12, 4, 8, 18); LN(b, SUIT[0], 13, 4, 9, 18);
+  LN(b, SUIT[4], 20, 4, 25, 18); LN(b, SUIT[0], 19, 4, 24, 18);
+  P(b, '#e0a838', 24, 20, 2, 2);          // pocket square / button
+  // trousers + shoes
+  P(b, IP.ink, 7, 36, 10, 5); P(b, '#1a1f30', 8, 36, 8, 4);
+  P(b, IP.ink, 17, 36, 10, 5); P(b, '#252c44', 18, 36, 8, 4);
+  const body = spr(o.c, 16, 20);
+  // ---- head
+  const HW = 22, HH = 20;
+  const hf = blobField(HW, HH, [
+    { x: 10, y: 9, rx: 7.2, ry: 7.0 },
+    { x: 14, y: 12, rx: 5.4, ry: 4.6 },
+    { x: 10, y: 15, rx: 6.6, ry: 4.4 },
+  ]);
+  function headWith(grin) {
+    const ho = shadeBlob(HW, HH, hf, SKIN, { outline: IP.ink, lift: 0.24, smooth: 2 });
+    const h = ho.ctx;
+    // slicked-back hair
+    stamp(h, [
+      '..kkkkkkk..',
+      '.kHHHHHHHk.',
+      'kHHhhhhhHHk',
+      'kHhhhhhhhhk',
+      '.kHhhhhhhk.',
+    ], 2, 0, { k: IP.ink, H: '#3a2c1e', h: '#251a12' });
+    P(h, '#5a4630', 4, 2, 5, 1);
+    // ear
+    P(h, IP.ink, 4, 9, 3, 4); P(h, SKIN[1], 5, 10, 2, 2);
+    // sunglasses
+    P(h, IP.ink, 6, 7, 13, 5);
+    P(h, '#0b0d13', 7, 8, 5, 3); P(h, '#0b0d13', 13, 8, 5, 3);
+    P(h, '#3c4a5e', 7, 8, 5, 1); P(h, '#3c4a5e', 13, 8, 5, 1);
+    P(h, '#cfe0ee', 10, 9, 1, 1); P(h, '#cfe0ee', 16, 9, 1, 1);
+    P(h, IP.ink, 12, 9, 1, 1);
+    // jowls
+    P(h, SKIN[1], 6, 15, 9, 1); P(h, SKIN[1], 7, 17, 7, 1);
+    if (grin) {
+      P(h, IP.ink, 9, 14, 9, 5);
+      P(h, '#f4f7fb', 10, 15, 7, 2);
+      P(h, '#c4202c', 10, 17, 7, 1);
+      for (let i = 0; i < 3; i++) P(h, IP.ink, 11 + i * 2, 15, 1, 2);
+    } else {
+      P(h, IP.ink, 10, 15, 6, 2); P(h, SKIN[1], 10, 17, 6, 1);
+    }
+    return spr(ho.c, 10, 11);
+  }
+  // ---- arm + hand
+  const AW = 18, AH = 9;
+  const af = blobField(AW, AH, [{ x: 4, y: 4.5, rx: 4.4, ry: 4.2 }, { x: 10, y: 4.5, rx: 4.0, ry: 3.4 }, { x: 15, y: 4.5, rx: 2.8, ry: 2.6 }]);
+  const ao = shadeBlob(AW, AH, af, SUIT, { outline: IP.ink, lift: 0.18, smooth: 1 });
+  P(ao.ctx, '#eef3f8', 13, 3, 2, 4);
+  P(ao.ctx, IP.ink, 15, 2, 3, 6); P(ao.ctx, SKIN[3], 15, 3, 3, 4); P(ao.ctx, SKIN[4], 15, 3, 3, 1);
+  const arm = spr(ao.c, 3, 4.5);
+  // ---- binoculars
+  const bc = can(16, 10), bx = cx2(bc);
+  P(bx, IP.ink, 0, 0, 12, 10); P(bx, '#2a3040', 1, 1, 10, 8);
+  P(bx, '#4c576e', 1, 1, 10, 2); P(bx, '#14181f', 1, 7, 10, 2);
+  P(bx, IP.ink, 11, 1, 5, 3); P(bx, '#3a4356', 12, 2, 4, 1);
+  P(bx, IP.ink, 11, 6, 5, 3); P(bx, '#3a4356', 12, 7, 4, 1);
+  P(bx, '#8fa4bc', 2, 2, 2, 1);
+  const binoc = spr(bc, 2, 5);
+  // ---- cigar
+  const cc = can(12, 5), cxx = cx2(cc);
+  P(cxx, IP.ink, 0, 0, 11, 5); P(cxx, '#4a2c18', 1, 1, 8, 3); P(cxx, '#6d4327', 1, 1, 8, 1);
+  P(cxx, '#ff8b2e', 9, 1, 2, 3); P(cxx, '#ffd27a', 9, 2, 2, 1);
+  const cigar = spr(cc, 1, 2);
+  return { body: body, head: headWith(false), headGrin: headWith(true), arm: arm, binoc: binoc, cigar: cigar };
+}
+function drawBiz(ctx, o, t) {
+  const B = BIZ; if (!B) return;
+  ctx.save(); ctx.translate(R(o.x), R(o.y));
+  if (o.flip) ctx.scale(-1, 1);
+  const s = o.s || 1; ctx.scale(s, s);
+  const bob = R(Math.sin(t * 2.2) * 0.6);
+  // far arm
+  ctx.save(); ctx.translate(-2, -8 + bob); ctx.rotate(o.armFar === undefined ? 0.9 : o.armFar);
+  ctx.drawImage(B.arm.c, -B.arm.ax, -B.arm.ay); ctx.restore();
+  ctx.save(); ctx.translate(0, bob);
+  ctx.drawImage(B.body.c, -B.body.ax, -B.body.ay);
+  ctx.restore();
+  // head
+  const hd = o.grin ? B.headGrin : B.head;
+  ctx.save(); ctx.translate(2 + (o.headX || 0), -26 + bob + (o.headY || 0)); ctx.rotate(o.headR || 0);
+  ctx.drawImage(hd.c, -hd.ax, -hd.ay);
+  if (o.cigar) { ctx.drawImage(B.cigar.c, 6, -1); }
+  ctx.restore();
+  // near arm (+ binoculars)
+  const an = o.armNear === undefined ? 1.1 : o.armNear;
+  ctx.save(); ctx.translate(2, -10 + bob); ctx.rotate(an);
+  ctx.drawImage(B.arm.c, -B.arm.ax, -B.arm.ay);
+  if (o.binoc) { ctx.translate(B.arm.w - 5, 1); ctx.rotate(-an); ctx.drawImage(B.binoc.c, -B.binoc.ax, -B.binoc.ay); }
+  ctx.restore();
+  ctx.restore();
+}
+
+// ================================================================= CRANE ====
+//  Two trussed booms and a three-fingered grab, on a pivot bolted to the
+//  yacht's aft deck.  Forward kinematics only: the beat drives two angles and
+//  the claw ends up wherever the arm puts it, which is what makes it read as
+//  machinery rather than as a sprite sliding down the frame.
+function buildCrane() {
+  function truss(L, T) {
+    const c = can(L, T), x = cx2(c);
+    P(x, IP.ink, 0, 0, L, T);
+    P(x, '#e0a838', 1, 1, L - 2, 3); P(x, '#f8dc86', 1, 1, L - 2, 1);
+    P(x, '#a87a1e', 1, T - 4, L - 2, 3); P(x, '#7a5612', 1, T - 2, L - 2, 1);
+    for (let i = 2; i < L - 6; i += 12) {
+      LN(x, '#c89a30', i, 4, i + 6, T - 5);
+      LN(x, '#c89a30', i + 6, 4, i + 12, T - 5);
+      LN(x, IP.ink, i + 1, 4, i + 7, T - 5);
+    }
+    for (let i = 3; i < L - 3; i += 16) { P(x, '#f8dc86', i, 2, 1, 1); P(x, '#f8dc86', i, T - 3, 1, 1); }
+    return spr(c, 3, T / 2);
+  }
+  // pivot housing
+  const pc = can(26, 24), px2 = cx2(pc);
+  P(px2, IP.ink, 0, 0, 26, 24); P(px2, '#4a525e', 1, 1, 24, 22);
+  P(px2, '#767f8d', 1, 1, 24, 4); P(px2, '#2a3038', 1, 18, 24, 5);
+  for (let i = 0; i < 4; i++) { P(px2, '#aab3c0', 4 + i * 6, 6, 2, 2); P(px2, IP.ink, 4 + i * 6, 8, 2, 1); }
+  P(px2, '#e0a838', 3, 12, 20, 3); P(px2, IP.ink, 3, 15, 20, 1);
+  const pivot = spr(pc, 13, 12);
+  // claw body + finger
+  const cb = can(38, 24), bx = cx2(cb);
+  P(bx, IP.ink, 0, 0, 38, 24); P(bx, '#5d6675', 1, 1, 36, 22);
+  P(bx, '#8c97a8', 1, 1, 36, 4); P(bx, '#343b46', 1, 18, 36, 5);
+  P(bx, IP.ink, 6, 5, 8, 14); P(bx, '#232935', 7, 6, 6, 12); P(bx, '#aab3c0', 7, 6, 6, 3);
+  P(bx, IP.ink, 24, 5, 8, 14); P(bx, '#232935', 25, 6, 6, 12); P(bx, '#aab3c0', 25, 6, 6, 3);
+  P(bx, '#e0a838', 16, 2, 6, 20); P(bx, IP.ink, 16, 2, 1, 20);
+  for (let i = 0; i < 4; i++) { P(bx, '#c0cad6', 4 + i * 9, 20, 3, 2); P(bx, IP.ink, 4 + i * 9, 22, 3, 1); }
+  const clawBody = spr(cb, 19, 6);
+  const fc = can(34, 16), fx = cx2(fc);
+  for (let i = 0; i < 28; i++) {
+    const yy = R(3 + Math.pow(i / 28, 2.1) * 9);
+    P(fx, IP.ink, i + 1, yy - 1, 1, 9);
+    P(fx, '#6d7686', i + 1, yy, 1, 7);
+    P(fx, '#aab3c0', i + 1, yy, 1, 2);
+  }
+  tri(fx, IP.ink, 28, 9, 34, 14, 28, 16);
+  tri(fx, '#cdd9ea', 28, 10, 32, 14, 28, 15);
+  const finger = spr(fc, 2, 6);
+  return { boom1: truss(200, 20), boom2: truss(86, 14), pivot: pivot, clawBody: clawBody, finger: finger };
+}
+function drawCrane(ctx, o) {
+  const C = CR; if (!C) return;
+  ctx.save(); ctx.translate(R(o.x), R(o.y));
+  ctx.drawImage(C.pivot.c, -C.pivot.ax, -C.pivot.ay);
+  ctx.rotate(o.a1);
+  ctx.drawImage(C.boom1.c, -C.boom1.ax, -C.boom1.ay);
+  ctx.translate(C.boom1.w - 6, 0);
+  if (o.hook) { P(ctx, IP.ink, -2, -6, 4, 12); P(ctx, '#aab3c0', -1, -5, 2, 10); }
+  ctx.rotate(o.a2);
+  ctx.drawImage(C.boom2.c, -C.boom2.ax, -C.boom2.ay);
+  ctx.translate(C.boom2.w - 6, 0);
+  ctx.rotate(o.a3 === undefined ? -o.a1 - o.a2 : o.a3);
+  drawClaw(ctx, o.open === undefined ? 0.7 : o.open);
+  ctx.restore();
+}
+// the grab on its own, so the deck shot can hang one off a cable without
+// building the whole arm above it
+function drawClaw(ctx, open) {
+  const C = CR; if (!C) return;
+  ctx.drawImage(C.clawBody.c, -C.clawBody.ax, -C.clawBody.ay);
+  for (const [sx, dir] of [[-13, -1], [0, 0], [13, 1]]) {
+    ctx.save(); ctx.translate(sx, 17); ctx.rotate(dir === 0 ? 1.57 : 1.57 + dir * open * 0.8); ctx.scale(dir < 0 ? -1 : 1, 1);
+    ctx.drawImage(C.finger.c, -C.finger.ax, -C.finger.ay);
+    ctx.restore();
+  }
+}
+
+// =================================================================== NET ====
+//  A purse seine, drawn as a lattice of hard 1px lines with lead weights on
+//  the mouth rim.  `cinch` closes the top of it; `hole` leaves a block of the
+//  mesh out, which is the tear she goes through and he does not.
+function drawNet(ctx, o) {
+  const N = 12, M = 18;
+  const WS = [1.00, 1.05, 1.08, 1.08, 1.05, 1.00, 0.95, 0.88, 0.80, 0.71, 0.61, 0.50, 0.36];
+  const cinch = o.cinch || 0, t = o.t || 0;
+  const pts = [];
+  for (let j = 0; j <= N; j++) {
+    const row = [];
+    let wj = o.w * 0.5 * WS[j];
+    if (j < 5) wj *= (1 - 0.86 * cinch * (1 - j / 6));
+    const cxj = o.x + Math.sin(t * 1.4 + j * 0.5) * (o.sway || 0) * (j / N);
+    const yj = o.y + (j / N) * o.h + Math.sin(t * 1.9 + j) * (o.sway || 0) * 0.25;
+    for (let i = 0; i <= M; i++) {
+      const u = i / M;
+      row.push([cxj + (u - 0.5) * 2 * wj, yj + Math.sin(u * Math.PI) * o.h * 0.05 * (1 - j / N)]);
+    }
+    pts.push(row);
+  }
+  const hole = o.hole;
+  const knot = '#a9bdb0', dk = '#2c3f38';
+  for (let j = 0; j <= N; j++) for (let i = 0; i < M; i++) {
+    if (hole && j >= hole.j && j < hole.j + hole.h && i >= hole.i && i < hole.i + hole.w) continue;
+    LN(ctx, (i & 1) ? knot : dk, R(pts[j][i][0]), R(pts[j][i][1]), R(pts[j][i + 1][0]), R(pts[j][i + 1][1]));
+  }
+  for (let i = 0; i <= M; i++) for (let j = 0; j < N; j++) {
+    if (hole && j >= hole.j && j < hole.j + hole.h && i > hole.i && i < hole.i + hole.w) continue;
+    LN(ctx, (j & 1) ? knot : dk, R(pts[j][i][0]), R(pts[j][i][1]), R(pts[j + 1][i][0]), R(pts[j + 1][i][1]));
+  }
+  // lead weights on the mouth rim
+  for (let i = 0; i <= M; i += 3) {
+    const p = pts[0][i];
+    P(ctx, IP.ink, R(p[0]) - 2, R(p[1]) - 2, 5, 5);
+    P(ctx, '#3c424c', R(p[0]) - 1, R(p[1]) - 1, 3, 3);
+    P(ctx, '#767f8d', R(p[0]) - 1, R(p[1]) - 1, 2, 1);
+  }
+  return pts;
+}
+
 // ============================================================ ASSET STORE ==
 const WATER = {}, LAY = {}, MAN = {};
 let BOAT = null, HARP = null, FISHDEAD = null;
+// the capture half of the cinematic: the white boat, the man who buys, the
+// arm that lifts her out of the water.
+let YAC = null, BIZ = null, CR = null;
 let FISHSPR = [], BUILT = false, BAKE_MS = 0;
 
 function buildNearClutter(seed, kramp) {
@@ -1237,6 +1567,7 @@ function buildIntroArt() {
   LAY.grassNear = buildGrass(44, IP.grass, 150, 42, 771);
   LAY.grassFar = tintLayer(buildGrass(28, IP.grass, 120, 26, 991), '#2fa890', 0.40);
   LAY.mid = buildShallowMid(4242);
+  LAY.midClean = buildShallowMid(4242, false);   // the same reef, before the fleet worked it
   // the near clutter used to be tinted almost black so it read as a silhouette
   // at dusk.  In daylight it is a reef in shadow, not a hole in the frame.
   LAY.near = tintLayer(buildNearClutter(313, IP.kelp), '#0e4a4c', 0.52);
@@ -1253,6 +1584,10 @@ function buildIntroArt() {
   capOtter();
   BOAT = buildFishingBoat();
   HARP = buildHarpoon();
+  // the capture half's own cast of machinery
+  YAC = buildYacht();
+  BIZ = buildBiz();
+  CR = buildCrane();
   const fr = [
     ['#7a5a18', '#a8801f', '#d2a52f', '#eec756', '#fdeb9f'],
     ['#1d4a6a', '#2a6a92', '#3b8db8', '#63b3d8', '#a3dcf0'],
@@ -1263,6 +1598,11 @@ function buildIntroArt() {
   for (let i = 0; i < 4; i++) FISHSPR.push([buildFish(7, fr[i]), buildFish(11, fr[i]), buildFish(17, fr[i])]);
   // one gutted fish, for the carcass that drifts through the opening beat
   FISHDEAD = buildFish(18, ['#3a4038', '#50584a', '#6d7562', '#8b9480', '#b0b8a2'], { dead: true });
+  // The hold: the crate, the heap and the one bulb in it.  This is the most
+  // expensive thing the cinematic bakes, and it is baked HERE rather than at
+  // the beat that needs it -- lazily it landed as a half-second stall on the
+  // cut into the crate, which is exactly the frame that must not stutter.
+  holdArt();
   BUILT = true;
   BAKE_MS = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : 0) - bake0;
 }
@@ -1308,6 +1648,21 @@ const FX = {
       this.add({ k: 'c', x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 20,
                  life: rand(1.4, 3.2), w: randi(2, 5), h: randi(2, 4),
                  c: IP.meat[randi(0, 3)], vr: rand(-6, 6), trail: 1 });
+    }
+  },
+  // splintered crate board.  Wood, not meat: it tumbles and it does not bleed.
+  chunks(x, y, n) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(-Math.PI, 0), sp2 = rand(40, 190);
+      this.add({ k: 'c', x: x, y: y, vx: Math.cos(a) * sp2, vy: Math.sin(a) * sp2, life: rand(0.8, 2.0), w: randi(2, 5), h: randi(1, 3), c: pick(['#b57d3f', '#8f5c2c', '#5c3a1c', '#d9a25a']) });
+    }
+  },
+  // somebody else's catch, thrown through the air by whatever just gave way
+  catchSpray(x, y, n, pw) {
+    if (!CATCH.all.length) return;
+    for (let i = 0; i < n; i++) {
+      const a = rand(-Math.PI, 0.4), sp2 = rand(60, 320) * (pw || 1);
+      this.add({ k: 'sh', x: x + rand(-40, 40), y: y + rand(-14, 14), vx: Math.cos(a) * sp2, vy: Math.sin(a) * sp2, r: rand(0, TAU), vr: rand(-9, 9), life: rand(0.8, 2.0), s: randi(0, CATCH.all.length - 1) });
     }
   },
   foam(x, y, n, pw) {
@@ -1366,6 +1721,7 @@ const FX = {
                        rmax: rand(5, 10), sd: randi(1, 9000), life: rand(1.2, 2.6), hang: 0 });
           }
           break;
+        case 'sh': p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 330 * dt; p.vx *= 1 - dt * 0.5; p.r += p.vr * dt; break;
         case 'g': p.r += (p.max / p.t0) * dt; break;
       }
     }
@@ -1382,6 +1738,7 @@ const FX = {
         }
         case 'f': ctx.fillStyle = rgbaq(IP.foam[p.life > 0.5 ? 2 : 1], Math.min(1, p.life * 2)); ctx.fillRect(R(p.x), R(p.y), R(p.r) + 1, R(p.r) + 1); break;
         case 'd': ctx.fillStyle = p.c; ctx.fillRect(R(p.x), R(p.y), 2, 2); break;
+        case 'sh': { const sp2 = CATCH.all[p.s]; if (!sp2) break; ctx.save(); ctx.translate(R(p.x), R(p.y)); ctx.rotate(p.r); ctx.drawImage(sp2.c, -sp2.ax, -sp2.ay); ctx.restore(); break; }
         // A cloud of it.  Scanline rows with a bitten edge and a speckled
         // fringe that thins into the water: diffuse WITHOUT a gradient, which
         // is the only way to do diffuse and stay pixel art.  The band it is
@@ -1514,7 +1871,8 @@ function backdrop(ctx, o) {
   if (o.bedY !== undefined && o.bedY !== null) {
     tile(ctx, LAY.far, s * 0.26, o.bedY - LAY.far.height + 6);
     tile(ctx, LAY.grassFar, s * 0.40, o.bedY - LAY.grassFar.height + 10);
-    tile(ctx, LAY.mid, s * 0.58, o.bedY - LAY.mid.height + 4);
+    const mid = LAY[o.mid || 'mid'] || LAY.mid;
+    tile(ctx, mid, s * 0.58, o.bedY - mid.height + 4);
     tile(ctx, LAY.bed, s * 0.78, o.bedY);
     if (o.causticBed) caustics(ctx, o.bedY + 4, t, 4, 0.20, G ? G.bedCaustic : '#ffeec0');
   }
@@ -1909,6 +2267,674 @@ function drawJolly(ctx, x, y, t, k) {
   ctx.drawImage(f.c, -f.ax, -f.ay);
   ctx.restore();
 }
+// ===========================================================================
+//  THE YACHT DECK, AND EVERYTHING BELOW IT
+//  Recovered with the capture beats.  Three rooms: the deck she is swung
+//  over, the hold she wakes up in, and the crate inside it.  All of it is
+//  baked once into HOLD and blitted; nothing in here is rebuilt per frame.
+// ===========================================================================
+// ---- the yacht deck, seen from the side ------------------------------------
+function drawDeck(ctx, t) {
+  const sk = skyCan('day');
+  P(ctx, IP.sky[0], 0, 0, 640, 360);
+  tile(ctx, sk, t * 4, 152 - sk.height);
+  // open sea behind the rail
+  for (let y = 152; y < 190; y++) {
+    const k = (y - 152) / 38;
+    P(ctx, k < 0.3 ? '#2f86bc' : k < 0.62 ? '#1f679c' : '#154d7c', 0, y, 640, 1);
+  }
+  for (let x = 0; x < 640; x += 3) if (hash2(x, Math.floor(t * 2) + (x % 5)) > 0.84) P(ctx, '#bcdcec', x, 154 + R(hash2(x, 3) * 32), 4, 1);
+  // guard rail
+  for (let x = 6; x < 640; x += 44) { P(ctx, IP.ink, x, 150, 5, 44); P(ctx, '#c3ccd8', x + 1, 151, 3, 42); P(ctx, '#eef4fa', x + 1, 151, 1, 42); }
+  P(ctx, IP.ink, 0, 146, 640, 5); P(ctx, '#dfe6ee', 0, 147, 640, 2); P(ctx, '#9aa6b6', 0, 149, 640, 1);
+  P(ctx, IP.ink, 0, 168, 640, 3); P(ctx, '#b9c4d0', 0, 169, 640, 1);
+  // bulwark cap + coaming
+  P(ctx, IP.ink, 0, 190, 640, 4);
+  P(ctx, '#eef2f7', 0, 194, 640, 12); P(ctx, '#ccd4de', 0, 203, 640, 3);
+  P(ctx, IP.ink, 0, 206, 640, 2);
+  // deck sole, darker where it meets the bulwark
+  for (let y = 208; y < 360; y++) {
+    const k = (y - 208) / 152;
+    const base = k < 0.16 ? '#7b5c33' : k < 0.44 ? '#a07a44' : k < 0.74 ? '#bf9456' : '#d8b171';
+    P(ctx, ((y % 11) === 0) ? '#54391d' : base, 0, y, 640, 1);
+  }
+  for (let x = 0; x < 640; x += 61) { P(ctx, '#54391d', x, 208, 1, 152); P(ctx, '#e8c78c', x + 1, 208, 1, 152); }
+  for (let i = 0; i < 90; i++) { const gx = R(hash2(i, 5) * 640), gy = 210 + R(hash2(i, 9) * 148); P(ctx, hash2(gx, gy) > 0.5 ? '#7d5c31' : '#e3c28a', gx, gy, 2, 1); }
+  for (let i = 0; i < 6; i++) { const gx = 40 + R(hash2(i, 21) * 520); P(ctx, '#3f7f72', gx, 300 + R(hash2(i, 3) * 44), R(20 + hash2(i, 7) * 40), 3); }
+  // ---- crates, cooler and winch to port
+  P(ctx, IP.ink, 36, 246, 78, 58); P(ctx, '#9a6526', 37, 247, 76, 56); P(ctx, '#e0a03c', 37, 247, 76, 5);
+  for (let i = 0; i < 5; i++) P(ctx, '#5c3a1c', 37, 255 + i * 11, 76, 2);
+  P(ctx, '#3f3324', 36, 304, 78, 4);
+  P(ctx, IP.ink, 132, 262, 58, 42); P(ctx, '#d8dde4', 133, 263, 56, 40); P(ctx, '#9aa6b6', 133, 292, 56, 11);
+  P(ctx, '#e8222e', 138, 268, 46, 5); P(ctx, '#3f3324', 132, 304, 58, 4);
+  P(ctx, IP.ink, 206, 232, 54, 72); P(ctx, '#4a525e', 207, 233, 52, 70); P(ctx, '#767f8d', 207, 233, 52, 7);
+  for (let i = 0; i < 5; i++) P(ctx, '#2a3038', 211 + i * 9, 246, 4, 46);
+  P(ctx, '#b8541e', 207, 252, 52, 3); P(ctx, '#e07a2e', 207, 252, 52, 1);
+  P(ctx, '#3f3324', 206, 304, 54, 4);
+  // ---- the tank, standing on the deck
+  const tx = 392, ty = 150, tw = 212, th = 176;
+  P(ctx, IP.ink, tx - 6, ty - 6, tw + 12, th + 12);
+  P(ctx, '#4b5460', tx - 5, ty - 5, tw + 10, th + 10);
+  P(ctx, '#79838f', tx - 5, ty - 5, tw + 10, 3); P(ctx, '#2a303a', tx - 5, ty + th + 2, tw + 10, 3);
+  for (let i = 0; i < tw; i += 17) { P(ctx, '#9aa4b0', tx + i + 4, ty - 4, 2, 2); P(ctx, '#9aa4b0', tx + i + 4, ty + th + 2, 2, 2); }
+  P(ctx, '#3f5a2c', tx, ty, tw, th);
+  for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) if (hash2(x + y * 7, y) > 0.87) P(ctx, hash2(x, y) > 0.5 ? '#4e6f36' : '#32491f', tx + x, ty + y);
+  P(ctx, '#20301a', tx, ty + th - 24, tw, 24);
+  P(ctx, '#6f8f4a', tx, ty + 4, tw, 6); P(ctx, '#d8f0a0', tx, ty + 4, tw, 2); P(ctx, IP.ink, tx, ty + 3, tw, 1);
+  for (let i = 0; i < 26; i++) {
+    const fx2 = tx + 8 + R(hash2(i * 7, 3) * (tw - 24)), fy = ty + 18 + R(hash2(i, 9) * (th - 46));
+    const sp = FISHSPR[i % 4][i % 3];
+    ctx.save(); ctx.translate(fx2, fy + R(Math.sin(t * 2 + i) * 3)); if (i & 1) ctx.scale(-1, 1); ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore();
+  }
+  // and the ones that did not make it, floating belly up along the top
+  if (FISHDEAD) for (let i = 0; i < 6; i++) {
+    ctx.save(); ctx.translate(tx + 22 + i * 32, ty + 13 + R(Math.sin(t * 0.6 + i) * 2)); ctx.scale(1, -1);
+    ctx.drawImage(FISHDEAD.c, -FISHDEAD.ax, -FISHDEAD.ay); ctx.restore();
+  }
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = rgbaq('#bff8ff', 0.09); ctx.fillRect(tx + 14 + i * 42, ty + 8, 10, th - 16); }
+  P(ctx, '#d8f8ff', tx + 2, ty + 6, 3, th - 18); P(ctx, '#8fd8e8', tx + tw - 5, ty + 6, 3, th - 18);
+  P(ctx, IP.ink, tx - 6, ty + th + 6, tw + 12, 8); P(ctx, '#2a3038', tx - 5, ty + th + 6, tw + 10, 7);
+  // ---- deck hands watching the catch come aboard
+  figure(ctx, 286, 322, 48, { facing: 1, lean: -0.05, armA: 0.25, foreA: 0.45, armB: 0.15, foreB: 0.30, legA: 0.46, legB: -0.44, kneeA: -0.1, kneeB: 0.1, head: 0.12 }, '#222c3e', '#ffc46a');
+  figure(ctx, 338, 324, 45, { facing: 1, lean: 0.08, armA: -0.45, foreA: -0.9, armB: 0.30, foreB: 0.55, legA: -0.42, legB: 0.46, kneeA: 0.1, kneeB: -0.1, head: 0.18 }, '#4a2230', '#ffb45a');
+}
+
+// ---- the catch: hand-drawn shrimp, fish and crab bits -----------------------
+const HOLD = {};
+const CATCH_PAL = {
+  k: '#170f07', o: '#0a0704', b: '#0b0b10', W: '#f2f7fa',
+  s: '#8a3f33', S: '#b25c44', t: '#d68d68', T: '#f0bc96', u: '#ffe3c6',
+  g: '#37424e', G: '#5b6a78', h: '#8b9aa7', H: '#c2d0da', w: '#eef5f8',
+  e: '#3d4a2c', E: '#5d7040', f: '#889b60', F: '#bccb92',
+  r: '#7d2a20', R: '#ab432c', q: '#d4775a',
+  i: '#bcd8e0', I: '#eafaff', y: '#cfc9ad', d: '#6b6450',
+};
+const CATCH_ART = {
+  // shrimp: segmented body, fan tail, antennae, black bead eye
+  shrimpStraight: [
+    '..kk..............',
+    '.kbk.kkkkkkkkkkk..',
+    'kTTkkTuTuTuTuTuTk.',
+    'kTTTTtStStStStStk.',
+    'kTTTtSsSsSsSsSsSTk',
+    'kTTTTtStStStStStTk',
+    'kTTkkTuTuTuTuTuTTk',
+    '.kbk.kkkkkkkkkTTTk',
+    '..kk...........kk.',
+  ],
+  shrimpCurl: [
+    '....kkk.....',
+    '...kTuTk....',
+    '..kTuTtSk...',
+    '.kbTuTtSk...',
+    '.kkTuTtSk...',
+    '...kTuTtSk..',
+    '...kTuTtSk..',
+    '....kTuTtSk.',
+    '....kTuTtSk.',
+    '.....kTTtSSk',
+    '...kkTTkkkkk',
+    '...kTTk.....',
+    '...kkk......',
+  ],
+  shrimpSmall: [
+    '..kkk...',
+    '.kTuTk..',
+    'kbTuTSk.',
+    'kkTuTSk.',
+    '..kTuTSk',
+    '..kTTtSk',
+    '..kkTTkk',
+    '....kk..',
+  ],
+  // fish: forked tail left, head and eye right, pale belly
+  fishSilver: [
+    'kk.......kkkk.....',
+    'kHkk...kkHHHHkk...',
+    'kHHHk.kHHhhhhhHk..',
+    'kHHHHkkHhhGGGGhHk.',
+    'kHHHHHHhhGGGGGGhHk',
+    'kHHHHkkHhhGGGbGhHk',
+    'kHHHk.kHHhhGGGGhhk',
+    'kHkk...kkHwwwwwhkk',
+    'kk.......kkkkkkkk.',
+  ],
+  fishSilverSm: [
+    'kk....kkk..',
+    'kHk.kkHHHkk',
+    'kHHkkHhhhHk',
+    'kHHHHhGbGhk',
+    'kHHkkHhhwhk',
+    'kHk.kkHwwkk',
+    'kk....kkkk.',
+  ],
+  fishOlive: [
+    'kk......kkk.....',
+    'kFkk..kkFFFkk...',
+    'kFFFkkFFfffFFk..',
+    'kFFFFFFffEEEfFk.',
+    'kFFFFFffEEEbEfFk',
+    'kFFFFFFffEEEEfFk',
+    'kFFFkkFFffEEffk.',
+    'kFkk..kkFwwwwfk.',
+    'kk......kkkkkkk.',
+  ],
+  // a big one gone belly up: pale side up, dull clouded eye
+  fishDeadBig: [
+    'kk........kkkkkkkk......',
+    'kwkk....kkwwwwwwwwkk....',
+    'kwwwkkkkwwwwwwwwwwwwkk..',
+    'kwwwwwwwwwwwwwwwwwwwwwk.',
+    'kwwwwwwwwwwwwwwwwwwwwwwk',
+    'kwwwwwwwwwwwwwwwyyywwwdk',
+    'kwwwwwwwhhhhhhhhyWywhhdk',
+    'kwwwkkkkhGGGGGGGyyyGGhdk',
+    'kwkk....kGGGGGGGGGGGGgk.',
+    'kk........kkGGGGGGGGkk..',
+    '............kkkkkkkk....',
+  ],
+  crabClaw: [
+    '..kkk.....',
+    '.kqqRk....',
+    'kqqRRrk...',
+    'kqRRrrkk..',
+    'kkRrrk.kk.',
+    '.kRrrkkqRk',
+    '.kRRrrqqRk',
+    '..kRRRRRk.',
+    '...kkRRk..',
+    '.....kk...',
+  ],
+  crabShell: [
+    '.kk....kk.',
+    'kRRkkkkRRk',
+    'kRqqqqqqRk',
+    'kRqbqqbqRk',
+    'kRqqqqqqRk',
+    'kRRqqqqRRk',
+    '.kRRRRRRk.',
+    '..kkkkkk..',
+  ],
+  fleckA: ['kkk', 'kIk', 'kkk'],
+  fleckB: ['kk.', 'kIk', '.kk'],
+  fleckC: ['.kk.', 'kIIk', 'kiIk', '.kk.'],
+};
+const CATCH = { all: [], big: [], fleck: [], small: [] };
+function buildCatchSprites() {
+  if (CATCH.all.length) return CATCH;
+  const mk = rows => makeSprite(rows, { pal: CATCH_PAL });
+  const AR = CATCH_ART;
+  CATCH.byName = {};
+  for (const k in AR) CATCH.byName[k] = mk(AR[k]);
+  // the mix that makes up the bulk of a heap: plenty of shrimp, fewer fish
+  CATCH.all = [
+    CATCH.byName.shrimpCurl, CATCH.byName.shrimpCurl, CATCH.byName.shrimpCurl,
+    CATCH.byName.shrimpStraight, CATCH.byName.shrimpStraight,
+    CATCH.byName.shrimpSmall, CATCH.byName.shrimpSmall, CATCH.byName.shrimpSmall,
+    CATCH.byName.fishSilver, CATCH.byName.fishSilverSm, CATCH.byName.fishSilverSm,
+    CATCH.byName.fishOlive, CATCH.byName.crabClaw, CATCH.byName.crabShell,
+  ];
+  CATCH.big = [CATCH.byName.fishDeadBig, CATCH.byName.fishSilver, CATCH.byName.fishOlive];
+  CATCH.fleck = [CATCH.byName.fleckA, CATCH.byName.fleckB, CATCH.byName.fleckC];
+  CATCH.small = [CATCH.byName.shrimpSmall, CATCH.byName.shrimpCurl, CATCH.byName.fishSilverSm, CATCH.byName.crabClaw];
+  return CATCH;
+}
+// ---- the heap --------------------------------------------------------------
+// Surfaces are in screen space: the back heap rises behind her, the front lip
+// buries her to the shoulders.
+function pileBackTop(x) {
+  return 190 + 44 * Math.exp(-Math.pow((x - 300) / 215, 2)) + Math.sin(x * 0.047) * 5 + vnoise(x * 0.018, 3.5) * 10;
+}
+function pileFrontTop(x) {
+  return 232 + 32 * Math.exp(-Math.pow((x - 300) / 210, 2))
+    + 20 * Math.exp(-Math.pow((x - 322) / 86, 2))
+    + Math.sin(x * 0.062 + 1.4) * 4 + vnoise(x * 0.022, 7.5) * 8;
+}
+function pileThinTop(x) {
+  return 318 + 14 * Math.exp(-Math.pow((x - 300) / 230, 2)) + Math.sin(x * 0.05) * 3;
+}
+function buildPileLayer(topFn, yOff, H, seed, count, opts) {
+  opts = opts || {};
+  const c = can(640, H), x = cx2(c), rng = new SeededRandom(seed);
+  // packed mass under the surface, so the heap reads as deep instead of hollow
+  for (let px2 = 0; px2 < 640; px2++) {
+    const t0 = R(topFn(px2) - yOff);
+    for (let y = Math.max(0, t0 + 2); y < H; y++) {
+      const dd = (y - t0) / Math.max(8, H - t0);
+      const n = vnoise(px2 * 0.055, y * 0.075);
+      P(x, n > 0.60 ? (dd > 0.55 ? '#3a2c1e' : '#55402b') : n > 0.38 ? (dd > 0.55 ? '#2b2016' : '#3f3021') : '#211809', px2, y);
+    }
+  }
+  // the bulk: overlapping sprites, sorted back to front
+  const list = [];
+  for (let i = 0; i < count; i++) {
+    const px2 = rng.range(-10, 650);
+    const t0 = topFn(px2) - yOff;
+    const d = Math.pow(rng.next(), 0.62) * Math.max(6, H - t0);
+    list.push({ x: px2, y: t0 + d - 3, r: rng.range(-3.15, 3.15), f: rng.next() > 0.5, s: rng.int(0, CATCH.all.length - 1) });
+  }
+  // a handful of big dead fish lying across the heap
+  for (let i = 0; i < (opts.big === undefined ? 7 : opts.big); i++) {
+    const px2 = rng.range(0, 640), t0 = topFn(px2) - yOff;
+    list.push({ x: px2, y: t0 + rng.range(2, 26), r: rng.range(-0.6, 0.6), f: rng.next() > 0.5, big: rng.int(0, CATCH.big.length - 1) });
+  }
+  list.sort((a, b) => a.y - b.y);
+  for (const o of list) {
+    const sp = o.big !== undefined ? CATCH.big[o.big] : CATCH.all[o.s];
+    x.save(); x.translate(R(o.x), R(o.y)); x.rotate(o.r); if (o.f) x.scale(-1, 1);
+    x.drawImage(sp.c, -sp.ax, -sp.ay); x.restore();
+  }
+  // ice and scale flecks caught in the heap
+  for (let i = 0; i < count * 0.22; i++) {
+    const px2 = rng.range(0, 640), t0 = topFn(px2) - yOff;
+    const sp = CATCH.fleck[rng.int(0, CATCH.fleck.length - 1)];
+    x.save(); x.translate(R(px2), R(t0 + Math.pow(rng.next(), 0.5) * Math.max(6, H - t0))); x.rotate(rng.range(0, 3.14));
+    x.drawImage(sp.c, -sp.ax, -sp.ay); x.restore();
+  }
+  // wet sheen along the crest, slime pooling low down, a dark stain at the foot
+  for (let px2 = 0; px2 < 640; px2++) {
+    const t0 = R(topFn(px2) - yOff);
+    for (let y = Math.max(0, t0); y < Math.min(H, t0 + 14); y++) if (hash2(px2 * 3, y * 5) > 0.93) P(x, '#dfeccb', px2, y, 1 + (px2 & 1), 1);
+    for (let y = H - 26; y < H; y++) if (hash2(px2, y) > 0.88) P(x, '#2e3a1c', px2, y, 2, 1);
+  }
+  x.fillStyle = rgbaq('#0d0a06', 0.34); x.fillRect(0, H - 14, 640, 14);
+  x.fillStyle = rgbaq('#0d0a06', 0.18); x.fillRect(0, H - 30, 640, 16);
+  for (let i = 0; i < 26; i++) {
+    const px2 = R(rng.range(0, 640)), t0 = R(topFn(px2) - yOff);
+    x.fillStyle = rgbaq('#e8f4d0', 0.16);
+    x.fillRect(px2, t0 + R(rng.range(0, 20)), 1, R(rng.range(6, 26)));
+  }
+  return c;
+}
+// ---- loose catch that slides, rains in and scatters ------------------------
+function looseAdd(list, o) { if (list.length < 340) list.push(o); }
+function looseSpawnRain(list) {
+  looseAdd(list, {
+    x: rand(252, 332), y: 38, vx: rand(-22, 22), vy: rand(70, 170),
+    r: rand(0, TAU), vr: rand(-8, 8), s: randi(0, CATCH.all.length - 1),
+    f: Math.random() > 0.5, rest: 0, hop: 0,
+  });
+}
+function looseUpdate(list, dt, surfFn, t) {
+  for (let i = list.length - 1; i >= 0; i--) {
+    const p = list[i];
+    if (p.dead) { list.splice(i, 1); continue; }
+    if (p.rest < 1) {
+      p.vy += 660 * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt; p.r += p.vr * dt;
+      const sy = surfFn(p.x);
+      if (p.y >= sy && p.vy > 0) {
+        p.y = sy;
+        p.hop++;
+        p.vy = -p.vy * (p.hop > 2 ? 0.10 : 0.30);
+        p.vx *= 0.52; p.vr *= 0.45;
+        if (Math.abs(p.vy) < 34 || p.hop > 3) { p.rest = 1; p.vy = 0; p.slide = rand(0.6, 1.5); }
+      }
+      if (p.x < -30 || p.x > 670 || p.y > 400) p.dead = true;
+    } else {
+      // settle: creep down the slope until it is shallow enough to hold
+      const sl = (surfFn(p.x + 5) - surfFn(p.x - 5)) / 10;
+      if (p.slide > 0) {
+        p.slide -= dt;
+        p.x -= sl * 52 * dt;
+        p.r += sl * 1.4 * dt;
+      }
+      p.y = surfFn(p.x);
+      if (p.twitch === undefined && Math.random() < 0.12 * dt) p.twitch = 0.22;
+      if (p.twitch > 0) { p.twitch -= dt; p.r += Math.sin(t * 40) * 2.2 * dt; if (p.twitch <= 0) p.twitch = undefined; }
+    }
+  }
+  while (list.length > 320) list.shift();
+}
+function looseRender(ctx, list) {
+  for (const p of list) {
+    const sp = CATCH.all[p.s]; if (!sp) continue;
+    ctx.save(); ctx.translate(R(p.x), R(p.y)); ctx.rotate(p.r); if (p.f) ctx.scale(-1, 1);
+    ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore();
+  }
+}
+function pileBurst(list, cx0, cy0, n) {
+  for (let i = 0; i < n; i++) {
+    const px2 = rand(20, 620);
+    const py = lerp(pileFrontTop(px2), 356, Math.pow(Math.random(), 0.6));
+    const a = angleTo(cx0, cy0, px2, py) + rand(-0.5, 0.5);
+    const sp = rand(120, 470) * (1 - Math.min(0.7, dist(cx0, cy0, px2, py) / 620));
+    looseAdd(list, {
+      x: px2, y: py, vx: Math.cos(a) * sp + rand(40, 180), vy: Math.sin(a) * sp - rand(60, 260),
+      r: rand(0, TAU), vr: rand(-13, 13), s: randi(0, CATCH.all.length - 1),
+      f: Math.random() > 0.5, rest: 0, hop: 0,
+    });
+  }
+}
+function buildHoldBG() {
+  const c = can(640, 360), x = cx2(c);
+  const W = ['#0e0b08', '#16110c', '#1f1711', '#2b2018', '#3a2c20'];
+  // back wall planking
+  for (let y = 0; y < 360; y++) {
+    const b = ((y % 13) === 0) ? 0 : ((y % 13) < 4 ? 2 : 1);
+    for (let px2 = 0; px2 < 640; px2++) {
+      const n = vnoise(px2 * 0.03, y * 0.05);
+      P(x, W[clamp(b + (n > 0.62 ? 1 : n < 0.34 ? -1 : 0), 0, 4)], px2, y);
+    }
+  }
+  // hull frames
+  for (let fx = -20; fx < 660; fx += 96) {
+    const lean = (fx - 320) * 0.035;
+    for (let y = 0; y < 360; y++) {
+      const px2 = R(fx + lean * (1 - y / 360) * 6);
+      P(x, IP.ink, px2 - 1, y, 16, 1);
+      P(x, W[3], px2, y, 13, 1);
+      P(x, W[4], px2, y, 3, 1);
+      P(x, W[0], px2 + 11, y, 2, 1);
+    }
+    for (let y = 26; y < 360; y += 58) {
+      P(x, IP.ink, R(fx) - 3, y, 20, 7); P(x, '#4a525e', R(fx) - 2, y + 1, 18, 5);
+      P(x, '#767f8d', R(fx) - 2, y + 1, 18, 2);
+      for (let i = 0; i < 3; i++) { P(x, '#9aa4b0', R(fx) + 1 + i * 6, y + 3, 2, 2); P(x, IP.ink, R(fx) + 1 + i * 6, y + 5, 2, 1); }
+    }
+  }
+  // overhead deck beams, with a hatch gap around x 250..332
+  P(x, IP.ink, 0, 0, 640, 46);
+  for (let px2 = 0; px2 < 640; px2++) {
+    if (px2 > 250 && px2 < 332) continue;
+    for (let y = 0; y < 44; y++) {
+      const b = ((y % 9) === 0) ? 0 : ((y % 9) < 3 ? 2 : 1);
+      P(x, W[b], px2, y);
+    }
+  }
+  for (const bx of [40, 150, 360, 470, 580]) {
+    P(x, IP.ink, bx - 2, 0, 26, 52); P(x, W[3], bx, 0, 22, 50); P(x, W[4], bx, 0, 22, 3);
+    P(x, W[0], bx + 18, 0, 4, 50);
+    P(x, IP.ink, bx + 2, 40, 18, 8); P(x, '#4a525e', bx + 3, 41, 16, 6); P(x, '#8c97a8', bx + 3, 41, 16, 2);
+  }
+  // stacked crates in the background
+  const rng = new SeededRandom(8181);
+  for (let i = 0; i < 7; i++) {
+    const bx = R(rng.range(-20, 600)), by = R(rng.range(120, 250)), bw = R(rng.range(54, 96)), bh = R(rng.range(44, 70));
+    P(x, IP.ink, bx, by, bw, bh);
+    P(x, '#2e2418', bx + 1, by + 1, bw - 2, bh - 2);
+    for (let j = 1; j < 5; j++) P(x, '#1c150d', bx + 1, by + R(j * bh / 5), bw - 2, 2);
+    P(x, '#3d2f1e', bx + 1, by + 1, bw - 2, 2);
+    P(x, '#191209', bx + 1, by + bh - 4, bw - 2, 3);
+  }
+  // hanging chain, hooks, coiled rope
+  for (let y = 44; y < 150; y += 6) { P(x, IP.ink, 549, y, 7, 5); P(x, '#5d6675', 550, y + 1, 5, 3); P(x, '#9aa6b6', 550, y + 1, 5, 1); }
+  P(x, IP.ink, 546, 150, 13, 16); P(x, '#767f8d', 547, 151, 11, 14); P(x, '#2a3038', 550, 158, 5, 7);
+  for (let y = 44; y < 96; y += 5) { P(x, '#6a5330', 92, y, 3, 4); P(x, '#8a6a3a', 92, y, 1, 4); }
+  for (let i = 0; i < 5; i++) { P(x, IP.ink, 76, 96 + i * 7, 36, 8); P(x, '#8a6a3a', 77, 97 + i * 7, 34, 6); P(x, '#b08a4c', 77, 97 + i * 7, 34, 2); }
+  // barrels
+  for (const [bx, by] of [[186, 216], [222, 226]]) {
+    P(x, IP.ink, bx, by, 34, 56); P(x, '#4a3520', bx + 1, by + 1, 32, 54);
+    P(x, '#6b4d2c', bx + 1, by + 1, 32, 4); P(x, '#2c1f10', bx + 1, by + 50, 32, 5);
+    for (const ry of [10, 26, 42]) { P(x, '#5d6675', bx + 1, by + ry, 32, 4); P(x, '#9aa6b6', bx + 1, by + ry, 32, 1); }
+  }
+  // bilge water + drain
+  for (let y = 330; y < 360; y++) for (let px2 = 0; px2 < 640; px2++) {
+    const n = vnoise(px2 * 0.05, y * 0.2 + 3);
+    P(x, n > 0.56 ? '#22301f' : n > 0.36 ? '#18220f' : '#10170a', px2, y);
+  }
+  P(x, IP.ink, 0, 328, 640, 2);
+  P(x, IP.ink, 400, 336, 44, 20); P(x, '#2a3038', 401, 337, 42, 18);
+  for (let i = 0; i < 5; i++) P(x, '#5d6675', 404 + i * 8, 338, 3, 16);
+  // slime streaks down the wall
+  for (let i = 0; i < 40; i++) {
+    const sx = R(hash2(i * 7, 3) * 640), sy = R(hash2(i * 3, 11) * 300);
+    x.fillStyle = rgbaq('#4b5c34', qa(0.10 + hash2(i, 5) * 0.12));
+    x.fillRect(sx, sy, 1 + (i % 3), R(12 + hash2(i, 9) * 60));
+  }
+  return c;
+}
+function buildCrateWall() {
+  const c = can(640, 360), x = cx2(c);
+  const board = (bx, bw) => {
+    for (let px2 = bx; px2 < bx + bw && px2 < 640; px2++) {
+      if (px2 < 0) continue;
+      const u = (px2 - bx) / bw;
+      for (let y = 0; y < 360; y++) {
+        const n = vnoise(px2 * 0.09, y * 0.02) * 0.6 + 0.2;
+        const edge = px2 === bx || px2 === bx + bw - 1;
+        const shade = u < 0.12 ? 1 : u > 0.86 ? -1 : 0;
+        let col = edge ? '#130d06'
+          : shade > 0 ? (n > 0.42 ? '#5a4429' : '#4c3922')
+            : shade < 0 ? (n > 0.42 ? '#2a1f13' : '#221a0f')
+              : (n > 0.5 ? '#44331f' : n > 0.34 ? '#3a2b1a' : '#312414');
+        if ((y % 71) < 2 && !edge) col = '#1b1309';
+        P(x, col, px2, y);
+      }
+      // grain
+      for (let y = 0; y < 360; y += 13) if (hash2(px2, y) > 0.86) P(x, '#251b0f', px2, y + R(hash2(px2, 3) * 8), 1, 3);
+    }
+    // nails
+    for (const ny of [30, 128, 232, 330]) { P(x, IP.ink, bx + 3, ny, 3, 3); P(x, '#8c97a8', bx + 4, ny + 1, 2, 2); P(x, IP.ink, bx + bw - 6, ny, 3, 3); P(x, '#8c97a8', bx + bw - 5, ny + 1, 2, 2); }
+  };
+  for (let bx = -12; bx < 660; bx += 42) {
+    if (bx > 484 && bx < 520) continue;                 // the loose board lives here
+    board(bx, 33);
+  }
+  // heavy corner posts, in front of everything
+  for (const [bx, bw] of [[0, 30], [610, 30]]) {
+    for (let px2 = bx; px2 < bx + bw; px2++) for (let y = 0; y < 360; y++) {
+      const u = (px2 - bx) / bw, n = vnoise(px2 * 0.07, y * 0.03) * 0.5 + 0.25;
+      P(x, (px2 === bx || px2 === bx + bw - 1) ? IP.ink : u < 0.18 ? '#3a2b1a' : u > 0.8 ? '#150f08' : n > 0.45 ? '#2a1f12' : '#211809', px2, y);
+    }
+    for (let y = 18; y < 360; y += 64) { P(x, IP.ink, bx + 2, y, bw - 4, 9); P(x, '#4a525e', bx + 3, y + 1, bw - 6, 7); P(x, '#8c97a8', bx + 3, y + 1, bw - 6, 2); }
+  }
+  // top rail band under the deck beams
+  for (let px2 = 0; px2 < 640; px2++) for (let y = 45; y < 61; y++) {
+    const n = vnoise(px2 * 0.05, y * 0.06) * 0.5 + 0.25;
+    P(x, y < 48 ? '#503c24' : y > 57 ? '#241a0e' : (n > 0.45 ? '#3e2e1b' : '#342715'), px2, y);
+  }
+  P(x, IP.ink, 0, 44, 640, 2); P(x, IP.ink, 0, 60, 640, 2);
+  return c;
+}
+function buildLooseBoard() {
+  const c = can(36, 360), x = cx2(c);
+  for (let px2 = 0; px2 < 33; px2++) {
+    const u = px2 / 33;
+    for (let y = 0; y < 360; y++) {
+      const n = vnoise((px2 + 486) * 0.09, y * 0.02) * 0.6 + 0.2;
+      const edge = px2 === 0 || px2 === 32;
+      P(x, edge ? '#130d06' : u < 0.12 ? (n > 0.42 ? '#5a4429' : '#4c3922') : u > 0.86 ? (n > 0.42 ? '#2a1f13' : '#221a0f') : (n > 0.5 ? '#44331f' : n > 0.34 ? '#3a2b1a' : '#312414'), px2, y);
+    }
+  }
+  for (const ny of [30, 128, 232, 330]) { P(x, IP.ink, 3, ny, 3, 3); P(x, '#8c97a8', 4, ny + 1, 2, 2); }
+  return spr(c, 16, 180);
+}
+function buildBulb() {
+  const c = can(13, 20), x = cx2(c);
+  P(x, '#2a2018', 6, 0, 1, 7);
+  P(x, IP.ink, 3, 6, 7, 6); P(x, '#767f8d', 4, 7, 5, 4); P(x, '#c0cad6', 4, 7, 5, 1);
+  for (let yy = -5; yy <= 5; yy++) for (let xx = -5; xx <= 5; xx++) {
+    const d = Math.hypot(xx / 5, yy / 5.4);
+    if (d > 1) continue;
+    P(x, d > 0.86 ? IP.ink : d > 0.55 ? '#e8d27a' : '#fff6cc', 6 + xx, 14 + yy);
+  }
+  P(x, '#ff9a3c', 5, 13, 1, 3); P(x, '#ff9a3c', 7, 13, 1, 3); P(x, '#fff6cc', 6, 12, 1, 2);
+  return spr(c, 6, 0);
+}
+// One baked lighting pass for the hold: a single warm lamp burning a pool out
+// of a cold blue-steel dark.  Posterised into hard bands, dithered at the
+// seams, blitted once per frame.  This is the only place in the cinematic
+// that is not daylight, and it is meant to be: it is the inside of a boat.
+function buildHoldLight() {
+  const c = can(640, 360), x = cx2(c), img = x.createImageData(640, 360), d = img.data;
+  const WARM = ['#fff4d2', '#ffe2a0', '#ffbe63', '#e8853a', '#b4552a'];
+  const COLD = ['#5f97cc', '#4478ae', '#2d5c90', '#1b3f70', '#0d2448'];
+  const W = WARM.map(hexToRgb), C = COLD.map(hexToRgb);
+  const LX = 168, LY = 152, RX = 430, RY = 360;
+  for (let y = 0; y < 360; y++) {
+    for (let px = 0; px < 640; px++) {
+      // distance from the lamp, banded into hard steps and dithered
+      const raw = Math.sqrt(Math.pow((px - LX) / RX, 2) + Math.pow((y - LY) / RY, 2));
+      const f = clamp(raw, 0, 1.6) * 9;
+      const i0 = Math.floor(f), fr = f - i0;
+      const band = clamp((fr > bay(px, y) ? i0 + 1 : i0) / 9, 0, 1.6);
+      let col, a;
+      if (band < 0.62) {                       // inside the lamp's reach
+        const k = band / 0.62 * (W.length - 1);
+        const j = clamp(Math.floor(k), 0, W.length - 2), kf = k - j;
+        const c0 = W[j], c1 = W[j + 1];
+        col = [R(c0[0] + (c1[0] - c0[0]) * kf), R(c0[1] + (c1[1] - c0[1]) * kf), R(c0[2] + (c1[2] - c0[2]) * kf)];
+        a = 0.40 * Math.pow(1 - band / 0.62, 1.15);
+      } else {                                  // the cold dark beyond it
+        const k = clamp((band - 0.62) / 0.78, 0, 1) * (C.length - 1);
+        const j = clamp(Math.floor(k), 0, C.length - 2), kf = k - j;
+        const c0 = C[j], c1 = C[j + 1];
+        col = [R(c0[0] + (c1[0] - c0[0]) * kf), R(c0[1] + (c1[1] - c0[1]) * kf), R(c0[2] + (c1[2] - c0[2]) * kf)];
+        a = 0.14 + 0.54 * clamp((band - 0.62) / 0.78, 0, 1);
+      }
+      // the bilge at the bottom stays coldest of all
+      if (y > 320) a += (y - 320) / 40 * 0.10;
+      const aq = clamp(a, 0, 1) * 16, ai = Math.floor(aq), af = aq - ai;
+      const A = clamp((af > bay(px + 1, y + 2) ? ai + 1 : ai) / 16, 0, 1);
+      if (A <= 0) continue;
+      const q = (y * 640 + px) * 4;
+      d[q] = col[0]; d[q + 1] = col[1]; d[q + 2] = col[2]; d[q + 3] = R(A * 255);
+    }
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+function holdArt() {
+  if (HOLD.bg) return HOLD;
+  buildCatchSprites();
+  HOLD.bg = buildHoldBG();
+  HOLD.wall = buildCrateWall();
+  HOLD.board = buildLooseBoard();
+  {  // short broken plank used for flying debris
+    const pc = can(34, 104), px3 = cx2(pc);
+    px3.drawImage(HOLD.board.c, -1, -90);
+    for (let i = 0; i < 6; i++) { const yy = i & 1 ? 0 : 103; P(px3, IP.ink, 4 + i * 5, yy, 4, 2); P(px3, '#8a6a3a', 4 + i * 5, yy === 0 ? 2 : 101, 4, 1); }
+    HOLD.plank = spr(pc, 16, 52);
+  }
+  HOLD.pileBack = buildPileLayer(pileBackTop, 180, 184, 1717, 780, { big: 9 });
+  HOLD.pileFront = buildPileLayer(pileFrontTop, 228, 136, 9292, 520, { big: 6 });
+  HOLD.pileThin = buildPileLayer(pileThinTop, 310, 54, 3131, 180, { big: 3 });
+  HOLD.bulb = buildBulb();
+  HOLD.light = buildHoldLight();
+  return HOLD;
+}
+// ---- the hole she goes out through, and the light in the hold --------------
+function hullHole(ctx, x, y, r, seed) {
+  for (let yy = -r; yy <= r; yy++) {
+    const k = Math.sqrt(Math.max(0, 1 - (yy / r) * (yy / r)));
+    const w = r * k * (0.80 + hash2(seed, yy + 128) * 0.32);
+    if (w < 1) continue;
+    P(ctx, '#0a0806', R(x - w), R(y + yy * 0.9), R(w * 2), 2);
+  }
+  for (let i = 0; i < 20; i++) {
+    const a = i / 20 * TAU;
+    const r0 = r * (0.78 + hash2(seed + i, 3) * 0.16);
+    const r1 = r * (0.98 + hash2(seed + i, 7) * 0.22);
+    const ax0 = x + Math.cos(a) * r0, ay0 = y + Math.sin(a) * r0 * 0.9;
+    const ax1 = x + Math.cos(a) * r1, ay1 = y + Math.sin(a) * r1 * 0.9;
+    const bw = 2 + hash2(seed + i, 11) * 2;
+    tri(ctx, IP.ink, ax0, ay0 - bw - 1, ax0, ay0 + bw + 1, ax1, ay1);
+    tri(ctx, hash2(i, seed) > 0.5 ? '#8a5f2f' : '#6b4a2a', ax0, ay0 - bw, ax0, ay0 + bw, ax1 - Math.cos(a), ay1 - Math.sin(a));
+  }
+}
+// a pool of light without a gradient in it: concentric hand-rasterized discs
+// on quantized alphas, biggest and faintest first
+function glowPatch(ctx, x, y, rx, ry, col, a0, steps) {
+  for (let i = steps; i >= 1; i--) {
+    const k = i / steps, a = qa(a0 * (1 - k) * (1 - k) + a0 * 0.08);
+    if (a <= 0) continue;
+    ctx.fillStyle = rgbaq(col, a);
+    const RX = rx * k, RY = ry * k;
+    for (let yy = -RY; yy <= RY; yy += 2) {
+      const w = Math.sqrt(Math.max(0, 1 - (yy / RY) * (yy / RY))) * RX;
+      if (w < 1) continue;
+      ctx.fillRect(R(x - w), R(y + yy), R(w * 2), 2);
+    }
+  }
+}
+function slatShaft(ctx, x0, x1, y0, y1, lean, a0, col) {
+  for (let y = y0; y < y1; y += 2) {
+    const k = (y - y0) / (y1 - y0);
+    const a = qa(a0 * (1 - k) * (1 - k));
+    if (a <= 0) continue;
+    ctx.fillStyle = rgbaq(col || '#ffe9b0', a);
+    const off = R(lean * (y - y0));
+    ctx.fillRect(R(x0 + off - k * 8), y, R((x1 - x0) + k * 16), 2);
+  }
+}
+// vision closing down to nothing: a hard-edged iris, drawn in two steps so the
+// rim reads as a band rather than a blur
+function aperture(ctx, k) {
+  if (k <= 0) return;
+  const draw = (rx, ry, a) => {
+    if (a <= 0) return;
+    ctx.fillStyle = rgbaq('#000000', a);
+    for (let y = 0; y < 360; y += 3) {
+      const dy = (y - 176) / Math.max(1, ry);
+      const w = Math.abs(dy) >= 1 ? 0 : Math.sqrt(1 - dy * dy) * rx;
+      const x0 = R(324 - w), x1 = R(324 + w);
+      if (x0 > 0) ctx.fillRect(0, y, x0, 3);
+      if (x1 < 640) ctx.fillRect(x1, y, 640 - x1, 3);
+    }
+  };
+  draw(430 * (1 - k) + 40, 260 * (1 - k) + 26, 0.5);
+  draw(400 * (1 - k), 236 * (1 - k), 1);
+  if (k > 0.94) { ctx.fillStyle = rgbaq('#000000', (k - 0.94) / 0.06); ctx.fillRect(0, 0, 640, 360); }
+}
+// her own lids, opening for the first time in the hold
+function eyelids(ctx, open) {
+  if (open >= 1) return;
+  const o = clamp(open, 0, 1);
+  for (let x = 0; x < 640; x += 4) {
+    const u = (x - 320) / 348;
+    const cv = Math.pow(Math.max(0, 1 - u * u), 0.55);
+    const half = 180 * o * cv;
+    const top = R(180 - half), bot = R(180 + half);
+    P(ctx, '#000000', x, 0, 4, Math.max(0, top));
+    P(ctx, '#000000', x, bot, 4, Math.max(0, 360 - bot));
+    if (half > 2) { P(ctx, '#0d0a08', x, top, 4, 2); P(ctx, '#0d0a08', x, bot - 2, 4, 2); }
+  }
+}
+// ---- the crate, from the inside --------------------------------------------
+function crateScene(ctx, t, o) {
+  const H = holdArt();
+  ctx.drawImage(H.bg, 0, 0);
+  // hatch light from the deck gap, plus the swinging bulb beyond the slats
+  const sw = R(Math.sin(t * 1.1) * 16);
+  slatShaft(ctx, 252, 330, 44, 320, 0.10, 0.20 + (o.hatch || 0) * 0.34);
+  glowPatch(ctx, 150 + sw, 120, 150, 122, '#ffdf9a', 0.26, 5);
+  // the crate itself
+  ctx.drawImage(H.wall, 0, 0);
+  if (!o.boardOff) ctx.drawImage(H.board.c, 486, 0);
+  else {
+    ctx.save(); ctx.translate(R(502 + (o.boardOff.x || 0)), R(190 + (o.boardOff.y || 0)));
+    ctx.rotate(o.boardOff.r || 0); ctx.drawImage(H.plank.c, -H.plank.ax, -H.plank.ay); ctx.restore();
+  }
+  // light bleeding through the slat gaps
+  for (let gx = -12; gx < 660; gx += 42) {
+    if (gx > 484 && gx < 520 && !o.boardOff) continue;
+    ctx.fillStyle = rgbaq('#ffe1a4', 0.10);
+    ctx.fillRect(gx + 33, 62, 9, 298);
+    ctx.fillStyle = rgbaq('#ffe1a4', 0.05);
+    ctx.fillRect(gx + 31, 62, 2, 298); ctx.fillRect(gx + 42, 62, 2, 298);
+  }
+  // hatch mouth overhead, open when they are tipping more catch in
+  if (o.hatch) {
+    ctx.fillStyle = rgbaq('#ffeec2', qa(0.22 * o.hatch));
+    ctx.fillRect(252, 0, 78, 46);
+    P(ctx, '#ffe9b0', 252, 44, 78, 2);
+    for (let i = 0; i < 3; i++) { const bx = 262 + i * 24; P(ctx, IP.ink, bx, 0, 14, R(16 + Math.sin(t * 6 + i) * 3)); }
+  }
+  // the bulb, swinging on its cord beyond the slats
+  ctx.save(); ctx.translate(R(150 + sw), 44); ctx.rotate(Math.sin(t * 1.1) * 0.16);
+  ctx.drawImage(H.bulb.c, -H.bulb.ax, -H.bulb.ay); ctx.restore();
+  // the catch: the heap she is half buried in, inside the slats
+  ctx.drawImage(o.thin ? H.pileThin : H.pileBack, 0, o.thin ? 310 : 180);
+}
+// the hold's lamp, laid over everything in the crate so she and the heap sit
+// in the same pool of light
+function holdLight(ctx) { ctx.drawImage(holdArt().light, 0, 0); }
+function cratePileFront(ctx, thin) {
+  if (thin) return;
+  ctx.drawImage(holdArt().pileFront, 0, 228);
+}
+
 // ================================================================= BEATS ====
 //  Five of them, in daylight, told in speech.  The old thirteen ran two
 //  minutes through dusk, night and a red sunset and said everything in
@@ -1995,30 +3021,34 @@ function hullShade(ctx, x, y, w, h, a) {
 }
 
 // ------------------------------------------------------------------ 1. HOME
-//  Bright, shallow, safe -- and already a graveyard if you look down.  The
-//  reef this is played over is baked full of ribcages, skulls and spent
-//  harpoons, and a gutted fish somebody threw back is still coming down
-//  through the sunlight.  Nobody in shot reacts to any of it.  That is the
-//  world these four live in, and it is the last seven seconds they get.
+//  Bright, shallow, warm and SAFE.  This beat used to be played over a reef
+//  baked full of ribcages and spent harpoons with a gutted fish bleeding
+//  down through the sunlight, and her mother snapped at her in it.  None of
+//  that is here now: the reef is the clean one, the family is whole, and not
+//  one of the four carries a mark.  Everything that gets done to them is
+//  done ON SCREEN, in the beats that follow, so the player watches it
+//  arrive instead of finding it already there in frame one.  These are the
+//  last seven seconds they get, and they have to be worth losing.
 BEATS.push({
   name: 'home', dur: 7.0,
   talk: [
-    [1.30, 'mom', 'Boats take everything. Bite first.'],
-    [4.15, 'you', 'I\'ll bite the big one!'],
+    [1.20, 'mom', 'Stay where I can see you, little one.'],
+    [4.20, 'you', 'Watch me! Watch me roll!'],
   ],
   anchor(who) {
     if (who === 'mom') return [A.mom.x + 26, A.mom.y - 30, 1];
     return [A.you.x + 24, A.you.y - 26, 1];
   },
   enter() {
-    A.dad = actor(MAN.dad, 112, 158, { beat: 0.95, tailAmp: 0.20, scarred: true, exp: 'angry' });
-    A.mom = actor(MAN.mom, 456, 218, { beat: 1.00, tailAmp: 0.18, scarred: true });
+    // Not one `scarred` flag and not one wound in this beat.  All four of
+    // them are clean; the fleet has not touched them yet.
+    A.dad = actor(MAN.dad, 112, 158, { beat: 0.95, tailAmp: 0.20, exp: 'calm' });
+    A.mom = actor(MAN.mom, 456, 218, { beat: 1.00, tailAmp: 0.18, exp: 'calm' });
     A.you = actor(MAN.you, 330, 240, { beat: 1.70 });
     A.bro = actor(MAN.bro, 244, 272, { beat: 2.20 });
     SC.sch1 = makeSchool(14, 520, 128, 62, 0, 1, -22);
     SC.sch2 = makeSchool(9, 110, 286, 44, 1, 3, 17);
-    SC.snap = false; SC.spun = false;
-    SC.carc = { x: 612, y: 92, ph: rand(0, TAU) };
+    SC.nudge = false; SC.spun = false;
     FX.bubble(A.mom.x + 34, A.mom.y - 10, 4, 0.5);
   },
   update(dt, bt) {
@@ -2032,7 +3062,7 @@ BEATS.push({
     A.mom.x = 456 + Math.sin(bt * 0.30) * 9;
     A.mom.y = 218 + Math.sin(bt * 0.56) * 5;
     A.mom.rot = 0.06 + Math.sin(bt * 0.46) * 0.06;
-    A.mom.exp = talking('mom') ? 'talk' : (SC.snap && bt < 3.5) ? 'angry' : 'calm';
+    A.mom.exp = talking('mom') ? 'talk' : 'calm';
     // the calf: in close, snapped at, driven back out, then one hard roll
     const up = ss2(clamp((bt - 1.70) / 1.30, 0, 1));
     const out = ss2(clamp((bt - 3.30) / 0.95, 0, 1));
@@ -2042,17 +3072,16 @@ BEATS.push({
     const roll = clamp((bt - 4.55) / 1.10, 0, 1);
     A.you.rot = Math.sin(bt * 1.05 + 1) * 0.09 + TAU * ss2(roll);
     A.you.beat = lerp(1.7, 5.2, Math.sin(clamp(roll, 0, 1) * Math.PI));
-    A.you.exp = talking('you') ? 'talk' : (roll > 0 && roll < 1) ? 'wide' : (SC.snap && bt < 3.7) ? 'wide' : 'calm';
-    // NOT a nuzzle.  Her mother snaps at her -- mouth open, no contact -- and
-    // the calf flinches off it.  That is the lesson the line just gave her,
-    // delivered the way this family delivers everything.
-    if (!SC.snap && bt >= 2.85) {
-      SC.snap = true;
-      kick(A.you, -9); kick(A.mom, 6);
-      A.mom.exp = 'angry';
-      FX.bubble(A.mom.x - 28, A.mom.y - 4, 11, 1.7);
-      Intro.shake = 3;
-      if (typeof Audio_ !== 'undefined') { Audio_.hit(); Audio_.tone(150, 0.09, 'square', 0.06, -70); }
+    A.you.exp = talking('you') ? 'talk' : (roll > 0 && roll < 1) ? 'wide' : 'calm';
+    // A NUZZLE, and nothing else.  This used to be a snap -- mouth open, a
+    // hit sound and a screen shake -- which is the opposite of what the
+    // opening is for.  Her mother comes in, touches her, and both of them
+    // rock off it.  No shake, no hit, one soft note.
+    if (!SC.nudge && bt >= 2.85) {
+      SC.nudge = true;
+      kick(A.you, 4); kick(A.mom, -3);
+      FX.bubble(A.mom.x - 24, A.mom.y - 2, 5, 0.6);
+      if (typeof Audio_ !== 'undefined') Audio_.tone(280, 0.14, 'sine', 0.05, 60);
     }
     if (!SC.spun && roll >= 1) {
       SC.spun = true;
@@ -2061,35 +3090,20 @@ BEATS.push({
       if (typeof Audio_ !== 'undefined') { Audio_.tone(190, 0.08, 'square', 0.05, -90); Audio_.noise(0.16, 0.05, 900, 200); }
     }
     if (roll > 0.12 && roll < 0.94 && Math.random() < 22 * dt) FX.bubble(A.you.x + rand(-18, 18), A.you.y + rand(-12, 12), 1, 1.4);
-    // her brother, orbiting her, always a beat behind
+    // her brother, orbiting her, always a beat behind and chattering
     A.bro.x = A.you.x - 74 + Math.sin(bt * 0.82) * 15;
     A.bro.y = A.you.y + 42 + Math.sin(bt * 1.18) * 11;
     A.bro.rot = Math.sin(bt * 1.18) * 0.20;
     A.bro.exp = (bt % 3.4) > 2.9 ? 'talk' : 'calm';
-    // and the carcass, turning over as it comes down, still emptying out
-    SC.carc.x -= 17 * dt; SC.carc.y += 10 * dt;
-    if (Math.random() < 2.8 * dt) FX.blood(SC.carc.x - 7, SC.carc.y + 2, 1, 0.45);
     if (Math.random() < 0.7 * dt) FX.bubble(A.mom.x + 34, A.mom.y - 6, 1, 0.45);
     if (Math.random() < 0.5 * dt) FX.bubble(A.you.x + 18, A.you.y - 8, 1, 0.45);
   },
   render(ctx, bt) {
-    backdrop(ctx, { mood: 'lagoon', grade: 'lagoon', scroll: Intro.scroll, t: Intro.t, surfY: 64, bedY: 302, shafts: 1, causticBed: true });
+    backdrop(ctx, { mood: 'lagoon', grade: 'lagoon', mid: 'midClean', scroll: Intro.scroll, t: Intro.t, surfY: 64, bedY: 302, shafts: 1, causticBed: true });
     drawAir(ctx, 64, Intro.scroll, Intro.t, 'day');
     drawSchool(ctx, SC.sch1, Intro.t, Intro.dt);
     drawManatee(ctx, A.mom, Intro.t);
     drawManatee(ctx, A.dad, Intro.t);
-    // somebody else's catch, opened along the belly and thrown back
-    if (FISHDEAD) {
-      ctx.save();
-      ctx.translate(R(SC.carc.x), R(SC.carc.y + Math.sin(Intro.t * 0.7 + SC.carc.ph) * 3));
-      ctx.rotate(2.4 + Math.sin(Intro.t * 0.5 + SC.carc.ph) * 0.24);
-      ctx.drawImage(FISHDEAD.c, -FISHDEAD.ax, -FISHDEAD.ay);
-      P(ctx, IP.ink, -5, 0, 13, 5);
-      P(ctx, IP.blood[1], -4, 1, 11, 3);
-      P(ctx, IP.blood[3], -3, 1, 8, 1);
-      P(ctx, IP.meat[3], -1, 2, 3, 2);
-      ctx.restore();
-    }
     drawSchool(ctx, SC.sch2, Intro.t, Intro.dt);
     drawManatee(ctx, A.you, Intro.t);
     drawManatee(ctx, A.bro, Intro.t);
@@ -2100,40 +3114,48 @@ BEATS.push({
 });
 
 // ------------------------------------------------------------------ 2. RAID
-//  The killing.  There is no net in this beat any more: the fleet works the
-//  bay with harpoon guns, and all three of them are opened up on screen, in
-//  daylight, in order.  The steel goes IN and STAYS in -- every barb is
-//  parented to the body it is buried in and rolls with it -- and what comes
-//  out of them fills the water and does not clear.
+//  The killing, and the only place in the cinematic where any of them picks
+//  up a mark.  Every actor walks into this beat CLEAN -- no scars, no wounds
+//  -- and leaves it carrying exactly what the fleet put in them: her father
+//  and her mother taken on the wire, and a fourth barb through her own flank
+//  that goes straight on through.  The steel that stays in is parented to the
+//  body it is buried in and rolls with it.
+//  Her brother is NOT shot.  The third gun misses him and drives him out
+//  into open water, which is where the white boat's net finds him two beats
+//  from now: what happens to him is a capture, not a kill.
 BEATS.push({
   name: 'raid', dur: 8.0,
   talk: [
     [0.50, 'mom', 'Under the reef! GO!'],
+    [2.60, 'bro', 'It missed me — RUN!'],
     [4.35, 'you', 'MAMA!'],
   ],
   anchor(who) {
     if (who === 'mom') return [clamp(A.mom.x + 16, 70, 570), A.mom.y - 42, 1];
+    if (who === 'bro') return [clamp(A.bro.x + 16, 70, 570), A.bro.y - 28, 1];
     return [A.you.x + 22, A.you.y - 28, 1];
   },
   enter() {
     SC.surfY = 96; SC.boatX = 470; SC.boatY = 96; SC.boatRot = 0; SC.propA = 0; SC.far = -170;
     SC.men = [-96, -62, -28];
     SC.harps = []; SC.gore = 0; SC.shot = 0; SC.cried = false;
-    A.dad = actor(MAN.dad, 300, 208, { beat: 1.3, exp: 'angry', scarred: true });
-    A.mom = actor(MAN.mom, 374, 246, { beat: 1.4, scarred: true });
-    A.bro = actor(MAN.bro, 258, 266, { beat: 2.0 });
+    // all four still clean.  Nothing in this beat is scarred until the beat
+    // itself does the scarring.
+    A.dad = actor(MAN.dad, 300, 208, { beat: 1.3, exp: 'angry' });
+    A.mom = actor(MAN.mom, 374, 246, { beat: 1.4 });
+    A.bro = actor(MAN.bro, 258, 266, { beat: 2.0, exp: 'wide' });
     A.you = actor(MAN.you, 148, 294, { beat: 2.0, exp: 'wide' });
     SC.sch1 = makeSchool(9, 580, 176, 46, 0, 1, -46);
   },
   // the three men on the rail, and the derrick they wind the bodies up on
   gunPos(i) { return [SC.boatX + SC.men[i] - 9, SC.boatY + (BOAT ? BOAT.deckY : -28) - 15]; },
   derrick() { return [SC.boatX - 64, SC.boatY - 69]; },
-  fire(gi, tgt, ox, oy, up, bt) {
+  fire(gi, tgt, ox, oy, up, bt, miss) {
     const g = this.gunPos(gi);
     const a = angleTo(g[0], g[1], tgt.x + ox, tgt.y + oy);
     SC.harps.push({ x: g[0], y: g[1], a: a, sp: 450, gun: gi, tgt: tgt, t0: bt,
                     aimX: ox, aimY: oy, stuck: false, gone: false, hitT: 0,
-                    lx: 0, ly: 0, up: up });
+                    lx: 0, ly: 0, up: up, miss: !!miss });
     if (typeof Audio_ !== 'undefined') { Audio_.shot('harpoon'); Audio_.tone(90, 0.2, 'square', 0.12, -40); }
   },
   update(dt, bt) {
@@ -2144,11 +3166,13 @@ BEATS.push({
     SC.far += 22 * dt;
     engine(dt, clamp(bt * 0.8, 0, 1)); churnSound(dt, 0.6);
     for (const k of ['dad', 'mom', 'you', 'bro']) { swim(A[k], dt); bounce(A[k], dt); }
-    // Three shots, in the order that costs her most: the one who would have
-    // fought, the one who would have followed, and last the one who told her
-    // to run.  A fourth goes through the calf and keeps going.
+    // Four shots.  The first takes the one who would have fought.  The
+    // second is aimed at her brother and goes WIDE -- it misses him by a
+    // body's width, which is the only reason there is anybody left for the
+    // white boat to take.  The third takes the one who told her to run.  The
+    // fourth goes through the calf and keeps going.
     if (SC.shot === 0 && bt > 0.70) { this.fire(1, A.dad, 8, -6, [SC.boatX - 250, SC.surfY + 26], bt); SC.shot = 1; }
-    if (SC.shot === 1 && bt > 2.00) { this.fire(0, A.bro, 2, -4, [SC.boatX - 186, SC.surfY + 62], bt); SC.shot = 2; }
+    if (SC.shot === 1 && bt > 2.00) { this.fire(0, A.bro, 2, 30, null, bt, true); SC.shot = 2; }
     if (SC.shot === 2 && bt > 3.30) { this.fire(2, A.mom, 6, -6, [SC.boatX - 132, SC.surfY - 34], bt); SC.shot = 3; }
     if (SC.shot === 3 && bt > 5.45) { this.fire(1, A.you, 12, 2, null, bt); SC.shot = 4; }
     for (const h of SC.harps) {
@@ -2156,7 +3180,16 @@ BEATS.push({
       if (!h.stuck) {
         h.x += Math.cos(h.a) * h.sp * dt; h.y += Math.sin(h.a) * h.sp * dt;
         if (Math.random() < 50 * dt) FX.bubble(h.x, h.y, 1, 1.8);
-        if (dist(h.x, h.y, h.tgt.x + h.aimX, h.tgt.y + h.aimY) < 17) {
+        if (h.miss) {
+          // the near miss: it goes past him, he sees it go past, and he bolts
+          if (!h.scared && dist(h.x, h.y, h.tgt.x, h.tgt.y) < 46) {
+            h.scared = true;
+            kick(h.tgt, -10);
+            h.tgt.exp = 'wide'; h.tgt.beat = 5.4;
+            FX.bubble(h.tgt.x, h.tgt.y, 9, 2.2);
+            if (typeof Audio_ !== 'undefined') Audio_.noise(0.14, 0.06, 2600, 700);
+          }
+        } else if (dist(h.x, h.y, h.tgt.x + h.aimX, h.tgt.y + h.aimY) < 17) {
           const T = h.tgt;
           // where it went in, in HER units, so the hole and the shaft travel
           // with the body through everything that happens next
@@ -2164,6 +3197,10 @@ BEATS.push({
           const dx = h.x - T.x, dy = h.y - T.y;
           h.lx = dx * c - dy * sn; h.ly = dx * sn + dy * c;
           T.wounds = (T.wounds || []).concat([{ x: h.lx, y: h.ly, r: h.up ? 5 : 4 }]);
+          // THIS is where a body stops being clean.  Nothing in the
+          // cinematic sets `scarred` up front any more: the flag is turned on
+          // at the frame the steel goes in, on whoever it went into.
+          T.scarred = true;
           T.flash = 1; T.exp = 'pain'; T.tailAmp = 0.55; T.dying = 1;
           FX.spurt(h.x, h.y, h.a + Math.PI + rand(-0.5, 0.5), 14, 1.0);
           FX.spurt(h.x, h.y, h.a + rand(-0.4, 0.4), 8, 0.7);
@@ -2177,7 +3214,7 @@ BEATS.push({
           } else {
             // the calf: it rips her open along the flank and carries on past
             h.gone = true;
-            T.scarred = true; T.exp = 'pain'; T.flash = 1;
+            T.exp = 'pain'; T.flash = 1;
             FX.spurt(h.x, h.y, h.a + Math.PI * 0.75, 10, 0.9);
           }
         }
@@ -2210,7 +3247,17 @@ BEATS.push({
     }
     // the water fills up as they are opened, one step per body
     let stuck = 0; for (const h of SC.harps) if (h.stuck) stuck++;
-    SC.gore = smooth(SC.gore, [0, 0.28, 0.48, 0.70, 0.72][Math.min(4, stuck)], 1.5, dt);
+    SC.gore = smooth(SC.gore, [0, 0.40, 0.68][Math.min(2, stuck)] + (A.you.scarred ? 0.06 : 0), 1.5, dt);
+    // Her brother.  He hangs on the bottom with her until the shot that
+    // misses him, and then he is gone -- straight out of the left of the
+    // frame, alive, which is the whole reason the next three beats exist.
+    const bolt = ss2(clamp((bt - 2.30) / 2.6, 0, 1));
+    A.bro.x = lerp(258, -70, bolt) + Math.sin(bt * 1.1) * 4;
+    A.bro.y = lerp(266, 318, bolt) + Math.sin(bt * 1.6) * 5;
+    A.bro.rot = smooth(A.bro.rot, bolt > 0.02 ? 0.18 : 0.02, 4, dt);
+    A.bro.beat = lerp(2.0, 6.2, bolt < 0.98 ? Math.sin(clamp(bolt, 0, 1) * Math.PI * 0.7) : 0.2);
+    A.bro.exp = talking('bro') ? 'talk' : 'wide';
+    if (bolt > 0.02 && bolt < 0.95 && Math.random() < 16 * dt) FX.bubble(A.bro.x + 16, A.bro.y - 4, 1, 1.8);
     // the calf, under all of it, pinned to the bottom
     const drift = ss(clamp((bt - 3.1) / 3.4, 0, 1));
     A.you.x = lerp(148, 214, drift) + Math.sin(bt * 0.8) * 4;
@@ -2277,7 +3324,7 @@ BEATS.push({
       if (h.stuck) continue;
       ctx.save(); ctx.translate(R(h.x), R(h.y)); ctx.rotate(h.a);
       ctx.drawImage(HARP.c, -HARP.ax, -HARP.ay);
-      if (h.gone) { P(ctx, IP.blood[2], -4, -1, 10, 3); P(ctx, IP.blood[4], 0, 0, 6, 1); }
+      if (h.gone && !h.miss) { P(ctx, IP.blood[2], -4, -1, 10, 3); P(ctx, IP.blood[4], 0, 0, 6, 1); }
       ctx.restore();
     }
     FX.render(ctx);
@@ -2285,11 +3332,627 @@ BEATS.push({
   },
 });
 
-// ----------------------------------------------------------------- 3. ALONE
-//  Noon.  The boat has gone and the blood has not: sixteen clouds of her
-//  family hang in the water at the top of the beat and are still hanging at
-//  the end of it.  She is opened along one flank and leaking.  Then something
-//  hits the surface hard enough to punch a hole in the red.
+// ----------------------------------------------------------------- 3. YACHT
+//  The second boat.  The fleet does the killing; this one does the buying.
+//  It is white, it is quiet, it comes over in the same bright afternoon, and
+//  the fat man at the rail puts his glasses down and points at the two calves
+//  in the water the way you point at a price.
+BEATS.push({
+  name: 'yacht', dur: 7.0,
+  talk: [
+    [0.70, 'you', 'Under me. Don\'t move.'],
+    [2.90, 'bro', 'It stopped.'],
+    [4.30, 'you', 'It\'s looking at us.'],
+  ],
+  anchor(who) {
+    if (who === 'bro') return [A.bro.x + 20, A.bro.y - 24, 1];
+    return [A.you.x + 22, A.you.y - 26, 1];
+  },
+  enter() {
+    SC.surfY = 132; SC.yX = -260; SC.yY = 132; SC.spot = 0; SC.gore = 0.44;
+    // she came out of the reef opened along the flank; he did not get touched
+    A.you = actor(MAN.you, 240, 244, { beat: 2.4, exp: 'wide', scarred: true, tailAmp: 0.18 });
+    A.you.wounds = [{ x: 5, y: -2, r: 3 }];
+    A.bro = actor(MAN.bro, 184, 268, { beat: 2.8, exp: 'wide' });
+    SC.sch1 = makeSchool(7, 610, 190, 40, 0, 2, -20);
+  },
+  update(dt, bt) {
+    Intro.scroll += 22 * dt;
+    SC.gore = smooth(SC.gore, 0.20, 0.5, dt);
+    SC.yX = lerp(-250, 340, ss(clamp(bt / 5.4, 0, 1)));
+    SC.yY = SC.surfY + Math.sin(bt * 1.7) * 2;
+    engine(dt, 0.42);
+    for (const k of ['you', 'bro']) { swim(A[k], dt); bounce(A[k], dt); }
+    A.you.x = 240 + Math.sin(bt * 0.6) * 8;
+    A.you.y = 244 + Math.sin(bt * 1.3) * 6;
+    A.you.rot = -0.16 + Math.sin(bt * 1.3) * 0.06;
+    A.you.exp = talking('you') ? 'talk' : bt > 4.2 ? 'wide' : 'pain';
+    A.bro.x = 184 + Math.sin(bt * 0.5 + 1) * 6;
+    A.bro.y = 268 + Math.sin(bt * 1.6) * 6;
+    A.bro.rot = -0.2 + Math.sin(bt * 1.6) * 0.07;
+    A.bro.exp = talking('bro') ? 'talk' : 'wide';
+    // she is still leaking from the reef, and the trail is what he follows
+    if (Math.random() < 3.0 * dt) {
+      const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
+      FX.blood(wp[0], wp[1], 1, 0.45);
+    }
+    SC.spot = clamp((bt - 3.10) / 0.45, 0, 1);
+    if (!SC.seen && SC.spot >= 1) {
+      SC.seen = true;
+      kick(A.you, -6); kick(A.bro, -5);
+      if (typeof Audio_ !== 'undefined') Audio_.tone(420, 0.10, 'square', 0.06, -180);
+    }
+    if (Math.random() < 3 * dt) { FX.bubble(A.you.x + 22, A.you.y - 6, 1, 0.8); FX.bubble(A.bro.x + 16, A.bro.y - 4, 1, 0.8); }
+  },
+  render(ctx) {
+    backdrop(ctx, { mood: 'cold', grade: 'cold', gore: SC.gore, scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 344, shafts: 0.7, causticBed: true });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t, 'day');
+    drawSchool(ctx, SC.sch1, Intro.t, Intro.dt);
+    hullShade(ctx, SC.yX, SC.yY + 30, 190, 170, 0.8);
+    ctx.save(); ctx.translate(R(SC.yX), R(SC.yY));
+    ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
+    // hull wake under the waterline, in hard bands
+    for (let i = 0; i < 20; i++) {
+      const a = qa(0.34 - i * 0.017); if (a <= 0) break;
+      const hgt = R(5 + i * 1.6);
+      ctx.fillStyle = rgbaq('#cfe8f5', a);
+      ctx.fillRect(R(SC.yX - 190 - i * 8), R(SC.yY - 2 + Math.sin(Intro.t * 5 + i) * 3), 8, hgt);
+      if (hash2(i, Math.floor(Intro.t * 10)) > 0.6) { ctx.fillStyle = rgbaq('#ffffff', qa(a * 1.4)); ctx.fillRect(R(SC.yX - 190 - i * 8), R(SC.yY - 4 + hash2(i, 3) * hgt), 4, 2); }
+    }
+    // the buyer at the foredeck rail
+    const bx = SC.yX + 104, by = SC.yY - 76;
+    const grin = SC.spot > 0.5;
+    drawBiz(ctx, {
+      x: bx, y: by, flip: false, grin: grin, cigar: true,
+      binoc: SC.spot < 0.6,
+      armNear: SC.spot < 0.6 ? -1.15 - Math.sin(Intro.t * 0.9) * 0.12 : lerp(-1.1, 1.05, clamp((SC.spot - 0.6) * 2.5, 0, 1)),
+      armFar: SC.spot < 0.6 ? -1.0 : 1.5,
+      headR: SC.spot < 0.6 ? Math.sin(Intro.t * 0.8) * 0.12 : 0.28,
+      headY: SC.spot > 0.5 && SC.spot < 0.9 ? -2 : 0,
+    }, Intro.t);
+    // cigar smoke
+    for (let i = 0; i < 5; i++) {
+      const k = (Intro.t * 0.5 + i * 0.2) % 1;
+      ctx.fillStyle = rgbaq('#b9b3ad', qa(0.28 * (1 - k)));
+      ctx.fillRect(R(bx + 12 + Math.sin(k * 6 + i) * 4), R(by - 28 - k * 26), 2 + R(k * 3), 2 + R(k * 3));
+    }
+    if (SC.spot > 0.5 && (Math.floor(Intro.t * 6) & 1)) {
+      P(ctx, '#ffe48f', R(bx + 22), R(by - 30), 2, 2);
+      P(ctx, '#ffffff', R(bx + 26), R(by - 34), 2, 2);
+    }
+    drawManatee(ctx, A.bro, Intro.t);
+    drawManatee(ctx, A.you, Intro.t);
+    FX.render(ctx);
+    foreground(ctx, { grade: 'cold', gore: SC.gore, scroll: Intro.scroll, t: Intro.t, bedY: 344 });
+  },
+});
+
+// ------------------------------------------------------------------- 4. NET
+//  The net comes down with weights sewn into the rim.  There is one tear in
+//  the mesh and she is the smaller of the two through it.  He is not, and the
+//  last thing the beat does is take him up out of the frame with his flipper
+//  still out towards her.
+BEATS.push({
+  name: 'net', dur: 9.0,
+  talk: [
+    [0.45, 'you', 'NET! GO DEEP!'],
+    [3.10, 'you', 'Here! A tear!'],
+    [5.00, 'bro', 'I can\'t fit!'],
+    [6.70, 'you', 'NO — HOLD ON!'],
+  ],
+  anchor(who) {
+    if (who === 'bro') return [clamp(A.bro.x + 14, 70, 570), A.bro.y - 30, 1];
+    return [clamp(A.you.x + 18, 70, 570), A.you.y - 28, 1];
+  },
+  enter() {
+    SC.surfY = 116; SC.yX = 150; SC.yY = 116; SC.gore = 0.20;
+    SC.netY = -200; SC.netX = 448; SC.cinch = 0; SC.free = false; SC.splashed = false;
+    A.you = actor(MAN.you, 416, 232, { beat: 2.6, exp: 'wide', scarred: true, tailAmp: 0.22 });
+    A.you.wounds = [{ x: 5, y: -2, r: 3 }];
+    A.bro = actor(MAN.bro, 470, 254, { beat: 3.0, exp: 'wide' });
+    SC.sch1 = makeSchool(6, 600, 196, 36, 0, 1, -26);
+  },
+  update(dt, bt) {
+    Intro.scroll += 9 * dt;
+    SC.gore = smooth(SC.gore, 0.12, 0.5, dt);
+    SC.yY = SC.surfY + Math.sin(bt * 1.5) * 2;
+    engine(dt, 0.5);
+    for (const k of ['you', 'bro']) { swim(A[k], dt); bounce(A[k], dt); }
+    A.you.exp = talking('you') ? 'talk' : bt > 5.4 ? 'sad' : 'wide';
+    A.bro.exp = talking('bro') ? 'talk' : 'wide';
+    if (bt < 0.7) {
+      A.you.y = 232 + Math.sin(bt * 1.4) * 5; A.bro.y = 254 + Math.sin(bt * 1.7) * 5;
+    } else if (bt < 2.6) {                       // the rim comes down
+      const k = clamp((bt - 0.7) / 1.9, 0, 1);
+      SC.netY = lerp(-200, 168, inCube(k));
+      if (k > 0.2 && Math.random() < 10 * dt) FX.bubble(SC.netX + rand(-90, 90), SC.netY + rand(0, 40), 1, 1.6);
+      A.you.beat = 5; A.bro.beat = 5.5;
+      A.you.x = lerp(416, 412, k); A.you.y = lerp(232, 250, k);
+      A.bro.x = lerp(470, 480, k); A.bro.y = lerp(254, 266, k);
+      if (k >= 1 && !SC.splashed) { SC.splashed = true; Intro.shake = 8; if (typeof Audio_ !== 'undefined') { Audio_.splash(2); Audio_.noise(0.5, 0.18, 800, 120); } }
+    } else if (bt < 4.2) {                       // cinched, and both of them in it
+      const k = clamp((bt - 2.6) / 1.6, 0, 1);
+      SC.cinch = k * 0.86; SC.netY = 168 - k * 14;
+      A.you.beat = 9; A.bro.beat = 9;
+      A.you.x = 412 + Math.sin(bt * 19) * 11; A.you.y = 250 + Math.sin(bt * 14) * 8;
+      A.you.rot = Math.sin(bt * 17) * 0.5;
+      A.bro.x = 482 + Math.sin(bt * 16 + 2) * 11; A.bro.y = 266 + Math.sin(bt * 13 + 1) * 8;
+      A.bro.rot = Math.sin(bt * 15 + 1) * 0.5;
+      if (Math.random() < 40 * dt) { FX.bubble(A.you.x, A.you.y, 1, 2.6); FX.bubble(A.bro.x, A.bro.y, 1, 2.6); }
+      Intro.shake = Math.max(Intro.shake, 2);
+    } else if (bt < 5.4) {                       // she goes through the tear
+      const k = clamp((bt - 4.2) / 1.2, 0, 1);
+      SC.cinch = 0.86; SC.netY = 154;
+      A.you.x = lerp(412, 306, inCube(k)); A.you.y = lerp(250, 296, k);
+      A.you.rot = lerp(0.4, -0.1, k); A.you.beat = 8;
+      A.bro.x = 482 + Math.sin(bt * 16 + 2) * 9; A.bro.y = 266 + Math.sin(bt * 13) * 7;
+      A.bro.rot = Math.sin(bt * 15) * 0.45;
+      if (k > 0.25 && !SC.free) {
+        SC.free = true;
+        kick(A.you, 9);
+        FX.bubble(A.you.x, A.you.y, 12, 2.4);
+        if (typeof Audio_ !== 'undefined') Audio_.noise(0.2, 0.09, 1800, 400);
+      }
+      if (Math.random() < 25 * dt) FX.bubble(A.bro.x, A.bro.y, 1, 2.4);
+    } else {                                     // and he goes up
+      const k = clamp((bt - 5.4) / 3.5, 0, 1), e = inCube(k);
+      SC.netY = lerp(154, -320, e);
+      SC.cinch = 0.9;
+      A.bro.x = SC.netX + 34; A.bro.y = SC.netY + 80;
+      A.bro.rot = lerp(0.2, -0.5, clamp(k * 2, 0, 1));
+      A.bro.flip = true;
+      A.bro.beat = lerp(9, 2.2, clamp(k * 1.6, 0, 1));
+      A.you.x = lerp(306, 336, k); A.you.y = lerp(296, 262, k);
+      A.you.rot = -0.22; A.you.beat = lerp(8, 1.3, clamp(k * 2, 0, 1));
+      if (Math.random() < 6 * dt) FX.bubble(A.bro.x, A.bro.y, 1, 1.6);
+    }
+    if (Math.random() < 2.6 * dt) {
+      const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
+      FX.blood(wp[0], wp[1], 1, 0.4);
+    }
+  },
+  render(ctx, bt) {
+    backdrop(ctx, { mood: 'cold', grade: 'cold', gore: SC.gore, scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 348, shafts: 0.7, causticBed: true });
+    drawAir(ctx, SC.surfY, Intro.scroll, Intro.t, 'day');
+    drawSchool(ctx, SC.sch1, Intro.t, Intro.dt);
+    hullShade(ctx, SC.yX, SC.yY + 30, 190, 170, 0.7);
+    ctx.save(); ctx.translate(R(SC.yX), R(SC.yY)); ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
+    // davit rope down to the net
+    drawRope(ctx, SC.yX + 178, SC.yY - 78, SC.netX, SC.netY + 2, 14, '#d8cfae', '#7a6a44');
+    drawManatee(ctx, A.bro, Intro.t);
+    drawManatee(ctx, A.you, Intro.t);
+    // his flipper, out towards her the whole way up
+    if (bt > 5.4) {
+      const M = A.bro.set, b = A.bro;
+      const cs = Math.cos(b.rot), sn = Math.sin(b.rot), fxs = b.flip ? -1 : 1;
+      const sx = b.x + (M.shoX * fxs) * cs - M.shoY * sn;
+      const sy = b.y + (M.shoX * fxs) * sn + M.shoY * cs;
+      const a = angleTo(sx, sy, A.you.x, A.you.y);
+      ctx.save(); ctx.translate(R(sx), R(sy)); ctx.rotate(a); ctx.scale(1.5, 1.3);
+      ctx.drawImage(M.flip.c, -M.flip.ax, -M.flip.ay);
+      ctx.restore();
+    }
+    drawNet(ctx, { x: SC.netX, y: SC.netY, w: 206, h: 150, cinch: SC.cinch, t: Intro.t, sway: 7, hole: { j: 7, i: 0, w: 4, h: 4 } });
+    FX.render(ctx);
+    foreground(ctx, { grade: 'cold', gore: SC.gore, scroll: Intro.scroll, t: Intro.t, bedY: 348 });
+  },
+});
+
+// -------------------------------------------------- 5. CAPTURED / BLACKOUT
+//  She slipped the net.  She does not slip the crane.  The arm comes down out
+//  of the sun, the grab closes on her, and she is lifted out of the only
+//  thing she has ever breathed in.  Then the light goes.
+BEATS.push({
+  name: 'captured', dur: 8.0,
+  talk: [
+    [0.30, 'you', 'What is that—'],
+    [2.50, 'you', 'LET GO!'],
+  ],
+  anchor() { return [clamp(A.you.x + 16, 70, 570), A.you.y - 30, 1]; },
+  enter() {
+    SC.surfY = -40; SC.pvx = 700; SC.pvy = -260; SC.a1 = 1.90; SC.a2 = 0.25;
+    SC.clamped = false; SC.broke = false; SC.black = 0; SC.beatT = 0; SC.ring = 0;
+    SC.deckClawX = 130; SC.deckClawY = 74; SC.gore = 0.12;
+    A.you = actor(MAN.you, 430, 216, { beat: 4.0, exp: 'wide', scarred: true });
+    A.you.wounds = [{ x: 5, y: -2, r: 3 }];
+  },
+  claw() {                                  // forward kinematics for the boom tip
+    const x1 = SC.pvx + Math.cos(SC.a1) * 194, y1 = SC.pvy + Math.sin(SC.a1) * 194;
+    return [x1 + Math.cos(SC.a1 + SC.a2) * 80, y1 + Math.sin(SC.a1 + SC.a2) * 80];
+  },
+  update(dt, bt) {
+    Intro.scroll += 6 * dt;
+    swim(A.you, dt); bounce(A.you, dt);
+    if (bt < 2.4) {                                   // the arm comes down
+      const k = clamp(bt / 2.2, 0, 1), e = ss(k);
+      SC.pvx = lerp(700, 537, e); SC.pvy = lerp(-260, -35, e);
+      const c = this.claw();
+      if (bt < 1.9) { A.you.x = 430 + Math.sin(bt * 2.2) * 22; A.you.y = 216 + Math.sin(bt * 3) * 12; A.you.rot = Math.sin(bt * 3) * 0.2; }
+      else { A.you.x = smooth(A.you.x, c[0], 8, dt); A.you.y = smooth(A.you.y, c[1] + 22, 8, dt); }
+      if (bt >= 2.15 && !SC.clamped) {
+        SC.clamped = true; Intro.shake = 12;
+        kick(A.you, -11);
+        A.you.flash = 1;
+        FX.bubble(A.you.x, A.you.y, 20, 2.6);
+        if (typeof Audio_ !== 'undefined') { Audio_.tone(150, 0.22, 'square', 0.22, -70); Audio_.noise(0.3, 0.3, 1600, 200); Audio_.hurt(); }
+      }
+      if (Math.random() < 10 * dt) FX.bubble(A.you.x + rand(-14, 14), A.you.y, 1, 1.8);
+    } else if (bt < 4.3) {                            // hauled out of the water
+      const k = clamp((bt - 2.4) / 1.9, 0, 1);
+      SC.pvx = lerp(537, 610, k); SC.pvy = lerp(-35, -330, inCube(k));
+      SC.surfY = lerp(-60, 330, k);
+      const c = this.claw();
+      A.you.x = c[0]; A.you.y = c[1] + 22; A.you.rot = 0.15 + Math.sin(bt * 8) * 0.16 * (1 - k);
+      A.you.beat = 7; A.you.exp = talking('you') ? 'talk' : 'pain';
+      if (!SC.broke && A.you.y > SC.surfY) {
+        SC.broke = true; FX.drops(A.you.x, SC.surfY, 70, 1.2); FX.foam(A.you.x, SC.surfY, 30, 1.4);
+        if (typeof Audio_ !== 'undefined') Audio_.splash(3);
+      }
+      if (SC.broke && Math.random() < 30 * dt) FX.drops(A.you.x + rand(-20, 20), A.you.y + 10, 1, 0.4);
+    } else if (bt < 6.3) {                            // swung over the deck, sight going
+      const k = clamp((bt - 4.3) / 2.0, 0, 1);
+      SC.deckClawX = lerp(130, 470, ss(k));
+      SC.deckClawY = lerp(74, 108 + k * 26, k);
+      A.you.rot = 0.2 + Math.sin(bt * 5) * 0.12 * (1 - k);
+      A.you.beat = lerp(5, 1.2, k);
+      A.you.exp = k > 0.5 ? 'dead' : 'pain';
+      SC.black = clamp((bt - 4.9) / 1.4, 0, 1);
+      if (Math.random() < 14 * dt * (1 - k)) FX.drops(SC.deckClawX + rand(-16, 16), SC.deckClawY + 30, 1, 0.3);
+      if (typeof Audio_ !== 'undefined' && bt > 4.9) {
+        SC.ring -= dt;
+        if (SC.ring <= 0) { SC.ring = 0.9; Audio_.tone(760 - SC.black * 300, 1.1, 'sine', 0.05 * (1 - SC.black * 0.5)); }
+      }
+    } else {                                          // black: just a heartbeat
+      SC.black = 1;
+      SC.beatT -= dt;
+      if (SC.beatT <= 0) {
+        SC.beatT = 1.05;
+        if (typeof Audio_ !== 'undefined') Audio_.tone(52, 0.16, 'sine', 0.22, -14);
+      }
+    }
+  },
+  render(ctx, bt) {
+    if (bt < 4.3) {
+      backdrop(ctx, { mood: 'cold', grade: 'cold', gore: SC.gore, scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY > 0 ? SC.surfY : null, bedY: 352, shafts: 0.6 });
+      if (SC.surfY > 0) drawAir(ctx, SC.surfY, Intro.scroll, Intro.t, 'day');
+      if (SC.surfY < 40) { ctx.save(); ctx.translate(180, R(SC.surfY - 4)); ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore(); }
+      drawManatee(ctx, A.you, Intro.t);
+      drawCrane(ctx, { x: SC.pvx, y: SC.pvy, a1: SC.a1, a2: SC.a2, a3: -SC.a1 - SC.a2, hook: 1, open: SC.clamped ? 0.12 : 0.85 });
+      FX.render(ctx);
+      if (SC.surfY > 0) foreground(ctx, { grade: 'cold', gore: SC.gore, scroll: Intro.scroll, t: Intro.t, bedY: 352 });
+    } else if (bt < 6.3) {
+      drawDeck(ctx, Intro.t);
+      // the cable, straight down out of the frame, with the grab on the end
+      ctx.save(); ctx.translate(R(SC.deckClawX), R(SC.deckClawY));
+      P(ctx, IP.ink, -3, -300, 6, 300); P(ctx, '#e0a838', -2, -300, 4, 300);
+      ctx.restore();
+      const yy = Object.assign({}, A.you, { x: SC.deckClawX, y: SC.deckClawY + 30 });
+      drawManatee(ctx, yy, Intro.t);
+      ctx.save(); ctx.translate(R(SC.deckClawX), R(SC.deckClawY));
+      drawClaw(ctx, 0.12);
+      ctx.restore();
+      FX.render(ctx);
+      // consciousness going: a hard-edged iris closing in, then black
+      if (SC.black > 0) aperture(ctx, SC.black);
+    } else {
+      P(ctx, '#000000', 0, 0, 640, 360);
+      // the heartbeat, as a dim red breath at the edges
+      const ph = 1 - clamp(SC.beatT / 1.05, 0, 1);
+      const pulse = Math.max(0, Math.sin(ph * 9) * Math.max(0, 1 - ph * 3));
+      if (pulse > 0.02) {
+        for (let i = 0; i < 6; i++) {
+          ctx.fillStyle = rgbaq('#3a0a10', qa(pulse * (0.26 - i * 0.04)));
+          const inset = i * 11;
+          ctx.fillRect(0, inset, 640, 11); ctx.fillRect(0, 349 - inset, 640, 11);
+          ctx.fillRect(inset, 0, 13, 360); ctx.fillRect(627 - inset, 0, 13, 360);
+        }
+      }
+    }
+  },
+});
+
+// ----------------------------------------------------------------- 6. CRATE
+//  She wakes up in a box, in a hold, under somebody else's catch.  The only
+//  light in the whole cinematic that is not the sun is the one bulb swinging
+//  beyond the slats, and every so often the hatch opens and more shrimp come
+//  down on top of her.
+BEATS.push({
+  name: 'crate', dur: 8.5,
+  talk: [
+    [2.80, 'you', '...where.'],
+    [5.40, 'you', 'Shrimp. Dead things. And me.'],
+  ],
+  anchor() { return [A.you.x + 24, A.you.y - 34, 1]; },
+  enter() {
+    holdArt();
+    SC.open = 0; SC.hatch = 0; SC.loose = []; SC.rainT = 0; SC.tipped = false;
+    A.you = actor(MAN.youBig, 286, 254, { beat: 0.5, exp: 'pain', tailAmp: 0.05, rot: 0.06, scarred: true });
+    A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
+    for (let i = 0; i < 26; i++) looseAdd(SC.loose, { x: rand(30, 610), y: pileFrontTop(300) - 40, vx: rand(-20, 20), vy: rand(0, 60), r: rand(0, TAU), vr: rand(-4, 4), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
+  },
+  update(dt, bt) {
+    swim(A.you, dt); bounce(A.you, dt);
+    // waking: two flutters, then open
+    SC.open = bt < 0.9 ? 0 : bt < 1.3 ? (bt - 0.9) / 0.4 * 0.30
+      : bt < 1.7 ? 0.30 - (bt - 1.3) / 0.4 * 0.24
+        : bt < 2.4 ? 0.06 + (bt - 1.7) / 0.7 * 0.62
+          : bt < 2.8 ? 0.68 - (bt - 2.4) / 0.4 * 0.16
+            : Math.min(1, 0.52 + (bt - 2.8) / 0.4 * 0.48);
+    A.you.exp = talking('you') ? 'talk' : bt < 3.4 ? 'pain' : bt < 5.8 ? 'sad' : 'wide';
+    A.you.y = 254 + Math.sin(bt * 0.7) * 2;
+    A.you.rot = 0.06 + Math.sin(bt * 0.5) * 0.02;
+    // the hatch opens and another load comes down on her
+    SC.hatch = (bt > 3.8 && bt < 6.0) ? clamp(Math.min(bt - 3.8, 6.0 - bt) / 0.4, 0, 1) : 0;
+    if (bt > 4.2 && bt < 5.7) {
+      SC.rainT += dt;
+      while (SC.rainT > 0.022) { SC.rainT -= 0.022; looseSpawnRain(SC.loose); }
+      if (Math.random() < 5 * dt && typeof Audio_ !== 'undefined') Audio_.noise(0.14, 0.05, 2600, 700);
+    }
+    if (!SC.tipped && bt > 4.15) {
+      SC.tipped = true;
+      if (typeof Audio_ !== 'undefined') { Audio_.noise(0.5, 0.14, 900, 120); Audio_.tone(70, 0.3, 'square', 0.1, -20); }
+    }
+    looseUpdate(SC.loose, dt, pileFrontTop, Intro.t);
+    if (bt > 4.4 && bt < 5.8) Intro.shake = Math.max(Intro.shake, 1.0);
+    if (Math.random() < 1.2 * dt) {
+      const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
+      FX.add({ k: 'd', x: wp[0], y: wp[1], vx: rand(-6, 6), vy: rand(10, 40), life: rand(0.5, 1.0), c: IP.blood[2] });
+    }
+  },
+  render(ctx) {
+    crateScene(ctx, Intro.t, { hatch: SC.hatch });
+    drawManatee(ctx, A.you, Intro.t);
+    cratePileFront(ctx);
+    looseRender(ctx, SC.loose);
+    FX.render(ctx);
+    holdLight(ctx);
+    motes(ctx, Intro.t * 6, Intro.t, 30, '#ffe0a0', 0.26);
+    eyelids(ctx, SC.open);
+  },
+});
+
+// ---------------------------------------------------------- 7. THE METAL
+//  Something in the hold is working at the crate's iron, and it gets closer
+//  every time it hits.  It is not a rescue.  It is a man with a bar, coming
+//  to move the thing in the box -- and when the bolt gives, he looks in.
+BEATS.push({
+  name: 'noise', dur: 7.5,
+  talk: [
+    [0.55, 'you', 'Days of this.'],
+    [2.70, 'you', 'Closer every time it hits.'],
+    [5.10, 'you', '...It\'s looking at me.'],
+  ],
+  anchor() { return [clamp(A.you.x + 24, 70, 520), A.you.y - 34, 1]; },
+  enter() {
+    holdArt();
+    SC.clank = 0; SC.next = 0.7; SC.step = 0; SC.spark = 0; SC.reveal = 0; SC.loose = [];
+    for (let i = 0; i < 30; i++) looseAdd(SC.loose, { x: rand(20, 620), y: pileFrontTop(300) - 30, vx: rand(-16, 16), vy: rand(0, 40), r: rand(0, TAU), vr: rand(-4, 4), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
+    A.you = actor(MAN.youBig, 286, 254, { beat: 0.6, exp: 'wide', tailAmp: 0.06, rot: 0.06, scarred: true });
+    A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
+    SC.manX = 560; SC.manY = 300; SC.manLook = 0;
+  },
+  update(dt, bt) {
+    swim(A.you, dt); bounce(A.you, dt);
+    A.you.y = 254 + Math.sin(bt * 0.8) * 2 - clamp((bt - 0.8) / 1.2, 0, 1) * 10;
+    A.you.rot = 0.06 - clamp((bt - 0.8) / 1.2, 0, 1) * 0.16;
+    A.you.exp = talking('you') ? 'talk' : 'wide';
+    looseUpdate(SC.loose, dt, pileFrontTop, Intro.t);
+    if (SC.clank > 0.6 && Math.random() < 6 * dt) looseAdd(SC.loose, { x: rand(380, 600), y: pileFrontTop(480) - 18, vx: rand(-40, -6), vy: rand(-40, 10), r: rand(0, TAU), vr: rand(-7, 7), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
+    SC.spark = Math.max(0, SC.spark - dt * 3);
+    SC.next -= dt;
+    if (SC.next <= 0 && bt < 6.2) {
+      SC.step++;
+      SC.next = Math.max(0.40, 1.20 - SC.step * 0.12);
+      SC.clank = 1; SC.spark = 1;
+      Intro.shake = Math.max(Intro.shake, 2 + SC.step * 0.5);
+      const vol = clamp(0.06 + SC.step * 0.022, 0, 0.24);
+      if (typeof Audio_ !== 'undefined') {
+        Audio_.tone(190 + SC.step * 26, 0.10, 'square', vol, -90);
+        Audio_.noise(0.13, vol * 0.8, 3600 + SC.step * 300, 800);
+      }
+      for (let i = 0; i < 9; i++) FX.add({ k: 'd', x: 503 + rand(-4, 4), y: 239 + rand(-10, 10), vx: rand(-150, -20), vy: rand(-110, 40), life: rand(0.2, 0.55), c: Math.random() < 0.5 ? '#ffd27a' : '#fff6cc' });
+    }
+    SC.clank = Math.max(0, SC.clank - dt * 5);
+    // he comes up the hold to the bolt, and at the end he stops and looks in
+    SC.reveal = clamp((bt - 4.5) / 0.7, 0, 1);
+    SC.manX = lerp(600, 546, ss(SC.reveal));
+    SC.manLook = clamp((bt - 5.0) / 0.5, 0, 1);
+  },
+  render(ctx, bt) {
+    crateScene(ctx, Intro.t, { hatch: 0 });
+    drawManatee(ctx, A.you, Intro.t);
+    cratePileFront(ctx);
+    looseRender(ctx, SC.loose);
+    // the deck hand working the bolt, on the far side of the slats: a
+    // silhouette, half swallowed by the boards, at the cast's own rig
+    if (bt > 1.6) {
+      ctx.save();
+      ctx.globalAlpha = qa(0.40 + SC.reveal * 0.60);
+      const sw = Math.sin(bt * 5) * (1 - SC.manLook);
+      figure(ctx, SC.manX, SC.manY, 96, {
+        facing: -1, lean: 0.16 - SC.manLook * 0.30,
+        armA: 1.15 + sw * 0.45, foreA: 1.30 + sw * 0.50,
+        armB: 0.85, foreB: 1.05,
+        legA: 0.34, legB: -0.36, kneeA: -0.10, kneeB: 0.12,
+        head: -0.24 - SC.manLook * 0.45,
+      }, '#0b0d12', '#2e3a4c');
+      ctx.restore();
+      // the bar in his fist
+      ctx.save(); ctx.translate(R(SC.manX - 26), R(SC.manY - 56));
+      ctx.rotate(1.1 + Math.sin(bt * 5) * 0.5 * (1 - SC.manLook));
+      P(ctx, '#0b0d12', -4, -2, 30, 5); P(ctx, '#3c4658', -3, -1, 28, 3);
+      ctx.restore();
+      // and his eye, once he has stopped and put it to the gap
+      if (SC.manLook > 0.5) {
+        P(ctx, '#0b0d12', 512, 226, 9, 5);
+        P(ctx, '#e8e4d8', 513, 227, 7, 3);
+        P(ctx, '#0b0d12', 515 + (Math.floor(bt * 3) & 1), 227, 2, 3);
+      }
+    }
+    // sparks at the bolt, and the bolt itself
+    P(ctx, IP.ink, 496, 232, 14, 14); P(ctx, '#5d6675', 497, 233, 12, 12);
+    P(ctx, '#9aa6b6', 497, 233, 12, 4); P(ctx, IP.ink, 500, 237, 6, 6);
+    if (SC.spark > 0) {
+      glowPatch(ctx, 503, 239, 54, 40, '#ffd27a', 0.38 * SC.spark, 4);
+      P(ctx, '#fff6cc', 500, 236, 5, 5);
+    }
+    FX.render(ctx);
+    if (SC.clank > 0) { ctx.fillStyle = rgbaq('#ffe9b0', qa(SC.clank * 0.10)); ctx.fillRect(0, 0, 640, 360); }
+    holdLight(ctx);
+    motes(ctx, Intro.t * 6, Intro.t, 30, '#ffe0a0', 0.26);
+  },
+});
+
+// ------------------------------------------------------------- 8. BREAK OUT
+//  He undid the bolt for her.  The boards let go, the catch goes everywhere,
+//  and she takes the shortest way out of a boat there is: through the side
+//  of it.  They did not use the door.
+BEATS.push({
+  name: 'breakout', dur: 10.0,
+  talk: [
+    [0.40, 'you', 'Come on. Come ON.'],
+    [2.40, 'you', 'Not the door.'],
+    [7.60, 'you', 'I\'m coming for him.'],
+  ],
+  anchor() { return [clamp(A.you.x + 26, 70, 540), A.you.y - 32, 1]; },
+  enter() {
+    holdArt();
+    SC.popped = false; SC.smash = false; SC.splash = false;
+    SC.boardOff = null; SC.boards = null; SC.run = 0; SC.flash = 0; SC.shout = 0;
+    SC.loose = []; SC.thin = false; SC.boatX = 214; SC.boatY = 158;
+    for (let i = 0; i < 26; i++) looseAdd(SC.loose, { x: rand(20, 620), y: pileFrontTop(300) - 26, vx: rand(-14, 14), vy: rand(0, 30), r: rand(0, TAU), vr: rand(-4, 4), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
+    A.you = actor(MAN.youBig, 250, 252, { beat: 1.0, exp: 'angry', tailAmp: 0.2, rot: 0.04, scarred: true });
+    A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
+  },
+  update(dt, bt) {
+    swim(A.you, dt); bounce(A.you, dt);
+    SC.flash = Math.max(0, SC.flash - dt * 4);
+    A.you.exp = talking('you') ? 'talk' : 'angry';
+    if (bt < 1.6) {                                    // the last turns of the bolt
+      if (Math.random() < 10 * dt) { Intro.shake = Math.max(Intro.shake, 2); if (typeof Audio_ !== 'undefined') Audio_.tone(220, 0.07, 'square', 0.12, -80); }
+      A.you.beat = 1.4;
+      A.you.y = 252 + Math.sin(bt * 1.4) * 3;
+    } else if (bt < 3.0) {                             // POP, and the crate lets go
+      if (!SC.popped) {
+        SC.popped = true; SC.flash = 1; Intro.shake = 16;
+        kick(A.you, 10);
+        SC.boardOff = { x: 0, y: 0, r: 0, vx: 210, vy: -60, vr: 5 };
+        SC.boards = [];
+        for (let i = 0; i < 3; i++) SC.boards.push({ x: 420 - i * 44, y: 0, r: 0, vx: 140 + i * 60, vy: -120 - i * 40, vr: rand(-6, 6) });
+        FX.chunks(506, 176, 34);
+        SC.thin = true;
+        pileBurst(SC.loose, 470, 214, 200);
+        FX.catchSpray(330, 270, 40, 1.15);
+        if (typeof Audio_ !== 'undefined') { Audio_.explosion(0.7); Audio_.noise(0.4, 0.3, 2600, 300); }
+        for (let i = 0; i < 40; i++) FX.add({ k: 'd', x: rand(440, 560), y: rand(120, 260), vx: rand(20, 260), vy: rand(-180, 120), life: rand(0.5, 1.4), c: '#ffd27a' });
+      }
+      const k = clamp((bt - 1.6) / 1.4, 0, 1);
+      A.you.x = lerp(250, 320, k); A.you.y = lerp(252, 226, inCube(k));
+      A.you.rot = lerp(0.04, -0.18, k); A.you.beat = 7;
+      if (Math.random() < 40 * dt) FX.add({ k: 'c', x: rand(200, 520), y: rand(200, 300), vx: rand(-90, 190), vy: rand(-220, -40), life: rand(0.6, 1.4), w: randi(2, 5), h: randi(1, 3), c: pick(['#d08a76', '#eab79c', '#93a0aa', '#c3ced6']) });
+      if (Math.random() < 34 * dt) FX.catchSpray(A.you.x, A.you.y + 20, 2, 0.8);
+    } else if (bt < 5.2) {                             // down the hold, men above
+      SC.run = clamp((bt - 3.0) / 2.2, 0, 1);
+      A.you.x = 320; A.you.y = 214 + Math.sin(bt * 8) * 5;
+      A.you.rot = -0.1 + Math.sin(bt * 8) * 0.07; A.you.beat = 11;
+      SC.shout = 1;
+      Intro.shake = Math.max(Intro.shake, 3);
+      if (Math.random() < 30 * dt) FX.add({ k: 'd', x: rand(0, 640), y: 46, vx: rand(-10, 10), vy: rand(60, 160), life: rand(0.4, 0.9), c: '#6a5b3a' });
+      if (typeof Audio_ !== 'undefined') { sndT -= dt; if (sndT <= 0) { sndT = 0.34; Audio_.noise(0.2, 0.09, 420, 60); } }
+      if (bt > 4.9 && !SC.smash) {
+        SC.smash = true; SC.flash = 1; Intro.shake = 20;
+        if (typeof Audio_ !== 'undefined') { Audio_.explosion(1.1); Audio_.splash(3); }
+      }
+    } else if (bt < 7.4) {                             // out through the hull
+      const k = clamp((bt - 5.2) / 2.2, 0, 1);
+      SC.boatX = 214 - k * 26;
+      A.you.x = lerp(330, 556, k); A.you.y = lerp(226, 300, inCube(k));
+      A.you.rot = lerp(-0.34, 0.5, k); A.you.beat = 9;
+      if (k < 0.3 && Math.random() < 40 * dt) FX.chunks(A.you.x, A.you.y, 2);
+      if (Math.random() < 50 * dt) FX.drops(A.you.x + rand(-16, 16), A.you.y + rand(-10, 10), 1, 0.6);
+      if (!SC.splash && A.you.y > 248) {
+        SC.splash = true; Intro.shake = 10;
+        FX.drops(A.you.x, 252, 90, 1.3); FX.foam(A.you.x, 252, 44, 1.6);
+        if (typeof Audio_ !== 'undefined') Audio_.splash(3);
+      }
+    } else {                                           // clear water, and gone
+      const k = clamp((bt - 7.4) / 2.6, 0, 1);
+      Intro.scroll += lerp(120, 300, k) * dt;
+      A.you.x = 300 + Math.sin(bt * 1.4) * 6; A.you.y = 216 + Math.sin(bt * 3.4) * 9;
+      A.you.rot = Math.sin(bt * 3.4) * 0.10; A.you.beat = 7;
+      if (Math.random() < 34 * dt) FX.bubble(A.you.x - 40, A.you.y + 6, 1, 2.4);
+      // she is still open, and at this speed it streams off her
+      FX.flow(-220, dt);
+      if (Math.random() < 5 * dt) {
+        const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
+        FX.blood(wp[0] - rand(2, 12), wp[1], 1, 0.5);
+      }
+    }
+    if (SC.boardOff) {
+      const b = SC.boardOff;
+      b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 260 * dt; b.r += b.vr * dt;
+    }
+    if (SC.boards) for (const b of SC.boards) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 300 * dt; b.r += b.vr * dt; }
+    if (bt < 5.2) looseUpdate(SC.loose, dt, SC.thin ? pileThinTop : pileFrontTop, Intro.t);
+  },
+  render(ctx, bt) {
+    if (bt < 5.2) {
+      crateScene(ctx, Intro.t, { hatch: 0, boardOff: SC.boardOff, thin: SC.thin });
+      if (SC.run > 0) {                                 // boots stamping on the boards above
+        for (let i = 0; i < 4; i++) {
+          const bx = R(60 + i * 150 - SC.run * 260);
+          const st = Math.sin(Intro.t * 9 + i * 1.7) > 0 ? 0 : 3;
+          P(ctx, IP.ink, bx, 26 + st, 22, 12); P(ctx, IP.ink, bx + 26, 30 - st, 20, 10);
+        }
+        speedLines(ctx, 520, 200, 16, 90, 1, 'rgba(230,220,190,0.25)', 5);
+      }
+      if (SC.boards) for (const b of SC.boards) {
+        const H2 = holdArt();
+        ctx.save(); ctx.translate(R(b.x), R(b.y + 170)); ctx.rotate(b.r);
+        ctx.drawImage(H2.plank.c, -H2.plank.ax, -H2.plank.ay); ctx.restore();
+      }
+      drawManatee(ctx, A.you, Intro.t);
+      cratePileFront(ctx, SC.thin);
+      looseRender(ctx, SC.loose);
+      FX.render(ctx);
+      holdLight(ctx);
+      if (SC.shout && bt > 3.3) {
+        pixelTextOutlined(ctx, 'IT IS LOOSE!', 150, 70, 9, '#ffe48f', '#14141c', 'center');
+        if (bt > 4.1) pixelTextOutlined(ctx, 'GET THE GAFF!', 470, 84, 9, '#ffe48f', '#14141c', 'center');
+      }
+    } else {
+      // outside: the boat with a hole in her side
+      backdrop(ctx, { mood: 'dawn', grade: 'dawn', scroll: Intro.scroll, t: Intro.t, surfY: bt < 7.4 ? 252 : 46, bedY: 352, shafts: 0.6, causticBed: true });
+      if (bt < 7.4) {
+        drawAir(ctx, 252, Intro.scroll, Intro.t, 'day');
+        ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY + 94)); ctx.rotate(0.04);
+        ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
+        hullHole(ctx, R(SC.boatX + 108), R(SC.boatY + 88), 26, 31);
+        drawManatee(ctx, A.you, Intro.t);
+      } else {
+        const k = clamp((bt - 7.4) / 2.6, 0, 1);
+        drawAir(ctx, 46, Intro.scroll, Intro.t, 'day');
+        ctx.save(); ctx.translate(R(520 - k * 460), 78); ctx.scale(0.42 - k * 0.24, 0.42 - k * 0.24);
+        ctx.globalAlpha = qa(0.9 - k * 0.7);
+        ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
+        drawManatee(ctx, A.you, Intro.t);
+        speedLines(ctx, A.you.x - 90, A.you.y, 16, 64, -1, 'rgba(190,225,245,0.32)', 7);
+      }
+      FX.render(ctx);
+      foreground(ctx, { grade: 'dawn', scroll: Intro.scroll, t: Intro.t, bedY: 352 });
+    }
+    if (SC.flash > 0) { ctx.fillStyle = rgbaq('#ffffff', qa(SC.flash * 0.8)); ctx.fillRect(0, 0, 640, 360); }
+  },
+});
+
+// ----------------------------------------------------------------- 9. ALONE
+//  She came back.  Out of a crate, out through a hull, and all the way home
+//  to the one piece of reef she knows -- and it is still red.  The blood
+//  clouds her family made are hanging in the water at the top of the beat
+//  and are still hanging at the end of it, a barb the fleet cut loose is
+//  buried in the sand with the line still on it, and she is opened along one
+//  flank and leaking into all of it.  Then something hits the surface hard
+//  enough to punch a hole in the red.
 BEATS.push({
   name: 'alone', dur: 5.5,
   talk: [
@@ -2378,16 +4041,16 @@ BEATS.push({
   },
 });
 
-// ------------------------------------------------------------------ 4. PACT
+// ----------------------------------------------------------------- 10. PACT
 //  He is not here to comfort her.  He is a pirate who has wanted that fleet
 //  on the bottom for years and has just found something that wants it more.
 BEATS.push({
-  name: 'pact', dur: 8.0,
+  name: 'pact', dur: 9.0,
   talk: [
     [0.40, 'otter', 'They gutted your kin.'],
-    [2.20, 'you', 'I want them all dead.'],
-    [4.00, 'otter', 'Aye. I sink boats for plunder.'],
-    [5.60, 'otter', 'Sharpen up. We hunt.'],
+    [2.10, 'you', 'They took my brother alive.'],
+    [4.00, 'otter', 'Then he is cargo. Cargo moves.'],
+    [6.20, 'otter', 'Sharpen up. We hunt the fleet.'],
   ],
   anchor(who) {
     if (who === 'otter') return [SC.ot.x + 4, SC.ot.y - 38, 1];
@@ -2408,8 +4071,8 @@ BEATS.push({
     SC.gore = smooth(SC.gore, 0.30, 0.5, dt);
     A.you.x = smooth(A.you.x, 234, 3, dt) + Math.sin(bt * 0.5) * 0.4;
     A.you.y = 226 + Math.sin(bt * 0.66) * 4;
-    A.you.rot = smooth(A.you.rot, bt > 6.4 ? -0.10 : 0.04, 3, dt);
-    A.you.exp = talking('you') ? 'talk' : bt > 6.2 ? 'angry' : bt > 2.1 ? 'angry' : 'pain';
+    A.you.rot = smooth(A.you.rot, bt > 7.0 ? -0.10 : 0.04, 3, dt);
+    A.you.exp = talking('you') ? 'talk' : bt > 2.0 ? 'angry' : 'pain';
     if (Math.random() < 3.5 * dt) {
       const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
       FX.blood(wp[0], wp[1], 1, 0.62);
@@ -2417,7 +4080,7 @@ BEATS.push({
     // he never holds still: a slow figure of eight with two errands in it
     const offer = clamp((bt - 1.60) / 0.55, 0, 1);            // blade out to her
     const back = clamp((bt - 2.35) / 0.75, 0, 1);             // and away again
-    const near = clamp((bt - 5.55) / 0.90, 0, 1);             // alongside, at the end
+    const near = clamp((bt - 6.15) / 0.90, 0, 1);             // alongside, at the end
     const hover = [390 + Math.sin(bt * 0.95) * 34, 198 + Math.sin(bt * 1.42) * 15];
     const nose = [308, 212], side = [334, 234];
     let ox = hover[0], oy = hover[1];
@@ -2469,7 +4132,7 @@ BEATS.push({
   },
 });
 
-// --------------------------------------------------------------- 5. COLOURS
+// -------------------------------------------------------------- 11. COLOURS
 //  Not an escape.  The old ending ran them off into empty water; this one
 //  turns them round and points them AT the fleet, with the black flag up and
 //  her still bleeding out of the hole they put in her.
@@ -2634,7 +4297,7 @@ const Intro = {
     sayRender(ctx, b, this.bt);
     // beat pips
     if (this.t > 0.6) {
-      const n = BEATS.length, w = 7, gap = 13;
+      const n = BEATS.length, w = n > 8 ? 5 : 7, gap = n > 8 ? 9 : 13;
       const x0 = R(320 - (n * gap - (gap - w)) / 2);
       for (let i = 0; i < n; i++) {
         P(ctx, i < this.beat ? '#5f6a76' : i === this.beat ? '#e8eef4' : '#2a323c', x0 + i * gap, 11, i === this.beat ? w + 2 : w, 2);
