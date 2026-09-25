@@ -2954,13 +2954,28 @@ function buildOtterTail() {
 //    CH.otterRage / CH.headRage        rampage tint
 //    otterHeadWithFace(exp, blink, t, rage) -> a live head canvas
 //    CH.drawOtter(ctx, o)              the whole otter, posed, in one call
-//  SIDE-ON (facing RIGHT), the cinematic set:
-//    CH.side.body / .bodyScar / .belly / .fluke / .flip / .flipFar
+//  SIDE-ON (facing RIGHT), the cinematic set. TWO BODIES -- she is not hurt
+//  yet at the start of the cutscenes, and the caller says which she is:
+//    CH.side.body / .fluke / .bellyClean      CLEAN: no propeller runs, no
+//                                      wire seam, no blood, no scarred brow,
+//                                      fluke with its trailing edge whole
+//    CH.side.bodyScar / .flukeScar / .belly   WOUNDED: everything the fleet
+//                                      did to her, and a bitten fluke
+//    CH.side.hurt                      white-hot silhouette for a hit frame
+//    CH.side.flip / .flipFar           pectoral flippers, near and far
 //    CH.side.eye / .mouth / .tailX / .shoX / .shoY   anchors, sprite-local
-//    CH.drawManateeSide(ctx, m)        body + fluke + flippers + face
+//    CH.drawManateeSide(ctx, m)        body + fluke + flippers + face.
+//                                      `m.scarred === false` is the ONLY
+//                                      thing that asks for the clean animal;
+//                                      leaving the flag off keeps the
+//                                      wounded one, so every call site that
+//                                      predates the split is unchanged.
 //    CH.sideFace(ctx, exp, blink, t)   just the face, at the anchors
-//    CH.otterStand                     side-on, standing, facing right
-//    CH.drawOtterStanding(ctx, o)      standing/working/holding, one call
+//    CH.otterStand                     side-on, standing on a PAIR of hind
+//                                      legs, facing right
+//    CH.otterStandPeg / ...PegHi       the same pose with the peg leg, opt-in
+//    CH.drawOtterStanding(ctx, o)      standing/working/holding, one call;
+//                                      `o.peg` draws the peg-leg variant
 // ===========================================================================
 
 // ---- belly-up: the same body, drained of the back's colour ---------------
@@ -3015,143 +3030,198 @@ const MSIDE_LOBES = [
   [ 91,  8.0,   9.6, -1.8],
   [ 95,  5.5,   6.2, -1.0],   // and it ends in a WALL, not a point: the last
 ];                            // lobe runs off the canvas and is cut square
-// Everything she is wearing that is NOT a wound: the algae that grows on a
-// wild manatee's back and the barnacles on her shoulder. Kept on both the
-// clean body and the hurt one, because they are the real animal, not damage.
+// She is painted out of the SAME eight-band hide palette (`HD`) and the same
+// marking vocabulary as the top-down animal the game is played with: the same
+// lit back falling through the same mid-tones, the same bowed skin folds with
+// a dark core and a lit lip, the same speckled algae, the same rimmed
+// barnacles, the same bright whisker pad at the front, and literally the same
+// five-pixel dot eye stamp. Someone who has just been fighting in her should
+// recognise her the moment a cutscene opens. `hurt` adds what the fleet did.
+//
+// The body is painted BAND BY BAND down each column, the way the top-down
+// body is, rather than through shadeBlob's lit dome: the blobs give the
+// silhouette and nothing else, so her surface is posterized in exactly the
+// steps the gameplay sprite is posterized in.
 function buildManateeSideBody(hurt) {
   const W = MSIDE_W, H = MSIDE_H, cy = MSIDE_CY;
   const lobes = MSIDE_LOBES.map(l => ({ x: l[0], y: cy + l[3], rx: l[1], ry: l[2] }));
   const f = blobField(W, H, lobes);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man, CPAL.manL],
-    { outline: CPAL.out, lx: -0.25, ly: -0.92, contrast: 0.70, lift: 0.30, smooth: 3 });
-  const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
-  // ---- her profile, column by column: everything below is placed as a
-  //      FRACTION of the depth at that column, so it follows the barrel round
-  //      instead of being ruled across it in straight lines.
+  const c = newCan(W, H), ctx = c.getContext('2d');
+  // ---- her profile, column by column, then smoothed twice. blobField takes
+  //      the MAX of its lobes, so without this the union reads as a row of
+  //      domes and her back comes out scalloped.
   const top = new Int16Array(W), bot = new Int16Array(W);
   for (let x = 0; x < W; x++) {
     let y0 = -1, y1 = -1;
-    for (let y = 0; y < H; y++) if (inside(x, y)) { if (y0 < 0) y0 = y; y1 = y; }
+    for (let y = 0; y < H; y++) if (f[y * W + x] > 0) { if (y0 < 0) y0 = y; y1 = y; }
     top[x] = y0; bot[x] = y1;
   }
-  const at = (x, k) => top[x] + Math.round((bot[x] - top[x]) * k);
-  // ---- the belly. Four bands over the bottom half, with the palest in the
-  //      middle where the light comes back up off the sand and a turn-under
-  //      shadow along the very bottom, so she rolls away instead of ending.
-  //      The waterline between hide and belly is dithered, not ruled.
+  for (let pass = 0; pass < 2; pass++) {
+    const t2 = Int16Array.from(top), b2 = Int16Array.from(bot);
+    for (let x = 1; x < W - 1; x++) {
+      if (t2[x] < 0 || t2[x - 1] < 0 || t2[x + 1] < 0) continue;
+      top[x] = Math.round((t2[x - 1] + t2[x] * 2 + t2[x + 1]) / 4);
+      bot[x] = Math.round((b2[x - 1] + b2[x] * 2 + b2[x + 1]) / 4);
+    }
+  }
+  // ---- the hide, in eight bands from a lit back through the flank and back
+  //      up into a pale countershaded belly, with a dark keel under it.
+  const RAMP = [HD.dd, HD.d, HD.m, HD.mm, HD.l, HD.ll, HD.pale, HD.top];
+  const bandIx = t => t < 0.06 ? 6 : t < 0.14 ? 5 : t < 0.28 ? 4 : t < 0.46 ? 3
+    : t < 0.70 ? 2 : t < 0.80 ? 3 : t < 0.89 ? 4 : t < 0.96 ? 5 : 1;
+  const bandOf = t => RAMP[bandIx(t)];
+  // A crease is painted RELATIVE to the band it crosses -- two steps down for
+  // its core, one step up for the lit lip over it -- so it creases her at the
+  // same strength everywhere instead of drawing a black bar down a pale back.
+  const dn = (t, n) => RAMP[Math.max(0, bandIx(t) - n)];
+  const up = (t, n) => RAMP[Math.min(7, bandIx(t) + n)];
   for (let x = 0; x < W; x++) {
     const y0 = top[x], y1 = bot[x];
-    if (y0 < 0 || y1 - y0 < 5) continue;
-    const hgt = y1 - y0;
-    for (let y = y0 + 1; y < y1; y++) {
-      const k = (y - y0) / hgt;
-      if (k < 0.52) continue;
-      if (k < 0.62) { if (hash2(x * 3, y * 5) > (k - 0.52) * 10) continue; px(ctx, CPAL.belly, x, y); continue; }
-      px(ctx, k > 0.92 ? '#8b98a8' : k > 0.78 ? '#b2c0cf' : CPAL.belly, x, y);
+    if (y0 < 0) continue;
+    const h = Math.max(1, y1 - y0);
+    for (let y = y0; y <= y1; y++) {
+      if (y === y0 || y === y1) { px(ctx, CPAL.out, x, y); continue; }
+      px(ctx, bandOf((y - y0) / h), x, y);
     }
-    px(ctx, CPAL.manL, x, y0 + 1);          // one lit row along the back and
-    px(ctx, CPAL.out2, x, y1);              // one dark keel, so she turns
   }
-  // ---- hide grain: sparse single pixels one band off their own, so she has
-  //      the texture of an animal and not of a painted hull.
-  for (let x = 4; x < W - 3; x++) for (let y = 3; y < H - 3; y++) {
-    if (!inside(x, y) || !inside(x, y + 2) || !inside(x, y - 2)) continue;
+  const solid = (x, y) => x >= 0 && x < W && top[x] >= 0 && y > top[x] && y < bot[x];
+  const deep = (x, y, k) => solid(x, y) && (y - top[x]) >= k && (bot[x] - y) >= k;
+  const tOf = (x, y) => (y - top[x]) / Math.max(1, bot[x] - top[x]);
+  // ---- blunt muzzle: a manatee's snout ends in a WALL, not a point, so the
+  //      front column is all outline with the two corners knocked off. Same
+  //      trick, same reason, as the top-down body.
+  {
+    const fx = W - 1, y0 = top[fx], y1 = bot[fx];
+    if (y0 >= 0) { for (let y = y0; y <= y1; y++) px(ctx, CPAL.out, fx, y);
+      ctx.clearRect(fx, y0, 1, 1); ctx.clearRect(fx, y1, 1, 1);
+      px(ctx, CPAL.out, fx - 1, y0); px(ctx, CPAL.out, fx - 1, y1); }
+  }
+  // ---- hide grain. Very sparse single pixels one band off their own, in the
+  //      mid-tones only, so she reads leathery rather than speckled.
+  for (let x = 3; x < W - 3; x++) for (let y = 2; y < H - 2; y++) {
+    if (!deep(x, y, 3)) continue;
+    const t = tOf(x, y);
+    if (t < 0.22 || t > 0.84) continue;
     const r = hash2(x * 7 + 3, y * 13 + 5);
-    if (r > 0.974) px(ctx, CPAL.manDD, x, y);
-    else if (r < 0.012) px(ctx, CPAL.manLL, x, y);
+    if (r > 0.984) px(ctx, t < 0.5 ? HD.l : HD.d, x, y);
+    else if (r < 0.014) px(ctx, t < 0.5 ? HD.ll : HD.m, x, y);
   }
-  // ---- the creases. A manatee's wrinkles are on the NECK and the shoulder,
-  //      not ruled evenly down the barrel like a caterpillar's segments: they
-  //      are short, close together, forward, and they BOW with the body.
-  const crease = (fx, k0, k1, bow) => {
-    const ya = at(fx, k0), yb = at(fx, k1);
-    for (let y = ya; y <= yb; y++) {
-      const u = (y - ya) / Math.max(1, yb - ya);
-      const x = fx + Math.round(Math.sin(u * Math.PI) * bow);
-      if (!inside(x, y) || !inside(x - 2, y) || !inside(x + 2, y)) continue;
-      px(ctx, CPAL.manD, x, y);
-      px(ctx, CPAL.manL, x + 1, y);
+  // ---- transverse skin folds across the barrel: a dark core with a lit
+  //      upper lip, bowed the way a fold sits on a round back, and stopping
+  //      short of the sheer so they crease her instead of banding her.
+  for (const fx of [46, 58, 68]) for (let y = 2; y < H - 2; y++) {
+    const x = fx + Math.round(Math.sin((y - cy) / 22) * 3);
+    if (!deep(x, y, 10)) continue;
+    const t = tOf(x, y);
+    px(ctx, dn(t, 1), x, y); px(ctx, dn(t, 1), x + 1, y);
+    if (deep(x - 1, y, 11)) px(ctx, up(t, 1), x - 1, y);
+  }
+  // ---- the crease where her neck meets her shoulders, so the head is a head
+  for (let y = 3; y < H - 3; y++) {
+    const x = 77 + Math.round(Math.sin((y - cy) / 18) * 2);
+    if (!deep(x, y, 6)) continue;
+    const t = tOf(x, y);
+    px(ctx, dn(t, 2), x, y); px(ctx, dn(t, 1), x + 1, y);
+    if (deep(x + 2, y, 7)) px(ctx, up(t, 1), x + 2, y);
+  }
+  // ---- algae on the back, where the light hits and nothing rubs it off.
+  //      Speckled inside a patch, the way it grows; the greens are far enough
+  //      off grey that the intro's family recolour leaves them alone.
+  for (const [ax, ay, w2, h2] of [[34, 10, 9, 5], [52, 9, 8, 4], [22, 14, 7, 4], [62, 11, 6, 3]]) {
+    for (let y = ay; y < ay + h2; y++) for (let x = ax; x < ax + w2; x++) {
+      if (!deep(x, y, 2)) continue;
+      const r = hash2(x * 3, y * 5);
+      if (r > 0.55) px(ctx, HALG[r > 0.86 ? 2 : r > 0.7 ? 0 : 1], x, y);
     }
-  };
-  crease(71, 0.14, 0.50, 3);                 // behind the head
-  crease(76, 0.16, 0.46, 3);
-  crease(81, 0.20, 0.40, 2);
-  crease(59, 0.20, 0.58, 3);                 // and the one across the shoulder
-  // ---- algae on her back, barnacles on her shoulder. Real, not damage: the
-  //      greens survive the intro's hide shift on purpose.
-  for (const [bx, bk] of [[38, 0.12], [50, 0.08], [26, 0.18], [58, 0.10]]) {
-    const by = at(bx, bk);
-    px(ctx, '#3f6b4c', bx, by, 3, 1); px(ctx, '#2d4f38', bx + 1, by + 1, 2, 1);
   }
-  for (const [bx, bk] of [[64, 0.22], [34, 0.30]]) {
-    const by = at(bx, bk);
-    px(ctx, CPAL.manDD, bx, by, 3, 3); px(ctx, CPAL.bone, bx + 1, by + 1, 2, 2);
+  // ---- barnacles: a dark rim, a dull shell and a shadow, three art px wide
+  //      (half the art pixels the top-down ones get, because the side-on set
+  //      is authored at one art pixel per world unit and the top-down at two)
+  for (const [bx, by] of [[31, 21], [47, 16], [60, 24], [25, 28]]) {
+    if (!deep(bx, by, 4)) continue;
+    px(ctx, HD.d, bx - 1, by - 1, 3, 3);
+    px(ctx, '#9a9382', bx, by, 2, 2);
+    px(ctx, '#c2bba6', bx, by, 1, 1);
   }
-  // ---- the flipper socket: a short crease where the pectoral leaves her
-  for (let i = 0; i < 7; i++) { const y = at(72 + i, 0.60) + (i >> 1); if (inside(72 + i, y)) px(ctx, CPAL.manDD, 72 + i, y); }
-  // =======================================================================
-  //  THE HEAD. Blunt muzzle ending in a wall, an upper lip pad that hangs
-  //  down over a short soft mouth, a nostril on TOP of the snout near the
-  //  tip, bristle whiskers, and the tiny DOT eye set high and well back.
-  //  This is the calm face of the real animal, and it is on BOTH bodies --
-  //  what the fleet did to her goes on below.
-  // =======================================================================
-  const ink = (x, y, w, h, col) => { for (let q = 0; q < w; q++) for (let r = 0; r < h; r++) if (inside(x + q, y + r)) px(ctx, col, x + q, y + r); };
-  ink(93, 17, 2, 1, CPAL.out);                 // the nostril: a slit, not a port
-  // the crease that puts the muzzle in FRONT of the cheek -- one curve, not a
-  // stack of horizontal rules, which on a flat wall of snout read as a grille
-  for (let i = 0; i < 7; i++) { const x = 87 + (i >> 1), y = 19 + i; if (inside(x, y) && inside(x + 2, y)) { px(ctx, CPAL.manD, x, y); px(ctx, CPAL.manL, x + 1, y); } }
-  ink(92, 26, 5, 1, CPAL.out2);                // the mouth: short and soft
-  ink(92, 27, 5, 1, CPAL.manD);                // with its own shadow under it
-  // bristle whiskers over the pad
-  for (const [wx, wy] of [[96, 24], [94, 27], [96, 28]]) ink(wx, wy, 1, 1, CPAL.bone);
-  // ---- the DOT eye, exactly as asked for: three pixels of pupil, one shine,
-  //      one lit lid over it. No brow, no scowl -- she is calm here.
-  px(ctx, CPAL.out, 80, 15, 4, 4); px(ctx, CPAL.eye, 80, 15, 3, 3); px(ctx, CPAL.shine, 81, 16);
-  px(ctx, CPAL.manL, 80, 14, 4, 1);
+  // ---- head ---------------------------------------------------------------
+  // The whisker pad: the brightest block on her, right at the front, so the
+  // silhouette has a face end and a tail end at any distance. Clipped to the
+  // muzzle so it never spills off the outline. Same ellipse, same four bands.
+  for (let y = 15; y < 32; y++) for (let x = 89; x < W - 1; x++) {
+    if (!deep(x, y, 1)) continue;
+    const t = Math.abs(y - 23) / 7.2, u = (x - 89) / 9;
+    if (t * t + u * u * 0.30 > 1) continue;
+    px(ctx, t > 0.86 ? HD.mm : t > 0.62 ? HD.l : t > 0.34 ? HD.ll : t > 0.18 ? HD.pale : HD.top, x, y);
+  }
+  for (let y = 18; y < 29; y++) if (deep(88, y, 2)) px(ctx, dn(tOf(88, y), 1), 88, y);
+  // dimples in the pad, a lit row and a shaded one, so it reads as stippled
+  for (const [dx, dy] of [[91, -3], [94, -3], [91, 3], [94, 3]]) {
+    if (!deep(dx, 23 + dy, 1)) continue;
+    px(ctx, HD.l, dx, 23 + dy); px(ctx, HD.top, dx, 23 + dy - 1);
+  }
+  // the nostril: one short slit high on the muzzle with a lit upper lip
+  px(ctx, HD.top, 93, 17, 2, 1); px(ctx, CPAL.out, 93, 18, 2, 2); px(ctx, HD.dd, 93, 20, 2, 1);
+  // the mouth, a crease across the front of the pad, at S.mouth
+  px(ctx, HD.m, 89, 25, 7, 1); px(ctx, HD.d, 90, 26, 6, 1); px(ctx, HD.dd, 91, 27, 4, 1);
+  for (const [wx, wy] of [[96, 20], [96, 28], [95, 16], [95, 31]]) if (solid(wx, wy)) px(ctx, CPAL.bone, wx, wy, 2, 1);
+  // ---- the DOT eye. One black bead with one glint, ringed by a pale socket
+  //      so it survives against whichever band of hide it lands on: the same
+  //      five pixels, the same stamp, as the pair of them on the top-down her.
+  {
+    const ex = 79, ey = 14;
+    px(ctx, HD.pale, ex, ey - 1, 5, 1);
+    stamp(ctx, ['.kkk.', 'keeek', 'keeek', 'keeek', '.kkk.'], ex, ey, { k: CPAL.out, e: CPAL.eye });
+    px(ctx, CPAL.shine, ex + 1, ey + 1);
+    px(ctx, HD.dd, ex, ey + 5, 5, 1);
+  }
   // =======================================================================
   //  WOUNDED ONLY, from here down. `hurt` false leaves her completely clean:
   //  no propeller runs, no wire seam, no blood, no scarred brow.
   // =======================================================================
   if (!hurt) return spriteFrom(c, MSIDE_CX, MSIDE_CY);
-  // Three propeller rakes across the flank: torn hide standing pale on the
-  // lit lip, meat under it, blood in the deep of the run, and a dried smear
-  // dragged aft.
-  const rake = (x0, y0, n, dy, open) => {
+  // Propeller rakes, in the top-down body's own recipe: the hide is cut, the
+  // lip of it stands up torn and pale, meat under the lip, wet blood in the
+  // deepest part of the run, and the smear the water dragged aft.
+  const gash = (x0, y0, dx, dy, n, open) => {
     for (let i = 0; i < n; i++) {
-      const x = x0 + i, y = y0 + Math.round(i * dy);
-      if (!inside(x, y) || !inside(x, y + 2) || !inside(x, y - 2)) continue;
-      px(ctx, CPAL.manLL, x, y - 1);
+      const x = Math.round(x0 + i * dx), y = Math.round(y0 + i * dy);
+      if (!deep(x, y, 3)) continue;
+      const mid = 1 - Math.abs(i - (n - 1) / 2) / ((n - 1) / 2 || 1);
+      px(ctx, HD.top, x, y - 1);
       px(ctx, CPAL.meatD, x, y);
-      if (open) px(ctx, Math.abs(i - n / 2) < n * 0.3 ? CPAL.gore : CPAL.goreD, x, y);
+      if (open) {
+        px(ctx, mid > 0.45 ? CPAL.gore : CPAL.goreD, x, y);
+        if (mid > 0.78) px(ctx, CPAL.goreL, x, y);
+      }
       px(ctx, CPAL.goreD, x, y + 1);
-      for (let k = 1; k <= 4; k++) {
-        const sx = x - k * 2;
-        if (!inside(sx, y + 1) || hash2(sx * 5, y * 3 + i) < 0.22 + k * 0.14) continue;
-        px(ctx, k < 2 ? CPAL.stain : CPAL.stainD, sx, y + (k & 1));
+      for (let k = 1; k <= 6; k++) {
+        const sx = x - k * 2, sy = y + ((k >> 1) & 1);
+        if (!deep(sx, sy, 2)) continue;
+        if (hash2(sx * 5 + i, sy * 7) < 0.26 + k * 0.10) continue;
+        px(ctx, k < 3 ? CPAL.stain : CPAL.stainD, sx, sy);
       }
     }
   };
-  rake(40, 15, 18, 0.46, 1);
-  rake(54, 31, 13, -0.34, 1);
-  rake(26, 23, 11, 0.30, 0);
-  // a seam somebody sewed shut with wire, and it held
-  for (let i = 0; i < 20; i++) {
-    const x = 46 + i, y = 29 + Math.round(Math.sin(i * 0.3) * 1.5);
-    if (!inside(x, y) || !inside(x, y + 2)) continue;
-    px(ctx, CPAL.meatD, x, y);
-    if (i % 5 === 1) { px(ctx, CPAL.bone, x, y - 2, 1, 2); px(ctx, CPAL.manDD, x, y + 1, 1, 2); }
+  gash(40, 13, 1.1, 0.8, 14, 1);
+  gash(58, 32, 1.0, -0.7, 11, 1);
+  gash(28, 24, 1.0, 0.5, 9, 0);
+  gash(66, 18, 0.9, -0.4, 6, 0);
+  // ---- the stitched wound. Somebody sewed her back together with whatever
+  //      was on the boat, and it held: a long closed seam with cross-ticks of
+  //      wire either side of it.
+  for (let i = 0; i < 22; i++) {
+    const x = 46 + i, y = Math.round(cy + 4 + Math.sin(i * 0.22) * 3 + i * 0.16);
+    if (!deep(x, y, 3)) continue;
+    px(ctx, CPAL.meatD, x, y, 1, 2);
+    px(ctx, HD.pale, x, y - 1);
+    if (i % 4 === 1 && deep(x, y + 3, 2)) {
+      px(ctx, CPAL.bone, x, y - 2, 1, 2); px(ctx, CPAL.bone, x + 1, y + 1, 1, 2);
+      px(ctx, HD.dd, x + 1, y - 2, 1, 2); px(ctx, HD.dd, x + 2, y + 1, 1, 2);
+    }
   }
   // a scar through the brow, so the dot eye reads as a hard one
-  px(ctx, CPAL.manDD, 78, 12, 1, 4); px(ctx, CPAL.manLL, 79, 12, 1, 4);
-  ink(83, 19, 3, 1, CPAL.manDD); ink(84, 20, 2, 1, CPAL.bloodD);
-  // and the streaks that used to be the `scarred` variant, folded in: there
-  // are two bodies now, clean and hurt, not three degrees of hurt.
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 7; j++) {
-    const x = 42 + i * 7 + Math.round(j * 0.5), y = 12 + j;
-    if (!inside(x, y)) continue;
-    px(ctx, CPAL.blood, x, y, 2, 1); px(ctx, CPAL.bloodD, x, y + 1, 2, 1);
-  }
+  for (let y = 10; y < 15; y++) if (deep(75, y, 4)) { px(ctx, HD.dd, 75, y); px(ctx, HD.pale, 76, y); }
+  if (deep(84, 18, 1)) { px(ctx, HD.dd, 84, 18, 3, 1); px(ctx, CPAL.bloodD, 85, 19, 2, 1); }
   return spriteFrom(c, MSIDE_CX, MSIDE_CY);
 }
 // ---- the fluke -------------------------------------------------------------
@@ -3159,26 +3229,31 @@ function buildManateeSideBody(hurt) {
 //  and not a leaf. `bitten` cuts a chunk out of the trailing edge and packs
 //  meat behind the raw rim; without it the trailing edge is whole, because
 //  the natural edge of a fluke is not a wound and must not be inked like one.
-const MFLUKE_W = 30, MFLUKE_H = 26;
+const MFLUKE_W = 28, MFLUKE_H = 24;
 function buildSideFluke(bitten) {
-  const W = MFLUKE_W, H = MFLUKE_H, cy = 13;
+  const W = MFLUKE_W, H = MFLUKE_H, cy = 12;
   const f = blobField(W, H, [
-    { x: 28, y: cy,     rx: 4.0, ry: 3.6 },   // the stock, where it meets her
-    { x: 23, y: cy,     rx: 5.5, ry: 6.0 },
-    { x: 17, y: cy,     rx: 7.0, ry: 9.6 },
-    { x: 10, y: cy,     rx: 8.0, ry: 12.0 },  // the paddle
-    { x: 4,  y: cy,     rx: 6.0, ry: 11.0 },
-    { x: 1,  y: cy,     rx: 3.5, ry: 8.6 },
+    { x: 26, y: cy, rx: 3.5, ry: 3.2 },   // the stock, where it meets her
+    { x: 21, y: cy, rx: 5.0, ry: 5.4 },
+    { x: 15, y: cy, rx: 6.5, ry: 8.4 },
+    { x: 9,  y: cy, rx: 7.0, ry: 10.2 },  // the paddle
+    { x: 4,  y: cy, rx: 5.5, ry: 9.4 },
+    { x: 1,  y: cy, rx: 3.0, ry: 7.0 },
   ]);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man], { outline: CPAL.out, lift: 0.16, smooth: 2, contrast: 0.7 });
-  // two long creases fanning out of the stock, the way the flesh folds
-  for (let i = -1; i <= 1; i += 2) for (let x = 4; x < 24; x++) {
-    const y = cy + i * 4 + Math.round((24 - x) * i * 0.22);
-    if (y > 0 && y < H && f[y * W + x] > 0.06) px(ctx, CPAL.manDD, x, y);
+  const { c, ctx } = shadeBlob(W, H, f, [HD.d, HD.m, HD.mm, HD.l], { outline: CPAL.out, lift: 0.22, smooth: 3, contrast: 0.66 });
+  const has = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0.05;
+  // four creases fanning out of the stock, the way the flesh of a fluke folds
+  // ridges fanning out of the peduncle, dark with a lit pixel over them:
+  // the same treatment the top-down fluke gets, so it is the same tail
+  for (const sl of [-0.24, 0.24]) for (let x = 6; x < 22; x++) {
+    const y = cy + Math.round((22 - x) * sl);
+    if (!has(x, y) || !has(x, y + 3) || !has(x, y - 3)) continue;
+    px(ctx, HD.m, x, y);
+    if ((x & 3) === 0 && has(x, y - 1)) px(ctx, HD.l, x, y - 1);
   }
-  // the trailing edge catches the light all the way round
-  for (let y = 2; y < H - 2; y++) for (let x = 0; x < 5; x++) {
-    if (f[y * W + x] > 0.02 && (x === 0 || f[y * W + x - 1] <= 0.02)) { px(ctx, CPAL.manL, x, y); break; }
+  // and one lit pixel along the trailing edge, so it turns instead of ending
+  for (let y = 1; y < H - 1; y++) for (let x = 0; x < 6; x++) {
+    if (has(x, y)) { px(ctx, HD.l, x, y); break; }
   }
   if (!bitten) return spriteFrom(c, W - 3, cy);
   // ---- a chunk out of the trailing edge. The field `f` is what says where
@@ -3193,7 +3268,7 @@ function buildSideFluke(bitten) {
       f[y * W + x] = 0; ctx.clearRect(x, y, 1, 1);
     }
   };
-  bit(2, 6, 4.2);                       // one clean bite, not a serrated edge
+  bit(2, 5, 4.0);                       // one clean bite, not a serrated edge
   for (let y = 0; y < H; y++) for (let x = 0; x < 14; x++) {
     if (f[y * W + x] <= 0) continue;
     const wasCut = (qx, qy) => qx >= 0 && qy >= 0 && qx < W && qy < H && cut[qy * W + qx];
@@ -3212,23 +3287,24 @@ function buildSideFluke(bitten) {
 //  barrel strapped under her chin. `dark` is the far one, one band back.
 function buildSideFlipper(dark) {
   const W = 16, H = 10;
-  // Short, round and BLUNT, held in hide tones: the old one ramped down into
-  // the near-blacks and, hanging under her chin, read as a gun barrel. The
-  // root is at (2,4) -- the shoulder -- and the paddle sweeps down and aft.
+  // Small, round and BLUNT, and outlined in her own darkest HIDE instead of
+  // the universal near-black: the old one was a hard-edged 16-long slab in
+  // near-blacks and, hanging across her pale belly, read as a gun barrel
+  // strapped under her chin. The root is at (2,4) -- the shoulder.
   const f = blobField(W, H, [
-    { x: 3,  y: 4, rx: 3.0, ry: 3.8 },
-    { x: 6,  y: 5, rx: 3.4, ry: 4.0 },
-    { x: 9,  y: 6, rx: 3.2, ry: 3.4 },
-    { x: 11, y: 7, rx: 2.4, ry: 2.6 },
+    { x: 3,   y: 4,   rx: 2.8, ry: 3.4 },
+    { x: 5.5, y: 4.6, rx: 3.0, ry: 3.4 },
+    { x: 8,   y: 5.4, rx: 2.8, ry: 2.9 },
+    { x: 10,  y: 6,   rx: 2.0, ry: 2.2 },
   ]);
-  const ramp = dark ? [CPAL.manDD, CPAL.manD, CPAL.man] : [CPAL.manD, CPAL.man, CPAL.manL];
-  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: CPAL.out, lift: 0.34, smooth: 2, contrast: 0.58 });
-  const has = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0.02;
-  // the shoulder end takes the light; the leading edge keeps a lit lip
-  for (let y = 1; y < H - 1; y++) if (has(2, y)) px(ctx, dark ? CPAL.man : CPAL.manLL, 2, y);
-  for (let x = 3; x < 11; x++) for (let y = 0; y < H; y++) if (has(x, y)) { px(ctx, dark ? CPAL.manD : CPAL.manL, x, y); break; }
-  // three little nails on the tip, the way a manatee's flipper ends
-  if (!dark) for (let i = 0; i < 3; i++) { const x = 10 + (i & 1), y = 5 + i; if (has(x, y)) px(ctx, CPAL.bone, x, y); }
+  const ramp = dark ? [HD.d, HD.m, HD.mm] : [HD.m, HD.mm, HD.l];
+  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: dark ? HD.dd : HD.d, lift: 0.34, smooth: 2, contrast: 0.56 });
+  const has = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0.04;
+  // the leading edge keeps a lit lip all the way to the tip
+  for (let x = 2; x < 12; x++) for (let y = 0; y < H; y++) if (has(x, y)) { px(ctx, dark ? HD.mm : HD.pale, x, y); break; }
+  // one hint of the nails on the tip. Three bone-white pixels here is all it
+  // took to make a flipper read as a machined part at her actual screen size.
+  if (!dark && has(10, 6)) px(ctx, HD.ll, 10, 6);
   return spriteFrom(c, 2, 4);
 }
 // ---- the side-on set -------------------------------------------------------
@@ -3254,9 +3330,9 @@ function buildManateeSideSet() {
     flip: buildSideFlipper(false),
     flipFar: buildSideFlipper(true),
     // anchors, in sprite-local world units (0,0 = her centre)
-    eye: [81 - MSIDE_CX, 16 - MSIDE_CY],
+    eye: [80 - MSIDE_CX, 15 - MSIDE_CY],
     mouth: [91 - MSIDE_CX, 26 - MSIDE_CY],
-    tailX: 8 - MSIDE_CX, shoX: 73 - MSIDE_CX, shoY: 30 - MSIDE_CY,
+    tailX: 8 - MSIDE_CX, shoX: 73 - MSIDE_CX, shoY: 27 - MSIDE_CY,
     len: MSIDE_W,
   };
 }
@@ -3266,21 +3342,27 @@ function manateeSideFace(ctx, exp, blink, t) {
   const ex = S.eye[0], ey = S.eye[1], mx = S.mouth[0], my = S.mouth[1];
   const O = CPAL.out;
   const shut = blink && exp !== 'dead' && exp !== 'wide';
+  // Painted in the hide palette the body is painted in, over the socket the
+  // body already baked: the same bead, the same glint, the same pale brow and
+  // shadow the top-down animal's pair of eyes carry.
   if (exp === 'pain' || shut) {
-    px(ctx, O, ex - 1, ey, 5, 1); px(ctx, CPAL.manDD, ex - 1, ey - 2, 5, 1);
+    px(ctx, O, ex - 1, ey + 1, 5, 1); px(ctx, HD.dd, ex - 1, ey - 1, 5, 1);
   } else if (exp === 'dead') {
-    px(ctx, O, ex - 1, ey - 1, 5, 5); px(ctx, '#5c5668', ex, ey, 3, 3);
+    px(ctx, O, ex - 1, ey - 1, 5, 5); px(ctx, HD.m, ex, ey, 3, 3);
   } else {
     const big = exp === 'wide' ? 1 : 0;
+    px(ctx, HD.pale, ex - 1, ey - 2, 5, 1);
     px(ctx, O, ex - 1 - big, ey - 1 - big, 5 + big * 2, 5 + big * 2);
     px(ctx, CPAL.eye, ex - big, ey - big, 3 + big * 2, 3 + big * 2);
-    px(ctx, CPAL.shine, ex + 1, ey);
-    if (exp === 'angry') { px(ctx, CPAL.manDD, ex - 2, ey - 2, 6, 1); px(ctx, CPAL.manDD, ex + 1, ey - 3, 4, 1); }
-    else if (exp === 'sad') { px(ctx, CPAL.manDD, ex - 3, ey - 3, 5, 1); }
+    px(ctx, CPAL.shine, ex, ey);
+    px(ctx, HD.dd, ex - 1, ey + 4, 5, 1);
+    if (exp === 'angry') { px(ctx, HD.dd, ex - 2, ey - 2, 6, 1); px(ctx, HD.dd, ex + 1, ey - 3, 4, 1); }
+    else if (exp === 'sad') { px(ctx, HD.dd, ex - 3, ey - 3, 5, 1); }
   }
+  // the mouth, on the whisker pad: a soft crease closed, a small round O open
   const open = exp === 'wide' || exp === 'pain' || (exp === 'talk' && (Math.floor(t * 7) & 1));
   if (open) { px(ctx, O, mx - 2, my - 1, 6, 4); px(ctx, '#2a1218', mx - 1, my, 4, 2); }
-  else px(ctx, O, mx - 2, my, 6, 1);
+  else { px(ctx, HD.m, mx - 2, my - 1, 7, 1); px(ctx, HD.d, mx - 1, my, 6, 1); px(ctx, HD.dd, mx, my + 1, 4, 1); }
 }
 // One call for the whole side-on animal.
 //  m: {x, y, rot, flip, sx, sy, phase, tailAmp, flipperA, exp, blink, belly,
@@ -3378,12 +3460,13 @@ function buildOtterStand(peg) {
   //      Written as a row loop rather than a stamp so the shank can actually
   //      taper into the ankle instead of being a rectangle with a foot on it.
   const hindLeg = (hx, far) => {
-    const mid = far ? CPAL.furDD : CPAL.furD;
-    const lit = far ? CPAL.furD  : CPAL.fur;
-    const hi  = far ? CPAL.furD  : CPAL.furL;
+    const mid = far ? '#57270f'  : CPAL.furD;    // the far leg is a band and a
+    const lit = far ? CPAL.furDD : CPAL.fur;     // half darker than the near
+    const hi  = far ? CPAL.furD  : CPAL.furL;    // one, or the pair reads as
+    const toe = far ? '#57270f'  : CPAL.creamD;  // one leg and its own shadow
     for (let y = 26; y <= 37; y++) {
       const k = (y - 26) / 11;
-      const hw = Math.round(4 - k * 1.7);             // haunch 4 -> ankle 2
+      const hw = Math.round(4 - k * 1.9);             // haunch 4 -> ankle 2
       const cxl = hx + 3 + Math.round(k * 1.2);       // and it drifts forward
       const x0 = cxl - hw, w = hw * 2;
       px(ctx, CPAL.out, x0, y, w, 1);
@@ -3392,14 +3475,15 @@ function buildOtterStand(peg) {
       if (y < 31 && w > 5) px(ctx, hi, x0 + 2, y, 2, 1);
     }
     px(ctx, CPAL.furDD, hx + 1, 31, 5, 1);            // the knee
-    // the webbed foot, flat on the ground with the toes forward
-    const fy = 38;
-    px(ctx, CPAL.out, hx - 2, fy, 13, 6);
-    px(ctx, mid, hx - 1, fy + 1, 11, 4);
-    px(ctx, lit, hx - 1, fy + 1, 9, 2);
-    px(ctx, CPAL.furDD, hx - 1, fy + 4, 11, 1);       // the sole, in its own shadow
-    for (let i = 0; i < 4; i++) px(ctx, CPAL.out, hx + 2 + i * 2, fy + 1, 1, 3);
-    if (!far) for (let i = 0; i < 4; i++) px(ctx, CPAL.creamD, hx + 3 + i * 2, fy + 1, 1, 1);
+    // the webbed foot, flat on the ground with the toes forward. The far one
+    // is shorter and set back, so the two do not merge into one wide slab.
+    const fy = 38, fx = far ? hx - 4 : hx - 2, fw = far ? 11 : 13;
+    px(ctx, CPAL.out, fx, fy, fw, 6);
+    px(ctx, mid, fx + 1, fy + 1, fw - 2, 4);
+    px(ctx, lit, fx + 1, fy + 1, fw - 4, 2);
+    px(ctx, CPAL.furDD, fx + 1, fy + 4, fw - 2, 1);   // the sole, in its own shadow
+    for (let i = 0; i < 4; i++) px(ctx, CPAL.out, fx + 4 + i * 2, fy + 1, 1, 3);
+    for (let i = 0; i < 4; i++) px(ctx, toe, fx + 5 + i * 2, fy + 1, 1, 1);
   };
   hindLeg(11, true);                                  // the far one, a band back
   if (peg) {
@@ -26762,8 +26846,447 @@ const UI = {
     return spr(c, cx, cy);
   }
 
+  // ===========================================================================
+  //  THE MENU PET — the hero at play in the open water right of the buttons
+  // ===========================================================================
+  // Her centre never leaves this pen: the open water right of the buttons and
+  // under the title plate, inset by her own reach (about forty px from her
+  // centre to the fluke tip or the flag's top at any angle), so nothing of her
+  // ever crosses a button or the title. Everything she does is steering: a
+  // heading with an eased turn rate, a speed with eased thrust, and a mood
+  // that picks what she wants next. She is drawn by the shared rig, whole —
+  // the heading is a turn of the canvas around her, the rig does the rest.
+  const PEN = { x0: 292, x1: 592, y0: 138, y1: 274 };
+  const PEN_CX = (PEN.x0 + PEN.x1) / 2, PEN_CY = (PEN.y0 + PEN.y1) / 2;
+  const NOSE = 30;                       // centre to snout, world units
+  const LOOP_W = 3.9;                    // loop-the-loop turn rate, rad/s
+
+  // a small heart, outlined, two tones — the one thing she emits when happy
+  function buildHeart() {
+    const P = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+    const c = can(9, 8), x = c.getContext('2d');
+    const on = (i, j) => j >= 0 && j < P.length && i >= 0 && i < 7 && P[j][i] === 'X';
+    for (let j = -1; j <= P.length; j++) for (let i = -1; i <= 7; i++) {
+      if (on(i, j)) continue;
+      if (on(i - 1, j) || on(i + 1, j) || on(i, j - 1) || on(i, j + 1)) { x.fillStyle = '#3a0f22'; x.fillRect(i + 1, j + 1, 1, 1); }
+    }
+    for (let j = 0; j < P.length; j++) for (let i = 0; i < 7; i++) if (on(i, j)) {
+      x.fillStyle = (j >= 3 || (j === 2 && i >= 5)) ? '#d9467a' : '#ff7fae';
+      x.fillRect(i + 1, j + 1, 1, 1);
+    }
+    x.fillStyle = '#ffe0ec'; x.fillRect(2, 2, 1, 1); x.fillRect(3, 2, 1, 1); x.fillRect(2, 3, 1, 1);
+    return spr(c, 4, 4);
+  }
+
+  const MenuPet = {
+    init(fish) {
+      this.fish = fish;
+      this.x = 470; this.y = 214; this.h = Math.PI * 0.94; this.F = -1;
+      this.w = 0; this.v = 26; this.vd = 26; this.hd = this.h;
+      this.tcUp = 0.4; this.tcDn = 1.0; this.wMax = 2.2;
+      this.phase = 0; this.thrust = 0.3; this.cheer = 0; this.look = null;
+      this.exp = 'happy'; this.expT = 0; this.expTo = 'happy';
+      this.roll = null; this.pendFlip = false; this.flipCool = 0; this.loop = null;
+      this.bubbles = []; this.fx = []; this.hearts = []; this.last = [];
+      this.heart = buildHeart();
+      this.start('glide');
+    },
+
+    // ---- helpers ------------------------------------------------------------
+    noseX() { return this.x + Math.cos(this.h) * NOSE; },
+    noseY() { return this.y + Math.sin(this.h) * NOSE; },
+    inPen(x, y, m) { return x >= PEN.x0 + m && x <= PEN.x1 - m && y >= PEN.y0 + m && y <= PEN.y1 - m; },
+    waypoint(minD, ahead) {
+      let best = null, bs = -1e9;
+      for (let i = 0; i < 14; i++) {
+        const px = rand(PEN.x0 + 12, PEN.x1 - 12), py = rand(PEN.y0 + 10, PEN.y1 - 10);
+        const d = Math.hypot(px - this.x, py - this.y);
+        let s = Math.min(d, minD) + Math.random() * 20;
+        if (ahead) s -= Math.abs(angleDiff(this.h, Math.atan2(py - this.y, px - this.x))) * 40;
+        if (s > bs) { bs = s; best = [px, py]; }
+      }
+      return best;
+    },
+    face(e, dur, then) { this.exp = e; this.expT = dur || 0; this.expTo = then || this.expTo; },
+    heartPop(n) {
+      // off the top of her reach, so they never sit over him on her back
+      for (let i = 0; i < (n || 1); i++) this.hearts.push({ x: this.x + rand(-8, 8), y: Math.max(102, this.y - 36 - i * 8), vy: rand(-20, -13), ph: rand(0, TAU), life: 1.2 + i * 0.15 });
+    },
+    popFx(x, y, big) { this.fx.push({ x, y, life: 0.32, max: 0.32, r: big ? 9 : 6 }); },
+    startRoll(turns, dur) {
+      if (this.roll) return false;
+      this.roll = { p: 0, n: turns, dur: dur, flipped: false, fOld: this.F, end: false };
+      return true;
+    },
+    fishInPen() {
+      const c = [];
+      for (const f of this.fish) if (f.hold <= 0 && f.x > PEN.x0 + 16 && f.x < PEN.x1 - 16 && f.y > PEN.y0 - 6 && f.y < PEN.y1 + 6) c.push(f);
+      return c;
+    },
+
+    // ---- what she wants next ------------------------------------------------
+    choose() {
+      const W = { glide: 3, dash: 2, loop: 2.4, roll: 1.8, bubbles: 2.4, fish: 2.2, boop: 1.8, rest: 1.1, eight: 1.2, spiral: 1.0 };
+      for (const m of this.last) W[m] *= 0.12;
+      let sum = 0; for (const k in W) sum += W[k];
+      let r = Math.random() * sum;
+      for (const k in W) { r -= W[k]; if (r <= 0) return k; }
+      return 'glide';
+    },
+    next() { const m = this.choose(); if (!this.start(m)) this.start('glide'); },
+    start(m) {
+      const M = { name: m, t: 0, st: 0, dur: 5 };
+      this.tcUp = 0.4; this.tcDn = 1.0; this.wMax = 2.2; this.look = null;
+      if (m === 'glide') {
+        M.wp = this.waypoint(130); M.dur = rand(3.6, 5.2); this.face('happy');
+      } else if (m === 'dash') {
+        M.wp = this.waypoint(190); M.dur = 3.4; this.face('surprised', 0.35, 'happy');
+      } else if (m === 'loop' || m === 'eight' || m === 'spiral') {
+        M.dur = 7; this.face('happy');
+      } else if (m === 'roll') {
+        M.wp = this.waypoint(200, true); M.dur = 4; M.turns = Math.random() < 0.4 ? 2 : 1; this.face('happy');
+      } else if (m === 'rest') {
+        M.dur = rand(2.2, 3.4); M.ph = rand(0, TAU); this.face('happy', 1.2, 'idle');
+      } else if (m === 'bubbles') {
+        const bx = rand(PEN.x0 + 40, PEN.x1 - 40), n = randi(4, 6);
+        for (let i = 0; i < n; i++) this.bubbles.push({ x: bx + rand(-26, 26), y: rand(292, 330) + i * 9, r: randi(2, 5), s: rand(15, 24), ph: rand(0, TAU), w: rand(2, 5) });
+        M.dur = 10; this.face('idle');
+      } else if (m === 'fish' || m === 'boop') {
+        const c = this.fishInPen();
+        if (!c.length) return false;
+        // the nearest one she is not already swimming away from
+        let best = null, bs = 1e9;
+        for (const f of c) { const d = Math.hypot(f.x - this.x, f.y - this.y) + Math.abs(angleDiff(this.h, Math.atan2(f.y - this.y, f.x - this.x))) * 30; if (d < bs) { bs = d; best = f; } }
+        M.f = best; M.dur = m === 'fish' ? 4.8 : 8; M.boops = 0; this.face('idle');
+      }
+      this.mode = M;
+      this.last.push(m); if (this.last.length > 2) this.last.shift();
+      return true;
+    },
+
+    // ---- one tick -----------------------------------------------------------
+    update(dt, T) {
+      if (!(dt > 0)) return;
+      dt = Math.min(dt, 1 / 20);
+      if (typeof Rig !== 'undefined' && Rig.updateBlink) Rig.updateBlink(dt);
+      const M = this.mode;
+      M.t += dt;
+      let hd = this.h, vd = this.vd;
+      const seek = (tx, ty, sp, slow) => {
+        tx = clamp(tx, PEN.x0, PEN.x1); ty = clamp(ty, PEN.y0, PEN.y1);
+        const d = Math.hypot(tx - this.x, ty - this.y);
+        // arrived: hold the heading rather than spin on the spot
+        hd = d < 10 ? angleLerp(this.h, Math.atan2(ty - this.y, tx - this.x), d / 10) : Math.atan2(ty - this.y, tx - this.x);
+        vd = slow ? Math.min(sp, 12 + d * 1.5) : sp;
+        this.look = hd;
+        return d;
+      };
+
+      switch (M.name) {
+        case 'glide': {
+          // a push of the fluke, then a long lazy coast that bends toward
+          // wherever she was going
+          const d = seek(M.wp[0], M.wp[1], M.t < 1.1 ? 100 : 10, false);
+          this.wMax = M.t < 1.1 ? 2.2 : 1.0; this.tcUp = 0.5; this.tcDn = 1.9;
+          if (M.t > M.dur || (d < 24 && M.t > 1.5)) this.next();
+          break;
+        }
+        case 'dash': {
+          // a sudden burst across the pen, then she lets it carry her
+          if (M.st === 0) {
+            const d = seek(M.wp[0], M.wp[1], 255, false);
+            this.tcUp = 0.16; this.wMax = 2.6;
+            if (d < 70 || M.t > 1.4) { M.st = 1; M.t2 = M.t; this.face('happy'); }
+          } else {
+            vd = 12; this.tcDn = 1.3; this.wMax = 0.8; hd = this.h + 0.25;
+            if (M.t - M.t2 > 1.6) this.next();
+          }
+          break;
+        }
+        case 'loop': case 'eight': case 'spiral': {
+          if (M.st === 0) {
+            // get somewhere with room for the circle(s) first
+            const d = seek(PEN_CX + Math.cos(T) * 20, PEN_CY, 120, false);
+            this.tcUp = 0.3;
+            const r = Math.max(this.v, 60) / LOOP_W + 6;
+            const fits = s => {
+              const cx = this.x + Math.cos(this.h + s * Math.PI / 2) * r, cy = this.y + Math.sin(this.h + s * Math.PI / 2) * r;
+              return this.inPen(cx, cy, r);
+            };
+            const ok = s => fits(s) && (M.name !== 'eight' || fits(-s));
+            if (this.v > 70 && (d < 70 || M.t > 1.0)) {
+              const s0 = Math.random() < 0.5 ? 1 : -1;
+              const s = ok(s0) ? s0 : ok(-s0) ? -s0 : 0;
+              if (s) {
+                M.st = 1;
+                this.loop = { dir: s, left: TAU, again: M.name === 'eight' ? -s : M.name === 'spiral' ? s : 0 };
+                this.face('happy');
+              }
+            }
+            if (M.t > 3.5) this.next();
+          } else {
+            vd = 118; this.tcUp = 0.35; this.tcDn = 0.5;
+            if (!this.loop) {
+              this.cheer = 0.7; this.heartPop(1);
+              M.wp = this.waypoint(120, true); this.mode = { name: 'glide', t: 0.6, st: 0, dur: 3.2, wp: M.wp };
+            }
+          }
+          break;
+        }
+        case 'roll': {
+          const d = seek(M.wp[0], M.wp[1], 215, false);
+          this.tcUp = 0.25; this.wMax = 2.4;
+          if (M.st === 0 && this.v > 150 && Math.abs(angleDiff(this.h, hd)) < 0.3 && d > 60) {
+            if (this.startRoll(M.turns, 0.62)) { M.st = 1; this.face('happy'); }
+          }
+          if (M.st === 1 && !this.roll) { M.st = 2; M.t2 = M.t; this.cheer = 0.6; }
+          if (M.st === 2) { vd = 20; this.tcDn = 1.2; if (M.t - M.t2 > 1.1) this.next(); }
+          if (M.t > M.dur) this.next();
+          break;
+        }
+        case 'rest': {
+          // hangs in the water, paddling, while he has a look round
+          vd = 0; this.tcDn = 0.9; this.wMax = 0.5;
+          hd = this.h + Math.sin(M.t * 0.9 + M.ph) * 0.3;
+          this.look = this.h + Math.sin(M.t * 1.4 + M.ph) * 1.1;
+          if (M.t > M.dur) this.next();
+          break;
+        }
+        case 'bubbles': {
+          // chase the rising cluster and pop every one
+          let best = null, bs = 1e9;
+          for (const b of this.bubbles) {
+            if (b.y > PEN.y1 + 40) continue;
+            const d = Math.hypot(b.x - this.noseX(), b.y - this.noseY());
+            if (d < bs) { bs = d; best = b; }
+          }
+          if (best) {
+            // aim the snout, not the middle of her, at it
+            const a = Math.atan2(best.y - this.y, best.x - this.x);
+            seek(best.x - Math.cos(a) * (NOSE - 6), best.y - Math.sin(a) * (NOSE - 6), 135, true);
+            this.look = a; this.wMax = 3.0; this.tcUp = 0.3; this.tcDn = 0.45;
+          } else if (this.bubbles.length) {
+            seek(PEN_CX, PEN.y1, 40, true);
+          } else { this.cheer = 0.8; this.heartPop(2); this.face('happy', 0, 'happy'); this.mode = { name: 'rest', t: 0, dur: 1.6, ph: 0 }; }
+          if (M.t > M.dur) this.next();
+          break;
+        }
+        case 'fish': {
+          // tag: she chases, it bolts, she catches it up and bops it
+          const f = M.f;
+          const d = seek(f.x + (f.s + f.fx) * 0.3, f.y + f.fy * 0.3, 165, false);
+          this.wMax = 3.0; this.tcUp = 0.25;
+          const nd = Math.hypot(f.x - this.noseX(), f.y - this.noseY());
+          if (nd < 50) this.scare(f, 95);
+          if (nd < 11) {
+            this.popFx(f.x, f.y, false); this.heartPop(1); this.cheer = 0.6; this.face('happy', 0, 'happy');
+            this.scare(f, 150);
+            this.startRoll(1, 0.6);
+            this.mode = { name: 'dash', t: 0, st: 1, t2: 0, dur: 2 };
+          } else if (M.t > M.dur || f.x < PEN.x0 - 60 || f.x > PEN.x1 + 60 || d > 260) { this.face('happy'); this.next(); }
+          break;
+        }
+        case 'boop': {
+          // sneak up, the fish turns to look, and she nudges it with her snout
+          const f = M.f;
+          const nd = Math.hypot(f.x - this.noseX(), f.y - this.noseY());
+          if (M.st === 0) {
+            const a = Math.atan2(f.y - this.y, f.x - this.x);
+            seek(f.x - Math.cos(a) * (NOSE + 14), f.y - Math.sin(a) * (NOSE + 14), 110, true);
+            this.look = a; this.wMax = 2.6; this.tcDn = 0.35;
+            // it notices her coming and stops to look, so she can come in slow
+            if (nd < 80 && f.hold <= 0) { f.hold = 6; f.face = this.x < f.x ? -1 : 1; f.fx = f.fy = 0; }
+            if (nd < 26 && this.v < 55) { M.st = 1; M.t2 = M.t; f.hold = 6; f.face = this.x < f.x ? -1 : 1; this.face('idle'); }
+            if (M.t > 5 || f.x < PEN.x0 - 40 || f.x > PEN.x1 + 40) { this.next(); break; }
+          } else {
+            f.hold = Math.max(f.hold, 1);
+            const a = Math.atan2(f.y - this.y, f.x - this.x);
+            hd = a; this.look = a; this.wMax = 2.4;
+            const k = ((M.t - M.t2) % 0.7) / 0.7;
+            // a little lunge, then back off, in a rhythm
+            const facing = Math.abs(angleDiff(this.h, a)) < 0.5;
+            vd = !facing ? (nd < 22 ? -18 : 0) : k < 0.28 ? 60 : (nd < 18 ? -14 : 0);
+            this.tcUp = 0.1; this.tcDn = 0.2;
+            if (facing && k < 0.28 && nd < 9 && !M.hit) {
+              M.hit = true; M.boops++;
+              f.fx += Math.cos(a) * 26; f.fy += Math.sin(a) * 18;
+              this.heartPop(1); this.face('talk', 0.45, 'happy');
+            }
+            if (k >= 0.28) M.hit = false;
+            // it drifted out of reach of her snout: that will do
+            M.far = nd > 40 ? (M.far || 0) + dt : 0;
+            if (M.boops >= 3 || M.t - M.t2 > 5 || M.far > 0.6) {
+              f.hold = 0; f.s = Math.abs(f.s) * (Math.cos(a) >= 0 ? 1 : -1); this.scare(f, 80);
+              this.cheer = 0.8; this.face('happy', 0, 'happy');
+              this.startRoll(1, 0.65);
+              this.mode = { name: 'rest', t: 0.8, dur: 2.0, ph: 0 };
+            }
+          }
+          break;
+        }
+      }
+
+      // ---- the pen: look ahead, and bend away from its edges early ----------
+      if (!this.loop) {
+        const la = 24 + Math.max(0, this.v) * 0.5;
+        const px = this.x + Math.cos(this.h) * la, py = this.y + Math.sin(this.h) * la;
+        const ox = px < PEN.x0 ? PEN.x0 - px : px > PEN.x1 ? PEN.x1 - px : 0;
+        const oy = py < PEN.y0 ? PEN.y0 - py : py > PEN.y1 ? PEN.y1 - py : 0;
+        if (ox || oy) {
+          const k = clamp(Math.hypot(ox, oy) / 26, 0, 1);
+          hd = angleLerp(hd, Math.atan2(PEN_CY - this.y, PEN_CX - this.x), k);
+          this.wMax = Math.max(this.wMax, 2.4);
+          vd = Math.min(vd, 140);
+        }
+      }
+      this.hd = hd; this.vd = vd;
+
+      // ---- turn, eased: the turn RATE chases the error, not the heading -------
+      let wDes;
+      if (this.loop) wDes = this.loop.dir * LOOP_W;
+      else wDes = clamp(angleDiff(this.h, hd) * 3.0, -this.wMax, this.wMax);
+      this.w += (wDes - this.w) * (1 - Math.exp(-dt / 0.17));
+      this.h = angleDiff(0, this.h + this.w * dt);
+      if (this.loop) {
+        this.loop.left -= Math.abs(this.w) * dt;
+        if (this.loop.left <= 0) {
+          if (this.loop.again) { this.loop.dir = this.loop.again; this.loop.again = 0; this.loop.left = TAU; this.heartPop(1); }
+          else { this.loop = null; this.flipCool = 0.3; }
+        }
+      }
+
+      // ---- speed, eased: quick to push, slow to coast ---------------------------
+      this.v += (vd - this.v) * (1 - Math.exp(-dt / (vd > this.v ? this.tcUp : this.tcDn)));
+      this.x += Math.cos(this.h) * this.v * dt;
+      this.y += Math.sin(this.h) * this.v * dt;
+      // the hard wall, which the steering above keeps her well clear of
+      this.x = clamp(this.x, PEN.x0 - 4, PEN.x1 + 4);
+      this.y = clamp(this.y, PEN.y0 - 4, PEN.y1 + 4);
+
+      // the stroke rate follows how hard she is pushing: a coast is a coast
+      const th = clamp((vd - this.v) / 70 + Math.max(0, vd) / 240, 0.08, 1.3);
+      this.thrust += (th - this.thrust) * (1 - Math.exp(-dt / 0.3));
+      this.phase += dt * (1.3 + this.thrust * 4.6);
+
+      // ---- which flank is up. Crossing over happens inside a barrel roll, at
+      //      the instant she is edge-on and he is out of sight under her ---
+      this.flipCool -= dt;
+      const base = this.F < 0 ? Math.PI : 0;
+      // only for a heading she means: a wiggle past the line while she noses
+      // about is not a reason to turn over
+      const off = Math.abs(angleDiff(base, this.h));
+      this.flipHold = off > 1.95 ? (this.flipHold || 0) + dt : 0;
+      if (!this.loop && this.flipCool <= 0 && (this.flipHold > 0.35 || off > 2.6)) this.pendFlip = true;
+      if (this.pendFlip && !this.roll) this.startRoll(1, 0.6);
+      if (this.roll) {
+        const R0 = this.roll;
+        if (R0.end) this.roll = null;
+        else {
+          const p0 = R0.p;
+          R0.p = Math.min(R0.n, R0.p + dt / R0.dur);
+          if (this.pendFlip && Math.floor(p0 - 0.25) < Math.floor(R0.p - 0.25)) {
+            R0.fOld = this.F; R0.flipped = true;
+            this.F = -this.F; this.pendFlip = false; this.flipCool = 1.0; this.flipHold = 0;
+            // his aim is kept in her frame, which just turned half over
+            if (typeof Rig !== 'undefined' && Rig._aim && typeof Rig._aim.x === 'number') {
+              Rig._aim.x += Math.PI; Rig._headAim += Math.PI; Rig._gunAim += Math.PI;
+            }
+          }
+          if (R0.p >= R0.n) R0.end = true;
+        }
+      }
+
+      // ---- face / cheer timers --------------------------------------------------
+      if (this.expT > 0) { this.expT -= dt; if (this.expT <= 0) this.exp = this.expTo; }
+      this.cheer = Math.max(0, this.cheer - dt);
+
+      // ---- the things she plays with --------------------------------------------
+      for (let i = this.bubbles.length - 1; i >= 0; i--) {
+        const b = this.bubbles[i];
+        b.y -= b.s * dt; b.ph += dt * 2.2;
+        const bx = b.x + Math.sin(b.ph) * b.w;
+        if (Math.hypot(bx - this.noseX(), b.y - this.noseY()) < b.r + 6 || Math.hypot(bx - this.x, b.y - this.y) < 16) {
+          this.popFx(bx, b.y, b.r > 3); this.bubbles.splice(i, 1);
+          this.face('surprised', 0.22, this.mode.name === 'bubbles' ? 'idle' : 'happy');
+          if (Math.random() < 0.5) this.heartPop(1);
+          continue;
+        }
+        if (b.y < 104) { this.popFx(bx, b.y, false); this.bubbles.splice(i, 1); }
+      }
+      for (let i = this.hearts.length - 1; i >= 0; i--) {
+        const h = this.hearts[i];
+        h.life -= dt; h.y += h.vy * dt; h.vy *= Math.exp(-dt * 0.8); h.ph += dt * 3;
+        // and never up into the title plate
+        if (h.life <= 0 || h.y < 96) this.hearts.splice(i, 1);
+      }
+      for (let i = this.fx.length - 1; i >= 0; i--) { this.fx[i].life -= dt; if (this.fx[i].life <= 0) this.fx.splice(i, 1); }
+
+      // wake bubbles off her fluke, more of them the harder she swims
+      if (Math.random() < dt * (1.5 + this.v * 0.06)) {
+        Deep.rise.push({ x: this.x - Math.cos(this.h) * 34 + rand(-3, 3), y: this.y - Math.sin(this.h) * 34 + 3, r: randi(0, 1), s: rand(20, 46), ph: rand(0, TAU), w: rand(3, 8) });
+        if (Deep.rise.length > 110) Deep.rise.splice(0, Deep.rise.length - 110);
+      }
+    },
+
+    // send a fish darting away from her snout
+    scare(f, sp) {
+      const a = Math.atan2(f.y - this.y, f.x - this.x) + rand(-0.5, 0.5);
+      f.fx = Math.cos(a) * sp; f.fy = Math.sin(a) * sp * 0.7; f.hold = 0;
+      if (Math.abs(f.fx) > 20) f.s = Math.abs(f.s) * (f.fx > 0 ? 1 : -1);
+    },
+
+    // ---- draw ---------------------------------------------------------------
+    renderUnder(ctx) {
+      for (const b of this.bubbles) blit(ctx, Deep.bub[b.r], b.x + Math.sin(b.ph) * b.w, b.y);
+    },
+    render(ctx, T, shadow) {
+      if (typeof CH === 'undefined' || !CH.manatee || typeof Rig === 'undefined') return;
+      const bob = Math.sin(T * 1.7) * 1.2 * (1 - Math.min(1, this.v / 150));
+      const hx = this.x, hy = this.y + bob;
+      // the shadow the water drops under her, as the ocean casts it
+      blit(ctx, shadow, (hx + 5) & ~1, (hy + 10) & ~1);
+
+      const base = this.F < 0 ? Math.PI : 0;
+      const R0 = this.roll;
+      const rp = R0 ? Math.min(R0.p, R0.n) : null;
+      // the rig's own roll wobble changes hand with the flank; hold it steady
+      const corr = (R0 && R0.flipped) ? 2 * R0.fOld * Math.sin(rp * TAU) * 0.18 : 0;
+      // he watches whatever she is after; a cheer throws the gun up
+      const lk = this.look === null ? this.h : this.look;
+      const aim = this.cheer > 0 ? (this.F > 0 ? -1.2 : -(Math.PI - 1.2))
+        : base + clamp(angleDiff(this.h, lk), -1.0, 1.0) * 0.8;
+
+      ctx.save();
+      // snap on the device grid, the way the player does in the play field
+      ctx.translate(Math.round(hx * DETAIL) / DETAIL, Math.round(hy * DETAIL) / DETAIL);
+      ctx.rotate(angleDiff(base, this.h) + corr);
+      Rig.draw(ctx, 0, 0, {
+        t: T, aim: aim, facing: this.F, tilt: clamp(this.w * 0.1, -0.3, 0.3),
+        swimPhase: this.phase, rollPhase: rp, hurt: false, exp: this.exp, rage: false,
+        recoil: 0, flash: 0, speed: Math.max(0, this.v), armored: true,
+        gunSprite: SP.guns[(typeof G !== 'undefined' && G && G.tree) ? G.tree.primary : 'revolver'] || SP.guns.revolver,
+      });
+      ctx.restore();
+    },
+    renderOver(ctx) {
+      for (const f of this.fx) {
+        const k = 1 - f.life / f.max, r = 2 + k * f.r;
+        ctx.fillStyle = k < 0.5 ? '#eefaff' : '#9fd8ee';
+        for (let i = 0; i < 8; i++) {
+          const a = i / 8 * TAU;
+          ctx.fillRect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r), 1, 1);
+        }
+        if (k < 0.3) { ctx.fillRect(Math.round(f.x) - 1, Math.round(f.y), 3, 1); ctx.fillRect(Math.round(f.x), Math.round(f.y) - 1, 1, 3); }
+      }
+      for (const h of this.hearts) {
+        if (h.life < 0.3 && (Math.floor(h.life * 20) & 1)) continue;   // blink out
+        blit(ctx, this.heart, h.x + Math.sin(h.ph) * 2.5, h.y);
+      }
+    },
+  };
+
   const MainMenu = {
-    ready: false, action: null, sel: 0, T: 0, hasRun: null, hero: { x: 320, y: 214 },
+    ready: false, action: null, sel: 0, T: 0, hasRun: null,
     buttons: [], fish: [],
 
     init() {
@@ -26772,15 +27295,17 @@ const UI = {
       Deep.build();
       buildNodeBubbles();
       const rng = new SeededRandom(7788);
-      // a single wide shaft that the pair swim in, so the title screen has
-      // somewhere the eye is supposed to land
-      this.beam = Deep.buildRay(168, 300, 0.16);
+      // a single wide shaft over the open water she plays in, so the title
+      // screen has somewhere the eye is supposed to land
+      this.beam = Deep.buildRay(176, 300, 0.16);
       this.shadow = buildHeroShadow();
       // the little fish the ocean draws on its low buffer, at its coarseness
       for (let i = 0; i < 14; i++) this.fish.push({
         x: rng.range(0, 640), y: rng.range(120, 300), s: rng.range(10, 26) * (rng.next() > 0.5 ? 1 : -1),
         ph: rng.range(0, TAU), len: rng.int(2, 3), col: rng.next() > 0.6 ? 'rgb(125,215,205)' : 'rgb(70,150,155)',
+        fx: 0, fy: 0, hold: 0, face: 1,
       });
+      MenuPet.init(this.fish);
     },
     consume() { this.action = null; },
 
@@ -26805,7 +27330,17 @@ const UI = {
       this.init();
       this.T += dt;
       Deep.update(dt, this.T);
-      for (const f of this.fish) { f.x += f.s * dt; f.ph += dt * 3; if (f.x < -20) f.x = 660; if (f.x > 660) f.x = -20; }
+      for (const f of this.fish) {
+        // a fish she is nosing at holds still and looks at her; one she has
+        // spooked carries a dart that bleeds off
+        if (f.hold > 0) f.hold -= dt;
+        const k = Math.exp(-dt * 1.4);
+        f.x += ((f.hold > 0 ? 0 : f.s) + f.fx) * dt; f.y += f.fy * dt; f.fx *= k; f.fy *= k;
+        f.ph += dt * (3 + Math.min(6, Math.abs(f.fx) / 20));
+        f.y = clamp(f.y, 112, 300);
+        if (f.x < -20) f.x = 660; if (f.x > 660) f.x = -20;
+      }
+      MenuPet.update(dt, this.T);
 
       const items = this.items(), m = Input.mouse;
       const BX = 46, BW = 190, BH = 26, GAP = 6;
@@ -26838,8 +27373,8 @@ const UI = {
       // the key light: one broad shaft the pair hang in, added to the water
       // inside the backdrop's own bake
       Deep.render(ctx, {
-        wreckX: 430,
-        beam: { s: this.beam, x: 322 + Math.round(Math.sin(T * 0.23) * 5 / GR) * GR, y: 6, a: 0.85 + Math.sin(T * 0.6) * 0.14 },
+        wreckX: 474,
+        beam: { s: this.beam, x: 444 + Math.round(Math.sin(T * 0.23) * 5 / GR) * GR, y: 6, a: 0.85 + Math.sin(T * 0.6) * 0.14 },
       });
 
       Deep.renderNear(ctx);
@@ -26847,36 +27382,22 @@ const UI = {
       // little fish schooling past, on the water's grid — the ocean draws its
       // own fish on the low buffer, this coarse
       for (const f of this.fish) {
-        const d = f.s > 0 ? 1 : -1;
+        const d = f.hold > 0 ? f.face : (f.s + f.fx) > 0 ? 1 : -1;
         const y = Math.round(f.y + Math.sin(f.ph) * 2) & ~1;
         const x = Math.round(f.x) & ~1;
         R(ctx, f.col, x, y, f.len * GR, GR);
         R(ctx, f.col, x - d * GR, y - GR + ((Math.floor(f.ph * 2) & 1) * GR), GR, GR);
       }
 
-      // ---- the hero: war manatee + armed otter, bobbing in the current ----
+      // ---- the hero: war manatee + armed otter, at play in the open water ---
       // Drawn at 1:1, which is what the play field does (RIG_SCALE = 1): she
       // is seventy world units long at two art pixels to the unit, so every
       // pixel of her is one device pixel — a quarter the size of the water
       // samples she is swimming through. That relationship, fine animal over
       // coarse ocean, is the whole look of the game.
-      if (typeof CH !== 'undefined' && CH.manatee && typeof Rig !== 'undefined') {
-        const hx = 322 + Math.sin(T * 0.4) * 7, hy = 196 + Math.sin(T * 0.8) * 3;
-        // the shadow the water drops under her, as the ocean casts it
-        blit(ctx, this.shadow, (hx + 5 + Math.sin(T * 3) * 1.5) & ~1, (hy + 10) & ~1);
-        ctx.save();
-        // snap on the device grid, the way the player does in the play field
-        ctx.translate(Math.round(hx * DETAIL) / DETAIL, Math.round(hy * DETAIL) / DETAIL);
-        Rig.draw(ctx, 0, 0, {
-          t: T, aim: -0.35 + Math.sin(T * 0.5) * 0.25, facing: 1, tilt: Math.sin(T * 0.6) * 0.06,
-          swimPhase: T * 2.2, rollPhase: null, hurt: false, exp: 'angry', rage: false,
-          recoil: 0, flash: 0, speed: 40, armored: true, gunSprite: SP.guns[(typeof G !== 'undefined' && G && G.tree) ? G.tree.primary : 'revolver'],
-        });
-        ctx.restore();
-        // wake bubbles off her fluke
-        if (Math.random() < 0.16) Deep.rise.push({ x: hx - 40 + rand(-4, 4), y: hy + 4, r: randi(0, 1), s: rand(20, 46), ph: rand(0, TAU), w: rand(3, 8) });
-        if (Deep.rise.length > 110) Deep.rise.splice(0, Deep.rise.length - 110);
-      }
+      MenuPet.renderUnder(ctx);
+      MenuPet.render(ctx, T, this.shadow);
+      MenuPet.renderOver(ctx);
 
       // ---- title: a posterised plate under the surface, not a flat wash ---
       const TY = 26, TH = 62;
@@ -26915,65 +27436,16 @@ const UI = {
       }
       pixelTextOutlined(ctx, 'ARROWS + ENTER, OR JUST CLICK', 141, 320, 6, '#9fd8ee', '#06121d', 'center');
 
-      // ---- run panel ----
-      this.drawRunPanel(ctx, T);
-
       Deep.renderForeground(ctx);
 
       if (typeof Audio_ !== 'undefined' && Audio_.muted) pixelTextOutlined(ctx, 'MUTED', 634, 348, 6, '#8ea6bc', '#06121d', 'right');
-    },
-
-    drawRunPanel(ctx, T) {
-      const x = 408, y = 106, w = 218, h = 156;
-      UIKit.panel(ctx, x, y, w, h, 'gold');
-      const X = x + 10; let Y = y + 10;
-      const running = this.runInProgress();
-      pixelTextOutlined(ctx, running ? 'THE RUN SO FAR' : 'THE HUNT', X, Y, 9, '#ffe48f', '#2a1d08'); Y += 13;
-      UIKit.divider(ctx, X, Y, w - 20); Y += 8;
-
-      const tree = (typeof G !== 'undefined' && G && G.tree) ? G.tree : null;
-      const st = (typeof G !== 'undefined' && G && G.stats) ? G.stats : null;
-      const line = (a, b, col) => { pixelText(ctx, a, X, Y, 6, '#9ab4c6'); pixelText(ctx, b, X + w - 20, Y, 7, col || '#ffffff', 'right'); Y += 10; };
-      if (running && st) {
-        line('TIME', typeof fmtTime === 'function' && G.director ? fmtTime(G.director.time) : '-');
-        line('BOATS SUNK', String(st.kills || 0), '#ff9a3c');
-        line('ABSORBS', String(st.absorbs || 0), '#8ac6ff');
-        line('SALVAGE', String(st.scrapCollected || 0), '#6fd88e');
-      } else {
-        for (const l of wrapText(ctx, 'A manatee with a gun-toting otter on her back against an entire fishing village. Salvage the wrecks, spend it in the SKILL TREE.', w - 20, 6)) {
-          pixelText(ctx, l, X, Y, 6, '#cfe6f2'); Y += 9;
-        }
-        Y += 2;
-      }
-      if (tree) {
-        line('UPGRADES', tree.unlocked.size + '/' + SKILL_NODES.length, '#ffe48f');
-        Y += 1;
-        UIKit.divider(ctx, X, Y, w - 20); Y += 7;
-        pixelText(ctx, 'SALVAGE', X, Y, 5, '#9ab4c6'); Y += 8;
-        SCRAP_TYPES.forEach((k, i) => {
-          const sx = X + i * 39;
-          R(ctx, '#0a0e18', sx, Y, 36, 16); box(ctx, '#2b3548', sx, Y, 36, 16);
-          drawSprite(ctx, SP.scrap[k], sx + 8, Y + 8);
-          pixelText(ctx, String(tree.scrap[k] || 0), sx + 33, Y + 4, 6, SCRAP_COLORS[k], 'right');
-        });
-        Y += 20;
-        const wp = WEAPONS[tree.primary] || WEAPONS.revolver, gs = SP.guns[tree.primary];
-        pixelText(ctx, 'WEAPON', X, Y + 2, 5, '#9ab4c6');
-        ctx.drawImage(gs.c, X + 34, Y + 1);
-        pixelText(ctx, fitLabel(wp.name, w - 56 - gs.w, 6), X + 38 + gs.w, Y + 1, 6, '#ffffff');
-        if (tree.sidearm) {
-          const ss = SP.guns[tree.sidearm];
-          pixelText(ctx, '+', X + 26, Y + 11, 5, '#ffe48f');
-          ctx.drawImage(ss.c, X + 34, Y + 11);
-          pixelText(ctx, fitLabel(WEAPONS[tree.sidearm].name, w - 56 - ss.w, 5), X + 38 + ss.w, Y + 11, 5, '#ffe48f');
-        }
-      }
     },
   };
 
   global.Upgrades = Upgrades;
   global.MainMenu = MainMenu;
   global.DeepScene2 = Deep;   // exposed for debugging / harnesses only
+  global.MenuPet = MenuPet;   // likewise
 })(typeof window !== 'undefined' ? window : this);
 
 /* ===== src/worldmap.js ===== */
@@ -34060,8 +34532,8 @@ global.StoryCut = StoryCut;
 /* ===== src/intro.js ===== */
 // ===========================================================================
 //  INTRO — "MANATEE VS BOATS" opening cinematic.
-//  Eleven beats of side-scrolling 640x360 pixel art, about a minute and a
-//  half of it, nearly all in daylight, all of it spoken by the animals in
+//  Twelve beats of side-scrolling 640x360 pixel art, near enough two
+//  minutes of it, nearly all in daylight, all of it SPOKEN by the animals in
 //  shot rather than narrated over them.  Every layer is generated
 //  procedurally at load and scrolled; nothing is rebuilt per frame.
 //  This is the only cutscene the game keeps, so it carries the whole setup,
@@ -34072,11 +34544,19 @@ global.StoryCut = StoryCut;
 //    4  net         her brother is taken alive; she finds the tear
 //    5  captured    the crane does not miss.  Out of the water, and out
 //    6  crate       she wakes in a box in a fish hold, under the catch
-//    7  noise       something is working at the crate's iron, and it looks in
-//    8  breakout    the boards let go, and she leaves through the hull
-//    9  alone       home, still red, and something drops through the surface
-//   10  pact        the pirate wants the fleet dead too, and she wants him back
-//   11  colours     black flag up, and they turn and run AT the fleet
+//    7  junk        the heap moves -- and the otter digs himself out of it
+//    8  plan        he has been chewing one bolt for nineteen days, and he
+//                   knows which boat took her brother and where it went
+//    9  breakout    his bolt, her shoulder, and out through the hull with
+//                   him stood on her back shouting directions
+//   10  reef        she takes him home, and home is still red
+//   11  pact        they agree on the work, out loud
+//   12  colours     black flag up, and they turn and run AT the fleet
+//  THE OTTER IS FOUND, NOT SENT.  He is dug out of somebody else's catch in
+//  the same box she is locked in, and the escape is his plan -- which is the
+//  only thing that makes the pair of them read as a pair rather than as a
+//  hero and a mascot who turned up.  Beats 7-9 are the talkiest in the
+//  cinematic on purpose: he will not stop, she answers in four words.
 //  NOTHING IS PRE-DAMAGED.  Every actor enters beat 1 with `scarred` false
 //  and no wounds; the flag is set on the frame the steel goes in, in beat 2,
 //  on whoever it went into.  The opening seven seconds have to read as safe
@@ -34835,7 +35315,8 @@ function buildManatee(len, who) {
     // resampled, so it is painted live at whichever size the body came out.
     ek: len > 74 ? 3 : len > 34 ? 2 : 1,
     body: body, bodyScar: part(S.bodyScar), flashS: whiteMask(body),
-    fluke: part(S.fluke), flip: part(S.flip), flipFar: part(S.flipFar),
+    fluke: part(S.fluke), flukeScar: part(S.flukeScar || S.fluke),
+    flip: part(S.flip), flipFar: part(S.flipFar),
     eye: [S.eye[0] * k, S.eye[1] * k], mouth: [S.mouth[0] * k, S.mouth[1] * k],
     tailX: S.tailX * k, shoX: S.shoX * k, shoY: S.shoY * k,
   };
@@ -34885,7 +35366,11 @@ function drawManatee(ctx, m, t) {
   ctx.save(); ctx.translate(M.shoX - 5 * k, M.shoY - 4 * k); ctx.rotate(fa - 0.22);
   ctx.drawImage(M.flipFar.c, -M.flipFar.ax, -M.flipFar.ay); ctx.restore();
   ctx.save(); ctx.translate(M.tailX, 0); ctx.rotate(Math.sin(ph) * amp);
-  const fl = M.fluke; ctx.drawImage(fl.c, -fl.ax, -fl.ay); ctx.restore();
+  // Clean or marked, body and fluke go together: an animal nothing has
+  // happened to yet has a whole trailing edge on her tail as well as an
+  // unbroken hide, which is the cast's own rule (CH.side.flukeScar).
+  const fl = m.scarred ? M.flukeScar : M.fluke;
+  ctx.drawImage(fl.c, -fl.ax, -fl.ay); ctx.restore();
   const b = m.scarred ? M.bodyScar : M.body;
   ctx.drawImage(b.c, -b.ax, -b.ay);
   // The hit flash.  This used to composite 'source-atop' straight onto the
@@ -35468,7 +35953,7 @@ function drawNet(ctx, o) {
     pts.push(row);
   }
   const hole = o.hole;
-  const knot = '#a9bdb0', dk = '#2c3f38';
+  const knot = '#7e948a', dk = '#1d2b26';
   for (let j = 0; j <= N; j++) for (let i = 0; i < M; i++) {
     if (hole && j >= hole.j && j < hole.j + hole.h && i >= hole.i && i < hole.i + hole.w) continue;
     LN(ctx, (i & 1) ? knot : dk, R(pts[j][i][0]), R(pts[j][i][1]), R(pts[j][i + 1][0]), R(pts[j][i + 1][1]));
@@ -37187,7 +37672,7 @@ BEATS.push({
   name: 'raid', dur: 8.0,
   talk: [
     [0.50, 'mom', 'Under the reef! GO!'],
-    [2.60, 'bro', 'It missed me — RUN!'],
+    [2.60, 'bro', 'It missed me! RUN!'],
     [4.35, 'you', 'MAMA!'],
   ],
   anchor(who) {
@@ -37409,7 +37894,7 @@ BEATS.push({
     return [A.you.x + 22, A.you.y - 26, 1];
   },
   enter() {
-    SC.surfY = 132; SC.yX = -260; SC.yY = 132; SC.spot = 0; SC.gore = 0.44;
+    SC.surfY = 142; SC.yX = -260; SC.yY = 142; SC.spot = 0; SC.gore = 0.44;
     // she came out of the reef opened along the flank; he did not get touched
     A.you = actor(MAN.you, 240, 244, { beat: 2.4, exp: 'wide', scarred: true, tailAmp: 0.18 });
     A.you.wounds = [{ x: 5, y: -2, r: 3 }];
@@ -37498,7 +37983,7 @@ BEATS.push({
     [0.45, 'you', 'NET! GO DEEP!'],
     [3.10, 'you', 'Here! A tear!'],
     [5.00, 'bro', 'I can\'t fit!'],
-    [6.70, 'you', 'NO — HOLD ON!'],
+    [6.70, 'you', 'NO! HOLD ON!'],
   ],
   anchor(who) {
     if (who === 'bro') return [clamp(A.bro.x + 14, 70, 570), A.bro.y - 30, 1];
@@ -37605,7 +38090,7 @@ BEATS.push({
 BEATS.push({
   name: 'captured', dur: 8.0,
   talk: [
-    [0.30, 'you', 'What is that—'],
+    [0.30, 'you', 'What is THAT.'],
     [2.50, 'you', 'LET GO!'],
   ],
   anchor() { return [clamp(A.you.x + 16, 70, 570), A.you.y - 30, 1]; },
@@ -37719,8 +38204,9 @@ BEATS.push({
 BEATS.push({
   name: 'crate', dur: 8.5,
   talk: [
-    [2.80, 'you', '...where.'],
-    [5.40, 'you', 'Shrimp. Dead things. And me.'],
+    [2.60, 'you', '...Where.'],
+    [4.40, 'you', 'Shrimp. Dead things.'],
+    [6.30, 'you', 'And me.'],
   ],
   anchor() { return [A.you.x + 24, A.you.y - 34, 1]; },
   enter() {
@@ -37771,85 +38257,162 @@ BEATS.push({
   },
 });
 
-// ---------------------------------------------------------- 7. THE METAL
-//  Something in the hold is working at the crate's iron, and it gets closer
-//  every time it hits.  It is not a rescue.  It is a man with a bar, coming
-//  to move the thing in the box -- and when the bolt gives, he looks in.
+// ------------------------------------------------------- 7. SOMETHING ALIVE
+//  The heap moves.  She has been lying in somebody else's catch for nineteen
+//  days and one of the things in it is not dead: a paw comes up out of the
+//  shrimp, and then a hat, and then the rest of him.  This is where the
+//  player meets the otter -- not dropping out of the sun later on, but dug
+//  out of the junk in the same box she is in, which is the only reason he is
+//  worth anything to her.
+//  It is the talkiest beat in the cinematic on purpose.  He will not stop;
+//  she answers in four words or fewer.  That is the whole double act.
 BEATS.push({
-  name: 'noise', dur: 7.5,
+  name: 'junk', dur: 13.5,
   talk: [
-    [0.55, 'you', 'Days of this.'],
-    [2.70, 'you', 'Closer every time it hits.'],
-    [5.10, 'you', '...It\'s looking at me.'],
+    [0.50, 'you', 'Something moved.'],
+    [1.95, 'otter', 'Don\'t. Squash. Me.'],
+    [3.40, 'you', 'There\'s a rat in here.'],
+    [5.00, 'otter', 'Otter. And a captain.'],
+    [6.60, 'you', 'Captain of a shrimp pile.'],
+    [8.20, 'otter', 'Nineteen days of it.'],
+    [9.70, 'otter', 'They eat the big ones first.'],
+    [11.40, 'you', 'I am the big one.'],
   ],
-  anchor() { return [clamp(A.you.x + 24, 70, 520), A.you.y - 34, 1]; },
+  anchor(who) {
+    if (who === 'otter') return [clamp(SC.ot.x + 2, 80, 560), SC.ot.y - 40, 1];
+    return [clamp(A.you.x + 26, 80, 540), A.you.y - 34, 1];
+  },
   enter() {
     holdArt();
-    SC.clank = 0; SC.next = 0.7; SC.step = 0; SC.spark = 0; SC.reveal = 0; SC.loose = [];
+    SC.loose = []; SC.heave = 0; SC.up = 0; SC.shook = false;
     for (let i = 0; i < 30; i++) looseAdd(SC.loose, { x: rand(20, 620), y: pileFrontTop(300) - 30, vx: rand(-16, 16), vy: rand(0, 40), r: rand(0, TAU), vr: rand(-4, 4), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
-    A.you = actor(MAN.youBig, 286, 254, { beat: 0.6, exp: 'wide', tailAmp: 0.06, rot: 0.06, scarred: true });
+    A.you = actor(MAN.youBig, 270, 256, { beat: 0.6, exp: 'wide', tailAmp: 0.06, rot: 0.05, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
-    SC.manX = 560; SC.manY = 300; SC.manLook = 0;
+    // he is buried to the ears in it and comes up out of the heap
+    SC.ot = { x: 470, y: 300, phase: 0, rot: 0, exp: 'idle', flip: true, ride: false,
+              sq: 0, sqv: 0, sx: 1, sy: 1, blink: false, blade: 0, headR: 0 };
   },
   update(dt, bt) {
-    swim(A.you, dt); bounce(A.you, dt);
-    A.you.y = 254 + Math.sin(bt * 0.8) * 2 - clamp((bt - 0.8) / 1.2, 0, 1) * 10;
-    A.you.rot = 0.06 - clamp((bt - 0.8) / 1.2, 0, 1) * 0.16;
-    A.you.exp = talking('you') ? 'talk' : 'wide';
-    looseUpdate(SC.loose, dt, pileFrontTop, Intro.t);
-    if (SC.clank > 0.6 && Math.random() < 6 * dt) looseAdd(SC.loose, { x: rand(380, 600), y: pileFrontTop(480) - 18, vx: rand(-40, -6), vy: rand(-40, 10), r: rand(0, TAU), vr: rand(-7, 7), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
-    SC.spark = Math.max(0, SC.spark - dt * 3);
-    SC.next -= dt;
-    if (SC.next <= 0 && bt < 6.2) {
-      SC.step++;
-      SC.next = Math.max(0.40, 1.20 - SC.step * 0.12);
-      SC.clank = 1; SC.spark = 1;
-      Intro.shake = Math.max(Intro.shake, 2 + SC.step * 0.5);
-      const vol = clamp(0.06 + SC.step * 0.022, 0, 0.24);
-      if (typeof Audio_ !== 'undefined') {
-        Audio_.tone(190 + SC.step * 26, 0.10, 'square', vol, -90);
-        Audio_.noise(0.13, vol * 0.8, 3600 + SC.step * 300, 800);
-      }
-      for (let i = 0; i < 9; i++) FX.add({ k: 'd', x: 503 + rand(-4, 4), y: 239 + rand(-10, 10), vx: rand(-150, -20), vy: rand(-110, 40), life: rand(0.2, 0.55), c: Math.random() < 0.5 ? '#ffd27a' : '#fff6cc' });
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
+    A.you.x = smooth(A.you.x, 270, 2.4, dt);
+    A.you.y = 256 + Math.sin(bt * 0.7) * 2 - ss(clamp((bt - 2.6) / 1.6, 0, 1)) * 8;
+    A.you.rot = 0.05 + Math.sin(bt * 0.5) * 0.02;
+    A.you.exp = talking('you') ? 'talk' : bt > 5.6 ? 'angry' : 'wide';
+    // ---- the heap heaves twice, and then he digs himself out of it
+    SC.heave = (bt < 2.0) ? Math.max(0, Math.sin(bt * 5.5)) : 0;
+    if (SC.heave > 0.1 && Math.random() < 26 * dt) {
+      looseAdd(SC.loose, { x: 470 + rand(-30, 30), y: pileFrontTop(470) - 6, vx: rand(-70, 70), vy: -rand(40, 170), r: rand(0, TAU), vr: rand(-9, 9), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
     }
-    SC.clank = Math.max(0, SC.clank - dt * 5);
-    // he comes up the hold to the bolt, and at the end he stops and looks in
-    SC.reveal = clamp((bt - 4.5) / 0.7, 0, 1);
-    SC.manX = lerp(600, 546, ss(SC.reveal));
-    SC.manLook = clamp((bt - 5.0) / 0.5, 0, 1);
+    if (!SC.shook && bt > 1.85) {
+      SC.shook = true;
+      Intro.shake = 6; kick(A.you, -6);
+      FX.catchSpray(470, pileFrontTop(470) - 10, 26, 1.0);
+      if (typeof Audio_ !== 'undefined') { Audio_.noise(0.22, 0.09, 1800, 400); Audio_.tone(140, 0.12, 'square', 0.08, -60); }
+    }
+    // up out of the shrimp, shake himself off, then stand
+    SC.up = ss2(clamp((bt - 1.85) / 1.5, 0, 1));
+    SC.ot.x = smooth(SC.ot.x, lerp(470, 424, ss(clamp((bt - 4.6) / 2.4, 0, 1))), 6, dt);
+    SC.ot.y = smooth(SC.ot.y, lerp(pileFrontTop(470) + 26, pileFrontTop(440) - 16, SC.up), 7, dt);
+    SC.ot.phase += dt * (SC.up < 1 ? 5.5 : 1.9);
+    SC.ot.rot = (1 - SC.up) * 0.55 + Math.sin(bt * 1.7) * 0.05;
+    SC.ot.exp = talking('otter') ? 'talk' : bt > 9.4 ? 'angry' : SC.up < 1 ? 'idle' : 'grin';
+    // the arms sell the whole performance: he talks with them
+    const gab = talking('otter') ? 1 : 0.25;
+    SC.ot.armNear = 0.95 + Math.sin(SC.ot.phase * 2.3) * 0.60 * gab - (1 - SC.up) * 1.5;
+    SC.ot.armFar = -0.95 - Math.sin(SC.ot.phase * 1.9) * 0.45 * gab;
+    SC.ot.headR = Math.sin(SC.ot.phase * 1.4) * 0.10 * gab;
+    if (SC.up > 0.2 && SC.up < 0.98 && Math.random() < 20 * dt) FX.catchSpray(SC.ot.x + rand(-10, 10), SC.ot.y + rand(0, 16), 1, 0.5);
+    looseUpdate(SC.loose, dt, pileFrontTop, Intro.t);
+    if (Math.random() < 1.0 * dt) looseAdd(SC.loose, { x: rand(40, 600), y: pileFrontTop(300) - 26, vx: rand(-16, 16), vy: rand(-16, 16), r: rand(0, TAU), vr: rand(-5, 5), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
   },
-  render(ctx, bt) {
+  render(ctx) {
     crateScene(ctx, Intro.t, { hatch: 0 });
     drawManatee(ctx, A.you, Intro.t);
     cratePileFront(ctx);
     looseRender(ctx, SC.loose);
-    // the deck hand working the bolt, on the far side of the slats: a
-    // silhouette, half swallowed by the boards, at the cast's own rig
-    if (bt > 1.6) {
-      ctx.save();
-      ctx.globalAlpha = qa(0.40 + SC.reveal * 0.60);
-      const sw = Math.sin(bt * 5) * (1 - SC.manLook);
-      figure(ctx, SC.manX, SC.manY, 96, {
-        facing: -1, lean: 0.16 - SC.manLook * 0.30,
-        armA: 1.15 + sw * 0.45, foreA: 1.30 + sw * 0.50,
-        armB: 0.85, foreB: 1.05,
-        legA: 0.34, legB: -0.36, kneeA: -0.10, kneeB: 0.12,
-        head: -0.24 - SC.manLook * 0.45,
-      }, '#0b0d12', '#2e3a4c');
-      ctx.restore();
-      // the bar in his fist
-      ctx.save(); ctx.translate(R(SC.manX - 26), R(SC.manY - 56));
-      ctx.rotate(1.1 + Math.sin(bt * 5) * 0.5 * (1 - SC.manLook));
-      P(ctx, '#0b0d12', -4, -2, 30, 5); P(ctx, '#3c4658', -3, -1, 28, 3);
-      ctx.restore();
-      // and his eye, once he has stopped and put it to the gap
-      if (SC.manLook > 0.5) {
-        P(ctx, '#0b0d12', 512, 226, 9, 5);
-        P(ctx, '#e8e4d8', 513, 227, 7, 3);
-        P(ctx, '#0b0d12', 515 + (Math.floor(bt * 3) & 1), 227, 2, 3);
+    drawCapOtter(ctx, SC.ot, Intro.t);
+    FX.render(ctx);
+    holdLight(ctx);
+    motes(ctx, Intro.t * 6, Intro.t, 30, '#ffe0a0', 0.26);
+  },
+});
+
+// ---------------------------------------------------------------- 8. A PLAN
+//  He has been working one bolt with the flat of a cutlass for nineteen days
+//  and has twelve hours of it left.  While he works he talks, and while he
+//  talks he tells her the only thing she actually wants to know: where her
+//  brother went, and who took him.
+BEATS.push({
+  name: 'plan', dur: 15.0,
+  talk: [
+    [0.45, 'otter', 'See that bolt? That\'s ours.'],
+    [2.20, 'you', 'It\'s iron.'],
+    [3.40, 'otter', 'So is my cutlass. Watch.'],
+    [5.10, 'otter', 'Nineteen days I\'ve worked it.'],
+    [6.90, 'you', 'They took my brother.'],
+    [8.50, 'otter', 'Grey. Small. Very loud?'],
+    [9.90, 'you', 'Yes.'],
+    [10.80, 'otter', 'Out last night. Other boat.'],
+    [12.40, 'otter', 'Same buyer. Same village.'],
+  ],
+  anchor(who) {
+    if (who === 'otter') return [clamp(SC.ot.x + 2, 80, 560), SC.ot.y - 40, 1];
+    return [clamp(A.you.x + 26, 80, 520), A.you.y - 34, 1];
+  },
+  enter() {
+    holdArt();
+    SC.loose = []; SC.hit = 0; SC.next = 0.9; SC.step = 0; SC.spark = 0; SC.dim = 0;
+    for (let i = 0; i < 34; i++) looseAdd(SC.loose, { x: rand(20, 620), y: pileFrontTop(300) - 30, vx: rand(-14, 14), vy: rand(0, 40), r: rand(0, TAU), vr: rand(-4, 4), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
+    A.you = actor(MAN.youBig, 252, 254, { beat: 0.5, exp: 'calm', tailAmp: 0.05, rot: 0.04, scarred: true });
+    A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
+    SC.ot = { x: 452, y: 236, phase: 0, rot: 0, exp: 'angry', flip: true, ride: false,
+              sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -0.2, headR: 0 };
+  },
+  update(dt, bt) {
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
+    A.you.y = 254 + Math.sin(bt * 0.6) * 2 - (bt > 6.9 ? ss(clamp((bt - 6.9) / 2, 0, 1)) * 5 : 0);
+    A.you.rot = 0.04 + Math.sin(bt * 0.45) * 0.02;
+    A.you.exp = talking('you') ? 'talk' : bt > 12.2 ? 'angry' : bt > 6.8 ? 'sad' : 'calm';
+    SC.ot.phase += dt * 1.6;
+    // he works the bolt while he talks, and comes off it to say the big bits
+    const atBolt = bt < 6.8 || bt > 10.4;
+    SC.ot.flip = !atBolt;
+    SC.ot.x = smooth(SC.ot.x, atBolt ? 474 : 396, 3.4, dt);
+    SC.ot.y = smooth(SC.ot.y, atBolt ? 236 : 244, 3.4, dt);
+    SC.ot.exp = talking('otter') ? 'talk' : bt > 12.2 ? 'angry' : 'idle';
+    const work = atBolt ? 1 : 0;
+    const gab = talking('otter') ? 1 : 0.3;
+    SC.ot.armNear = 0.95 - work * 1.55 + Math.sin(bt * (work ? 9 : 2.4)) * (work ? 0.45 : 0.55 * gab);
+    SC.ot.armFar = -0.95 - Math.sin(SC.ot.phase * 1.8) * 0.40 * gab;
+    SC.ot.bladeR = work ? (0.92 + Math.sin(bt * 9) * 0.30) : -0.25;
+    SC.ot.headR = Math.sin(SC.ot.phase * 1.3) * 0.10 * gab;
+    SC.spark = Math.max(0, SC.spark - dt * 3);
+    SC.next -= dt;
+    if (SC.next <= 0 && work) {
+      SC.step++;
+      SC.next = rand(0.34, 0.62);
+      SC.hit = 1; SC.spark = 1;
+      Intro.shake = Math.max(Intro.shake, 2.2);
+      if (typeof Audio_ !== 'undefined') {
+        Audio_.tone(210 + (SC.step % 5) * 22, 0.09, 'square', 0.10, -90);
+        Audio_.noise(0.11, 0.07, 3800, 900);
       }
+      for (let i = 0; i < 8; i++) FX.add({ k: 'd', x: 503 + rand(-4, 4), y: 239 + rand(-9, 9), vx: rand(-150, -20), vy: rand(-110, 40), life: rand(0.2, 0.55), c: Math.random() < 0.5 ? '#ffd27a' : '#fff6cc' });
     }
-    // sparks at the bolt, and the bolt itself
+    SC.hit = Math.max(0, SC.hit - dt * 5);
+    // the news about her brother takes the light out of the hold for a moment
+    SC.dim = (bt > 10.6 && bt < 12.6) ? clamp(Math.min(bt - 10.6, 12.6 - bt) / 0.6, 0, 1) : 0;
+    looseUpdate(SC.loose, dt, pileFrontTop, Intro.t);
+    if (Math.random() < 1.1 * dt) looseAdd(SC.loose, { x: rand(40, 600), y: pileFrontTop(300) - 26, vx: rand(-18, 18), vy: rand(-20, 20), r: rand(0, TAU), vr: rand(-5, 5), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
+    if (Math.random() < 1.4 * dt) FX.add({ k: 'd', x: rand(60, 580), y: 60, vx: rand(-4, 4), vy: rand(20, 50), life: rand(1.6, 3), c: '#8f9a6a' });
+  },
+  render(ctx) {
+    crateScene(ctx, Intro.t, { hatch: 0 });
+    drawManatee(ctx, A.you, Intro.t);
+    cratePileFront(ctx);
+    looseRender(ctx, SC.loose);
+    drawCapOtter(ctx, SC.ot, Intro.t);
+    // the bolt, and what he is doing to it
     P(ctx, IP.ink, 496, 232, 14, 14); P(ctx, '#5d6675', 497, 233, 12, 12);
     P(ctx, '#9aa6b6', 497, 233, 12, 4); P(ctx, IP.ink, 500, 237, 6, 6);
     if (SC.spark > 0) {
@@ -37857,106 +38420,138 @@ BEATS.push({
       P(ctx, '#fff6cc', 500, 236, 5, 5);
     }
     FX.render(ctx);
-    if (SC.clank > 0) { ctx.fillStyle = rgbaq('#ffe9b0', qa(SC.clank * 0.10)); ctx.fillRect(0, 0, 640, 360); }
+    if (SC.hit > 0) { ctx.fillStyle = rgbaq('#ffe9b0', qa(SC.hit * 0.10)); ctx.fillRect(0, 0, 640, 360); }
     holdLight(ctx);
     motes(ctx, Intro.t * 6, Intro.t, 30, '#ffe0a0', 0.26);
+    if (SC.dim > 0) { ctx.fillStyle = rgbaq('#05070c', qa(SC.dim * 0.55)); ctx.fillRect(0, 0, 640, 360); }
   },
 });
 
-// ------------------------------------------------------------- 8. BREAK OUT
-//  He undid the bolt for her.  The boards let go, the catch goes everywhere,
-//  and she takes the shortest way out of a boat there is: through the side
-//  of it.  They did not use the door.
+// ------------------------------------------------------------- 9. BREAK OUT
+//  His plan, her shoulder.  The bolt goes, the boards go, nineteen days of
+//  somebody else's catch goes up in the air, and the two of them take the
+//  shortest way out of a boat there is -- through the side of it, with him
+//  stood on her back shouting directions the whole way.
+//  This is the loudest thing in the cinematic and it is meant to be.
 BEATS.push({
-  name: 'breakout', dur: 10.0,
+  name: 'breakout', dur: 12.0,
   talk: [
-    [0.40, 'you', 'Come on. Come ON.'],
-    [2.40, 'you', 'Not the door.'],
-    [7.60, 'you', 'I\'m coming for him.'],
+    [0.35, 'otter', 'NOW! Shoulder! GO!'],
+    [2.00, 'you', 'Hold on to something.'],
+    [3.40, 'otter', 'I AM holding you!'],
+    [5.00, 'otter', 'Left! The hull\'s thin there!'],
+    [7.00, 'you', 'Not the door, then.'],
+    [8.60, 'otter', 'HA! Beautiful!'],
+    [10.10, 'otter', 'Now do that to the rest.'],
   ],
-  anchor() { return [clamp(A.you.x + 26, 70, 540), A.you.y - 32, 1]; },
+  anchor(who) {
+    if (who === 'otter') return [clamp(SC.ot.x + 2, 80, 560), SC.ot.y - 40, 1];
+    return [clamp(A.you.x + 26, 80, 540), A.you.y - 34, 1];
+  },
   enter() {
     holdArt();
     SC.popped = false; SC.smash = false; SC.splash = false;
     SC.boardOff = null; SC.boards = null; SC.run = 0; SC.flash = 0; SC.shout = 0;
-    SC.loose = []; SC.thin = false; SC.boatX = 214; SC.boatY = 158;
+    SC.loose = []; SC.thin = false; SC.boatX = 214; SC.boatY = 158; SC.arc = 0;
     for (let i = 0; i < 26; i++) looseAdd(SC.loose, { x: rand(20, 620), y: pileFrontTop(300) - 26, vx: rand(-14, 14), vy: rand(0, 30), r: rand(0, TAU), vr: rand(-4, 4), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
     A.you = actor(MAN.youBig, 250, 252, { beat: 1.0, exp: 'angry', tailAmp: 0.2, rot: 0.04, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
+    SC.ot = { x: 470, y: 232, phase: 0, rot: 0, exp: 'angry', flip: true, ride: false,
+              sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -0.4, headR: 0 };
   },
   update(dt, bt) {
-    swim(A.you, dt); bounce(A.you, dt);
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
     SC.flash = Math.max(0, SC.flash - dt * 4);
+    SC.arc = Math.max(0, SC.arc - dt * 2.8);
+    SC.ot.phase += dt * 2.4;
     A.you.exp = talking('you') ? 'talk' : 'angry';
+    SC.ot.exp = talking('otter') ? 'talk' : bt > 8.4 ? 'grin' : 'angry';
+    // ---- where he is.  On the bolt, then on her back for the rest of it.
+    const aboard = ss2(clamp((bt - 1.35) / 0.7, 0, 1));
     if (bt < 1.6) {                                    // the last turns of the bolt
-      if (Math.random() < 10 * dt) { Intro.shake = Math.max(Intro.shake, 2); if (typeof Audio_ !== 'undefined') Audio_.tone(220, 0.07, 'square', 0.12, -80); }
+      SC.ot.flip = false;
+      SC.ot.x = smooth(SC.ot.x, 474, 6, dt); SC.ot.y = smooth(SC.ot.y, 236, 6, dt);
+      SC.ot.bladeR = 0.92 + Math.sin(bt * 15) * 0.45;
+      SC.ot.armNear = -0.55 + Math.sin(bt * 15) * 0.5;
+      if (Math.random() < 12 * dt) { Intro.shake = Math.max(Intro.shake, 2.4); if (typeof Audio_ !== 'undefined') Audio_.tone(224, 0.07, 'square', 0.12, -80); }
       A.you.beat = 1.4;
       A.you.y = 252 + Math.sin(bt * 1.4) * 3;
-    } else if (bt < 3.0) {                             // POP, and the crate lets go
+    } else if (bt < 3.2) {                             // POP, and the crate lets go
       if (!SC.popped) {
-        SC.popped = true; SC.flash = 1; Intro.shake = 16;
-        kick(A.you, 10);
-        SC.boardOff = { x: 0, y: 0, r: 0, vx: 210, vy: -60, vr: 5 };
+        SC.popped = true; SC.flash = 1; SC.arc = 1; Intro.shake = 18;
+        kick(A.you, 11); kick(SC.ot, 9);
+        SC.boardOff = { x: 0, y: 0, r: 0, vx: 230, vy: -70, vr: 5 };
         SC.boards = [];
-        for (let i = 0; i < 3; i++) SC.boards.push({ x: 420 - i * 44, y: 0, r: 0, vx: 140 + i * 60, vy: -120 - i * 40, vr: rand(-6, 6) });
-        FX.chunks(506, 176, 34);
+        for (let i = 0; i < 4; i++) SC.boards.push({ x: 430 - i * 42, y: 0, r: 0, vx: 150 + i * 60, vy: -130 - i * 40, vr: rand(-6, 6) });
+        FX.chunks(506, 176, 38);
         SC.thin = true;
-        pileBurst(SC.loose, 470, 214, 200);
-        FX.catchSpray(330, 270, 40, 1.15);
-        if (typeof Audio_ !== 'undefined') { Audio_.explosion(0.7); Audio_.noise(0.4, 0.3, 2600, 300); }
-        for (let i = 0; i < 40; i++) FX.add({ k: 'd', x: rand(440, 560), y: rand(120, 260), vx: rand(20, 260), vy: rand(-180, 120), life: rand(0.5, 1.4), c: '#ffd27a' });
+        pileBurst(SC.loose, 470, 214, 210);
+        FX.catchSpray(330, 270, 46, 1.2);
+        if (typeof Audio_ !== 'undefined') { Audio_.explosion(0.8); Audio_.noise(0.4, 0.3, 2600, 300); }
+        for (let i = 0; i < 44; i++) FX.add({ k: 'd', x: rand(440, 560), y: rand(120, 260), vx: rand(20, 260), vy: rand(-180, 120), life: rand(0.5, 1.4), c: '#ffd27a' });
       }
-      const k = clamp((bt - 1.6) / 1.4, 0, 1);
-      A.you.x = lerp(250, 320, k); A.you.y = lerp(252, 226, inCube(k));
+      const k = clamp((bt - 1.6) / 1.6, 0, 1);
+      A.you.x = lerp(250, 320, k); A.you.y = lerp(252, 222, inCube(k));
       A.you.rot = lerp(0.04, -0.18, k); A.you.beat = 7;
       if (Math.random() < 40 * dt) FX.add({ k: 'c', x: rand(200, 520), y: rand(200, 300), vx: rand(-90, 190), vy: rand(-220, -40), life: rand(0.6, 1.4), w: randi(2, 5), h: randi(1, 3), c: pick(['#d08a76', '#eab79c', '#93a0aa', '#c3ced6']) });
       if (Math.random() < 34 * dt) FX.catchSpray(A.you.x, A.you.y + 20, 2, 0.8);
-    } else if (bt < 5.2) {                             // down the hold, men above
-      SC.run = clamp((bt - 3.0) / 2.2, 0, 1);
-      A.you.x = 320; A.you.y = 214 + Math.sin(bt * 8) * 5;
+    } else if (bt < 5.4) {                             // down the hold, men above
+      SC.run = clamp((bt - 3.2) / 2.2, 0, 1);
+      A.you.x = 320; A.you.y = 212 + Math.sin(bt * 8) * 5;
       A.you.rot = -0.1 + Math.sin(bt * 8) * 0.07; A.you.beat = 11;
       SC.shout = 1;
       Intro.shake = Math.max(Intro.shake, 3);
       if (Math.random() < 30 * dt) FX.add({ k: 'd', x: rand(0, 640), y: 46, vx: rand(-10, 10), vy: rand(60, 160), life: rand(0.4, 0.9), c: '#6a5b3a' });
       if (typeof Audio_ !== 'undefined') { sndT -= dt; if (sndT <= 0) { sndT = 0.34; Audio_.noise(0.2, 0.09, 420, 60); } }
-      if (bt > 4.9 && !SC.smash) {
-        SC.smash = true; SC.flash = 1; Intro.shake = 20;
+      if (bt > 5.1 && !SC.smash) {
+        SC.smash = true; SC.flash = 1; SC.arc = 1; Intro.shake = 22;
         if (typeof Audio_ !== 'undefined') { Audio_.explosion(1.1); Audio_.splash(3); }
       }
-    } else if (bt < 7.4) {                             // out through the hull
-      const k = clamp((bt - 5.2) / 2.2, 0, 1);
+    } else if (bt < 8.0) {                             // out through the hull
+      const k = clamp((bt - 5.4) / 2.6, 0, 1);
       SC.boatX = 214 - k * 26;
-      A.you.x = lerp(330, 556, k); A.you.y = lerp(226, 300, inCube(k));
-      A.you.rot = lerp(-0.34, 0.5, k); A.you.beat = 9;
+      A.you.x = lerp(SC.boatX + 96, 580, k); A.you.y = lerp(272, 304, ss(k));
+      A.you.rot = lerp(-0.22, 0.14, k); A.you.beat = 9;
       if (k < 0.3 && Math.random() < 40 * dt) FX.chunks(A.you.x, A.you.y, 2);
-      if (Math.random() < 50 * dt) FX.drops(A.you.x + rand(-16, 16), A.you.y + rand(-10, 10), 1, 0.6);
-      if (!SC.splash && A.you.y > 248) {
+      if (Math.random() < 26 * dt) FX.bubble(A.you.x - 26, A.you.y + rand(-8, 8), 1, 2.4);
+      if (!SC.splash && k > 0.06) {
         SC.splash = true; Intro.shake = 10;
-        FX.drops(A.you.x, 252, 90, 1.3); FX.foam(A.you.x, 252, 44, 1.6);
+        FX.drops(A.you.x, 260, 60, 1.3); FX.foam(A.you.x, 268, 40, 1.6);
         if (typeof Audio_ !== 'undefined') Audio_.splash(3);
       }
     } else {                                           // clear water, and gone
-      const k = clamp((bt - 7.4) / 2.6, 0, 1);
-      Intro.scroll += lerp(120, 300, k) * dt;
-      A.you.x = 300 + Math.sin(bt * 1.4) * 6; A.you.y = 216 + Math.sin(bt * 3.4) * 9;
+      const k = clamp((bt - 8.0) / 4.0, 0, 1);
+      Intro.scroll += lerp(140, 320, k) * dt;
+      A.you.x = smooth(A.you.x, 300, 3, dt) + Math.sin(bt * 1.4) * 5;
+      A.you.y = 216 + Math.sin(bt * 3.4) * 9;
       A.you.rot = Math.sin(bt * 3.4) * 0.10; A.you.beat = 7;
       if (Math.random() < 34 * dt) FX.bubble(A.you.x - 40, A.you.y + 6, 1, 2.4);
-      // she is still open, and at this speed it streams off her
-      FX.flow(-220, dt);
+      FX.flow(-240, dt);
       if (Math.random() < 5 * dt) {
         const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
         FX.blood(wp[0] - rand(2, 12), wp[1], 1, 0.5);
       }
+    }
+    // once he is aboard he rides her, on his feet, for every frame of it
+    if (bt >= 1.35) {
+      SC.ot.flip = false;
+      const rx = A.you.x + 4, ry = A.you.y - 27;
+      SC.ot.x = smooth(SC.ot.x, lerp(SC.ot.x, rx, aboard), 16, dt);
+      SC.ot.y = smooth(SC.ot.y, lerp(SC.ot.y, ry, aboard), 16, dt);
+      SC.ot.rot = smooth(SC.ot.rot, A.you.rot, 9, dt);
+      SC.ot.armNear = 0.95 + Math.sin(SC.ot.phase * 2.1) * 0.60 - (bt > 4.9 ? 1.9 : 0);
+      SC.ot.armFar = -0.95 - Math.sin(SC.ot.phase * 1.7) * 0.45;
+      SC.ot.bladeR = -0.9 - (bt > 4.9 ? 0.5 : 0);
     }
     if (SC.boardOff) {
       const b = SC.boardOff;
       b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 260 * dt; b.r += b.vr * dt;
     }
     if (SC.boards) for (const b of SC.boards) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 300 * dt; b.r += b.vr * dt; }
-    if (bt < 5.2) looseUpdate(SC.loose, dt, SC.thin ? pileThinTop : pileFrontTop, Intro.t);
+    if (bt < 5.4) looseUpdate(SC.loose, dt, SC.thin ? pileThinTop : pileFrontTop, Intro.t);
   },
   render(ctx, bt) {
-    if (bt < 5.2) {
+    if (bt < 5.4) {
       crateScene(ctx, Intro.t, { hatch: 0, boardOff: SC.boardOff, thin: SC.thin });
       if (SC.run > 0) {                                 // boots stamping on the boards above
         for (let i = 0; i < 4; i++) {
@@ -37974,28 +38569,33 @@ BEATS.push({
       drawManatee(ctx, A.you, Intro.t);
       cratePileFront(ctx, SC.thin);
       looseRender(ctx, SC.loose);
+      drawCapOtter(ctx, SC.ot, Intro.t);
+      if (SC.arc > 0) bladeArc(ctx, SC.ot.x + 8, SC.ot.y, 30, -2.2, 0.9, SC.arc);
       FX.render(ctx);
       holdLight(ctx);
-      if (SC.shout && bt > 3.3) {
+      if (SC.shout && bt > 3.5) {
         pixelTextOutlined(ctx, 'IT IS LOOSE!', 150, 70, 9, '#ffe48f', '#14141c', 'center');
-        if (bt > 4.1) pixelTextOutlined(ctx, 'GET THE GAFF!', 470, 84, 9, '#ffe48f', '#14141c', 'center');
+        if (bt > 4.2) pixelTextOutlined(ctx, 'GET THE GAFF!', 470, 84, 9, '#ffe48f', '#14141c', 'center');
       }
     } else {
       // outside: the boat with a hole in her side
-      backdrop(ctx, { mood: 'dawn', grade: 'dawn', scroll: Intro.scroll, t: Intro.t, surfY: bt < 7.4 ? 252 : 46, bedY: 352, shafts: 0.6, causticBed: true });
-      if (bt < 7.4) {
+      backdrop(ctx, { mood: 'dawn', grade: 'dawn', scroll: Intro.scroll, t: Intro.t, surfY: bt < 8.0 ? 252 : 46, bedY: 352, shafts: 0.6, causticBed: true });
+      if (bt < 8.0) {
         drawAir(ctx, 252, Intro.scroll, Intro.t, 'day');
         ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY + 94)); ctx.rotate(0.04);
         ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
-        hullHole(ctx, R(SC.boatX + 108), R(SC.boatY + 88), 26, 31);
+        // the hole, in the part of the hull that is actually in the water
+        hullHole(ctx, R(SC.boatX + 86), 274, 27, 31);
         drawManatee(ctx, A.you, Intro.t);
+        drawCapOtter(ctx, SC.ot, Intro.t);
       } else {
-        const k = clamp((bt - 7.4) / 2.6, 0, 1);
+        const k = clamp((bt - 8.0) / 4.0, 0, 1);
         drawAir(ctx, 46, Intro.scroll, Intro.t, 'day');
         ctx.save(); ctx.translate(R(520 - k * 460), 78); ctx.scale(0.42 - k * 0.24, 0.42 - k * 0.24);
         ctx.globalAlpha = qa(0.9 - k * 0.7);
         ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
         drawManatee(ctx, A.you, Intro.t);
+        drawCapOtter(ctx, SC.ot, Intro.t);
         speedLines(ctx, A.you.x - 90, A.you.y, 16, 64, -1, 'rgba(190,225,245,0.32)', 7);
       }
       FX.render(ctx);
@@ -38005,27 +38605,34 @@ BEATS.push({
   },
 });
 
-// ----------------------------------------------------------------- 9. ALONE
-//  She came back.  Out of a crate, out through a hull, and all the way home
-//  to the one piece of reef she knows -- and it is still red.  The blood
-//  clouds her family made are hanging in the water at the top of the beat
-//  and are still hanging at the end of it, a barb the fleet cut loose is
-//  buried in the sand with the line still on it, and she is opened along one
-//  flank and leaking into all of it.  Then something hits the surface hard
-//  enough to punch a hole in the red.
+// ------------------------------------------------------------------ 10. REEF
+//  She takes him home.  This used to be the beat the otter arrived in --
+//  dropped through the surface blade first -- and he is already standing on
+//  her back now, so what is left is the thing that beat was really for: the
+//  water she grew up in, four days later, still full of her family.  Sixteen
+//  clouds of them hang in it at the top of the beat and are still hanging at
+//  the end.  A barb the fleet cut loose is buried in the sand with the line
+//  still on it.  He does not have a joke for this one.
 BEATS.push({
-  name: 'alone', dur: 5.5,
+  name: 'reef', dur: 9.0,
   talk: [
-    [3.20, 'otter', 'Oi. Not dead yet. Good.'],
+    [0.70, 'otter', 'This your water?'],
+    [2.30, 'you', 'It was.'],
+    [3.60, 'otter', 'It\'s still red.'],
+    [5.20, 'you', 'That\'s my mother.'],
+    [6.90, 'otter', '...Aye. I know that red.'],
   ],
-  anchor() { return [SC.ot.x + 6, SC.ot.y - 38, 1]; },
+  anchor(who) {
+    if (who === 'otter') return [clamp(SC.ot.x + 4, 80, 560), SC.ot.y - 40, 1];
+    return [clamp(A.you.x + 34, 80, 540), A.you.y - 26, 1];
+  },
   enter() {
-    A.you = actor(MAN.youBig, 302, 198, { beat: 0.70, exp: 'pain', tailAmp: 0.10, scarred: true });
+    A.you = actor(MAN.youBig, 268, 206, { beat: 0.80, exp: 'pain', tailAmp: 0.12, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
-    SC.ot = { x: 474, y: 30, phase: 0, rot: 0, exp: 'angry', flip: true, ride: true,
-              sq: 0, sqv: 0, sx: 1, sy: 1, blink: false, blade: 1, bladeR: -1.30, bladeWet: 1 };
+    SC.ot = { x: 272, y: 179, phase: 0, rot: 0, exp: 'idle', flip: false, ride: false,
+              sq: 0, sqv: 0, sx: 1, sy: 1, blink: false, blade: 1, bladeR: -1.0, bladeWet: 1 };
     SC.sch1 = makeSchool(7, 600, 140, 40, 0, 2, -15);
-    SC.splash = false; SC.landed = false; SC.surfY = 62; SC.gore = 0.66; SC.arc = 0;
+    SC.surfY = 62; SC.gore = 0.58; SC.seen = false;
     // her family, still in the water, going nowhere
     for (let i = 0; i < 13; i++) FX.blood(rand(90, 560), rand(112, 268), 1, rand(1.2, 2.6), true);
     // a barb the fleet cut loose on its way out, buried in the sand with
@@ -38034,51 +38641,32 @@ BEATS.push({
   },
   update(dt, bt) {
     Intro.scroll += 7 * dt;
-    swim(A.you, dt); bounce(A.you, dt);
-    SC.gore = smooth(SC.gore, 0.50, 0.55, dt);
-    const sink = ss(clamp(bt / 2.6, 0, 1));
-    A.you.x = 302 + Math.sin(bt * 0.34) * 5;
-    A.you.y = lerp(198, 222, sink) + Math.sin(bt * 0.62) * 3;
-    A.you.rot = smooth(A.you.rot, bt > 3.2 ? -0.06 : 0.10 * (1 - sink) + 0.03, 3, dt);
-    A.you.exp = bt > 2.72 ? 'wide' : 'pain';
-    // she is still running: the flank has not stopped since the last beat
-    if (Math.random() < 4.5 * dt) {
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
+    SC.gore = smooth(SC.gore, 0.46, 0.5, dt);
+    // she slows down as she comes over it, and stops
+    const slow = ss2(clamp(bt / 3.2, 0, 1));
+    A.you.beat = lerp(2.6, 0.7, slow);
+    A.you.x = smooth(A.you.x, 268, 2.2, dt) + Math.sin(bt * 0.34) * 4;
+    A.you.y = lerp(206, 224, slow) + Math.sin(bt * 0.62) * 3;
+    A.you.rot = smooth(A.you.rot, bt > 5.0 ? -0.05 : 0.06, 3, dt);
+    A.you.exp = talking('you') ? 'talk' : bt > 5.0 ? 'sad' : 'pain';
+    // he rides her, and for once he keeps still
+    SC.ot.x = smooth(SC.ot.x, A.you.x + 4, 11, dt);
+    SC.ot.y = smooth(SC.ot.y, A.you.y - 27, 11, dt);
+    SC.ot.rot = smooth(SC.ot.rot, A.you.rot, 9, dt);
+    SC.ot.phase += dt * 1.6;
+    SC.ot.exp = talking('otter') ? 'talk' : bt > 6.8 ? 'angry' : 'idle';
+    const gab = talking('otter') ? 1 : 0.2;
+    SC.ot.armNear = 0.95 + Math.sin(SC.ot.phase * 2.0) * 0.45 * gab;
+    SC.ot.armFar = -0.95 - Math.sin(SC.ot.phase * 1.6) * 0.34 * gab;
+    SC.ot.headR = (bt > 3.4 && bt < 6.4 ? 0.18 : 0) + Math.sin(SC.ot.phase * 1.2) * 0.07 * gab;
+    // she is still open, and it is still running
+    if (Math.random() < 4.0 * dt) {
       const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
       FX.blood(wp[0], wp[1], 1, 0.7);
     }
-    if (bt > 1.15 && bt < 2.5 && Math.random() < 1.3 * dt) FX.bubble(A.you.x + 30, A.you.y - 10, 1, 0.35);
-    if (!SC.splash && bt >= 2.62) {
-      SC.splash = true;
-      FX.drops(474, SC.surfY, 26, 1.0);
-      FX.foam(474, SC.surfY + 4, 14, 1.0);
-      FX.ring(474, SC.surfY + 6, 44, 0.45, '#ffffff');
-      if (typeof Audio_ !== 'undefined') Audio_.splash(2);
-    }
-    // he comes in off the surface on a long decelerating arc, blade first
-    const dive = clamp((bt - 2.62) / 1.15, 0, 1), e = outCube(dive);
-    SC.ot.x = lerp(474, 394, e);
-    SC.ot.y = lerp(SC.surfY - 6, 190, e);
-    // two WHOLE turns, eased out: landing on a multiple of TAU means the
-    // spin ends where the idle bob begins, with no half-turn snap between
-    SC.ot.rot = TAU * 2 * outCube(dive) + Math.sin(bt * 2.2) * 0.08 * dive;
-    SC.ot.phase += dt * (dive < 1 ? 7 : 2.0);
-    SC.ot.bladeR = -1.30 - (1 - dive) * 0.5;
-    if (dive > 0 && dive < 1 && Math.random() < 40 * dt) FX.bubble(SC.ot.x + rand(-6, 6), SC.ot.y + rand(-6, 6), 1, 2.2);
-    if (!SC.landed && dive >= 1) {
-      SC.landed = true;
-      SC.arc = 1;
-      kick(SC.ot, 8); kick(A.you, 4);
-      FX.bubble(SC.ot.x, SC.ot.y, 10, 1.9);
-      FX.ring(SC.ot.x, SC.ot.y, 40, 0.34, '#dff0ff');
-      // he lands in the middle of her family and knocks a hole in it
-      FX.blood(SC.ot.x - 20, SC.ot.y + 6, 4, 1.4);
-      if (typeof Audio_ !== 'undefined') { Audio_.noise(0.2, 0.09, 1600, 400); Audio_.tone(210, 0.08, 'square', 0.05, -110); }
-    }
-    SC.arc = Math.max(0, SC.arc - dt * 3.2);
-    bounce(SC.ot, dt);
-    SC.ot.exp = talking('otter') ? 'talk' : dive < 1 ? 'angry' : 'idle';
-    SC.ot.armNear = 0.9 + Math.sin(SC.ot.phase * 1.2) * 0.30;
-    SC.ot.armFar = -0.9 - Math.sin(SC.ot.phase * 1.1) * 0.24;
+    if (!SC.seen && bt >= 5.2) { SC.seen = true; kick(A.you, -5); }
+    if (Math.random() < 1.1 * dt) FX.bubble(A.you.x + 30, A.you.y - 10, 1, 0.35);
   },
   render(ctx) {
     backdrop(ctx, { mood: 'lagoon', grade: 'noon', gore: SC.gore, scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 306, shafts: 1, causticBed: true });
@@ -38095,31 +38683,35 @@ BEATS.push({
     P(ctx, IP.blood[3], R(lx) - 8, R(SC.line.y) - 15, 5, 2);
     drawManatee(ctx, A.you, Intro.t);
     drawCapOtter(ctx, SC.ot, Intro.t);
-    if (SC.arc > 0) bladeArc(ctx, SC.ot.x - 6, SC.ot.y + 2, 26, -2.5, 0.5, SC.arc);
     FX.render(ctx);
     foreground(ctx, { grade: 'noon', gore: SC.gore, scroll: Intro.scroll, t: Intro.t, bedY: 306 });
   },
 });
 
-// ----------------------------------------------------------------- 10. PACT
-//  He is not here to comfort her.  He is a pirate who has wanted that fleet
-//  on the bottom for years and has just found something that wants it more.
+// ----------------------------------------------------------------- 11. PACT
+//  Not a rescuer and not a friend yet: a pirate who has wanted that fleet on
+//  the bottom for years, stood on the back of something that wants it more.
+//  They agree on the work, out loud, and that is the deal the whole game is
+//  played under.
 BEATS.push({
-  name: 'pact', dur: 9.0,
+  name: 'pact', dur: 10.5,
   talk: [
-    [0.40, 'otter', 'They gutted your kin.'],
-    [2.10, 'you', 'They took my brother alive.'],
-    [4.00, 'otter', 'Then he is cargo. Cargo moves.'],
-    [6.20, 'otter', 'Sharpen up. We hunt the fleet.'],
+    [0.40, 'otter', 'I sink boats for plunder.'],
+    [2.10, 'you', 'I sink them for this.'],
+    [3.70, 'otter', 'Better reason. Same work.'],
+    [5.50, 'otter', 'So. Partners, or passengers?'],
+    [7.20, 'you', 'Every boat. Then my brother.'],
+    [9.00, 'otter', 'Aye. Sharpen up. We hunt.'],
   ],
   anchor(who) {
-    if (who === 'otter') return [SC.ot.x + 4, SC.ot.y - 38, 1];
-    return [A.you.x + 34, A.you.y - 28, 1];
+    if (who === 'otter') return [clamp(SC.ot.x + 4, 80, 560), SC.ot.y - 40, 1];
+    return [clamp(A.you.x + 36, 80, 540), A.you.y - 26, 1];
   },
   enter() {
     A.you = actor(MAN.youBig, 234, 226, { beat: 0.9, exp: 'pain', tailAmp: 0.14, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
-    SC.ot = { x: 390, y: 198, phase: 0, rot: 0, exp: 'angry', flip: true, ride: true,
+    // he steps off her back to say it to her face, and comes back for the end
+    SC.ot = { x: 330, y: 200, phase: 0, rot: 0, exp: 'angry', flip: true, ride: true,
               sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -1.05, bladeWet: 1 };
     SC.sch1 = makeSchool(8, 590, 130, 44, 0, 3, -18);
     SC.offer = false; SC.flourish = false; SC.surfY = 72; SC.arc = 0; SC.gore = 0.44;
@@ -38128,21 +38720,21 @@ BEATS.push({
   update(dt, bt) {
     Intro.scroll += 9 * dt;
     swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
-    SC.gore = smooth(SC.gore, 0.30, 0.5, dt);
+    SC.gore = smooth(SC.gore, 0.28, 0.5, dt);
     A.you.x = smooth(A.you.x, 234, 3, dt) + Math.sin(bt * 0.5) * 0.4;
     A.you.y = 226 + Math.sin(bt * 0.66) * 4;
-    A.you.rot = smooth(A.you.rot, bt > 7.0 ? -0.10 : 0.04, 3, dt);
+    A.you.rot = smooth(A.you.rot, bt > 7.4 ? -0.10 : 0.04, 3, dt);
     A.you.exp = talking('you') ? 'talk' : bt > 2.0 ? 'angry' : 'pain';
     if (Math.random() < 3.5 * dt) {
       const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
       FX.blood(wp[0], wp[1], 1, 0.62);
     }
     // he never holds still: a slow figure of eight with two errands in it
-    const offer = clamp((bt - 1.60) / 0.55, 0, 1);            // blade out to her
-    const back = clamp((bt - 2.35) / 0.75, 0, 1);             // and away again
-    const near = clamp((bt - 6.15) / 0.90, 0, 1);             // alongside, at the end
-    const hover = [390 + Math.sin(bt * 0.95) * 34, 198 + Math.sin(bt * 1.42) * 15];
-    const nose = [308, 212], side = [334, 234];
+    const offer = clamp((bt - 5.40) / 0.55, 0, 1);            // blade out to her
+    const back = clamp((bt - 6.30) / 0.75, 0, 1);             // and away again
+    const near = clamp((bt - 8.30) / 0.90, 0, 1);             // alongside, at the end
+    const hover = [370 + Math.sin(bt * 0.95) * 34, 200 + Math.sin(bt * 1.42) * 15];
+    const nose = [306, 212], side = [334, 234];
     let ox = hover[0], oy = hover[1];
     if (offer > 0 && back < 1) {
       const k = ss(offer) * (1 - ss(back));
@@ -38154,7 +38746,7 @@ BEATS.push({
     SC.ot.phase += dt * 2.2;
     // the flourish, between his two boasts: a whole turn with the blade out,
     // and a swept arc of steel where the sparkles used to be
-    const spin = clamp((bt - 4.75) / 0.85, 0, 1);
+    const spin = clamp((bt - 3.55) / 0.85, 0, 1);
     SC.ot.rot = TAU * ss2(spin) + Math.sin(bt * 1.8) * 0.07;
     SC.ot.exp = talking('otter') ? 'talk' : 'angry';
     SC.ot.bladeR = -1.05 - ss(offer) * 0.45 + (spin > 0 && spin < 1 ? Math.sin(spin * Math.PI) * 0.9 : 0);
@@ -38192,7 +38784,7 @@ BEATS.push({
   },
 });
 
-// -------------------------------------------------------------- 11. COLOURS
+// -------------------------------------------------------------- 12. COLOURS
 //  Not an escape.  The old ending ran them off into empty water; this one
 //  turns them round and points them AT the fleet, with the black flag up and
 //  her still bleeding out of the hole they put in her.
@@ -38209,7 +38801,10 @@ BEATS.push({
   enter() {
     A.you = actor(MAN.youBig, 250, 214, { beat: 1.3, exp: 'angry', tailAmp: 0.30, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
-    SC.ot = { x: 300, y: 152, phase: 0, rot: 0, exp: 'angry', flip: false, ride: true,
+    // He is on his FEET for the charge, not folded into the riding torso:
+    // this is the one beat where he is stood up on her back, and it is the
+    // beat that has to show the legs the cast gives him.
+    SC.ot = { x: 300, y: 152, phase: 0, rot: 0, exp: 'angry', flip: false, ride: false,
               sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -1.4, bladeWet: 1 };
     SC.sch1 = makeSchool(12, 560, 168, 64, 0, 1, -28);
     SC.sch2 = makeSchool(7, 660, 262, 42, 1, 0, -24);
@@ -38220,7 +38815,7 @@ BEATS.push({
     SC.gore = smooth(SC.gore, 0.14, 0.6, dt);
     // he climbs aboard, gets the colours up, and then they go
     const land = ss2(clamp(bt / 1.20, 0, 1));
-    const ride = [A.you.x + 4, A.you.y - 21];
+    const ride = [A.you.x + 4, A.you.y - 27];   // feet on her back, not sunk into it
     SC.ot.x = smooth(SC.ot.x, lerp(300, ride[0], land), 11, dt);
     SC.ot.y = smooth(SC.ot.y, lerp(152, ride[1], land), 11, dt);
     SC.ot.phase += dt * (2 + SC.spd * 0.012);
@@ -40978,17 +41573,23 @@ const Light = {
   // The field buffer. 160x90 puts one cell on 8 screen pixels, which is 4
   // world units: coarse enough to be nearly free, fine enough that a banded
   // light disc reads as chunky pixel art instead of a polygon.
-  LW: 160, LH: 90,
+  LW: 128, LH: 72,
 
   FOG: 0.30,      // how far the deep end pulls the frame toward its own water
-  BOUNCE: 0.150,  // warm light the sand shelf throws back up at everything
-  CAUST: 0.115,   // surface caustics playing over the top of everything
-  SHAFT: 0.052,   // broad shafts coming down off the swell
-  VIG: 0.28,      // corner falloff
+  BOUNCE: 0.085,  // warm light the sand shelf throws back up at everything
+  CAUST: 0.130,   // surface caustics playing over the top of everything
+  SHAFT: 0.070,   // broad shafts coming down off the swell
+  VIG: 0.22,      // corner falloff
+  PMAX: 0.45,     // a ceiling on point light, so a flash can never flatten the frame
   LAND: 0.105,    // direct sun on the village, above the waterline
   HERO: 0.45,     // how much of the depth push the hero is spared, so she reads
 
   _built: false, _ramp: null, _err: 0,
+
+  // Light.profile = true fills Light.cost with the split, in ms. Off by
+  // default and three timestamps when on, all of them outside the hot loop.
+  profile: false,
+  cost: { lights: 0, field: 0, blit: 0, total: 0 },
 
   // =========================================================================
   //  BAKED TABLES
@@ -41006,17 +41607,28 @@ const Light = {
     this._bctx = this._buf.getContext('2d');
     this._bctx.imageSmoothingEnabled = false;
     this._img = this._bctx.createImageData(LW, LH);
-    this._d = this._img.data;
+    // A plain Uint8Array view of the SAME memory. ImageData.data is a
+    // Uint8ClampedArray and the clamp is paid on all four writes of every cell,
+    // every frame. Every term the loop sums is non-negative and it caps at 255
+    // itself, so the clamp is pure overhead. Same buffer underneath, so
+    // putImageData still sees the writes.
+    this._d = new Uint8Array(this._img.data.buffer);
 
     // point-light accumulators: alpha, and colour premultiplied by it
     this._pA = new Float32Array(n);
     this._pR = new Float32Array(n); this._pG = new Float32Array(n); this._pB = new Float32Array(n);
-    this._row = new Float32Array(LW);           // one row of ocean depth
+    this._rowN = (LW >> 1) + 1;                 // the depth grid is coarser than
+    this._row = new Float32Array(this._rowN);   // the field, so sample at half rate
 
     // 1/A for a quantized A, so the un-premultiply in the compose costs a
-    // table read instead of a divide, fourteen thousand times a frame.
+    // table read rather than a divide in every cell of every frame.
     this._RCP = new Float32Array(65); this._AB = new Uint8Array(65);
     for (let k = 1; k <= 64; k++) { this._RCP[k] = 64 / k; this._AB[k] = Math.min(255, (k * 255 / 64) | 0); }
+    // posterize-in-fives as a table. Doing it as (v/5|0)*5 is three integer
+    // divisions per cell, which measured as the most expensive single thing in
+    // the whole pass -- more than the blit.
+    this._Q5 = new Uint8Array(256);
+    for (let v = 0; v < 256; v++) this._Q5[v] = (v / 5 | 0) * 5;
 
     // ---- vignette, baked once in screen space ---------------------------
     // Quantized against a 4x4 Bayer so the falloff breaks into a chunky
@@ -41042,6 +41654,19 @@ const Light = {
   },
 
   BAYER: [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5],
+
+  // Spatial frequencies of the two animated fields, in radians per world unit.
+  // c* are the three warped sine fields the caustics are built from, at roughly
+  // half water.js's own caustic frequency -- this is surface lensing seen from
+  // above over a wide area, not the fine pattern thrown on the sand. s* are the
+  // shafts: nearly vertical, tilting as they go down.
+  FREQ: {
+    c1x: 0.0400, c1y: 0.0400,
+    c2x: -0.0310, c2y: 0.0438,
+    c3x: 0.0156, c3y: -0.0136,
+    s1x: 0.0112, s1y: 0.0047,
+    s2x: 0.0271, s2y: 0.0101,
+  },
 
   // ---- colour ladders, derived from whatever water.js currently is -------
   // Re-baked if the ocean's palette is ever rebuilt, the same way wildlife.js
@@ -41075,14 +41700,22 @@ const Light = {
       this._fogR[b] = q(c[0] * dk * 0.80);      // red goes first, as absR does
       this._fogG[b] = q(c[1] * dk * 0.97);
       this._fogB[b] = q(c[2] * dk * 1.06);
-      // --- the shallow bounce: warm sand light carrying the band's own cast,
-      // so it never reads as a yellow filter laid over teal water.
+      // --- the shallow bounce: the light a pale sand shelf throws back up.
+      // It WARMS the band rather than brightening it. The lagoon is already the
+      // brightest, most saturated thing in frame -- a brighter version of that
+      // cyan can only be a whiter one, and two earlier tunings of this line
+      // both bleached the shallows to milk. So the target keeps the band's own
+      // value and slides it toward sand: red up hard, green a little, blue
+      // down. Sunlit shallow water over white sand goes green-gold, not white.
       this._bncA[b] = k * k * this.BOUNCE;
-      this._bncR[b] = q(171 + c[0] * 0.95);
-      this._bncG[b] = q(167 + c[1] * 0.62);
-      this._bncB[b] = q(141 + c[2] * 0.62);
-      // --- caustics live where the surface can still focus light onto things
-      this._cstA[b] = k * k * k * this.CAUST;
+      this._bncR[b] = q(c[0] + 135);
+      this._bncG[b] = q(c[1] + 22);
+      this._bncB[b] = q(c[2] * 0.82);
+      // --- caustics live where the surface can still focus light onto things.
+      // k*k*k shut them off by the middle of the shelf and they were invisible
+      // over the water most of the fighting happens in; clear water carries
+      // them a good deal further down than that.
+      this._cstA[b] = k * Math.sqrt(k) * k * 0.6 * this.CAUST + k * 0.4 * this.CAUST;
       // --- shafts read in the middle water: no room at the shore, no light
       // left in the gloom. A hump, not a ramp.
       const s = Math.sin(Math.max(0, Math.min(1, (b - 1) / 10)) * Math.PI);
@@ -41092,8 +41725,19 @@ const Light = {
     // absR/absG/absB eat the warm end out of it on the way down
     this._sunR = new Float32Array(16); this._sunG = new Float32Array(16); this._sunB = new Float32Array(16);
     for (let b = 0; b < 16; b++) {
-      const dd = b / 15;
-      this._sunR[b] = q(255 - dd * 74); this._sunG[b] = q(250 - dd * 16); this._sunB[b] = q(219 + dd * 36);
+      const c = ramp[b], dd = b / 15;
+      this._sunR[b] = q(c[0] * 1.15 + 150 - dd * 46);
+      this._sunG[b] = q(c[1] * 1.15 + 120);
+      this._sunB[b] = q(c[2] * 1.15 + 96 + dd * 34);
+    }
+    // Anything that cannot move the output by a single level is not worth the
+    // sine lookups it would cost. Zeroing those entries means the caustic and
+    // shaft blocks are skipped outright over deep water, which is most of the
+    // frame in most of the fighting.
+    for (let b = 0; b < 16; b++) {
+      if (this._cstA[b] < 0.006) this._cstA[b] = 0;
+      if (this._shfA[b] < 0.006) this._shfA[b] = 0;
+      if (this._bncA[b] < 0.004) this._bncA[b] = 0;
     }
     // the corners fall off toward the bottom of the ramp, not toward black:
     // this sea never bottoms out at black and neither should the vignette
@@ -41120,8 +41764,8 @@ const Light = {
         const e = ex[i];
         const k = 1 - e.life / e.dur; if (k <= 0) continue;
         const kk = k * k;
-        L.push({ x: e.x, y: e.y, r: e.maxR * (1.5 + (1 - k) * 2.2) + 40,
-          R: 255, G: (210 + 40 * kk) | 0, B: (120 + 90 * kk) | 0, a: 0.62 * kk, w: 100 + e.maxR });
+        L.push({ x: e.x, y: e.y, r: e.maxR * (0.6 + (1 - k) * 0.9) + 10,
+          R: 255, G: (210 + 40 * kk) | 0, B: (120 + 90 * kk) | 0, a: 0.30 * kk, w: 100 + e.maxR });
       }
     }
 
@@ -41144,8 +41788,8 @@ const Light = {
       for (let j = 0; j < B.length && L.length < 14; j++) {
         const f = B[j]; if (f.w < 0.05) continue;
         const s = Math.min(1, f.w / 3.2);
-        L.push({ x: f.x / f.w, y: f.y / f.w, r: 60 + 92 * s,
-          R: 255, G: 186, B: 96, a: 0.20 + 0.30 * s, w: 60 * s });
+        L.push({ x: f.x / f.w, y: f.y / f.w, r: 14 + 22 * s,
+          R: 255, G: 186, B: 96, a: 0.08 + 0.14 * s, w: 60 * s });
       }
     }
 
@@ -41156,13 +41800,13 @@ const Light = {
       const mf = fl ? Math.max(fl.primary || 0, fl.sidearm || 0) : 0;
       if (mf > 0) {
         const k = Math.min(1, mf / 0.07), a = pl.aim || 0;
-        L.push({ x: pl.x + Math.cos(a) * 12, y: pl.y + Math.sin(a) * 12, r: 96,
-          R: 255, G: 244, B: 196, a: 0.46 * k, w: 90 });
+        L.push({ x: pl.x + Math.cos(a) * 12, y: pl.y + Math.sin(a) * 12, r: 22,
+          R: 255, G: 244, B: 196, a: 0.20 * k, w: 90 });
       }
       const af = pl.absorb ? pl.absorb.flash : 0;
       if (af > 0) {
         const k = Math.min(1, af / 0.25);
-        L.push({ x: pl.x, y: pl.y, r: 150, R: 190, G: 236, B: 255, a: 0.40 * k, w: 90 });
+        L.push({ x: pl.x, y: pl.y, r: 44, R: 190, G: 236, B: 255, a: 0.18 * k, w: 90 });
       }
     }
 
@@ -41194,7 +41838,7 @@ const Light = {
           const m = lamps[i];
           if (m.x < x0 || m.x > x1 || m.y < y0 || m.y > y1) continue;
           const f = 0.74 + 0.15 * Math.sin(t * 2.3 + m.ph) + 0.11 * Math.sin(t * 11.7 + m.ph * 3);
-          L.push({ x: m.x, y: m.y + 4, r: 34 * m.k, R: 255, G: 198, B: 118, a: 0.30 * f, w: 20 });
+          L.push({ x: m.x, y: m.y + 4, r: 16 * m.k, R: 255, G: 198, B: 118, a: 0.18 * f, w: 20 });
         }
       }
     }
@@ -41204,18 +41848,19 @@ const Light = {
   // Hand-rasterized into the field: three hard bands, no arc(), no gradient.
   // There is a cell budget, so a screen full of explosions costs about what two
   // cost -- the same bargain particles.js strikes with its gore.
-  _splat(L, wx0, wy0, wpc) {
+  _splat(L, wx0, wy0, wpcX, wpcY) {
     if (!L.length) return false;
     const LW = this.LW, LH = this.LH;
     const pA = this._pA, pR = this._pR, pG = this._pG, pB = this._pB;
-    const inv = 1 / wpc;                    // world units -> cells
+    const ivx = 1 / wpcX, ivy = 1 / wpcY;   // world units -> cells, per axis
     let budget = 26000, any = false;
     if (L.length > 1) L.sort((a, b) => b.a * b.w - a.a * a.w);
     for (let i = 0; i < L.length; i++) {
       const l = L[i]; if (l.a <= 0.004 || l.r <= 0) continue;
-      const cx = (l.x - wx0) * inv, cy = (l.y - wy0) * inv, cr = l.r * inv;
+      const cx = (l.x - wx0) * ivx, cy = (l.y - wy0) * ivy, cr = l.r * ivx;
+      const cry = l.r * ivy;
       let x0 = Math.floor(cx - cr), x1 = Math.ceil(cx + cr);
-      let y0 = Math.floor(cy - cr), y1 = Math.ceil(cy + cr);
+      let y0 = Math.floor(cy - cry), y1 = Math.ceil(cy + cry);
       if (x1 < 0 || y1 < 0 || x0 >= LW || y0 >= LH) continue;
       if (x0 < 0) x0 = 0;
       if (y0 < 0) y0 = 0;
@@ -41224,16 +41869,18 @@ const Light = {
       const cells = (x1 - x0) * (y1 - y0); if (cells <= 0) continue;
       budget -= cells; if (budget < 0) break;
       any = true;
-      const r2 = cr * cr, la = l.a, lr = l.R, lg = l.G, lb = l.B;
+      const r2 = cr * cr, sq = cr / cry, la = l.a, lr = l.R, lg = l.G, lb = l.B;
       for (let y = y0; y < y1; y++) {
-        const dy = y + 0.5 - cy, dy2 = dy * dy;
+        const dy = (y + 0.5 - cy) * sq, dy2 = dy * dy;
         let idx = y * LW + x0;
         for (let x = x0; x < x1; x++, idx++) {
           const dx = x + 0.5 - cx;
           const qq = 1 - (dx * dx + dy2) / r2;
           if (qq <= 0.05) continue;
-          // three hard steps, so the disc is banded pixel art and not a blur
-          const s = qq > 0.60 ? 1 : qq > 0.28 ? 0.58 : 0.24;
+          // four hard steps with a hot core, so the disc is banded pixel art
+          // and not a blur. At this cell size the steps land two or three cells
+          // apart, which is what makes them read as rings instead of a gradient.
+          const s = qq > 0.72 ? 1 : qq > 0.46 ? 0.62 : qq > 0.22 ? 0.34 : 0.14;
           const a = la * s;
           pA[idx] += a; pR[idx] += lr * a; pG[idx] += lg * a; pB[idx] += lb * a;
         }
@@ -41291,18 +41938,21 @@ const Light = {
     // ---- point lights ----------------------------------------------------
     const pA = this._pA, pR = this._pR, pG = this._pG, pB = this._pB;
     pA.fill(0); pR.fill(0); pG.fill(0); pB.fill(0);
-    const lit = this._splat(this._gather(G, t), wx0, wy0, wpcX);
+    const prof = this.profile, C = this.cost;
+    let T0 = prof ? performance.now() : 0, T1;
+    const lit = this._splat(this._gather(G, t), wx0, wy0, wpcX, wpcY);
+    if (prof) { T1 = performance.now(); C.lights = T1 - T0; T0 = T1; }
 
     // ---- the field -------------------------------------------------------
-    const d = this._d, row = this._row, vig = this._vig;
+    const d = this._d, row = this._row, rowN = this._rowN, vig = this._vig;
     const S = this._S, SK = this._SK, M = 2047, BAY = this.BAYER;
-    const RCP = this._RCP, AB = this._AB;
+    const RCP = this._RCP, AB = this._AB, Q5 = this._Q5;
     const fogA = this._fogA, fogR = this._fogR, fogG = this._fogG, fogB = this._fogB;
     const bncA = this._bncA, bncR = this._bncR, bncG = this._bncG, bncB = this._bncB;
     const cstA = this._cstA, shfA = this._shfA;
     const sunR = this._sunR, sunG = this._sunG, sunB = this._sunB;
     const vigR = this._vigR, vigG = this._vigG, vigB = this._vigB;
-    const VIG = this.VIG, LANDA = this.LAND;
+    const VIG = this.VIG, LANDA = this.LAND, PMAX = this.PMAX;
     const shore = oc.shoreY;
 
     // The hero keeps a bubble of clearer water around her: less of the depth
@@ -41313,23 +41963,28 @@ const Light = {
     const hx = pl ? (pl.x - wx0) / wpcX : -9999, hy = pl ? (pl.y - wy0) / wpcY : -9999;
     const hr2 = 26 * 26, heroK = (pl && !pl.dead) ? this.HERO : 0;
 
-    // caustic and shaft phase steps, built the way water.js builds its own so
-    // the two fields drift together instead of beating against each other
-    const e1 = 0.0182 * wpcX * SK, e2 = -0.0141 * wpcX * SK, e3 = 0.0071 * wpcX * SK;
-    const g1 = 0.0112 * wpcX * SK, h1 = 0.0271 * wpcX * SK;
+    // Caustic and shaft frequencies, built the way water.js builds its own so
+    // the two fields drift together instead of beating against each other.
+    // Each one is used twice -- once as the row's starting phase, once as the
+    // per-cell step -- so they live in one place: if the pair ever drifts the
+    // field shears diagonally, which is nearly invisible and impossible to
+    // reason about afterwards.
+    const F = this.FREQ;
+    const e1 = F.c1x * wpcX * SK, e2 = F.c2x * wpcX * SK, e3 = F.c3x * wpcX * SK;
+    const g1 = F.s1x * wpcX * SK, h1 = F.s2x * wpcX * SK;
     const swell = Math.sin(t * 0.23) * 0.9;
 
     let p = 0;
     for (let cy = 0; cy < LH; cy++) {
       const wy = wy0 + cy * wpcY;
       const land = wy < shore - 10;
-      if (!land) oc.fillRow(row, oc.depth, wy, wx0, LW, wpcX);
+      if (!land) oc.fillRow(row, oc.depth, wy, wx0, rowN, wpcX * 2);
       // per-row phases: x is stepped inside the loop, y is folded in here
-      let q1 = (wx0 * 0.0182 + wy * 0.0182 + t * 0.74) * SK;
-      let q2 = (-wx0 * 0.0141 + wy * 0.0199 - t * 0.61) * SK;
-      let q3 = (wx0 * 0.0071 - wy * 0.0062 + t * 0.35) * SK;
-      let r1 = (wx0 * 0.0112 + (wy - shore) * 0.0047 + t * 0.085 + swell) * SK;
-      let r2 = (wx0 * 0.0271 + (wy - shore) * 0.0101 - t * 0.052) * SK;
+      let q1 = (wx0 * F.c1x + wy * F.c1y + t * 0.74) * SK;
+      let q2 = (wx0 * F.c2x + wy * F.c2y - t * 0.61) * SK;
+      let q3 = (wx0 * F.c3x + wy * F.c3y + t * 0.35) * SK;
+      let r1 = (wx0 * F.s1x + (wy - shore) * F.s1y + t * 0.085 + swell) * SK;
+      let r2 = (wx0 * F.s2x + (wy - shore) * F.s2y - t * 0.052) * SK;
       const bry = (cy & 3) * 4;
       const rowBase = cy * LW;
 
@@ -41343,7 +41998,7 @@ const Light = {
           // above the waterline the village stands in direct sun, not in water
           al = LANDA; lr = 255 * LANDA; lg = 241 * LANDA; lb = 198 * LANDA;
         } else {
-          let dp = row[cx]; if (dp < 0) dp = 0; else if (dp > 1) dp = 1;
+          let dp = row[cx >> 1]; if (dp < 0) dp = 0; else if (dp > 1) dp = 1;
           let b = (dp * 15.999) | 0; if (b > 15) b = 15;
 
           // --- the deep push, spared around the hero ---------------------
@@ -41359,16 +42014,18 @@ const Light = {
           if (ba > 0) { al = ba; lr = bncR[b] * ba; lg = bncG[b] * ba; lb = bncB[b] * ba; }
 
           // --- surface caustics, playing over EVERYTHING, not just sand ---
-          // Three warped sine fields posterized into four steps: the same
-          // construction water.js uses on the seabed, one scale coarser, so
-          // the two read as the same sun coming through the same swell.
+          // Three warped sine fields cut into two hard steps and nothing: the
+          // same construction water.js uses on the seabed, at about half its
+          // frequency, so the two read as the same sun through the same swell.
+          // Two sparse steps, not three -- a third step covered most of the
+          // frame and turned the dapple into an even wash.
           const ca = cstA[b];
           if (ca > 0) {
             const s3 = S[(q3 | 0) & M];
             const s1 = S[((q1 + s3 * 232) | 0) & M];
             const s2 = S[((q2 - s3 * 188) | 0) & M];
             const cv = s1 + s2 + s3 * 0.55;
-            const cl = cv > 1.92 ? 1 : cv > 1.44 ? 0.55 : cv > 0.92 ? 0.22 : 0;
+            const cl = cv > 1.92 ? 1 : cv > 1.50 ? 0.40 : 0;
             if (cl > 0) {
               const a = ca * cl;
               al += a; lr += sunR[b] * a; lg += sunG[b] * a; lb += sunB[b] * a;
@@ -41393,7 +42050,7 @@ const Light = {
           let pa = pA[i];
           if (pa > 0.002) {
             let sr = pR[i], sg = pG[i], sb = pB[i];
-            if (pa > 1) { const s = 1 / pa; sr *= s; sg *= s; sb *= s; pa = 1; }
+            if (pa > PMAX) { const s = PMAX / pa; sr *= s; sg *= s; sb *= s; pa = PMAX; }
             al += pa; lr += sr; lg += sg; lb += sb;
           }
         }
@@ -41421,18 +42078,21 @@ const Light = {
         const rc = RCP[k];
         // posterize the colour in fives, exactly as water.js posterizes its own
         let cr = ((lr + fr * wf) * rc) | 0, cg = ((lg + fg * wf) * rc) | 0, cb = ((lb + fb * wf) * rc) | 0;
-        d[p] = cr > 255 ? 255 : (cr / 5 | 0) * 5;
-        d[p + 1] = cg > 255 ? 255 : (cg / 5 | 0) * 5;
-        d[p + 2] = cb > 255 ? 255 : (cb / 5 | 0) * 5;
+        d[p] = cr > 255 ? 255 : Q5[cr];
+        d[p + 1] = cg > 255 ? 255 : Q5[cg];
+        d[p + 2] = cb > 255 ? 255 : Q5[cb];
         d[p + 3] = AB[k];
       }
     }
+
+    if (prof) { T1 = performance.now(); C.field = T1 - T0; T0 = T1; }
 
     // ---- one blit, and it is the only time the frame itself is touched ---
     this._bctx.putImageData(this._img, 0, 0);
     ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this._buf, 0, 0, LW, LH, 0, 0, OW, OH);
+    if (prof) { C.blit = performance.now() - T0; C.total = C.lights + C.field + C.blit; }
   },
 };
 if (typeof globalThis !== 'undefined') globalThis.Light = Light;
