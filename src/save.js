@@ -88,10 +88,14 @@
       bossBeaten: false,
       unlockedDests: 1,
       seenIntro: false,
+      // one-time cutscenes already played (intro.js Cine scene ids, e.g.
+      // 'village_arrival'); the travel run is never in here, it always plays
+      seenCines: [],
       muted: false,
       lifetime: { boatsSunk: 0, salvage: 0, deaths: 0, runs: 0, playtime: 0, bossKills: 0 },
     };
   }
+  const CINE_ID = /^[a-z0-9_]{1,32}$/;
 
   // Everything that comes off disk goes through here. Anything unrecognised
   // is dropped, anything out of range is clamped; the result is always a
@@ -126,6 +130,14 @@
     d.bossBeaten = bool(raw.bossBeaten);
     d.unlockedDests = int(raw.unlockedDests, 1, 1, destCount());
     d.seenIntro = bool(raw.seenIntro);
+    if (Array.isArray(raw.seenCines)) {
+      const seen = Object.create(null);
+      for (const id of raw.seenCines) {
+        if (typeof id !== 'string' || !CINE_ID.test(id) || seen[id]) continue;
+        seen[id] = 1; d.seenCines.push(id);
+        if (d.seenCines.length >= 32) break;
+      }
+    }
     d.muted = bool(raw.muted);
 
     if (isObj(raw.lifetime)) {
@@ -383,6 +395,26 @@
         d.lifetime.runs++;
         this.data = d;
         this.save(d);
+        return true;
+      } catch (e) { return false; }
+    },
+
+    // One-time cutscenes. Kept in this.data, so the answer holds for the
+    // session even when storage is off; written through at once when it is
+    // on, because the moment a scene is marked is exactly when a tab might
+    // be closed.
+    hasSeen(id) {
+      try { return !!(this.data && Array.isArray(this.data.seenCines) && this.data.seenCines.indexOf(id) >= 0); }
+      catch (e) { return false; }
+    },
+    markSeen(id) {
+      try {
+        if (typeof id !== 'string' || !CINE_ID.test(id)) return false;
+        const d = sanitize(this.data) || defaults();
+        if (d.seenCines.indexOf(id) < 0) d.seenCines.push(id);
+        this.data = d;
+        this.save(d);
+        this.flush();
         return true;
       } catch (e) { return false; }
     },

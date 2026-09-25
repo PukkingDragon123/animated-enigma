@@ -1954,8 +1954,11 @@ function bubble(ctx, x, y, text, dir, style, prog, pop) {
   let bx = R(x - bw / 2), by = R(dir > 0 ? y - bh - 8 : y + 8);
   bx = clamp(bx, 4, 636 - bw);
   const warm = style === 'otter';
-  const fill = warm ? '#fff0c8' : '#dff4ec', fill2 = warm ? '#e2c48c' : '#a8ccc4';
-  const ink = warm ? '#4a2c18' : '#1b3a3c';
+  // a third hand for the humans (Cine's village): bleached sailcloth and a
+  // dried-blood ink, so a fisher never reads as either of the two animals
+  const man = style === 'man';
+  const fill = man ? '#ece6da' : warm ? '#fff0c8' : '#dff4ec', fill2 = man ? '#bdb2a0' : warm ? '#e2c48c' : '#a8ccc4';
+  const ink = man ? '#3a1a16' : warm ? '#4a2c18' : '#1b3a3c';
   // a rounded box: the four corner pixels are simply left out of every band
   const band = (yy, h, col, inset) => P(ctx, col, bx + inset, yy, bw - inset * 2, h);
   P(ctx, ink, bx + 1, by - 1, bw - 2, 1);
@@ -1967,7 +1970,7 @@ function bubble(ctx, x, y, text, dir, style, prog, pop) {
   band(by + 1, bh - 2, fill, 0);
   band(by, 1, fill, 1); band(by + bh - 1, 1, fill, 1);
   band(by + bh - 3, 2, fill2, 1);
-  P(ctx, warm ? '#fffaea' : '#f2fffb', bx + 2, by + 1, bw - 4, 1);
+  P(ctx, man ? '#faf6ee' : warm ? '#fffaea' : '#f2fffb', bx + 2, by + 1, bw - 4, 1);
   // tail, only once the box is open
   if (k > 0.85) {
     const tx = clamp(R(x), bx + 6, bx + bw - 8);
@@ -2980,10 +2983,10 @@ function sayUpdate(b, bt, dt) {
   SAY.mouth += dt * (SAY.typing ? 11 : 0);
   if (SAY.last !== cur) {
     SAY.last = cur;
-    if (typeof Audio_ !== 'undefined') Audio_.tone(SAY.who === 'otter' ? 340 : 230, 0.05, 'square', 0.055);
+    if (typeof Audio_ !== 'undefined') Audio_.tone(SAY.who === 'otter' ? 340 : SAY.who === 'man' ? 160 : 230, 0.05, 'square', 0.055);
   }
   if (SAY.typing && Math.random() < 11 * dt && typeof Audio_ !== 'undefined') {
-    Audio_.tone((SAY.who === 'otter' ? 520 : 340) + rand(0, 70), 0.025, 'square', 0.035);
+    Audio_.tone((SAY.who === 'otter' ? 520 : SAY.who === 'man' ? 240 : 340) + rand(0, 70), 0.025, 'square', 0.035);
   }
   const a = b.anchor ? b.anchor(SAY.who) : [320, 110, 1];
   if (SAY.snap) { SAY.x = a[0]; SAY.y = a[1]; SAY.snap = false; }
@@ -4430,10 +4433,1771 @@ const Intro = {
   },
 };
 
+// ===========================================================================
+//  CINE -- THE SAME ENGINE, PLAYED AGAIN
+//  The intro's player above is wired to its own twelve beats and nothing
+//  else.  Cine is a second player over the very same machinery -- backdrop(),
+//  drawAir(), the cast composers, FX, the one speech track (SAY), the
+//  letterbox and the daylight dissolve between beats -- driven by NAMED beat
+//  lists instead, so every scene after the opening is shot in the opening's
+//  hand without a line of it being copied.
+//    Cine.play(ids, opts)   queue one or more scenes by name ('travel', 'village')
+//    Cine.update(dt)        dt 0 is allowed: game.js holds the clock under a wipe
+//    Cine.render(ctx)       640x360 logical units, like Intro.render
+//    Cine.done              true once the queue is spent (tests may set it)
+//    Cine.skip()            end the CURRENT scene and cut to the next one
+//    Cine.prewarm()         bake one slice of scene art; call on idle frames
+//  opts: { dest: {name, chapter, kind}, onScene(id, skipped) } -- onScene
+//  fires as each scene ends, played out or skipped, so the caller can bank a
+//  seen-flag for a scene only once it has actually gone by.
+//  Beats are the intro's shape exactly: {name, dur, talk, anchor, enter,
+//  update(dt, bt), render(ctx, bt)}; they read Cine.t / Cine.dt / Cine.scroll
+//  where the intro's beats read Intro's.
+// ===========================================================================
+const CINE = {};                                   // scene id -> [beat, ...]
+
+// ---- small shared pieces ----------------------------------------------------
+// A hex shade that stays a HEX string: shadeBlob() reads its ramp through
+// hexToRgb, so an rgb() string would come out black.
+function shadeHex(hex, f) {
+  const c = hexToRgb(hex);
+  const h2 = v => ('0' + Math.max(0, Math.min(255, R(v))).toString(16)).slice(-2);
+  return '#' + h2(c[0] * f) + h2(c[1] * f) + h2(c[2] * f);
+}
+function skinRamp(hex) { return [shadeHex(hex, 0.56), shadeHex(hex, 0.74), shadeHex(hex, 0.88), hex, shadeHex(hex, 1.10)]; }
+// one pixel column laid down in runs of one colour, so a baked wall costs a
+// handful of fills per column instead of one per pixel
+function colRuns(ctx, px, y0, y1, fn) {
+  let run = null, ry = y0;
+  for (let y = y0; y <= y1; y++) {
+    const c = y < y1 ? fn(y) : null;
+    if (c !== run) { if (run) P(ctx, run, px, ry, 1, y - ry); run = c; ry = y; }
+  }
+}
+// a hard disc, one fill per row -- the puffs, the bell mouth, the smoke
+function disc(ctx, x, y, r, col) {
+  r = Math.max(1, R(r)); x = R(x); y = R(y);
+  ctx.fillStyle = col;
+  for (let dy = -r; dy <= r; dy++) {
+    const w = R(Math.sqrt(Math.max(0, r * r - dy * dy)));
+    if (w > 0) ctx.fillRect(x - w, y + dy, w * 2, 1);
+  }
+}
+// a thick limb: ink first, one pixel fatter all round, then the colour
+function limb(ctx, col, x0, y0, x1, y1, w) {
+  cap_(ctx, IP.ink, x0, y0, x1, y1, w + 2);
+  cap_(ctx, col, x0, y0, x1, y1, w);
+}
+// Where her back actually is, read off her raster at a body-local x.  The
+// intro stands him at a fixed 27 up; this asks the sprite instead, so when
+// the cast's side-on manatee changes shape he still lands ON her.
+const _BACK = new Map();
+function backTop(M, lx) {
+  const key = M.L + ':' + lx;
+  if (_BACK.has(key)) return _BACK.get(key);
+  const s = M.bodyScar || M.body, W = s.c.width, H = s.c.height;
+  const x = cx2(can(W, H));
+  x.drawImage(s.c, 0, 0, W, H, 0, 0, W, H);
+  const col = clamp(R(s.ax + lx), 0, W - 1);
+  const d = x.getImageData(col, 0, 1, H).data;
+  let top = -R(H * 0.4);
+  for (let y = 0; y < H; y++) if (d[y * 4 + 3] > 128) { top = y - s.ay; break; }
+  _BACK.set(key, top);
+  return top;
+}
+// the otter's stand anchor sits 20 of his units above his soles
+function riderY(m) { return backTop(m.set, 4) + 3 - 20; }
+// Stand him on her back wherever she is and however she is turned: her
+// body-local deck point, pushed through her transform.
+function rideOn(ot, m, dt, rate) {
+  const p = bodyPoint(m, 4, riderY(m));
+  if (rate === undefined) { ot.x = p[0]; ot.y = p[1]; ot.rot = m.rot || 0; return; }
+  ot.x = smooth(ot.x, p[0], rate, dt); ot.y = smooth(ot.y, p[1], rate, dt);
+  ot.rot = smooth(ot.rot, m.rot || 0, rate * 0.7, dt);
+}
+// a speech anchor that can never push a one-row bubble into the bars
+function anc(x, y) { return [clamp(R(x), 70, 570), Math.max(58, R(y)), 1]; }
+// Hers, when he is stood on her back: the bubble hangs UNDER her, tail up to
+// her mouth, so it never sits on top of him.
+function ancUnder(m, cam) { return [clamp(R(m.x + 44), 70, 570), Math.min(300, R(m.y + 20 + (cam || 0))), -1]; }
+
+// ---- the title card for a destination ---------------------------------------
+// The intro's own card, reworded: the chapter numeral small and gold, the
+// name dropped in on the same bounce and left bobbing.  No fade out -- the
+// beat's dissolve (or the bubble wipe after it) carries it away.
+function chapterCard(ctx, k, t, chap, name) {
+  if (k <= 0) return;
+  const drop = outBounce(clamp(k * 2.6, 0, 1));
+  const bob = R(Math.sin(t * 1.6) * 1.5);
+  const y = R(lerp(-40, 42, drop)) + bob;
+  const a = clamp(k * 6, 0, 1);
+  ctx.save(); ctx.globalAlpha = qa(a);
+  const top = 'CHAPTER ' + (chap || '');
+  const tw = R(textWidth(top, 9));
+  P(ctx, '#14141c', 320 - tw / 2 - 34, y + 3, 26, 3); P(ctx, '#ffe48f', 320 - tw / 2 - 33, y + 4, 24, 1);
+  P(ctx, '#14141c', 320 + tw / 2 + 8, y + 3, 26, 3); P(ctx, '#ffe48f', 320 + tw / 2 + 9, y + 4, 24, 1);
+  pixelTextOutlined(ctx, top, 320, y, 9, '#ffe48f', '#14141c', 'center');
+  if (k > 0.10) {
+    const b = outBack(clamp((k - 0.10) * 3.2, 0, 1));
+    pixelTextOutlined(ctx, name || '', R(lerp(840, 320, b)), y + 15, 24, '#fffaf0', '#173044', 'center');
+  }
+  ctx.restore();
+}
+
+// =========================================================== TRAVEL ART =====
+//  Almost everything the run needs is already baked for the intro -- the
+//  bright water, the reef, the kelp, the shafts, the fish, the trawler.  The
+//  one new layer is a front rank of kelp in shadow that tears past faster
+//  than anything else in frame, which is most of what reads as SPEED.
+const TRV = { ready: false };
+function buildKelpFront(seed) {
+  const H = 250, c = can(LW, H), x = cx2(c), rng = new SeededRandom(seed);
+  const xs = [96, 402, 640];
+  for (let i = 0; i < xs.length; i++) {
+    kelpStalk(xs[i] + R(rng.range(-24, 24)), rng, H - 1, R(rng.range(150, 236)), IP.kelp, R(rng.range(6, 8)), rng.range(-0.3, 0.3))(x);
+  }
+  return tintLayer(c, '#06282c', 0.55);
+}
+function travelArt() {
+  if (TRV.ready) return TRV;
+  TRV.kelpFront = buildKelpFront(5151);
+  TRV.ready = true;
+  return TRV;
+}
+
+// ========================================================== VILLAGE ART =====
+//  Fisher Village, side on.  The play field's village (src/village.js) is
+//  top-down; this is the same port from the water and from its own boards:
+//  its tarred plank walls, its colour schemes a band lighter because the sun
+//  is on them here, its fishers in their bandanas, tricorns and oilskins.
+//  Two sets: the STREET (on the pier, level with the doors) and the
+//  WATERLINE (from under the pier, looking up at it).  Everything static is
+//  baked once, in slices, before the scene can start; the doors, shutters,
+//  bell and people are drawn live on top.
+const VIL = { ready: false, step: 0 };
+const VHOUSE = {
+  oxblood:  { wall: ['#4a2224', '#5e2c2c', '#733934'], dk: '#2c1418', roof: ['#2a1a1a', '#3a2622', '#4b332b'], trim: '#9a7a56', shut: '#4f6a5a' },
+  pitch:    { wall: ['#2e2a32', '#3c3744', '#4e4857'], dk: '#1b181f', roof: ['#141016', '#201b22', '#2c262e'], trim: '#86765c', shut: '#6a3a2e' },
+  bleached: { wall: ['#5e574a', '#70685b', '#837a6b'], dk: '#39342c', roof: ['#2e2a26', '#3b3630', '#48423a'], trim: '#aa9c7e', shut: '#3e566e' },
+  indigo:   { wall: ['#282c3e', '#343a4e', '#434a60'], dk: '#181a28', roof: ['#1c1e28', '#282a36', '#353845'], trim: '#80849c', shut: '#6a5a2e' },
+  rot:      { wall: ['#2f3b31', '#3d4b3f', '#4d5d4d'], dk: '#1c261e', roof: ['#232924', '#2f362f', '#3c443b'], trim: '#8a8c6e', shut: '#6a3a2e' },
+};
+const DECK = ['#3c2618', '#573820', '#734c2c', '#8e6639', '#a9854f'];
+const WOOD = { d: '#3a2416', m: '#5c3a1c', l: '#8a5a2c', h: '#b57d3f' };
+
+function vShutter(ctx, sx, sy, sw, sh, col) {
+  sw = R(sw); if (sw < 1) return;
+  const dk = shadeHex(col, 0.66), lt = shadeHex(col, 1.22);
+  P(ctx, IP.ink, sx - 1, sy - 1, sw + 2, sh + 2);
+  P(ctx, col, sx, sy, sw, sh);
+  if (sw > 3) { P(ctx, lt, sx, sy, 1, sh); for (let i = 4; i < sw; i += 4) P(ctx, dk, sx + i, sy, 1, sh); }
+  if (sw > 4) { P(ctx, dk, sx, sy + 3, sw, 2); P(ctx, dk, sx, sy + sh - 5, sw, 2); LN(ctx, dk, sx + 1, sy + sh - 5, sx + sw - 2, sy + 5); }
+}
+function vWindow(ctx, pal, wx, wy, ww, wh, shut) {
+  P(ctx, IP.ink, wx - 2, wy - 2, ww + 4, wh + 4);
+  P(ctx, pal.trim, wx - 1, wy - 1, ww + 2, wh + 2);
+  P(ctx, '#140e12', wx, wy, ww, wh);
+  P(ctx, '#211a1e', wx, wy + wh - 4, ww, 4);
+  if (shut !== 'live') {
+    P(ctx, pal.trim, wx + (ww >> 1), wy, 1, wh); P(ctx, pal.trim, wx, wy + (wh >> 1), ww, 1);
+    P(ctx, '#6f8390', wx + 1, wy + 1, 2, 1); P(ctx, '#6f8390', wx + (ww >> 1) + 2, wy + (wh >> 1) + 2, 2, 1);
+  }
+  P(ctx, IP.ink, wx - 4, wy + wh + 1, ww + 8, 4); P(ctx, pal.trim, wx - 3, wy + wh + 1, ww + 6, 2);
+  const sw = R(ww / 2);
+  if (shut === 'open') { vShutter(ctx, wx - 3 - sw, wy, sw, wh, pal.shut); vShutter(ctx, wx + ww + 3, wy, sw, wh, pal.shut); }
+  else if (shut === 'closed') { vShutter(ctx, wx, wy, sw, wh, pal.shut); vShutter(ctx, wx + sw, wy, ww - sw, wh, pal.shut); }
+}
+function vDoorPanel(ctx, dx, dy, dw, dh, col) {
+  dw = R(dw); if (dw < 1) return;
+  const dk = shadeHex(col, 0.62), lt = shadeHex(col, 1.2);
+  P(ctx, IP.ink, dx, dy, dw, dh);
+  if (dw < 3) return;
+  P(ctx, col, dx + 1, dy + 1, dw - 2, dh - 1);
+  P(ctx, lt, dx + 1, dy + 1, 1, dh - 1);
+  for (let i = 5; i < dw - 1; i += 5) P(ctx, dk, dx + i, dy + 1, 1, dh - 1);
+  if (dw > 6) {
+    P(ctx, dk, dx + 1, dy + 7, dw - 2, 2); P(ctx, dk, dx + 1, dy + dh - 10, dw - 2, 2);
+    P(ctx, '#1e2228', dx + 1, dy + 7, Math.min(8, dw - 2), 2); P(ctx, '#1e2228', dx + 1, dy + dh - 10, Math.min(8, dw - 2), 2);
+    P(ctx, '#616a76', dx + 2, dy + 7, 2, 1); P(ctx, '#616a76', dx + 2, dy + dh - 10, 2, 1);
+    P(ctx, IP.ink, dx + dw - 6, dy + (dh >> 1) - 1, 4, 4); P(ctx, '#c8a63a', dx + dw - 5, dy + (dh >> 1), 2, 2);
+  }
+}
+function vDoor(ctx, pal, dx, dy, dw, dh, state, col) {
+  P(ctx, IP.ink, dx - 3, dy - 3, dw + 6, dh + 3);
+  P(ctx, pal.trim, dx - 2, dy - 2, dw + 4, dh + 2);
+  P(ctx, shadeHex(pal.trim, 0.7), dx - 2, dy - 2, dw + 4, 1);
+  P(ctx, '#0e0a0c', dx, dy, dw, dh);
+  if (state === 'live') { P(ctx, '#1a1316', dx, dy, dw, 6); P(ctx, '#2a2024', dx + 2, dy + dh - 3, dw - 4, 3); return; }
+  vDoorPanel(ctx, dx, dy, dw, dh, col || '#5a3a24');
+}
+// A house on the boards: board-and-batten walls, a gable or a pent roof,
+// its windows and doors, and whatever the fishers hang off the front of it.
+function vHouse(ctx, h) {
+  const pal = h.pal, top = h.base - h.wallH, x0 = h.x, x1 = h.x + h.w, sd = h.x * 7 + 3;
+  for (let px = x0; px < x1; px++) {
+    const c = (px - x0) % 7;
+    colRuns(ctx, px, top, h.base, y => {
+      if (y < top + 3) return pal.dk;
+      if (c === 0) return pal.dk;
+      if (y > h.base - 7) return c === 1 ? pal.wall[1] : pal.wall[0];
+      if (c === 1) return pal.wall[2];
+      return vnoise(px * 0.23 + sd, y * 0.045) > 0.66 ? pal.wall[0] : pal.wall[1];
+    });
+  }
+  P(ctx, IP.ink, x0 - 1, top, 1, h.wallH); P(ctx, IP.ink, x1, top, 1, h.wallH);
+  // salt streaks and a tide of green where the spray reaches
+  for (let i = 0; i < h.w / 9; i++) {
+    const sx = x0 + R(hash2(i, sd) * h.w), sy = top + 6 + R(hash2(sd, i) * (h.wallH - 20));
+    P(ctx, rgbaq('#d8d8c8', 0.16), sx, sy, 1, R(6 + hash2(i * 3, sd) * 16));
+  }
+  if (h.roof === 'gable') {
+    const ov = 5, peak = top - h.roofH, cm = (x0 + x1) / 2, half = h.w / 2 + ov;
+    for (let y = peak; y < top; y++) {
+      const k = (y - peak + 1) / h.roofH, hw = Math.max(1, R(half * k));
+      const band = (y - peak) >> 2;
+      const col = ((y - peak) & 3) === 3 ? pal.roof[0] : (band & 1) ? pal.roof[1] : pal.roof[2];
+      P(ctx, col, R(cm - hw), y, hw * 2, 1);
+      for (let sx = R(cm - hw) + ((band & 1) ? 3 : 0); sx < cm + hw; sx += 6) P(ctx, pal.roof[0], sx, y, 1, 1);
+      P(ctx, IP.ink, R(cm - hw) - 1, y, 2, 1); P(ctx, IP.ink, R(cm + hw) - 1, y, 2, 1);
+    }
+    LN(ctx, pal.trim, R(cm), peak + 2, R(cm - half) + 3, top - 1);
+    LN(ctx, pal.trim, R(cm), peak + 2, R(cm + half) - 3, top - 1);
+    P(ctx, IP.ink, R(cm - half) - 1, top, R(half * 2) + 2, 2);
+    P(ctx, IP.ink, R(cm) - 1, peak - 2, 3, 3);
+    // a gable vent, and the fish-head finial they nail over it
+    P(ctx, IP.ink, R(cm) - 4, peak + R(h.roofH * 0.45), 8, 6); P(ctx, '#0e0a0c', R(cm) - 3, peak + R(h.roofH * 0.45) + 1, 6, 4);
+  } else {
+    const ov = 5, ry = top - h.roofH;
+    for (let y = ry; y < top; y++) {
+      const band = (y - ry) >> 2, sl = R((top - y) * 0.55);
+      const col = ((y - ry) & 3) === 3 ? pal.roof[0] : (band & 1) ? pal.roof[1] : pal.roof[2];
+      const l = x0 - ov + sl, w = Math.max(2, h.w + ov * 2 - sl * 2);
+      P(ctx, col, l, y, w, 1);
+      for (let sx = l + ((band & 1) ? 3 : 0); sx < l + w; sx += 6) P(ctx, pal.roof[0], sx, y, 1, 1);
+      P(ctx, IP.ink, l - 1, y, 1, 1); P(ctx, IP.ink, l + w, y, 1, 1);
+    }
+    P(ctx, IP.ink, x0 - ov - 1, top, h.w + ov * 2 + 2, 2);
+    P(ctx, IP.ink, x0 - ov + R(h.roofH * 0.55), ry - 1, h.w + ov * 2 - R(h.roofH * 1.1), 1);
+  }
+  if (h.wins) for (const w of h.wins) vWindow(ctx, pal, w[0], w[1], w[2], w[3], w[4]);
+  if (h.door) vDoor(ctx, pal, h.door[0], h.door[1], h.door[2], h.door[3], h.door[4], h.door[5]);
+}
+// a hung net: a diamond lattice of hard 1px lines, sagging between two pegs
+function vNet(ctx, x0, y0, w, h, col, dk) {
+  for (let i = -h; i < w; i += 5) {
+    LN(ctx, col, x0 + i, y0, x0 + i + h, y0 + h);
+    LN(ctx, dk, x0 + i + h, y0, x0 + i, y0 + h);
+  }
+}
+// the lamp-and-fish clutter the whole port hangs off its walls
+function vFishLine(ctx, x0, x1, y) {
+  LN(ctx, '#8a6b3e', x0, y, x1, y + 2);
+  const cb = buildCatchSprites();
+  for (let x = x0 + 5, i = 0; x < x1 - 4; x += 9, i++) {
+    const sp = cb.byName[i % 3 === 0 ? 'fishOlive' : 'fishSilverSm'];
+    if (!sp) continue;
+    ctx.save(); ctx.translate(x, y + 1 + R((x - x0) / (x1 - x0) * 2)); ctx.rotate(1.57);
+    ctx.drawImage(sp.c, -2, -sp.ay); ctx.restore();
+  }
+}
+function vLantern(ctx, x, y) {
+  P(ctx, IP.ink, x - 1, y - 6, 8, 2); P(ctx, '#3a414a', x, y - 5, 6, 1);
+  P(ctx, IP.ink, x - 1, y - 4, 8, 10); P(ctx, '#ffd48a', x, y - 3, 6, 7); P(ctx, '#ff9c46', x + 1, y, 4, 3);
+  P(ctx, '#3a414a', x + 2, y - 3, 1, 7);
+}
+function vBarrel(ctx, x, y, w, h) {
+  P(ctx, IP.ink, x - 1, y - 1, w + 2, h + 2);
+  P(ctx, WOOD.m, x, y, w, h); P(ctx, WOOD.l, x + 2, y, 3, h); P(ctx, WOOD.d, x + w - 3, y, 3, h);
+  for (const ry of [3, h - 5]) { P(ctx, '#3a414a', x, y + ry, w, 2); P(ctx, '#8b94a0', x, y + ry, w, 1); }
+}
+function vCrate(ctx, x, y, w, h) {
+  P(ctx, IP.ink, x - 1, y - 1, w + 2, h + 2);
+  P(ctx, WOOD.l, x, y, w, h); P(ctx, WOOD.h, x, y, w, 2);
+  for (let i = 4; i < h; i += 4) P(ctx, WOOD.m, x, y + i, w, 1);
+  LN(ctx, WOOD.m, x + 1, y + h - 2, x + w - 2, y + 2);
+  P(ctx, WOOD.d, x, y + h - 2, w, 2);
+}
+function vRidges(ctx, x0, x1, base, far, near, seed, lift, taper) {
+  // lift raises the crests off a lower base; taper runs the headland down to
+  // the sea over that many pixels at its left end instead of cutting it off
+  lift = lift || 0; taper = taper || 0;
+  // two ridges of the headland behind the port: a far one gone blue with
+  // haze, a near green one with pines on it.  Hard bands, a dithered crest.
+  for (let px = x0; px < x1; px++) {
+    const tk = taper ? ss(clamp((px - x0) / taper, 0, 1)) : 1;
+    const fh = base - R(tk * (92 + lift + Math.sin(px * 0.011 + seed) * 16 + Math.sin(px * 0.031) * 7 + vnoise(px * 0.02, seed) * 14));
+    const nh = base - R(tk * (54 + lift + Math.sin(px * 0.017 + seed * 2) * 12 + vnoise(px * 0.035, seed + 3) * 18));
+    if (base - fh < 2) continue;
+    P(ctx, far[0], px, fh, 1, base - fh);
+    if ((px + fh) & 1) P(ctx, far[1], px, fh, 1, 1);
+    P(ctx, far[1], px, fh + 2, 1, 2);
+    if (base - nh < 2) continue;
+    P(ctx, near[1], px, nh, 1, base - nh);
+    if (base - nh > 14) P(ctx, near[0], px, nh + 14, 1, base - nh - 14);
+    P(ctx, near[2], px, nh, 1, 2);
+    if (tk > 0.6 && hash2(px, seed) > 0.93) {
+      const ph = R(8 + hash2(seed, px) * 10);
+      tri(ctx, near[3], px - 4, nh + 2, px + 4, nh + 2, px, nh - ph);
+      tri(ctx, near[3], px - 3, nh - R(ph * 0.4), px + 3, nh - R(ph * 0.4), px, nh - ph - 3);
+    }
+  }
+}
+const RIDGE_FAR = ['#7ea7b4', '#9cc3cc'], RIDGE_NEAR = ['#35604a', '#4a7c5a', '#6a9e6a', '#25452f'];
+
+// ---- the street, from the boards --------------------------------------------
+//  The otter walks in from the left along the pier: the net-mender on his
+//  crate, the woman at the upstairs window, the man in his doorway, the
+//  gutter at his table, the lad on a barrel by the bell.
+const VS = {
+  deck: 288,
+  win: [304, 182, 40, 30],          // her window (x, y, w, h)
+  door: [436, 222, 28, 66],         // his doorway
+  table: [482, 262, 46],            // x, top, width
+  bell: [604, 208],                 // the bell's pivot
+};
+function buildStreet() {
+  const c = can(640, 360), x = cx2(c);
+  vRidges(x, 0, 640, VS.deck - 2, RIDGE_FAR, RIDGE_NEAR, 1.7, 26);
+  vHouse(x, { x: 104, w: 150, base: VS.deck, wallH: 100, roof: 'gable', roofH: 54, pal: VHOUSE.oxblood,
+    wins: [[124, 206, 20, 16, 'open']], door: [212, 236, 24, 52, 'closed', '#4e3322'] });
+  vHouse(x, { x: 266, w: 118, base: VS.deck, wallH: 128, roof: 'pent', roofH: 26, pal: VHOUSE.pitch,
+    wins: [[VS.win[0], VS.win[1], VS.win[2], VS.win[3], 'live']], door: [338, 240, 22, 48, 'closed', '#3a2a22'] });
+  vHouse(x, { x: 394, w: 140, base: VS.deck, wallH: 112, roof: 'gable', roofH: 58, pal: VHOUSE.bleached,
+    wins: [[490, 192, 20, 18, 'closed']], door: [VS.door[0], VS.door[1], VS.door[2], VS.door[3], 'live'] });
+  vHouse(x, { x: 546, w: 110, base: VS.deck, wallH: 118, roof: 'gable', roofH: 50, pal: VHOUSE.indigo,
+    wins: [[566, 196, 18, 16, 'open']] });
+  // a shark's jaw nailed over his door: nothing in this port is welcoming
+  const jx = VS.door[0] + VS.door[2] / 2, jy = VS.door[1] - 12;
+  for (let i = -10; i <= 10; i++) {
+    const yy = jy + R((i * i) / 18);
+    P(x, IP.ink, jx + i - 1, yy - 1, 3, 4); P(x, IP.bone, jx + i, yy, 1, 2);
+    if ((i & 1) === 0) { P(x, IP.boneL, jx + i, yy + 2, 1, 2); P(x, IP.ink, jx + i, yy + 4, 1, 1); }
+  }
+  // a painted sign for the fish, with the fish crossed out in red
+  P(x, IP.ink, 282, 226, 42, 16); P(x, '#c9b48e', 283, 227, 40, 14); P(x, '#8d3020', 283, 227, 40, 2);
+  pixelText(x, 'FISH', 303, 231, 6, '#3a2416', 'center', false);
+  // net racks in front of the first house, with the net hung wet
+  for (const px of [170, 244]) { P(x, IP.ink, px - 1, 226, 5, VS.deck - 226); P(x, WOOD.m, px, 227, 3, VS.deck - 227); P(x, WOOD.l, px, 227, 1, VS.deck - 227); }
+  P(x, IP.ink, 168, 224, 80, 4); P(x, WOOD.l, 169, 225, 78, 2);
+  x.save(); x.beginPath(); x.rect(174, 228, 70, 48); x.clip();
+  vNet(x, 174, 228, 70, 44, '#878872', '#3a3c30');
+  x.restore();
+  for (let i = 0; i < 6; i++) { P(x, IP.ink, 178 + i * 11, 270, 6, 6); P(x, '#b0512c', 179 + i * 11, 271, 4, 4); P(x, '#c9b48e', 179 + i * 11, 271, 4, 1); }
+  // fish on a line under the window, and the lamps
+  vFishLine(x, 272, 298, 200);
+  vLantern(x, 258, 232); vLantern(x, 386, 222); vLantern(x, 538, 226);
+  // barrels and a crate against the walls, not in anybody's way
+  vBarrel(x, 356, 268, 14, 20); vBarrel(x, 372, 272, 12, 16);
+  vCrate(x, 530, 272, 14, 16);
+  // the bell post: two posts, a yoke, a rope cleat
+  const bx = VS.bell[0];
+  P(x, IP.ink, bx - 14, 190, 5, VS.deck - 190); P(x, WOOD.m, bx - 13, 191, 3, VS.deck - 191); P(x, WOOD.l, bx - 13, 191, 1, VS.deck - 191);
+  P(x, IP.ink, bx + 11, 190, 5, VS.deck - 190); P(x, WOOD.m, bx + 12, 191, 3, VS.deck - 191); P(x, WOOD.l, bx + 12, 191, 1, VS.deck - 191);
+  P(x, IP.ink, bx - 18, 196, 38, 7); P(x, WOOD.l, bx - 17, 197, 36, 4); P(x, WOOD.h, bx - 17, 197, 36, 1);
+  P(x, IP.ink, bx - 20, 188, 42, 3); P(x, WOOD.d, bx - 19, 189, 40, 1);
+  P(x, IP.ink, bx + 16, 250, 4, 6); P(x, '#616a76', bx + 17, 251, 2, 4);
+  // ---- the boards: a strip of deck top, the fascia, and the dark under it
+  for (let px = 0; px < 640; px++) {
+    const seam = (px % 13) === 0;
+    colRuns(x, px, VS.deck - 4, 360, y => {
+      if (y < VS.deck + 6) return seam ? DECK[1] : y === VS.deck - 4 ? DECK[4] : (y < VS.deck ? DECK[3] : (hash2(px >> 3, 7) > 0.5 ? DECK[2] : DECK[3]));
+      if (y === VS.deck + 6) return IP.ink;
+      if (y < VS.deck + 14) return (px % 29 === 3 && y === VS.deck + 9) ? '#8b94a0' : DECK[1];
+      if (y === VS.deck + 14) return IP.ink;
+      return '#0c1418';
+    });
+  }
+  // pilings under the boards, and the water between them
+  for (let px = 12; px < 640; px += 58) {
+    P(x, IP.ink, px - 1, VS.deck + 15, 12, 48); P(x, W_POST[1], px, VS.deck + 15, 10, 48); P(x, W_POST[2], px, VS.deck + 15, 2, 48);
+    P(x, '#324a2a', px, VS.deck + 36, 10, 5);
+  }
+  for (let i = 0; i < 70; i++) {
+    const gx = R(hash2(i, 41) * 640), gy = VS.deck + 30 + R(hash2(41, i) * 18);
+    P(x, rgbaq('#6fb6d0', 0.42), gx, gy, R(3 + hash2(i, 9) * 8), 1);
+  }
+  return c;
+}
+const W_POST = ['#26170f', '#3a2416', '#5a3a22'];
+
+// ---- the waterline, from under the pier -------------------------------------
+const VW = { surf: 200, deck: 150, bed: 330 };
+function buildShoreW() {
+  const c = can(640, VW.surf + 4), x = cx2(c);
+  vRidges(x, 150, 640, VW.surf - 4, RIDGE_FAR, RIDGE_NEAR, 4.1, 0, 170);
+  // houses standing on the pier, on the right
+  vHouse(x, { x: 348, w: 104, base: VW.deck, wallH: 58, roof: 'gable', roofH: 38, pal: VHOUSE.oxblood,
+    wins: [[364, 108, 18, 14, 'open']], door: [414, 112, 20, 38, 'closed', '#4e3322'] });
+  vHouse(x, { x: 466, w: 112, base: VW.deck, wallH: 66, roof: 'pent', roofH: 20, pal: VHOUSE.pitch,
+    wins: [[484, 100, 18, 14, 'closed'], [528, 100, 18, 14, 'open']] });
+  vHouse(x, { x: 592, w: 70, base: VW.deck, wallH: 60, roof: 'gable', roofH: 34, pal: VHOUSE.bleached });
+  vFishLine(x, 470, 520, 124);
+  vLantern(x, 454, 110);
+  // the bell post at the end of the boards
+  const bx = 572;
+  P(x, IP.ink, bx - 12, 86, 4, VW.deck - 86); P(x, WOOD.m, bx - 11, 87, 2, VW.deck - 87);
+  P(x, IP.ink, bx + 9, 86, 4, VW.deck - 86); P(x, WOOD.m, bx + 10, 87, 2, VW.deck - 87);
+  P(x, IP.ink, bx - 15, 88, 32, 5); P(x, WOOD.l, bx - 14, 89, 30, 3);
+  // the boards themselves, from x 244 out
+  for (let px = 244; px < 640; px++) {
+    const seam = (px % 13) === 0;
+    colRuns(x, px, VW.deck - 3, VW.deck + 9, y => {
+      if (y === VW.deck - 3) return DECK[4];
+      if (y < VW.deck) return seam ? DECK[1] : DECK[3];
+      if (y === VW.deck) return IP.ink;
+      if (y < VW.deck + 8) return (px % 29 === 3 && y === VW.deck + 3) ? '#8b94a0' : DECK[1];
+      return IP.ink;
+    });
+  }
+  P(x, IP.ink, 243, VW.deck - 3, 1, 12);
+  // a rail and a rope along the open end of the pier
+  for (const px of [252, 290, 328]) { P(x, IP.ink, px - 1, VW.deck - 18, 4, 16); P(x, WOOD.m, px, VW.deck - 17, 2, 14); }
+  for (let px = 252; px < 330; px++) { const sag = R(Math.sin(((px - 252) % 38) / 38 * Math.PI) * 3); P(x, '#8a6b3e', px, VW.deck - 15 + sag, 1, 1); }
+  // pilings, above the water: dark, wet, green at the tide line
+  for (let px = 250; px < 640; px += 56) {
+    P(x, IP.ink, px - 1, VW.deck + 9, 12, VW.surf - VW.deck - 5); P(x, W_POST[1], px, VW.deck + 9, 10, VW.surf - VW.deck - 5);
+    P(x, W_POST[2], px, VW.deck + 9, 2, VW.surf - VW.deck - 5);
+    P(x, '#324a2a', px, VW.surf - 14, 10, 10); P(x, '#4a6634', px, VW.surf - 14, 10, 2);
+  }
+  // a ladder down off the open end
+  for (const lx of [262, 274]) { P(x, IP.ink, lx - 1, VW.deck + 8, 4, VW.surf - VW.deck - 4); P(x, WOOD.l, lx, VW.deck + 8, 2, VW.surf - VW.deck - 4); }
+  for (let ly = VW.deck + 14; ly < VW.surf; ly += 8) { P(x, IP.ink, 262, ly - 1, 14, 3); P(x, WOOD.h, 263, ly, 12, 1); }
+  return c;
+}
+function buildUnderW() {
+  const H = 360 - VW.surf, c = can(640, H), x = cx2(c), rng = new SeededRandom(7171);
+  for (let px = 250; px < 640; px += 56) {
+    P(x, IP.ink, px - 1, 0, 12, VW.bed - VW.surf + 8); P(x, W_POST[1], px, 0, 10, VW.bed - VW.surf + 8);
+    P(x, W_POST[2], px, 0, 2, VW.bed - VW.surf + 8);
+    for (let i = 0; i < 9; i++) {
+      const by = R(rng.range(4, VW.bed - VW.surf));
+      P(x, IP.ink, px + R(rng.range(-1, 8)), by, 3, 3); P(x, '#9b9a8c', px + R(rng.range(0, 8)), by + 1, 2, 1);
+    }
+    // weed streamers
+    for (let s = 0; s < 3; s++) {
+      const sx = px + R(rng.range(0, 10)), len = R(rng.range(14, 40)), sy = R(rng.range(10, 80));
+      for (let i = 0; i < len; i++) P(x, i & 1 ? '#324a2a' : '#4a6634', sx + R(Math.sin(i * 0.4 + s) * 2), sy + i, 1, 1);
+    }
+  }
+  // an old net snagged between two piles, and a chain gone to rust
+  x.save(); x.beginPath(); x.rect(362, 18, 64, 72); x.clip();
+  vNet(x, 362, 18, 64, 70, '#5a5c48', '#2a2c24');
+  x.restore();
+  for (let y = 0; y < 90; y += 4) { P(x, IP.ink, 520, y, 4, 4); P(x, '#84431f', 521, y + 1, 2, 2); }
+  // the bottom's own junk: bottles, a boot, a crab pot
+  for (let i = 0; i < 7; i++) {
+    const bx = R(rng.range(240, 620)), by = VW.bed - VW.surf - R(rng.range(-2, 6));
+    P(x, IP.ink, bx - 1, by - 6, 5, 8); P(x, i & 1 ? '#3f7f52' : '#6a4a22', bx, by - 5, 3, 6); P(x, '#cfe8d8', bx, by - 5, 1, 2);
+  }
+  // push it all into the water it is standing in: a banded tint, deeper = bluer
+  for (let y = 0; y < H; y += 4) {
+    const k = clamp(y / (VW.bed - VW.surf), 0, 1);
+    x.save(); x.globalCompositeOperation = 'source-atop';
+    x.fillStyle = rgbaq('#2b6a8e', 0.22 + k * 0.30); x.fillRect(0, y, 640, 4);
+    x.restore();
+  }
+  return c;
+}
+
+// ---- the people -------------------------------------------------------------
+//  Built the way the intro builds its buyer: a shaded body, a head with a
+//  face, one arm sprite that swings from the shoulder, and legs laid down
+//  live so they can walk, sit and turn their backs.  All right-facing; a
+//  flip turns them round.
+const FOLK_SPEC = {
+  // the net-mender: old, grey-bearded, a watch cap and a drab oilskin smock
+  mender: { skin: '#c89a72', coat: ['#2a2a1a', '#3f3f26', '#575734', '#707044', '#8a8a58'], pants: '#332f2a', boot: '#1d1a1c',
+            hat: 'cap', hatCol: '#7c1414', beard: '#b8b4a8', leg: 24, tor: 22, bulk: 1.0 },
+  // at the upstairs window: headscarf, a green shawl
+  wife:   { skin: '#d3aa84', coat: ['#1d2a24', '#2a3c33', '#3a5145', '#4d6858', '#63806e'], pants: '#3a3540', boot: '#1d1a1c',
+            hat: 'scarf', hatCol: '#8a2a26', leg: 23, tor: 21, bulk: 0.92 },
+  // in the doorway: big, a tricorn, an oxblood waistcoat, three days of stubble
+  door:   { skin: '#a5714a', coat: ['#3a1214', '#5a1c1e', '#7a2a28', '#9a3a32', '#b8563f'], pants: '#2a303c', boot: '#191519',
+            hat: 'tricorn', hatCol: '#241f28', stubble: true, leg: 26, tor: 24, bulk: 1.15, belly: 1.0 },
+  // the gutter: bald under a bandana, sleeves rolled, a leather apron with the day's work on it
+  gutter: { skin: '#8b5d39', coat: ['#1e1c18', '#34302a', '#494334', '#5e5746', '#766e5a'], pants: '#262d2b', boot: '#191519',
+            apron: ['#3a2414', '#5a3a20', '#7a5230', '#946a40'], hat: 'bandana', hatCol: '#2a2a32', rolled: true,
+            leg: 25, tor: 24, bulk: 1.25, belly: 1.6 },
+  // the lad who rings the bell
+  lad:    { skin: '#d3aa84', coat: ['#3a2c18', '#54401f', '#6a5636', '#826c48', '#9c865c'], pants: '#2e2b28', boot: '#1d1a1c',
+            hat: 'flat', hatCol: '#432f20', leg: 18, tor: 16, bulk: 0.8 },
+};
+function buildFolkHead(F, mode) {
+  const W = 20, H = 20;
+  const f = blobField(W, H, [
+    { x: 9.0, y: 9.0, rx: 5.8, ry: 6.0 },
+    { x: 10.5, y: 12.5, rx: 4.8, ry: 3.8 },
+    { x: 14.2, y: 10.4, rx: 1.9, ry: 1.7 },
+  ]);
+  const sk = skinRamp(F.skin);
+  const o = shadeBlob(W, H, f, sk, { outline: IP.ink, lift: 0.28, smooth: 2 });
+  const h = o.ctx;
+  const ins = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
+  // ear, and the back of the skull in shadow
+  P(h, IP.ink, 6, 9, 3, 4); P(h, sk[1], 7, 10, 1, 2);
+  // the beard first, so the mouth can be cut into it
+  if (F.beard) {
+    for (let y = 11; y < H; y++) for (let x = 5; x < W; x++) {
+      if (!ins(x, y) || y < 11 + (x < 9 ? 2 : 0)) continue;
+      const edge = !ins(x, y + 1) || !ins(x + 1, y);
+      P(h, edge ? IP.ink : ((x + y) & 3) === 0 ? shadeHex(F.beard, 0.78) : F.beard, x, y, 1, 1);
+    }
+    P(h, F.beard, 11, 16, 4, 2); P(h, IP.ink, 11, 18, 4, 1); P(h, IP.ink, 15, 16, 1, 2);
+  }
+  if (F.stubble) for (let y = 11; y < 16; y++) for (let x = 8; x < 15; x++) if (ins(x, y) && ((x * 3 + y * 5) % 4) === 0) P(h, sk[1], x, y, 1, 1);
+  // eye and brow
+  const ex = 11, ey = 8;
+  if (mode === 'shut') { P(h, IP.ink, ex - 1, ey + 1, 3, 1); P(h, sk[1], ex - 1, ey - 1, 3, 1); }
+  else { P(h, IP.ink, ex, ey, 2, 2); P(h, '#f2eee4', ex, ey, 1, 1); }
+  if (mode === 'shout' || mode === 'scowl') { P(h, IP.ink, ex - 1, ey - 2, 2, 1); P(h, IP.ink, ex + 1, ey - 1, 2, 1); }
+  else P(h, shadeHex(F.skin, 0.6), ex - 1, ey - 2, 3, 1);
+  // the mouth
+  const mx = 11, my = 13;
+  if (mode === 'shout') { P(h, IP.ink, mx - 1, my - 1, 5, 4); P(h, '#5a1a1e', mx, my, 3, 2); P(h, '#e8e0d0', mx, my - 1, 3, 1); }
+  else if (mode === 'spit') { P(h, IP.ink, mx + 2, my, 2, 2); P(h, sk[4], mx - 1, my - 1, 2, 2); }
+  else if (mode === 'scowl') { P(h, IP.ink, mx, my, 4, 1); P(h, IP.ink, mx - 1, my + 1, 1, 1); }
+  else P(h, shadeHex(F.skin, 0.58), mx, my, 3, 1);
+  // hats
+  const hc = F.hatCol, hd = shadeHex(hc, 0.64), hl = shadeHex(hc, 1.35);
+  if (F.hat === 'cap') {
+    for (let y = 1; y < 7; y++) for (let x = 2; x < 16; x++) if (ins(x, y) || (y > 1 && ins(x, y + 1) && x < 15)) P(h, y === 1 || !ins(x, y - 1) ? IP.ink : (x & 1) ? hc : hd, x, y, 1, 1);
+    P(h, IP.ink, 2, 6, 14, 3); P(h, hl, 3, 7, 12, 1);
+    P(h, IP.ink, 7, 0, 4, 2); P(h, hl, 8, 0, 2, 1);
+  } else if (F.hat === 'scarf') {
+    for (let y = 1; y < 12; y++) for (let x = 1; x < 16; x++) {
+      const cover = (y < 6 && ins(x, y)) || (x < 9 && y < 12 && ins(x, y)) || (x < 8 && y > 2 && y < 11 && x > 1);
+      if (cover) P(h, (x + y) % 5 === 0 ? hl : hc, x, y, 1, 1);
+    }
+    LN(h, IP.ink, 1, 11, 4, 2); LN(h, IP.ink, 4, 2, 13, 2); P(h, IP.ink, 13, 3, 2, 3); LN(h, IP.ink, 9, 6, 8, 11);
+    P(h, hd, 2, 12, 4, 3); P(h, IP.ink, 1, 15, 6, 1);
+  } else if (F.hat === 'tricorn') {
+    P(h, IP.ink, 0, 4, 20, 4); P(h, hc, 1, 5, 18, 2); P(h, hl, 1, 5, 18, 1);
+    P(h, IP.ink, 4, 0, 11, 5); P(h, hc, 5, 1, 9, 4); P(h, hl, 5, 1, 4, 1);
+    P(h, IP.ink, 0, 1, 3, 4); P(h, hc, 1, 2, 1, 3); P(h, IP.ink, 17, 1, 3, 4); P(h, hc, 18, 2, 1, 3);
+    P(h, '#9a7a56', 1, 7, 18, 1);
+  } else if (F.hat === 'bandana') {
+    for (let y = 2; y < 8; y++) for (let x = 2; x < 16; x++) if (ins(x, y)) P(h, !ins(x, y - 1) ? IP.ink : ((x * 2 + y * 3) % 7 === 0) ? '#e8e0d0' : hc, x, y, 1, 1);
+    P(h, IP.ink, 3, 7, 13, 1);
+    P(h, IP.ink, 1, 7, 4, 3); P(h, hc, 2, 8, 2, 1); LN(h, IP.ink, 2, 10, 0, 14); LN(h, hc, 3, 10, 1, 14);
+  } else if (F.hat === 'flat') {
+    for (let y = 2; y < 7; y++) for (let x = 3; x < 16; x++) if (ins(x, y) || y > 3) P(h, y === 2 || !ins(x, y - 1) && y < 4 ? IP.ink : (x & 1) ? hc : hd, x, y, 1, 1);
+    P(h, IP.ink, 12, 6, 7, 2); P(h, hd, 13, 6, 5, 1);
+    P(h, IP.ink, 3, 7, 12, 1);
+  }
+  return spr(o.c, 9, 17);
+}
+function buildFolkTorso(F) {
+  const k = F.bulk || 1, T = F.tor, W = 30, H = T + 5, cx0 = 14;
+  const f = blobField(W, H, [
+    { x: cx0, y: 5.5, rx: 7.2 * k, ry: 4.8 },
+    { x: cx0 + 0.5, y: T * 0.52, rx: 7.0 * k, ry: T * 0.30 },
+    { x: cx0 + 0.5 + (F.belly || 0) * 0.8, y: T * 0.84, rx: (6.2 + (F.belly || 0)) * k, ry: T * 0.24 },
+  ]);
+  const o = shadeBlob(W, H, f, F.coat, { outline: IP.ink, lift: 0.22, smooth: 3 });
+  const b = o.ctx, ins = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
+  // collar / neckline
+  P(b, shadeHex(F.coat[1], 0.8), cx0 - 1, 1, 6, 2);
+  if (F.apron) {
+    // a leather apron down the front, darker where the work dried on it
+    for (let y = 7; y < H - 1; y++) for (let x = cx0 + 1; x < W; x++) {
+      if (!ins(x, y) || !ins(x + 1, y)) continue;
+      const blood = hash2(x * 5, y * 3) > (y > T * 0.55 ? 0.62 : 0.86);
+      P(b, blood ? (hash2(x, y) > 0.5 ? '#6b1c18' : '#4a1014') : x === cx0 + 1 ? IP.ink : F.apron[y < 10 ? 3 : (x & 1) ? 1 : 2], x, y, 1, 1);
+    }
+    LN(b, F.apron[0], cx0 + 2, 7, cx0 - 3, 1);
+  } else {
+    // buttons down the front edge, a belt, the oilskin's one shine
+    for (let y = 6; y < T - 2; y += 4) { const bx = cx0 + R(5.2 * k); if (ins(bx, y)) { P(b, IP.ink, bx, y, 2, 2); P(b, '#c8a63a', bx, y, 1, 1); } }
+    P(b, IP.ink, 3, T * 0.72 | 0, W - 6, 2); P(b, '#3a2416', 4, (T * 0.72 | 0), W - 8, 1);
+    for (let y = 6; y < T - 2; y++) if (ins(cx0 - 3, y) && (y & 3) !== 0) P(b, F.coat[4], cx0 - 3, y, 1, 1);
+  }
+  // and nothing below the hips: the legs are drawn live
+  b.clearRect(0, T + 2, W, H);
+  return spr(o.c, cx0, T + 1);
+}
+function buildFolkArm(F) {
+  const AW = 18, AH = 8;
+  const lobes = F.rolled ? [{ x: 4, y: 4, rx: 3.8, ry: 3.4 }] : [{ x: 4, y: 4, rx: 3.8, ry: 3.4 }, { x: 9.5, y: 4, rx: 3.6, ry: 3.0 }];
+  const af = blobField(AW, AH, lobes);
+  const ao = shadeBlob(AW, AH, af, F.coat, { outline: IP.ink, lift: 0.2, smooth: 1 });
+  const sk = skinRamp(F.skin), a = ao.ctx;
+  if (F.rolled) { P(a, IP.ink, 7, 2, 7, 5); P(a, sk[3], 7, 3, 7, 3); P(a, sk[4], 7, 3, 7, 1); P(a, sk[1], 7, 5, 7, 1); }
+  P(a, IP.ink, 13, 2, 5, 5); P(a, sk[3], 14, 3, 3, 3); P(a, sk[4], 14, 3, 3, 1);
+  return spr(ao.c, 3, 4);
+}
+function buildFolk(F) {
+  return {
+    F: F, leg: F.leg, tor: F.tor, torso: buildFolkTorso(F), arm: buildFolkArm(F),
+    head: { calm: buildFolkHead(F, 'calm'), shout: buildFolkHead(F, 'shout'), scowl: buildFolkHead(F, 'scowl'), spit: buildFolkHead(F, 'spit'), shut: buildFolkHead(F, 'shut') },
+  };
+}
+// the things in their hands, drawn in the frame of the arm that holds them
+function drawProp(ctx, kind, t) {
+  if (kind === 'gaff') {
+    P(ctx, IP.ink, -12, -2, 44, 4); P(ctx, WOOD.l, -11, -1, 42, 2); P(ctx, WOOD.h, -11, -1, 42, 1);
+    P(ctx, IP.ink, 30, -3, 4, 5); P(ctx, '#8b94a0', 31, -2, 2, 3);
+    P(ctx, IP.ink, 33, -8, 3, 7); P(ctx, '#c3ccd8', 34, -7, 1, 5); P(ctx, IP.ink, 30, -9, 5, 2); P(ctx, '#c3ccd8', 31, -9, 3, 1);
+  } else if (kind === 'musket') {
+    P(ctx, IP.ink, -9, -3, 12, 6); P(ctx, '#5c3a1c', -8, -2, 10, 4); P(ctx, '#8a5a2c', -8, -2, 10, 1);
+    P(ctx, IP.ink, 2, -2, 30, 4); P(ctx, '#3a414a', 3, -1, 28, 2); P(ctx, '#8b94a0', 3, -1, 28, 1);
+    P(ctx, IP.ink, 4, 1, 4, 3); P(ctx, '#c8a63a', 5, 1, 2, 1);
+  } else if (kind === 'cleaver') {
+    P(ctx, IP.ink, -1, -2, 7, 4); P(ctx, '#5c3a1c', 0, -1, 5, 2);
+    P(ctx, IP.ink, 5, -8, 11, 10); P(ctx, '#8b94a0', 6, -7, 9, 8); P(ctx, '#dfe6ee', 6, -7, 9, 1); P(ctx, '#7c1414', 11, -2, 4, 2);
+  } else if (kind === 'lantern') {
+    P(ctx, '#3a414a', 0, 0, 1, 6); vLantern(ctx, -3, 12);
+  }
+}
+// o: {F (a built folk), x, y (feet), flip, sit (hip height when seated),
+//     walk (0..1), phase, legA, legB, armNear, armFar, lean, headR, face,
+//     hold, holdR, sx, sy, bob}
+function drawFolk(ctx, o, t) {
+  const B = o.F; if (!B) return;
+  const F = B.F, L = B.leg, T = B.tor;
+  ctx.save(); ctx.translate(R(o.x), R(o.y));
+  if (o.flip) ctx.scale(-1, 1);
+  if ((o.sx !== undefined && o.sx !== 1) || (o.sy !== undefined && o.sy !== 1)) ctx.scale(o.sx || 1, o.sy || 1);
+  const ph = o.phase || 0, wk = o.walk || 0;
+  const hipY = o.sit ? -o.sit : -L + R(Math.abs(Math.sin(ph)) * -1.5 * wk) + (o.bob || 0);
+  const lw = Math.max(3, R(L * 0.2));
+  const legDraw = (side, a, col) => {
+    const hx = side * 2, hy = hipY;
+    if (o.sit) {
+      const kx = hx + 11, ky = hy + 1, fx = kx + R(Math.sin(o.dangle ? t * 3 + side : 0) * 2), fy = o.feet === undefined ? 0 : o.feet;
+      limb(ctx, col, hx, hy, kx, ky, lw); limb(ctx, col, kx, ky, fx, fy - 2, lw);
+      P(ctx, IP.ink, fx - 2, fy - 4, 8, 4); P(ctx, F.boot, fx - 1, fy - 3, 6, 2);
+      return;
+    }
+    const kx = hx + Math.sin(a) * L * 0.5, ky = hy + Math.cos(a) * L * 0.5;
+    const fx = kx + Math.sin(a * 0.5) * L * 0.5, fy = Math.min(0, ky + L * 0.5);
+    limb(ctx, col, hx, hy, kx, ky, lw); limb(ctx, col, kx, ky, fx, fy - 2, lw);
+    P(ctx, IP.ink, R(fx) - 2, R(fy) - 4, 8, 4); P(ctx, F.boot, R(fx) - 1, R(fy) - 3, 6, 2);
+  };
+  const la = o.legA !== undefined ? o.legA : Math.sin(ph) * 0.55 * wk;
+  const lb = o.legB !== undefined ? o.legB : -Math.sin(ph) * 0.55 * wk;
+  legDraw(-1, lb, shadeHex(F.pants, 0.75));
+  // torso, leaning from the hips
+  ctx.save(); ctx.translate(0, hipY); ctx.rotate(o.lean || 0);
+  // far arm
+  ctx.save(); ctx.translate(-1, -T + 5); ctx.rotate(o.armFar === undefined ? 1.45 : o.armFar);
+  ctx.drawImage(B.arm.c, -B.arm.ax, -B.arm.ay); ctx.restore();
+  ctx.drawImage(B.torso.c, -B.torso.ax, -B.torso.ay);
+  ctx.restore();
+  legDraw(1, la, F.pants);
+  ctx.save(); ctx.translate(0, hipY); ctx.rotate(o.lean || 0);
+  // head
+  const hd = B.head[o.face || 'calm'] || B.head.calm;
+  ctx.save(); ctx.translate(1, -T + 2); ctx.rotate(o.headR || 0);
+  ctx.drawImage(hd.c, -hd.ax, -hd.ay); ctx.restore();
+  // near arm and whatever is in the hand
+  ctx.save(); ctx.translate(1, -T + 5); ctx.rotate(o.armNear === undefined ? 1.35 : o.armNear);
+  if (o.hold) { ctx.save(); ctx.translate(12, 0); ctx.rotate(o.holdR || 0); drawProp(ctx, o.hold, t); ctx.restore(); }
+  ctx.drawImage(B.arm.c, -B.arm.ax, -B.arm.ay);
+  ctx.restore();
+  ctx.restore();
+  ctx.restore();
+}
+// the top of a figure's head, for a speech anchor
+function folkTop(o) { return o.y - (o.sit ? o.sit : o.F.leg) - o.F.tor - 16; }
+
+// ---- the disguise -------------------------------------------------------------
+//  He has been a pirate for longer than she has been alive and he thinks this
+//  will work.  A brand new sou'wester and a brand new yellow oilskin -- the
+//  only clean things in the port -- a fake beard on a string, and a pair of
+//  stilts under the coat to make up the height.  His tail sticks out of the
+//  back of it the whole time.
+const YEL = ['#6e4a0c', '#a8740e', '#dca21e', '#f5cc4a', '#ffe98a'];
+function buildDisguise() {
+  const D = {};
+  // the coat, shoulders to hem, flared
+  {
+    const W = 32, H = 34;
+    const f = blobField(W, H, [
+      { x: 16, y: 6, rx: 9.5, ry: 5.5 },
+      { x: 16, y: 14, rx: 10.5, ry: 8.0 },
+      { x: 16, y: 23, rx: 12.5, ry: 8.5 },
+      { x: 16, y: 29, rx: 14.0, ry: 4.6 },
+    ]);
+    const o = shadeBlob(W, H, f, YEL, { outline: IP.ink, lift: 0.26, smooth: 3 });
+    const b = o.ctx, ins = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
+    // the fastening edge, toggles, a pocket with a fish in it, a hem stitch
+    for (let y = 5; y < 31; y++) if (ins(21, y)) P(b, YEL[1], 21, y, 1, 1);
+    for (const y of [9, 15, 21]) { P(b, IP.ink, 21, y, 3, 2); P(b, '#5c3a1c', 22, y, 2, 1); }
+    P(b, IP.ink, 7, 18, 9, 7); P(b, YEL[2], 8, 19, 7, 5); P(b, YEL[3], 8, 19, 7, 1);
+    P(b, IP.ink, 9, 14, 3, 5); P(b, '#8b9aa7', 10, 15, 1, 3); P(b, IP.ink, 12, 13, 3, 3); P(b, '#c2d0da', 13, 14, 1, 1);
+    for (let x = 3; x < W - 3; x += 3) if (ins(x, 30)) P(b, YEL[1], x, 30, 2, 1);
+    // collar turned up
+    P(b, IP.ink, 9, 0, 15, 5); P(b, YEL[3], 10, 1, 13, 3); P(b, YEL[4], 10, 1, 13, 1);
+    D.coat = spr(o.c, 16, 32);
+  }
+  // a sleeve, with his paw sticking out of the cuff
+  {
+    const AW = 18, AH = 9;
+    const af = blobField(AW, AH, [{ x: 4.5, y: 4.5, rx: 4.2, ry: 3.8 }, { x: 10.5, y: 4.5, rx: 4.2, ry: 3.6 }]);
+    const ao = shadeBlob(AW, AH, af, YEL, { outline: IP.ink, lift: 0.22, smooth: 1 });
+    P(ao.ctx, IP.ink, 14, 2, 4, 6); P(ao.ctx, '#8a4a22', 15, 3, 2, 4); P(ao.ctx, '#c47a3a', 15, 3, 2, 1);
+    P(ao.ctx, YEL[1], 13, 2, 1, 5);
+    D.sleeve = spr(ao.c, 3, 4.5);
+  }
+  // the sou'wester: a crown, a brim, and a long flap down the back of the neck
+  {
+    const HW = 48, HH = 24;
+    const hf = blobField(HW, HH, [{ x: 25, y: 10, rx: 14.5, ry: 9.5 }, { x: 25, y: 14, rx: 16.5, ry: 5 }]);
+    const ho = shadeBlob(HW, HH, hf, YEL, { outline: IP.ink, lift: 0.28, smooth: 2 });
+    const h = ho.ctx;
+    for (let x = 1; x < HW - 1; x++) {
+      const back = x < 18 ? (18 - x) * 0.42 : 0;
+      const y0 = 15 + R(back), hgt = x < 18 ? 5 : 4;
+      P(h, IP.ink, x, y0 - 1, 1, hgt + 2);
+      P(h, x < 14 ? YEL[1] : YEL[2], x, y0, 1, hgt);
+      P(h, YEL[3], x, y0, 1, 1);
+    }
+    P(h, IP.ink, 0, 15 + R(18 * 0.42) - 1, 1, 7); P(h, IP.ink, HW - 1, 14, 1, 6);
+    // the seams, and the chin strap hanging loose
+    for (let x = 14; x < 36; x += 2) P(h, YEL[1], x, 13, 1, 1);
+    LN(h, YEL[1], 25, 2, 25, 12);
+    D.hat = spr(ho.c, 25, 19);
+  }
+  // the beard: black, far too glossy, curled, on a string
+  {
+    const BW = 30, BH = 24;
+    const bf = blobField(BW, BH, [
+      { x: 15, y: 7, rx: 12.5, ry: 5.5 },
+      { x: 15, y: 13, rx: 11.0, ry: 6.5 },
+      { x: 15, y: 18, rx: 7.0, ry: 5.0 },
+    ]);
+    const bo = shadeBlob(BW, BH, bf, ['#120a08', '#24140e', '#3a2416', '#54361f'], { outline: IP.ink, lift: 0.3, smooth: 2 });
+    const b = bo.ctx;
+    for (let i = 0; i < 40; i++) {
+      const x = R(hash2(i, 3) * BW), y = R(hash2(3, i) * BH);
+      if (bf[y * BW + x] > 0.25) { P(b, '#6e4a2c', x, y, 2, 1); P(b, '#120a08', x, y + 1, 2, 1); }
+    }
+    // a hole cut for his nose to come through, which it does
+    P(b, IP.ink, 12, 0, 8, 5); b.clearRect(13, 0, 6, 4);
+    D.beard = spr(bo.c, 15, 3);
+  }
+  return D;
+}
+// o: {x, y (ground), phase, walk, rot, exp, blink, beard (bool), hat (bool),
+//     armNear, armFar, sx, sy, tail}.  Returns nothing; folds the head top
+//     into o.top for the speech anchor.
+function drawDisguise(ctx, o, t) {
+  const Dg = VIL.dis, C = capOtter(); if (!Dg || !C) return;
+  const D = C.stand.k;
+  ctx.save(); ctx.translate(R(o.x), R(o.y));
+  if (o.flip) ctx.scale(-1, 1);
+  ctx.rotate(o.rot || 0);
+  if ((o.sx !== undefined && o.sx !== 1) || (o.sy !== undefined && o.sy !== 1)) ctx.scale(o.sx || 1, o.sy || 1);
+  const ph = o.phase || 0, wk = o.walk || 0, st = Math.sin(ph) * wk;
+  const hem = -12 - R(Math.abs(st) * 3);
+  // stilts: rigid poles, one swinging forward while the other plants
+  for (const s of [-1, 1]) {
+    const hx = s * 4, hy = hem - 4;
+    const fx = hx + R(st * 7 * s), fy = -R(Math.max(0, st * s) * 3);
+    cap_(ctx, IP.ink, hx, hy, fx, fy - 1, 4);
+    cap_(ctx, s < 0 ? WOOD.m : WOOD.l, hx, hy, fx, fy - 1, 2);
+    P(ctx, IP.ink, fx - 3, fy - 2, 6, 3); P(ctx, WOOD.d, fx - 2, fy - 1, 4, 1);
+  }
+  // his tail, out of the back of the hem, giving the whole thing away
+  ctx.save(); ctx.translate(-11, hem - 3); ctx.rotate(2.45 + Math.sin(t * 5.5) * 0.16 + (o.tail || 0));
+  ctx.drawImage(C.tail.c, -C.tail.ax, -C.tail.ay); ctx.restore();
+  const sh = hem - 28;                        // shoulder line
+  ctx.save(); ctx.translate(-2, sh + 3); ctx.rotate(o.armFar === undefined ? 1.2 : o.armFar);
+  ctx.drawImage(Dg.sleeve.c, -Dg.sleeve.ax, -Dg.sleeve.ay); ctx.restore();
+  ctx.drawImage(Dg.coat.c, -Dg.coat.ax, hem - Dg.coat.ay);
+  // his own head, on the cast's grid, on top of it all
+  const hx = 2, hy = sh - 11 + R(Math.abs(st) * 1);
+  ctx.save(); ctx.translate(hx, hy); ctx.rotate(o.headR || 0);
+  const hd = CH.headWithFace(OEXP[o.exp] || o.exp || 'idle', !!o.blink, t, false);
+  ctx.drawImage(hd, 0, 0, hd.width, hd.height, -C.hax, -C.hay, hd.width, hd.height);
+  if (o.hat) ctx.drawImage(Dg.hat.c, R(1 - Dg.hat.ax), R(-5 - Dg.hat.ay));
+  ctx.restore();
+  ctx.save(); ctx.translate(3, sh + 3); ctx.rotate(o.armNear === undefined ? 1.3 : o.armNear);
+  ctx.drawImage(Dg.sleeve.c, -Dg.sleeve.ax, -Dg.sleeve.ay); ctx.restore();
+  // The beard last, over the muzzle and hanging on to the coat, so no
+  // gesture ever hides the one thing everybody is looking at.  Its string
+  // runs up to his ears on both sides.
+  if (o.beard) {
+    ctx.save(); ctx.translate(hx, hy); ctx.rotate(o.headR || 0);
+    LN(ctx, '#2a1810', -12, 4, -16, -5); LN(ctx, '#2a1810', 17, 4, 15, -6);
+    ctx.drawImage(Dg.beard.c, R(3 - Dg.beard.ax), R(5 - Dg.beard.ay));
+    ctx.restore();
+  }
+  ctx.restore();
+  o.top = o.y + hy - 24;
+}
+// the bell, hung from its pivot and swinging
+function buildBell() {
+  const c = can(18, 18), x = cx2(c);
+  P(x, IP.ink, 7, 0, 4, 3); P(x, '#8b94a0', 8, 1, 2, 1);
+  for (let y = 2; y < 15; y++) {
+    const hw = R(3 + (y - 2) * 0.42 + (y > 12 ? 1.5 : 0));
+    P(x, IP.ink, 9 - hw - 1, y, hw * 2 + 2, 1);
+    P(x, y > 12 ? '#7a5a16' : '#b58a26', 9 - hw, y, hw * 2, 1);
+    P(x, '#dcb44c', 9 - hw + 1, y, 2, 1); P(x, '#ffe9a0', 9 - hw + 1, y, 1, 1);
+  }
+  P(x, IP.ink, 1, 15, 16, 2);
+  P(x, IP.ink, 7, 15, 4, 3); P(x, '#3a414a', 8, 16, 2, 1);
+  return spr(c, 9, 0);
+}
+function drawBell(ctx, x, y, a) {
+  const b = VIL.bell; if (!b) return;
+  ctx.save(); ctx.translate(R(x), R(y)); ctx.rotate(a || 0);
+  ctx.drawImage(b.c, -b.ax, 0); ctx.restore();
+}
+// the cartoon scrap he changes inside: a boiling knot of dust, stepped at
+// 12 frames a second, with an arm or a boot or a star flung out of it
+function drawScuffle(ctx, x, y, t, k) {
+  if (k <= 0 || k >= 1) return;
+  const step = Math.floor(t * 12), C = capOtter();
+  const grow = Math.min(1, k * 6) * Math.min(1, (1 - k) * 5);
+  const puffs = [];
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * TAU + hash2(i, step) * 0.7;
+    const rr = (9 + hash2(i * 3, step) * 6) * grow;
+    puffs.push([x + Math.cos(a) * 14 * (0.6 + hash2(step, i) * 0.5), y + Math.sin(a) * 9 - 2, rr]);
+  }
+  puffs.push([x, y - 4, 14 * grow]);
+  for (const p of puffs) disc(ctx, p[0], p[1], p[2] + 1, IP.ink);
+  for (const p of puffs) disc(ctx, p[0], p[1], p[2], '#e6e0d2');
+  for (const p of puffs) disc(ctx, p[0] - 2, p[1] - 2, p[2] - 4, '#fbf8f0');
+  if (grow < 0.6 || !C) return;
+  // what sticks out of it this frame
+  const pick2 = step % 5;
+  ctx.save();
+  if (pick2 === 0 || pick2 === 3) { ctx.translate(R(x + 16), R(y - 6)); ctx.rotate(-0.6 + hash2(step, 5)); ctx.drawImage(C.arm.c, -C.arm.ax, -C.arm.ay); }
+  else if (pick2 === 1) { ctx.translate(R(x - 18), R(y + 2)); ctx.rotate(2.6 + hash2(step, 7) * 0.5); ctx.drawImage(C.tail.c, -C.tail.ax, -C.tail.ay); }
+  else if (VIL.dis) { ctx.translate(R(x + 6), R(y - 18)); ctx.rotate(-0.8 + hash2(step, 2) * 1.6); ctx.drawImage(VIL.dis.sleeve.c, -VIL.dis.sleeve.ax, -VIL.dis.sleeve.ay); }
+  ctx.restore();
+  for (let i = 0; i < 3; i++) {
+    const sx = R(x + (hash2(i, step) - 0.5) * 56), sy = R(y - 14 + (hash2(step, i) - 0.5) * 30);
+    P(ctx, '#ffe48f', sx - 2, sy, 5, 1); P(ctx, '#ffe48f', sx, sy - 2, 1, 5);
+  }
+}
+// a musket going off: a flash, then smoke that thickens and drifts
+function drawShot(ctx, s, t) {
+  const e = t - s.t0; if (e < 0 || e > 2.4) return;
+  if (e < 0.10) {
+    P(ctx, '#ffffff', R(s.x) - 3, R(s.y) - 3, 7, 7); P(ctx, '#ffe48f', R(s.x) + 3, R(s.y) - 1, 8, 3);
+    P(ctx, '#ffe48f', R(s.x) - 1, R(s.y) - 8, 3, 16);
+  }
+  for (let i = 0; i < 5; i++) {
+    const k = clamp((e - i * 0.05) / 2.2, 0, 1); if (k <= 0) continue;
+    const a = qa(0.62 * (1 - k));
+    if (a <= 0) continue;
+    disc(ctx, s.x + s.dx * (6 + i * 5) * (0.4 + k) + Math.sin(i * 2.3) * 3, s.y - k * 18 - i * 2, 3 + k * 8, rgbaq('#d8d4cc', a));
+  }
+}
+// the whole village art set, one slice per call
+const VIL_STEPS = [
+  () => { travelArt(); },
+  () => { VIL.street = buildStreet(); },
+  () => { VIL.shore = buildShoreW(); VIL.under = buildUnderW(); },
+  () => { VIL.folk = {}; for (const k in FOLK_SPEC) VIL.folk[k] = buildFolk(FOLK_SPEC[k]); },
+  () => { VIL.dis = buildDisguise(); VIL.bell = buildBell(); buildCatchSprites(); },
+];
+let CINE_BAKE_MS = 0;
+function cineBakeStep() {
+  if (VIL.ready) return false;
+  const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
+  VIL_STEPS[VIL.step++]();
+  CINE_BAKE_MS += ((typeof performance !== 'undefined') ? performance.now() : 0) - t0;
+  if (VIL.step >= VIL_STEPS.length) VIL.ready = true;
+  return true;
+}
+function villageArt() { while (!VIL.ready) cineBakeStep(); return VIL; }
+
+// ============================================================ THE TRAVEL ====
+//  Whenever she sets out from the chart: open water at full speed, him on his
+//  feet on her back with the blade out pointing the way, the reef tearing
+//  past in four layers, a school blowing apart in front of her, a trawler's
+//  hull going over that she ducks, a loop for the sheer joy of it, and a
+//  breach -- clean out of the water, sky under both of them -- before the
+//  name of the place comes down.
+const TRAVEL_LINES = {
+  village:   [['otter', 'Fisher village, dead ahead!'], ['you', 'That\'s where they loaded him.'], ['otter', 'Then somebody saw it.']],
+  cannery:   [['otter', 'Smell that? The cannery.'], ['you', 'That\'s not just fish.'], ['otter', 'Then we shut it for good.']],
+  marrow:    [['otter', 'Marrow. They patch the fleet.'], ['you', 'Not after today.'], ['otter', 'HA! Hard to port!']],
+  blackbone: [['otter', 'Blackbone. They pen whales.'], ['you', 'Then we open the pens.'], ['otter', 'And gut the winch men.']],
+  shoals:    [['otter', 'The Shoals. No cover out here.'], ['you', 'For them either.'], ['otter', 'Ha! Nowhere to run!']],
+  deep:      [['otter', 'The Deep Roads. Chief\'s water.'], ['you', 'And my brother\'s.'], ['otter', 'Then we bring him home.']],
+};
+const TSURF = 86, TBED = 332;
+// her line through the water, beat time -> world y before the camera tilt
+function trvY(t) {
+  let y = 160 + Math.sin(t * 2.3) * 5;
+  const u = (t - 1.70) / 1.90;
+  if (u > 0 && u < 1) y += 86 * Math.sin(Math.PI * ss(u));
+  if (t >= 5.0) {
+    const rise = 0.55, t0 = 5.0, y0 = 160 + Math.sin(t0 * 2.3) * 5;
+    const v0 = 2 * (y0 - TSURF) / rise, g = v0 * v0 / 100, air = 2 * v0 / g;
+    const ts = t0 + rise, te = ts + air;
+    if (t < ts) { const k = (t - t0) / rise; y = lerp(y0, TSURF, k * k); }
+    else if (t < te) { const s = t - ts; y = TSURF - v0 * s + 0.5 * g * s * s; }
+    else { const k = clamp((t - te) / 0.9, 0, 1); y = lerp(TSURF, 172 + Math.sin(t * 2.3) * 4, 1 - (1 - k) * (1 - k)); }
+  }
+  return y;
+}
+function trvTimes() {
+  const y0 = 160 + Math.sin(5.0 * 2.3) * 5, v0 = 2 * (y0 - TSURF) / 0.55, g = v0 * v0 / 100;
+  return { up: 5.55, down: 5.55 + 2 * v0 / g };
+}
+function trvSchool(n, x, y, spread, kind, size) {
+  for (let i = 0; i < n; i++) {
+    SC.fish.push({ x: x + rand(-spread, spread), y: y + rand(-spread * 0.45, spread * 0.45), vx: -rand(18, 46), vy: rand(-6, 6),
+                   kind: kind, s: size, ph: rand(0, TAU), flee: 0 });
+  }
+}
+CINE.travel = [{
+  name: 'travel', dur: 8.6,
+  talk: null,
+  anchor(who) {
+    const cam = SC.cam || 0;
+    if (who === 'otter') return anc(SC.ot.x + 4, SC.ot.y - 44 + cam);
+    return ancUnder(A.you, cam);
+  },
+  enter() {
+    travelArt();
+    const d = Cine.opts.dest || {};
+    const L = TRAVEL_LINES[d.kind] || TRAVEL_LINES.village;
+    this.talk = [[0.35, L[0][0], L[0][1]], [1.85, L[1][0], L[1][1]], [3.40, L[2][0], L[2][1]]];
+    A.you = actor(MAN.youBig, -110, 160, { beat: 8, exp: 'angry', tailAmp: 0.34, flipperA: 0.25, scarred: true });
+    SC.ot = { x: -110, y: 130, phase: 0, rot: 0, exp: 'grin', flip: false, ride: false,
+              sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -0.35, armNear: -0.25, armFar: -0.9 };
+    rideOn(SC.ot, A.you);
+    SC.cam = 0; SC.spd = 380; SC.fish = []; SC.hullX = 900; SC.propA = 0;
+    SC.up = false; SC.down = false; SC.looped = false; SC.cheer = false;
+    SC.T = trvTimes();
+    trvSchool(16, 600, 150, 70, 1, 1);
+    trvSchool(10, 700, 210, 50, 3, 0);
+  },
+  update(dt, bt) {
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
+    // pace: fast, a touch slower through the loop, fastest out of the breach
+    const loopK = clamp((bt - 3.75) / 1.05, 0, 1);
+    const target = (loopK > 0 && loopK < 1) ? 300 : bt > 5.0 && bt < 7.2 ? 460 : 400;
+    SC.spd = smooth(SC.spd, target, 3, dt);
+    Cine.scroll += SC.spd * dt;
+    // the camera tilts up to keep the breach in frame, then settles
+    const cam0 = SC.cam;
+    SC.cam = R(96 * (ss((bt - 5.05) / 0.5) - ss((bt - 6.45) / 0.85)));
+    const dc = SC.cam - cam0;
+    if (dc) for (const p of FX.list) p.y += dc;
+    // ---- her line
+    const enterK = outCube(clamp(bt / 1.0, 0, 1));
+    let x = lerp(-110, 236, enterK) + Math.sin(bt * 0.8) * 8 + ss(clamp((bt - 5.0) / 1.2, 0, 1)) * 44;
+    let y = trvY(bt);
+    const vy = (trvY(bt + 0.01) - trvY(bt - 0.01)) / 0.02;
+    let rot = Math.atan2(vy, bt > 5.4 && bt < SC.T.down + 0.1 ? 250 : 330);
+    rot = clamp(rot, -0.95, 0.95);
+    if (loopK > 0 && loopK < 1) {
+      // a loop: up, over on her back, down and out where she went in
+      const a = TAU * ss(loopK), r = 36;
+      x += r * Math.sin(a); y += -r * (1 - Math.cos(a));
+      rot = -a;
+      if (!SC.looped) { SC.looped = true; kick(SC.ot, 6); if (typeof Audio_ !== 'undefined') Audio_.tone(260, 0.3, 'sine', 0.05, 380); }
+    }
+    A.you.x = x; A.you.y = y;
+    A.you.rot = (loopK > 0 && loopK < 1) ? rot : smooth(A.you.rot, rot, 10, dt);
+    A.you.beat = lerp(6.5, 9.5, clamp((SC.spd - 300) / 160, 0, 1));
+    A.you.exp = talking('you') ? 'talk' : 'angry';
+    // ---- him, planted on her back through every bit of it
+    rideOn(SC.ot, A.you);
+    SC.ot.phase += dt * 3.2;
+    SC.ot.exp = talking('otter') ? 'talk' : (loopK > 0 && loopK < 1) || (bt > SC.T.up - 0.2 && bt < SC.T.down) ? 'grin' : 'angry';
+    const air = bt > SC.T.up - 0.1 && bt < SC.T.down + 0.2;
+    // the blade out along his arm, pointing the way; straight up in the air
+    SC.ot.armNear = air ? -2.35 + Math.sin(bt * 9) * 0.12 : -0.25 + Math.sin(SC.ot.phase * 1.4) * 0.10;
+    SC.ot.bladeR = air ? -0.9 : -0.35;
+    SC.ot.armFar = -0.9 - Math.sin(SC.ot.phase) * 0.2;
+    SC.ot.headR = (bt > 1.9 && bt < 3.3) ? 0.16 : 0;      // ducks as the hull goes over
+    // ---- the hull she goes under
+    SC.hullX = lerp(900, -380, clamp((bt - 1.0) / 3.4, 0, 1));
+    SC.propA += dt * 26;
+    if (Math.abs(SC.hullX - 300) < 420) engine(dt, 0.8 - Math.abs(SC.hullX - 300) / 600);
+    // ---- the school in front of her, and the ones after the breach
+    if (!SC.sch2 && bt > 4.6) { SC.sch2 = true; trvSchool(14, 720, 130, 60, 0, 1); }
+    if (!SC.sch3 && bt > 6.9) { SC.sch3 = true; trvSchool(18, 700, 190, 80, 2, 0); trvSchool(6, 760, 230, 30, 1, 2); }
+    const nx = A.you.x + 50, ny = A.you.y;
+    for (let i = SC.fish.length - 1; i >= 0; i--) {
+      const f = SC.fish[i];
+      if (!f.flee && Math.abs(f.x - nx) < 120 && Math.abs(f.y - ny) < 80) {
+        f.flee = 1;
+        const s = (f.y < ny ? -1 : 1) * (Math.abs(f.y - ny) < 6 ? (Math.random() < 0.5 ? -1 : 1) : 1);
+        f.vy = s * rand(150, 260); f.vx = rand(-30, 90);
+        if (Math.random() < 0.3) FX.bubble(f.x, f.y, 1, 1.2);
+      }
+      if (f.flee) { f.vy *= 1 - dt * 1.6; f.vx = smooth(f.vx, 60, 1.2, dt); }
+      f.x += (f.vx - SC.spd * 0.9) * dt; f.y += f.vy * dt; f.ph += dt * (f.flee ? 16 : 7);
+      if (f.x < -60 || f.y < TSURF - 10 || f.y > TBED + 10) SC.fish.splice(i, 1);
+    }
+    // ---- the breach
+    const tail = bodyPoint(A.you, -52, 2);
+    if (bt > SC.T.up && !SC.up) {
+      SC.up = true; Cine.shake = 5; kick(A.you, 7); kick(SC.ot, 9);
+      FX.drops(A.you.x + 30, TSURF + SC.cam, 60, 1.5); FX.foam(A.you.x + 20, TSURF + SC.cam + 2, 30, 1.4);
+      FX.ring(A.you.x + 20, TSURF + SC.cam + 2, 60, 0.8);
+      if (typeof Audio_ !== 'undefined') { Audio_.splash(2.4); Audio_.tone(330, 0.35, 'square', 0.05, 330); }
+    }
+    if (air && Math.random() < 30 * dt) FX.add({ k: 'd', x: tail[0], y: tail[1] + SC.cam, vx: rand(-60, 20), vy: rand(-40, 30), life: rand(0.4, 0.9), c: '#eaf8ff' });
+    if (bt > SC.T.down && !SC.down) {
+      SC.down = true; Cine.shake = 8; kick(A.you, -8); kick(SC.ot, -8);
+      FX.drops(A.you.x + 40, TSURF + SC.cam, 70, 1.6); FX.foam(A.you.x + 40, TSURF + SC.cam + 2, 34, 1.6);
+      FX.bubble(A.you.x + 20, TSURF + SC.cam + 20, 26, 2.2); FX.ring(A.you.x + 40, TSURF + SC.cam + 2, 70, 0.9);
+      if (typeof Audio_ !== 'undefined') Audio_.splash(3.2);
+    }
+    if (!SC.cheer && bt > SC.T.up + 0.25) { SC.cheer = true; if (typeof Audio_ !== 'undefined') Audio_.rampage(); }
+    // ---- wake: a stream of bubbles off her tail under water
+    if (!air && Math.random() < 40 * dt) FX.bubble(tail[0], tail[1] + SC.cam, 1, 2.4);
+    FX.flow(-SC.spd * 0.6, dt);
+    for (const p of FX.list) if (p.k === 'b' || p.k === 'f') p.x -= SC.spd * 0.45 * dt;
+    churnSound(dt, 0.5);
+  },
+  render(ctx, bt) {
+    const cam = SC.cam, sY = TSURF + cam, bY = TBED + cam;
+    backdrop(ctx, { mood: 'dawn', grade: 'dawn', mid: 'midClean', scroll: Cine.scroll, t: Cine.t, surfY: sY, bedY: bY, shafts: 1, causticBed: true });
+    drawAir(ctx, sY, Cine.scroll, Cine.t, 'day');
+    // the fish, turned to wherever they are going
+    for (const f of SC.fish) {
+      const sp = FISHSPR[f.kind] && FISHSPR[f.kind][f.s]; if (!sp) continue;
+      const hx = f.vx, hy = f.vy, left = hx < 0;
+      ctx.save(); ctx.translate(R(f.x), R(f.y + cam + Math.sin(f.ph) * 1.5));
+      if (left) ctx.scale(-1, 1);
+      ctx.rotate(clamp(Math.atan2(hy, Math.abs(hx) + 20), -1.2, 1.2) + Math.sin(f.ph) * 0.10);
+      ctx.drawImage(sp.c, -sp.ax, -sp.ay); ctx.restore();
+    }
+    // the hull overhead and the shadow it throws down through the light
+    if (SC.hullX > -360 && SC.hullX < 900) {
+      hullShade(ctx, SC.hullX - 20, sY + 26, 150, 150, 0.9);
+      drawBoat(ctx, SC.hullX, sY + Math.sin(Cine.t * 2) * 1.5, Math.sin(Cine.t * 1.6) * 0.015, SC.propA, 0.9, Cine.t);
+    }
+    // speed, streaming off her
+    const a = clamp((SC.spd - 250) / 200, 0, 1);
+    const w1 = (Cine.t * 360) % 74, w2 = (Cine.t * 260) % 58;
+    speedLines(ctx, A.you.x - 90 - w1, A.you.y + cam, R(10 + a * 12), R(40 + a * 50), -1, rgbaq('#f2fdff', 0.26 + a * 0.30), 7);
+    speedLines(ctx, A.you.x - 44 - w2, A.you.y + cam - 30, R(6 + a * 6), R(30 + a * 36), -1, rgbaq('#dff6ff', 0.18 + a * 0.2), 19);
+    ctx.save(); ctx.translate(0, cam);
+    drawManatee(ctx, A.you, Cine.t);
+    drawCapOtter(ctx, SC.ot, Cine.t);
+    ctx.restore();
+    FX.render(ctx);
+    foreground(ctx, { grade: 'dawn', scroll: Cine.scroll, t: Cine.t, bedY: bY });
+    tile(ctx, TRV.kelpFront, Cine.scroll * 2.3, bY - TRV.kelpFront.height + 26);
+    const d = Cine.opts.dest || {};
+    chapterCard(ctx, clamp((bt - 6.25) / 2.3, 0, 1), bt, d.chapter || 'I', d.name || 'FISHER VILLAGE');
+  },
+}];
+
+// ========================================================= THE VILLAGE ======
+//  The first time they come into Fisher Village.  He goes ashore to ASK --
+//  in a disguise he is very proud of -- about a little grey calf, very loud,
+//  and the whole port turns its back on him: a back, a shutter, a door, a
+//  gob of spit.  Then the beard comes off, somebody rings the bell, and the
+//  two of them stop asking.
+//  Five beats: the pier from underneath, the street, the unmasking, and back
+//  down into the water for the last two lines before the fight.
+function folkO(key, x, y, o) {
+  return Object.assign({ F: VIL.folk[key], x: x, y: y, flip: true, face: 'calm', armNear: 1.35, armFar: 1.45, headR: 0, lean: 0, phase: 0, walk: 0, sq: 0, sqv: 0, sx: 1, sy: 1 }, o || {});
+}
+// the villager a 'man' line belongs to is the fourth field of the line
+function manAnchor(b) {
+  const L = b.talk && b.talk[SAY.i];
+  const f = L && SC.folk && SC.folk[L[3]];
+  if (!f) return anc(320, 120);
+  if (L[3] === 'wife') return anc(VS.win[0] + 14, VS.win[1] - 4);
+  return anc(f.x, folkTop(f) - 4);
+}
+function streetBack(ctx) {
+  // the game's display keeps whatever a transparent pixel leaves behind, so
+  // the frame starts opaque
+  P(ctx, RIDGE_NEAR[0], 0, 0, 640, 360);
+  drawAir(ctx, 256, Cine.scroll, Cine.t, 'day');
+  ctx.drawImage(VIL.street, 0, 0);
+  // water glinting under the boards
+  for (let i = 0; i < 12; i++) {
+    const gx = R((hash2(i, 5) * 700 + Cine.t * 14) % 660) - 10, gy = VS.deck + 30 + R(hash2(5, i) * 16);
+    if (((Cine.t * 3 + i) | 0) & 1) P(ctx, '#9ad6ea', gx, gy, 4, 1);
+  }
+}
+// her window: the woman leaning on the sill, and the two shutters.  k is how
+// far the shutters are closed (0 open .. 1 shut); lean is how far out she is.
+function drawWindowScene(ctx, k, lean, face) {
+  const [wx, wy, ww, wh] = VS.win, pal = VHOUSE.pitch, sw = R(ww / 2);
+  const f = SC.folk.wife;
+  if (k < 0.999) {
+    ctx.save(); ctx.beginPath(); ctx.rect(wx, wy, ww, wh); ctx.clip();
+    f.x = wx + 20 - R(lean * 6); f.y = wy + wh + 30 + R((1 - lean) * 10); f.face = face || f.face;
+    drawFolk(ctx, f, Cine.t);
+    ctx.restore();
+    // the sill in front of her, and her near arm resting on it
+    P(ctx, IP.ink, wx - 4, wy + wh + 1, ww + 8, 4); P(ctx, pal.trim, wx - 3, wy + wh + 1, ww + 6, 2);
+  }
+  // Each shutter swings on its outer hinge: flat on the wall, edge on, shut.
+  const flip = (hx, dir) => {
+    const a = k * Math.PI, w = R(sw * Math.abs(Math.cos(a)));
+    const col = Math.cos(a) > 0 ? pal.shut : shadeHex(pal.shut, 0.72);
+    if (a < Math.PI / 2) { if (dir < 0) vShutter(ctx, hx - 3 - w, wy, w, wh, col); else vShutter(ctx, hx + 3, wy, w, wh, col); }
+    else { if (dir < 0) vShutter(ctx, hx, wy, w, wh, col); else vShutter(ctx, hx - w, wy, w, wh, col); }
+  };
+  flip(wx, -1); flip(wx + ww, 1);
+}
+// his doorway: the man in it, and the door swinging shut across it
+function drawDoorScene(ctx, k, back, out) {
+  const [dx, dy, dw, dh] = VS.door;
+  const f = SC.folk.door;
+  if (k < 0.999 && !out) {
+    ctx.save(); ctx.beginPath(); ctx.rect(dx, dy, dw, dh); ctx.clip();
+    drawFolk(ctx, f, Cine.t);
+    if (back > 0) { ctx.fillStyle = rgbaq('#0e0a0c', qa(back * 0.75)); ctx.fillRect(dx, dy, dw, dh); }
+    ctx.restore();
+  }
+  if (k > 0.001) vDoorPanel(ctx, dx, dy, R(dw * Math.min(1, k)), dh, '#4a3322');
+}
+function drawTable(ctx) {
+  const [tx, ty, tw] = VS.table;
+  P(ctx, IP.ink, tx - 1, ty - 1, tw + 2, 5); P(ctx, WOOD.l, tx, ty, tw, 3); P(ctx, WOOD.h, tx, ty, tw, 1);
+  P(ctx, '#6b1c18', tx + 6, ty, 12, 1); P(ctx, '#4a1014', tx + 22, ty + 1, 8, 1);
+  for (const lx of [tx + 2, tx + tw - 5]) { P(ctx, IP.ink, lx - 1, ty + 3, 5, VS.deck - ty - 3); P(ctx, WOOD.m, lx, ty + 3, 3, VS.deck - ty - 3); }
+  // a fish on the board, half done
+  const sp = CATCH.byName && CATCH.byName.fishSilver;
+  if (sp) ctx.drawImage(sp.c, tx + 10, ty - sp.h + 2);
+  P(ctx, '#7c1414', tx + 30, ty - 1, 6, 1);
+}
+function drawLadSeat(ctx) { vBarrel(ctx, 556, 268, 16, 20); }
+function drawMenderSeat(ctx) { vCrate(ctx, 140, 274, 20, 14); }
+function clang(ctx, bt, t0) {
+  if (bt < t0) return;
+  const e = bt - t0, n = Math.floor(e / 0.42), f = (e % 0.42) / 0.42;
+  if (f > 0.7) return;
+  const side = (n & 1) ? 1 : -1;
+  pixelTextOutlined(ctx, 'CLANG!', VS.bell[0] - 30 + side * 8 - R(f * 6), VS.bell[1] - 26 - R(f * 8), 9, '#ffe48f', '#14141c', 'center');
+}
+function bellSound(dt) {
+  SC.bellT = (SC.bellT || 0) - dt;
+  if (SC.bellT <= 0) {
+    SC.bellT = 0.42;
+    if (typeof Audio_ !== 'undefined') { Audio_.tone(880, 0.7, 'triangle', 0.07, -20); Audio_.tone(1320, 0.4, 'sine', 0.035); }
+  }
+}
+function slamSound() { if (typeof Audio_ !== 'undefined') { Audio_.noise(0.10, 0.32, 900, 80); Audio_.tone(95, 0.10, 'square', 0.12, -40); } }
+// the shared set-up of the villagers for the street beats
+function streetFolk() {
+  SC.folk = {
+    mender: folkO('mender', 150, VS.deck, { sit: 14, flip: true, armNear: 0.4, armFar: 0.9, face: 'calm', hold: null }),
+    wife:   folkO('wife', VS.win[0] + 20, VS.win[1] + VS.win[3] + 30, { flip: true, armNear: 0.2, armFar: 0.5 }),
+    door:   folkO('door', VS.door[0] + 14, VS.deck, { flip: true, armNear: 1.5, armFar: 1.3 }),
+    gutter: folkO('gutter', 512, VS.deck, { flip: true, armNear: 0.6, armFar: 0.9, hold: 'cleaver', holdR: 0.9 }),
+    lad:    folkO('lad', 562, 284, { sit: 16, flip: true, feet: -2, dangle: true, armNear: 1.2, armFar: 1.0 }),
+  };
+}
+
+// ---------------------------------------------------------------- 1. PIER
+//  From under the boards.  She noses in among the pilings with him on her
+//  back; he has a plan.  He goes up out of the water onto the pier, there is
+//  a cartoon scrap with nobody in it, and out of it steps a FISHERMAN.
+CINE.village = [];
+CINE.village.push({
+  name: 'pier', dur: 11.4,
+  talk: [
+    [0.60, 'otter', 'Fisher village. Quiet lot.'],
+    [2.20, 'you', 'Too quiet.'],
+    [3.70, 'otter', 'Leave the talking to me.'],
+    [5.30, 'you', 'They\'ll know you.'],
+    [7.05, 'otter', 'Not in THIS they won\'t.'],
+    [8.75, 'you', '...That\'s a beard.'],
+    [10.05, 'otter', 'It\'s a FINE beard.'],
+  ],
+  anchor(who) {
+    if (who === 'otter') {
+      if (SC.stage >= 2) return anc(SC.dis.x + 2, (SC.dis.top || SC.dis.y - 80) - 4);
+      if (SC.stage === 1) return anc(300, 96);
+      return anc(SC.ot.x + 4, SC.ot.y - 44);
+    }
+    return ancUnder(A.you);
+  },
+  enter() {
+    villageArt();
+    A.you = actor(MAN.youBig, -120, 274, { beat: 3.0, exp: 'calm', tailAmp: 0.24, scarred: true });
+    SC.ot = { x: -120, y: 230, phase: 0, rot: 0, exp: 'sly', flip: false, ride: false, sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -1.0 };
+    rideOn(SC.ot, A.you);
+    SC.dis = { x: 300, y: VW.deck, phase: 0, walk: 0, rot: 0, exp: 'grin', beard: true, hat: true, sq: 0, sqv: 0, sx: 1, sy: 1 };
+    SC.stage = 0; SC.jumped = false; SC.splashed = false; SC.revealed = false; SC.sch1 = makeSchool(8, 520, 280, 40, 0, 2, -12);
+  },
+  update(dt, bt) {
+    Cine.scroll += 4 * dt;
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt); bounce(SC.dis, dt);
+    const k = outCube(clamp(bt / 2.4, 0, 1));
+    A.you.x = lerp(-120, 176, k) + Math.sin(bt * 0.6) * 3;
+    A.you.y = 274 + Math.sin(bt * 0.9) * 3;
+    A.you.rot = smooth(A.you.rot, bt < 2.2 ? 0.04 : -0.04 + Math.sin(bt * 0.8) * 0.03, 3, dt);
+    A.you.beat = lerp(3.0, 1.0, k);
+    A.you.exp = talking('you') ? 'talk' : bt > 8.7 ? 'calm' : 'angry';
+    SC.ot.phase += dt * 2;
+    if (!SC.jumped) {
+      rideOn(SC.ot, A.you);
+      SC.ot.exp = talking('otter') ? 'talk' : 'sly';
+      SC.ot.armNear = bt > 3.6 && bt < 5.2 ? -1.9 + Math.sin(bt * 6) * 0.2 : 0.9 + Math.sin(SC.ot.phase) * 0.3;   // a thumb at the pier
+      SC.ot.headR = bt > 5.3 ? -0.2 : 0;
+    }
+    // up and out of the water onto the boards
+    if (bt >= 6.15 && !SC.jumped) { SC.jumped = true; SC.j0 = [SC.ot.x, SC.ot.y]; kick(A.you, 6); if (typeof Audio_ !== 'undefined') Audio_.tone(420, 0.12, 'square', 0.06, 260); }
+    if (SC.jumped && SC.stage === 0) {
+      const u = clamp((bt - 6.15) / 0.65, 0, 1);
+      SC.ot.x = lerp(SC.j0[0], 300, u);
+      SC.ot.y = lerp(SC.j0[1], VW.deck - 20, u) - Math.sin(u * Math.PI) * 70;
+      SC.ot.rot = -u * TAU;
+      SC.ot.exp = 'grin';
+      if (!SC.splashed && SC.ot.y < VW.surf) { SC.splashed = true; FX.drops(SC.ot.x, VW.surf, 40, 1.2); FX.foam(SC.ot.x, VW.surf + 2, 18, 1); if (typeof Audio_ !== 'undefined') Audio_.splash(1.4); }
+      if (u < 0.4 && Math.random() < 30 * dt) FX.bubble(SC.ot.x, SC.ot.y, 1, 2);
+      if (u >= 1) { SC.stage = 1; SC.ot.rot = 0; if (typeof Audio_ !== 'undefined') Audio_.noise(0.1, 0.2, 700, 90); }
+    }
+    // the scrap
+    if (SC.stage === 1) {
+      if (Math.random() < 9 * dt && typeof Audio_ !== 'undefined') Audio_.noise(0.06, 0.12, 2200 + rand(0, 1400), 300);
+      if (Math.random() < 5 * dt) FX.add({ k: 'd', x: 300 + rand(-10, 10), y: 124, vx: rand(-120, 120), vy: rand(-160, -60), life: rand(0.4, 0.9), c: pick(['#ffe48f', '#f5cc4a', '#e6e0d2']) });
+      if (bt >= 8.25) {
+        SC.stage = 2; kick(SC.dis, 10);
+        FX.foam(300, 120, 30, 1.2);
+        if (typeof Audio_ !== 'undefined') { Audio_.tone(523, 0.12, 'square', 0.06); setTimeout(() => Audio_.tone(784, 0.2, 'square', 0.06), 110); }
+      }
+    }
+    if (SC.stage >= 2) {
+      SC.dis.phase += dt * 3;
+      SC.dis.exp = talking('otter') ? 'talk' : 'grin';
+      // ta-da, then a proud pat of the beard for the last line
+      const pat = bt > 10.0;
+      SC.dis.armNear = pat ? -0.5 + Math.sin(bt * 14) * 0.25 : bt < 9.0 ? 0.05 : 1.2;
+      SC.dis.armFar = bt < 9.0 ? -2.3 : 1.3;
+      SC.dis.rot = Math.sin(bt * 2.3) * 0.03;
+    }
+    if (Math.random() < 1.2 * dt) FX.bubble(A.you.x + 40, A.you.y - 12, 1, 0.5);
+  },
+  render(ctx, bt) {
+    backdrop(ctx, { mood: 'cold', grade: 'cold', scroll: Cine.scroll, t: Cine.t, surfY: VW.surf, bedY: VW.bed, shafts: 0.8, causticBed: true });
+    drawAir(ctx, VW.surf, Cine.scroll, Cine.t, 'day');
+    ctx.drawImage(VIL.shore, 0, 0);
+    ctx.drawImage(VIL.under, 0, VW.surf);
+    drawSchool(ctx, SC.sch1, Cine.t, Cine.dt);
+    drawManatee(ctx, A.you, Cine.t);
+    if (SC.stage === 0) drawCapOtter(ctx, SC.ot, Cine.t);
+    if (SC.stage >= 2) drawDisguise(ctx, SC.dis, Cine.t);
+    if (SC.stage === 1) drawScuffle(ctx, 300, 128, Cine.t, clamp((bt - 6.8) / 1.45, 0.001, 0.999));
+    FX.render(ctx);
+    foreground(ctx, { grade: 'cold', scroll: Cine.scroll, t: Cine.t, bedY: VW.bed });
+  },
+});
+
+// ---------------------------------------------------------------- 2. ASK
+//  Down the street on his stilts, asking.  Every one of them answers the
+//  same way, which is not at all.
+CINE.village.push({
+  name: 'ask', dur: 11.8,
+  talk: [
+    [0.45, 'otter', 'Good day, fellow humans!'],
+    [2.15, 'otter', 'Seen a little grey one?'],
+    [3.95, 'otter', 'Very loud? Bit chubby?'],
+    [6.00, 'otter', 'Ma\'am? Small? Whiskers?'],
+    [7.95, 'otter', 'Sir, one question--'],
+    [10.25, 'man', '...', 'gutter'],
+  ],
+  anchor(who) {
+    if (who === 'man') return manAnchor(this);
+    return anc(SC.dis.x + 2, (SC.dis.top || SC.dis.y - 80) - 4);
+  },
+  enter() {
+    villageArt();
+    streetFolk();
+    SC.dis = { x: -40, y: VS.deck, phase: 0, walk: 1, rot: 0, exp: 'grin', beard: true, hat: true, sq: 0, sqv: 0, sx: 1, sy: 1 };
+    SC.shut = 0; SC.door = 0; SC.doorBack = 0; SC.lean = 1;
+    SC.turned = false; SC.slam1 = false; SC.slam2 = false; SC.spat = false; SC.spit = null; SC.splat = null;
+  },
+  update(dt, bt) {
+    Cine.scroll += 3 * dt;
+    bounce(SC.dis, dt);
+    const F = SC.folk;
+    for (const k in F) bounce(F[k], dt);
+    // his walk: in, stop, on, stop, on, stop, on, stop
+    const path = [[0, -40], [1.6, 104], [4.6, 104], [5.7, 242], [7.2, 242], [8.0, 404], [9.0, 404], [9.5, 462]];
+    let x = path[path.length - 1][1], walking = false;
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i], b = path[i + 1];
+      if (bt >= a[0] && bt < b[0]) { const u = (bt - a[0]) / (b[0] - a[0]); x = lerp(a[1], b[1], a[1] === b[1] ? 0 : ss(u)); walking = a[1] !== b[1]; break; }
+    }
+    SC.dis.x = x;
+    SC.dis.walk = smooth(SC.dis.walk, walking ? 1 : 0, 10, dt);
+    SC.dis.phase += dt * 9 * SC.dis.walk;
+    SC.dis.rot = Math.sin(SC.dis.phase * 0.5) * 0.06 * SC.dis.walk + Math.sin(bt * 2) * 0.015;
+    if (walking && Math.sin(SC.dis.phase) * Math.sin(SC.dis.phase - dt * 9) <= 0 && typeof Audio_ !== 'undefined') Audio_.tone(150, 0.04, 'square', 0.04, -30);
+    SC.dis.exp = talking('otter') ? 'talk' : bt > 8.4 ? 'idle' : 'grin';
+    SC.dis.armNear = talking('otter') ? 0.45 + Math.sin(bt * 8) * 0.35 : 1.25;
+    SC.dis.armFar = walking ? 1.1 + Math.sin(SC.dis.phase) * 0.3 : 1.25;
+    SC.dis.headR = bt > 5.7 && bt < 7.2 ? -0.30 : 0;       // looking up at her window
+    // ---- the mender: looks up at the stranger, then turns his back on him
+    const m = F.mender;
+    m.armNear = bt < 3.1 ? 0.4 + Math.sin(bt * 5) * 0.25 : 0.6;
+    if (bt < 3.1) { m.flip = true; m.headR = bt > 0.8 ? -0.12 : 0.05; m.face = 'calm'; }
+    else {
+      if (!SC.turned) { SC.turned = true; kick(m, 5); if (typeof Audio_ !== 'undefined') Audio_.noise(0.08, 0.08, 600, 90); }
+      m.flip = false; m.headR = -0.2; m.face = 'shut'; m.lean = 0.12;
+    }
+    // ---- the window
+    const w = F.wife;
+    w.face = bt > 6.2 ? 'scowl' : 'calm';
+    w.headR = bt > 5.0 ? 0.25 : 0;
+    SC.lean = bt < 6.55 ? 1 : smooth(SC.lean, 0, 14, dt);
+    SC.shut = bt < 6.7 ? 0 : Math.min(1, (bt - 6.7) / 0.14);
+    if (!SC.slam1 && SC.shut >= 1) { SC.slam1 = true; slamSound(); Cine.shake = 3; FX.foam(VS.win[0] + 20, VS.win[1] + 10, 10, 0.6); }
+    // ---- the door
+    const d = F.door;
+    d.face = bt > 7.6 ? 'scowl' : 'calm';
+    d.armNear = 1.5; d.headR = bt > 7.8 ? 0.1 : 0;
+    SC.doorBack = bt < 8.55 ? 0 : clamp((bt - 8.55) / 0.2, 0, 1);
+    d.x = VS.door[0] + 14 + R(SC.doorBack * 6);
+    SC.door = bt < 8.75 ? 0 : Math.min(1, (bt - 8.75) / 0.1);
+    if (!SC.slam2 && SC.door >= 1) {
+      SC.slam2 = true; slamSound(); Cine.shake = 5; kick(SC.dis, -9);
+      FX.foam(VS.door[0] + 14, VS.door[1] + 20, 14, 0.8);
+      for (let i = 0; i < 10; i++) FX.add({ k: 'd', x: VS.door[0] + rand(0, VS.door[2]), y: VS.door[1] + rand(0, 10), vx: rand(-30, 30), vy: rand(10, 60), life: rand(0.4, 0.9), c: '#8a7a5a' });
+    }
+    // ---- the gutter: looks him up and down, and spits at his feet
+    const g = F.gutter;
+    g.armNear = bt < 9.4 ? 0.6 + Math.sin(bt * 7) * 0.5 : 0.9;       // still working the fish
+    g.holdR = 0.9;
+    g.face = bt > 9.55 && bt < 9.9 ? 'spit' : bt > 9.2 ? 'scowl' : 'calm';
+    g.headR = bt > 9.4 && bt < 9.9 ? 0.25 : 0;
+    if (!SC.spat && bt >= 9.8) {
+      SC.spat = true;
+      SC.spit = { x: g.x - 12, y: folkTop(g) + 13, vx: -52, vy: -40, t: 0 };
+      if (typeof Audio_ !== 'undefined') Audio_.noise(0.06, 0.12, 3000, 800);
+    }
+    if (SC.spit) {
+      const s = SC.spit; s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 420 * dt;
+      if (s.y >= VS.deck - 1) { SC.splat = { x: R(s.x), t: bt }; SC.spit = null; if (typeof Audio_ !== 'undefined') Audio_.tone(700, 0.04, 'sine', 0.04, -300); }
+    }
+    // ---- the lad just watches, feet swinging
+    F.lad.headR = Math.sin(bt * 0.7) * 0.06;
+  },
+  render(ctx, bt) {
+    streetBack(ctx);
+    const F = SC.folk;
+    drawWindowScene(ctx, SC.shut, SC.lean, F.wife.face);
+    drawDoorScene(ctx, SC.door, SC.doorBack);
+    drawMenderSeat(ctx);
+    drawFolk(ctx, F.mender, Cine.t);
+    drawBell(ctx, VS.bell[0], VS.bell[1], Math.sin(Cine.t * 1.2) * 0.04);
+    drawLadSeat(ctx);
+    drawFolk(ctx, F.lad, Cine.t);
+    drawFolk(ctx, F.gutter, Cine.t);
+    drawTable(ctx);
+    if (SC.splat) { P(ctx, IP.ink, SC.splat.x - 4, VS.deck - 3, 9, 3); P(ctx, '#d8e4d8', SC.splat.x - 3, VS.deck - 2, 7, 2); P(ctx, '#f4fff4', SC.splat.x - 1, VS.deck - 2, 3, 1); }
+    drawDisguise(ctx, SC.dis, Cine.t);
+    if (SC.spit) { P(ctx, IP.ink, R(SC.spit.x) - 2, R(SC.spit.y) - 2, 5, 5); P(ctx, '#eef8ee', R(SC.spit.x) - 1, R(SC.spit.y) - 1, 3, 3); P(ctx, rgbaq('#e8f4e8', 0.5), R(SC.spit.x) + 3, R(SC.spit.y) - 1, 4, 1); }
+    FX.render(ctx);
+  },
+});
+
+// -------------------------------------------------------------- 3. UNMASK
+//  The beard goes first, then the hat -- and under the hat is the skull.
+CINE.village.push({
+  name: 'unmask', dur: 8.6,
+  talk: [
+    [0.30, 'otter', '...Tough crowd.'],
+    [1.55, 'man', 'Wait. That\'s an OTTER.', 'gutter'],
+    [3.05, 'man', 'The PIRATE! RING IT!', 'mender'],
+    [4.55, 'man', 'PIRATES!', 'wife'],
+    [5.95, 'otter', 'Wrong answer.'],
+  ],
+  anchor(who) {
+    if (who === 'man') return manAnchor(this);
+    if (SC.real) return anc(SC.ot.x + 4, SC.ot.y - 44);
+    return anc(SC.dis.x + 2, (SC.dis.top || SC.dis.y - 80) - 4);
+  },
+  enter() {
+    villageArt();
+    streetFolk();
+    const F = SC.folk;
+    F.mender.flip = false; F.mender.face = 'shut'; F.mender.headR = -0.2; F.mender.lean = 0.12;
+    F.gutter.face = 'scowl';
+    SC.dis = { x: 462, y: VS.deck, phase: 0, walk: 0, rot: 0, exp: 'idle', beard: true, hat: true, sq: 0, sqv: 0, sx: 1, sy: 1 };
+    SC.ot = { x: 462, y: VS.deck - 32, phase: 0, rot: 0, exp: 'angry', flip: false, ride: false, sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -1.0, vy: null };
+    SC.shut = 1; SC.door = 1; SC.doorBack = 1; SC.lean = 0; SC.out = false;
+    SC.beard = null; SC.hat = null; SC.real = false; SC.coat = null; SC.shot = null; SC.leap = null;
+    SC.splat = { x: 450 };
+    SC.bell = 0; SC.bellA = 0;
+  },
+  update(dt, bt) {
+    Cine.scroll += 3 * dt;
+    bounce(SC.dis, dt); bounce(SC.ot, dt);
+    const F = SC.folk;
+    for (const k in F) bounce(F[k], dt);
+    SC.dis.exp = talking('otter') && !SC.real ? 'talk' : bt > 1.2 ? 'wide' : 'idle';
+    // he backs off from the table on his stilts once the hat has gone
+    const back = clamp((bt - 2.6) / 1.8, 0, 1);
+    const wasX = SC.dis.x;
+    SC.dis.x = lerp(462, 352, ss(back));
+    const moving = Math.abs(SC.dis.x - wasX) > 0.05;
+    SC.dis.walk = smooth(SC.dis.walk, moving ? 1 : 0, 10, dt);
+    SC.dis.phase -= dt * 9 * SC.dis.walk;
+    SC.dis.armNear = moving ? 0.3 + Math.sin(bt * 12) * 0.3 : 1.25;
+    SC.dis.armFar = moving ? -0.6 + Math.sin(bt * 12 + 1) * 0.3 : 1.25;
+    SC.dis.rot = Math.sin(SC.dis.phase * 0.5) * 0.07 * SC.dis.walk + Math.sin(bt * 2) * 0.02;
+    // the beard lets go
+    if (!SC.beard && bt >= 1.05) {
+      SC.dis.beard = false;
+      SC.beard = { x: SC.dis.x + 3, y: SC.dis.y - 46, vx: 14, vy: -30, r: 0, vr: 3.2, rest: false };
+      SC.dis.headR = 0.25; kick(SC.dis, 4);
+      if (typeof Audio_ !== 'undefined') Audio_.tone(300, 0.2, 'sine', 0.05, -200);
+    }
+    if (SC.beard && !SC.beard.rest) {
+      const b = SC.beard; b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 380 * dt; b.r += b.vr * dt;
+      if (b.y >= VS.deck - 10) { b.y = VS.deck - 10; b.rest = true; b.r = 1.5; if (typeof Audio_ !== 'undefined') Audio_.noise(0.05, 0.1, 500, 80); }
+    }
+    // a gust, and the hat goes -- and there is the skull on his tricorn
+    if (!SC.hat && bt >= 2.35) {
+      SC.dis.hat = false;
+      SC.hat = { x: SC.dis.x + 2, y: SC.dis.y - 70, vx: 150, vy: -120, r: 0, vr: 7 };
+      kick(SC.dis, 6);
+      if (typeof Audio_ !== 'undefined') Audio_.noise(0.5, 0.08, 1200, 400);
+    }
+    if (SC.hat) { const h = SC.hat; h.x += h.vx * dt; h.y += h.vy * dt; h.vy += 60 * dt; h.r += h.vr * dt; }
+    if (bt > 2.2 && bt < 3.0 && Math.random() < 30 * dt) FX.add({ k: 'f', x: rand(380, 640), y: rand(150, 250), vx: rand(160, 320), vy: rand(-20, 20), r: 1, life: rand(0.3, 0.6) });
+    if (bt > 1.0 && !SC.real) SC.dis.headR = smooth(SC.dis.headR || 0, bt > 2.4 ? -0.12 : 0.25, 5, dt);
+    // ---- the port wakes up.  The gutter first, cleaver up.
+    const g = F.gutter;
+    g.face = talking('man') && SAY.i === 1 ? 'shout' : 'scowl';
+    g.armNear = bt > 1.5 ? -0.5 + Math.sin(bt * 3) * 0.1 : 0.9;
+    g.holdR = 0.3;
+    // the mender off his crate with a gaff, and coming
+    const m = F.mender;
+    if (bt > 2.9) {
+      const u = clamp((bt - 3.3) / 1.7, 0, 1);
+      m.flip = false; m.sit = 0; m.lean = 0.06; m.headR = 0; m.hold = 'gaff';
+      m.face = talking('man') && SAY.i === 2 ? 'shout' : 'scowl';
+      m.x = lerp(150, 240, ss(u)); m.walk = u > 0 && u < 1 ? 1 : 0; m.phase += dt * 11 * m.walk;
+      m.armNear = -0.25 + Math.sin(bt * 4) * 0.08; m.holdR = -0.05; m.armFar = 0.2;
+      if (!SC.stood) { SC.stood = true; kick(m, 6); }
+    }
+    // the lad runs for the bell, and rings it
+    const lad = F.lad;
+    if (bt > 3.3) {
+      const u = clamp((bt - 3.3) / 0.5, 0, 1);
+      lad.sit = u < 0.2 ? 16 : 0; lad.flip = false; lad.walk = u < 1 ? 1 : 0; lad.phase += dt * 16 * (u < 1 ? 1 : 0);
+      lad.x = lerp(562, VS.bell[0] - 8, ss(u)); lad.y = VS.deck;
+      lad.face = 'shout';
+      if (u >= 1) { lad.armNear = -2.4 + Math.sin(bt * 15) * 0.35; lad.armFar = -2.2 + Math.sin(bt * 15 + 1) * 0.3; }
+    }
+    if (bt > 3.85) { SC.bell = 1; bellSound(dt); }
+    SC.bellA = SC.bell ? Math.sin((bt - 3.85) * TAU / 0.84) * 0.7 : Math.sin(Cine.t * 1.2) * 0.04;
+    // the door bangs open again, and he comes out of it with a musket
+    const d = F.door;
+    if (bt > 4.0) {
+      SC.door = Math.max(0, 1 - (bt - 4.0) / 0.1); SC.doorBack = 0; SC.out = true;
+      d.face = 'shout'; d.hold = 'musket'; d.flip = true;
+      d.x = lerp(VS.door[0] + 14, VS.door[0] - 2, ss(clamp((bt - 4.05) / 0.45, 0, 1)));
+      d.walk = bt < 4.5 ? 1 : 0; d.phase += dt * 10 * d.walk;
+      const aim = SC.real ? 0.32 : 0.12;                     // down at wherever he is
+      d.armNear = aim + (SC.shot && Cine.t - SC.shot.t0 < 0.2 ? -0.35 : 0); d.holdR = 0.05; d.armFar = aim - 0.2;
+      if (!SC.bang1) { SC.bang1 = true; slamSound(); Cine.shake = 4; }
+    }
+    // and the shutters fly open
+    if (bt > 4.4) {
+      SC.shut = Math.max(0, 1 - (bt - 4.4) / 0.12); SC.lean = smooth(SC.lean, 1, 10, dt);
+      F.wife.face = 'shout';
+      if (!SC.bang2) { SC.bang2 = true; slamSound(); }
+    }
+    // the coat comes off, the stilts go over, and there he is
+    if (!SC.real && bt >= 5.15) {
+      SC.real = true;
+      SC.coat = { x: SC.dis.x, t: bt };
+      SC.ot.x = SC.dis.x + 2; SC.ot.y = VS.deck - 20 - 14; SC.ot.vy = -60;
+      FX.foam(SC.dis.x, VS.deck - 24, 20, 1);
+      if (typeof Audio_ !== 'undefined') { Audio_.noise(0.18, 0.2, 900, 120); setTimeout(() => Audio_.tone(120, 0.08, 'square', 0.1), 180); setTimeout(() => Audio_.tone(100, 0.08, 'square', 0.1), 300); }
+    }
+    if (SC.real && !SC.leap) {
+      SC.ot.phase += dt * 2.5;
+      if (SC.ot.vy !== null) {
+        SC.ot.y += SC.ot.vy * dt; SC.ot.vy += 500 * dt;
+        if (SC.ot.y >= VS.deck - 20) { SC.ot.y = VS.deck - 20; SC.ot.vy = null; kick(SC.ot, 9); if (typeof Audio_ !== 'undefined') Audio_.tone(180, 0.08, 'square', 0.08, -60); }
+      }
+      SC.ot.exp = talking('otter') ? 'talk' : 'angry';
+      const draw = clamp((bt - 5.5) / 0.3, 0, 1);
+      SC.ot.armNear = lerp(0.9, -1.9, ss(draw)) + Math.sin(SC.ot.phase * 2) * 0.08;
+      SC.ot.bladeR = lerp(-1.0, -0.6, ss(draw));
+      SC.ot.armFar = -0.9;
+      if (draw > 0 && !SC.drawn) { SC.drawn = true; if (typeof Audio_ !== 'undefined') { Audio_.noise(0.12, 0.07, 3600, 900); Audio_.tone(880, 0.06, 'sawtooth', 0.05, -400); } }
+    }
+    // over the side: a back flip up off the boards and down into the water in
+    // front of them -- and the musket goes off where he was a moment ago
+    if (bt >= 7.1) {
+      if (!SC.leap) { SC.leap = [SC.ot.x, SC.ot.y]; kick(SC.ot, 6); if (typeof Audio_ !== 'undefined') Audio_.tone(420, 0.12, 'square', 0.06, 260); }
+      const u = clamp((bt - 7.1) / 0.95, 0, 1);
+      SC.ot.x = SC.leap[0] - 110 * u;
+      SC.ot.y = SC.leap[1] - 250 * u + 520 * u * u;
+      SC.ot.rot = -u * TAU * 1.1;
+      SC.ot.exp = 'grin';
+    }
+    if (!SC.shot && bt >= 7.3) {
+      const sy = VS.deck - F.door.F.leg - F.door.F.tor + 5;
+      SC.shot = { x: F.door.x - 40, y: sy + 12, dx: -1, t0: Cine.t };
+      Cine.shake = 7;
+      if (typeof Audio_ !== 'undefined') { Audio_.shot('shotgun'); }
+      FX.chunks(SC.leap ? SC.leap[0] : 352, VS.deck - 2, 12);
+    }
+  },
+  render(ctx, bt) {
+    streetBack(ctx);
+    const F = SC.folk;
+    drawWindowScene(ctx, SC.shut, SC.lean, F.wife.face);
+    drawDoorScene(ctx, SC.door, SC.doorBack, SC.out);
+    if (F.mender.sit) drawMenderSeat(ctx); else vCrate(ctx, 140, 274, 20, 14);
+    drawBell(ctx, VS.bell[0], VS.bell[1], SC.bellA);
+    drawLadSeat(ctx);
+    drawFolk(ctx, F.lad, Cine.t);
+    drawFolk(ctx, F.gutter, Cine.t);
+    drawTable(ctx);
+    if (SC.out) drawFolk(ctx, F.door, Cine.t);
+    if (SC.splat) { P(ctx, '#d8e4d8', SC.splat.x - 3, VS.deck - 2, 7, 2); }
+    if (SC.beard) { ctx.save(); ctx.translate(R(SC.beard.x), R(SC.beard.y)); ctx.rotate(SC.beard.r); ctx.drawImage(VIL.dis.beard.c, -VIL.dis.beard.ax, -VIL.dis.beard.ay); ctx.restore(); }
+    // the disguise, or what is left of it on the boards
+    if (!SC.real) drawDisguise(ctx, SC.dis, Cine.t);
+    else {
+      const e = clamp((bt - SC.coat.t) / 0.35, 0, 1), cx0 = SC.coat.x;
+      // the stilts toppling one each way
+      for (const s of [-1, 1]) {
+        const a = s * ss(e) * 1.45;
+        const ex = cx0 + s * 4 + Math.sin(a) * 30, ey = VS.deck - Math.cos(a) * 30;
+        cap_(ctx, IP.ink, cx0 + s * 4, VS.deck - 1, ex, ey, 4); cap_(ctx, WOOD.l, cx0 + s * 4, VS.deck - 1, ex, ey, 2);
+      }
+      ctx.save(); ctx.translate(R(cx0), VS.deck); ctx.scale(1, lerp(1, 0.38, ss(e)));
+      ctx.drawImage(VIL.dis.coat.c, -VIL.dis.coat.ax, -VIL.dis.coat.ay); ctx.restore();
+      if (SC.ot.y < 380) drawCapOtter(ctx, SC.ot, Cine.t);
+    }
+    drawFolk(ctx, F.mender, Cine.t);
+    if (SC.hat) { ctx.save(); ctx.translate(R(SC.hat.x), R(SC.hat.y)); ctx.rotate(SC.hat.r); ctx.drawImage(VIL.dis.hat.c, -VIL.dis.hat.ax, -VIL.dis.hat.ay); ctx.restore(); }
+    if (SC.shot) drawShot(ctx, SC.shot, Cine.t);
+    FX.render(ctx);
+    clang(ctx, bt, 3.85);
+  },
+});
+
+// ---------------------------------------------------------------- 4. TAKE
+//  Back under the boards.  The whole port is on the pier now with whatever
+//  it could grab, the bell going, and he comes down out of the sky onto her
+//  back.  Two lines, and they go.
+CINE.village.push({
+  name: 'take', dur: 6.9,
+  talk: [
+    [1.05, 'otter', 'No answers.'],
+    [2.55, 'you', 'Then we take them.'],
+    [4.05, 'otter', 'NO QUARTER!'],
+  ],
+  anchor(who) {
+    if (who === 'otter') return anc(SC.ot.x + 4, SC.ot.y - 44);
+    return ancUnder(A.you);
+  },
+  enter() {
+    villageArt();
+    A.you = actor(MAN.youBig, 176, 274, { beat: 1.2, exp: 'angry', tailAmp: 0.24, scarred: true });
+    SC.ot = { x: 200, y: 20, phase: 0, rot: -2, exp: 'angry', flip: false, ride: false, sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -0.8, armNear: -2.0 };
+    SC.landed = false; SC.splashed = false; SC.go = false; SC.spd = 0; SC.bell = 1; SC.shots = [];
+    SC.folk = {
+      mender: folkO('mender', 300, VW.deck, { flip: true, face: 'shout', hold: 'gaff', armNear: 0.2, holdR: 0.2 }),
+      door:   folkO('door', 376, VW.deck, { flip: true, face: 'scowl', hold: 'musket', armNear: 0.55, holdR: 0.05, armFar: 0.4 }),
+      gutter: folkO('gutter', 440, VW.deck, { flip: true, face: 'shout', hold: 'cleaver', armNear: -1.0, holdR: 0.4 }),
+      wife:   folkO('wife', 516, VW.deck, { flip: true, face: 'shout', hold: 'lantern', armNear: -0.3, holdR: 0.3 }),
+      lad:    folkO('lad', 564, VW.deck, { flip: false, face: 'shout', armNear: -2.4, armFar: -2.2 }),
+    };
+  },
+  update(dt, bt) {
+    Cine.scroll += (4 + SC.spd * 0.4) * dt;
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
+    const F = SC.folk;
+    for (const k in F) bounce(F[k], dt);
+    bellSound(dt);
+    F.lad.armNear = -2.4 + Math.sin(bt * 15) * 0.35; F.lad.armFar = -2.2 + Math.sin(bt * 15 + 1) * 0.3;
+    F.gutter.armNear = -1.0 + Math.sin(bt * 5) * 0.3;
+    F.mender.armNear = 0.2 + Math.sin(bt * 3) * 0.15;
+    // he comes down out of the sky, through the surface, onto her back
+    if (!SC.landed) {
+      const u = clamp(bt / 0.8, 0, 1);
+      const deck = bodyPoint(A.you, 4, riderY(A.you));
+      SC.ot.x = lerp(150, deck[0], u); SC.ot.y = lerp(10, deck[1], u * u);
+      SC.ot.rot = lerp(-2.4, 0, ss(u));
+      if (!SC.splashed && SC.ot.y > VW.surf) { SC.splashed = true; FX.drops(SC.ot.x, VW.surf, 50, 1.4); FX.foam(SC.ot.x, VW.surf + 2, 24, 1.2); FX.bubble(SC.ot.x, VW.surf + 20, 14, 1.8); if (typeof Audio_ !== 'undefined') Audio_.splash(2); }
+      if (u >= 1) { SC.landed = true; kick(A.you, 8); kick(SC.ot, 10); Cine.shake = 5; if (typeof Audio_ !== 'undefined') Audio_.tone(160, 0.12, 'square', 0.08, -60); }
+    } else rideOn(SC.ot, A.you, dt, 20);
+    SC.ot.phase += dt * 3;
+    SC.ot.exp = talking('otter') ? 'talk' : 'angry';
+    if (SC.landed) {
+      SC.ot.armNear = bt > 3.9 ? -2.3 + Math.sin(bt * 10) * 0.1 : 0.9 + Math.sin(SC.ot.phase) * 0.2;
+      SC.ot.bladeR = bt > 3.9 ? -0.7 : -1.1;
+      SC.ot.armFar = -0.9;
+    }
+    // the musket balls, plinking into the water round them
+    if (bt > 1.6 && Math.random() < 1.1 * dt && SC.shots.length < 6) {
+      SC.shots.push({ x: F.door.x - 30, y: folkTop(F.door) + 26, dx: -1, t0: Cine.t, tx: rand(90, 300), ty: rand(210, 300), k: 0 });
+      Cine.shake = Math.max(Cine.shake, 2);
+      if (typeof Audio_ !== 'undefined') Audio_.shot('revolver');
+    }
+    for (const s of SC.shots) {
+      s.k += dt * 3;
+      if (s.k >= 1 && !s.hit) { s.hit = true; FX.bubble(s.tx, s.ty, 6, 1.6); FX.foam(s.tx, VW.surf + 1, 6, 0.6); }
+    }
+    A.you.exp = talking('you') ? 'talk' : 'angry';
+    // and they go, straight at the pier
+    SC.go = bt > 4.55;
+    SC.spd = smooth(SC.spd, SC.go ? 360 : 0, 2.2, dt);
+    A.you.x = 176 + (SC.go ? ss(clamp((bt - 4.55) / 1.6, 0, 1)) * 190 : Math.sin(bt * 0.7) * 3);
+    A.you.y = 274 + Math.sin(bt * 0.9) * 3 - (SC.go ? ss(clamp((bt - 4.55) / 1.6, 0, 1)) * 30 : 0);
+    A.you.rot = smooth(A.you.rot, SC.go ? -0.18 : 0.0, 4, dt);
+    A.you.beat = SC.go ? 9 : 1.4;
+    if (SC.go && Math.random() < 30 * dt) FX.bubble(A.you.x - 46, A.you.y + rand(-6, 6), 1, 2.4);
+    for (const k in F) if (F[k] !== F.lad) F[k].face = bt > 4.8 ? 'shout' : F[k].face;
+    // out on the red, the way the intro goes out
+    if (bt > 5.35) { Cine.fadeCol = '#8d1420'; Cine.fade = 0.84 * ss(clamp((bt - 5.35) / 1.3, 0, 1)); }
+  },
+  render(ctx, bt) {
+    backdrop(ctx, { mood: 'cold', grade: 'cold', scroll: Cine.scroll, t: Cine.t, surfY: VW.surf, bedY: VW.bed, shafts: 0.8, causticBed: true });
+    drawAir(ctx, VW.surf, Cine.scroll, Cine.t, 'day');
+    ctx.drawImage(VIL.shore, 0, 0);
+    const F = SC.folk;
+    for (const k of ['mender', 'door', 'gutter', 'wife', 'lad']) drawFolk(ctx, F[k], Cine.t);
+    drawBell(ctx, 572, 92, Math.sin(bt * TAU / 0.84) * 0.7);
+    ctx.drawImage(VIL.under, 0, VW.surf);
+    for (const s of SC.shots) {
+      drawShot(ctx, s, Cine.t);
+      if (s.k < 1) {
+        const bx = lerp(s.x, s.tx, s.k), by = lerp(s.y, s.ty, s.k);
+        P(ctx, '#ffe48f', R(bx) - 1, R(by) - 1, 2, 2); P(ctx, rgbaq('#ffe48f', 0.5), R(bx) + 2, R(by) - 2, 3, 1);
+      }
+    }
+    drawManatee(ctx, A.you, Cine.t);
+    drawCapOtter(ctx, SC.ot, Cine.t);
+    if (SC.go) {
+      const a = clamp(SC.spd / 360, 0, 1), w1 = (Cine.t * 340) % 74;
+      speedLines(ctx, A.you.x - 90 - w1, A.you.y, R(6 + a * 10), R(30 + a * 40), -1, rgbaq('#f2fdff', 0.2 + a * 0.3), 7);
+    }
+    FX.render(ctx);
+    foreground(ctx, { grade: 'cold', scroll: Cine.scroll, t: Cine.t, bedY: VW.bed });
+    const sh = bt > 0.4 && bt < 3.6;
+    if (sh) pixelTextOutlined(ctx, 'THERE! IN THE WATER!', 420, 40, 9, '#ffe48f', '#14141c', 'center');
+    if (bt > 4.4) pixelTextOutlined(ctx, 'SHOOT IT!', 360, 48, 9, '#ffe48f', '#14141c', 'center');
+    if (bt > 0.2) {
+      const e = bt, n = Math.floor(e / 0.42), f = (e % 0.42) / 0.42;
+      if (f < 0.7) pixelTextOutlined(ctx, 'CLANG!', 572 + ((n & 1) ? 10 : -10) - R(f * 6), 70 - R(f * 8), 9, '#ffe48f', '#14141c', 'center');
+    }
+  },
+});
+
+// ================================================================ PLAYER ====
+const Cine = {
+  t: 0, bt: 0, dt: 1 / 60, beat: 0, done: true, active: false,
+  scroll: 0, shake: 0, fade: 0, fadeCol: '#fff3d6',
+  list: [], segs: [], opts: {}, id: null,
+  get bakeMs() { return CINE_BAKE_MS; },
+  get ready() { return VIL.ready; },
+  // one slice of scene art per call, for idle frames before a scene is asked for
+  prewarm() { if (!BUILT) return false; return cineBakeStep(); },
+  play(ids, opts) {
+    buildIntroArt();
+    this.opts = opts || {};
+    this.list = []; this.segs = [];
+    if (BUILT) {
+      for (const id of [].concat(ids || [])) {
+        const bl = CINE[id]; if (!bl || !bl.length) continue;
+        this.segs.push({ id: id, start: this.list.length, n: bl.length });
+        for (const b of bl) this.list.push({ b: b, seg: this.segs.length - 1 });
+      }
+    }
+    this.t = 0; this.bt = 0; this.beat = -1; this.scroll = 0; this.shake = 0; this.fade = 0;
+    this.fadeCol = '#fff3d6'; sndT = 0; sndT2 = 0;
+    if (!this.list.length) { this.done = true; this.active = false; return false; }
+    // whatever these scenes need, baked before the first frame of them
+    villageArt();
+    this.done = false; this.active = true;
+    this.next();
+    return !this.done;
+  },
+  _end(segIdx, skipped) {
+    const s = this.segs[segIdx];
+    if (!s || s.ended) return;
+    s.ended = true;
+    if (this.opts.onScene) { try { this.opts.onScene(s.id, !!skipped); } catch (e) { /* the caller's problem */ } }
+  },
+  next() {
+    const prev = this.list[this.beat];
+    this.beat++; this.bt = 0; this.fade = 0; this.shake = 0;
+    this.fadeCol = '#fff3d6';
+    const cur = this.list[this.beat];
+    if (prev && (!cur || cur.seg !== prev.seg)) this._end(prev.seg, false);
+    FX.clear(); sayReset();
+    for (const k in SC) delete SC[k];
+    for (const k in A) delete A[k];
+    if (!cur) { this.done = true; this.active = false; return; }
+    if (!prev || cur.seg !== prev.seg) this.scroll = 0;
+    this.id = this.segs[cur.seg].id;
+    if (cur.b.enter) cur.b.enter.call(cur.b);
+  },
+  // end the scene that is playing and cut to the next one in the queue
+  skip() {
+    const cur = this.list[this.beat];
+    if (!cur || this.done) { this.done = true; this.active = false; return; }
+    this._end(cur.seg, true);
+    const nx = this.segs[cur.seg + 1];
+    if (!nx) { FX.clear(); sayReset(); this.done = true; this.active = false; return; }
+    // step onto the first beat of the next scene; next() will not end the
+    // skipped one a second time, it is already marked
+    this.beat = nx.start - 1;
+    this.next();
+  },
+  // is the beat on screen the first / last of the whole queue?
+  _edge() {
+    return { first: this.beat === 0, last: this.beat === this.list.length - 1 };
+  },
+  update(dt) {
+    if (this.done) return;
+    if (!(dt > 0)) dt = 0;
+    if (dt > 1 / 20) dt = 1 / 20;
+    this.dt = dt; this.t += dt; this.bt += dt;
+    this.shake = Math.max(0, this.shake - dt * 30);
+    const cur = this.list[this.beat];
+    if (!cur) { this.done = true; this.active = false; return; }
+    const b = cur.b;
+    sayUpdate(b, this.bt, dt);
+    b.update.call(b, dt, this.bt);
+    FX.update(dt);
+    if (this.bt >= b.dur) this.next();
+  },
+  render(ctx) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    const cur = !this.done && this.list[this.beat];
+    if (!cur) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, 640, 360); ctx.restore(); return; }
+    const b = cur.b;
+    ctx.save();
+    if (this.shake > 0.2) ctx.translate(R(rand(-this.shake, this.shake)), R(rand(-this.shake, this.shake)));
+    b.render.call(b, ctx, this.bt);
+    ctx.restore();
+    // the intro's daylight dissolve between beats -- but not in at the very
+    // top (the bubble wipe is covering it) and not out at the very end (the
+    // wipe out of here snapshots this frame, and should see the scene)
+    const E = this._edge();
+    const inK = E.first ? 1 : clamp(this.bt / 0.18, 0, 1);
+    const outK = E.last ? 1 : clamp((b.dur - this.bt) / 0.18, 0, 1);
+    const wash = Math.max(this.fade, 1 - ss(Math.min(inK, outK)));
+    if (wash > 0) { ctx.fillStyle = rgbaq(this.fadeCol, wash); ctx.fillRect(0, 0, 640, 360); }
+    letterbox(ctx);
+    sayRender(ctx, b, this.bt);
+    ctx.restore();
+  },
+};
+
 try { if (typeof document !== 'undefined' && document.createElement) buildIntroArt(); } catch (e) { /* built lazily on reset */ }
 
 global.Intro = Intro;
 global.IntroBeats = BEATS;
+global.Cine = Cine;
+global.CineScenes = CINE;
 global.__introDebug = {
   MAN: MAN, A: A, SC: SC, SAY: SAY, FX: FX,
   drawManatee: drawManatee, drawCapOtter: drawCapOtter, drawJolly: drawJolly,

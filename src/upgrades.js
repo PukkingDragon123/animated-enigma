@@ -2568,7 +2568,7 @@
   // right). This is that shadow, posterised onto the water's own pixel grid
   // and baked, instead of the soft hollow that used to sit behind her.
   function buildHeroShadow() {
-    const W = 72, H = 40, c = can(W, H), x = c.getContext('2d');
+    const W = 96, H = 48, c = can(W, H), x = c.getContext('2d');
     const cx = W >> 1, cy = H >> 1;
     const disc = (rw, rh, col) => {
       x.fillStyle = col;
@@ -2578,24 +2578,38 @@
         x.fillRect(cx - hw, cy + yy, hw * 2, GR);
       }
     };
-    disc(26, 14, 'rgba(6,18,48,0.30)');
-    disc(16, 8, 'rgba(4,14,38,0.22)');
+    disc(36, 18, 'rgba(6,18,48,0.30)');
+    disc(22, 10, 'rgba(4,14,38,0.22)');
     return spr(c, cx, cy);
   }
 
   // ===========================================================================
-  //  THE MENU PET — the hero at play in the open water right of the buttons
+  //  THE MENU PET — the mascot pair at play in the open water right of the
+  //  buttons
   // ===========================================================================
+  // She is NOT the gameplay rig and not the cutscene cast: the title screen
+  // has its own side-on mascot pair out of src/menuart.js (MenuArt) — a
+  // chubbier, cuter manatee with the otter riding high and waving his hat,
+  // drawn a size up from the rig on a chunkier grid.
   // Her centre never leaves this pen: the open water right of the buttons and
-  // under the title plate, inset by her own reach (about forty px from her
-  // centre to the fluke tip or the flag's top at any angle), so nothing of her
-  // ever crosses a button or the title. Everything she does is steering: a
-  // heading with an eased turn rate, a speed with eased thrust, and a mood
-  // that picks what she wants next. She is drawn by the shared rig, whole —
-  // the heading is a turn of the canvas around her, the rig does the rest.
-  const PEN = { x0: 292, x1: 592, y0: 138, y1: 274 };
+  // under the title plate, inset by her own reach (MenuArt.REACH, about fifty
+  // five units from her centre to the fluke tip or the top of his hat at any
+  // angle), so nothing of her ever crosses a button or the title. Everything
+  // she does is steering: a heading with an eased turn rate, a speed with
+  // eased thrust, and a mood that picks what she wants next. The heading is
+  // her pitch; which way she FACES changes in a quick half-roll that turns
+  // her to look out of the screen on the way round; a barrel roll squashes
+  // her through her pale belly and back.
+  const PEN = { x0: 304, x1: 584, y0: 146, y1: 266 };
   const PEN_CX = (PEN.x0 + PEN.x1) / 2, PEN_CY = (PEN.y0 + PEN.y1) / 2;
-  const NOSE = 30;                       // centre to snout, world units
+  const NOSE = (typeof MenuArt !== 'undefined' && MenuArt.NOSE) || 35;   // centre to snout
+  const TAIL = (typeof MenuArt !== 'undefined' && MenuArt.TAIL) || 34;   // centre to fluke root
+  // How far she tips her body toward her heading. Side-on, a manatee
+  // standing on her nose or her tail reads as falling, not swimming, so the
+  // body leans at most this far off level and swims the rest of a steep
+  // heading at an angle -- except in a loop, where going all the way round
+  // is the whole point.
+  const VP_MAX = 0.72;
   const LOOP_W = 3.9;                    // loop-the-loop turn rate, rad/s
 
   // a small heart, outlined, two tones — the one thing she emits when happy
@@ -2624,14 +2638,26 @@
       this.phase = 0; this.thrust = 0.3; this.cheer = 0; this.look = null;
       this.exp = 'happy'; this.expT = 0; this.expTo = 'happy';
       this.roll = null; this.pendFlip = false; this.flipCool = 0; this.loop = null;
+      this.blinkT = rand(1.5, 3.5); this.blinking = 0;
+      this.vp = clamp(angleDiff(Math.PI, this.h), -VP_MAX, VP_MAX);   // her body's lean
       this.bubbles = []; this.fx = []; this.hearts = []; this.last = [];
+      if (typeof MenuArt !== 'undefined') MenuArt.build();
       this.heart = buildHeart();
       this.start('glide');
     },
 
     // ---- helpers ------------------------------------------------------------
-    noseX() { return this.x + Math.cos(this.h) * NOSE; },
-    noseY() { return this.y + Math.sin(this.h) * NOSE; },
+    // her snout, where it is DRAWN: along her body's lean, not her heading
+    noseA() { return (this.F < 0 ? Math.PI : 0) + this.vp; },
+    noseX() { return this.x + Math.cos(this.noseA()) * NOSE; },
+    noseY() { return this.y + Math.sin(this.noseA()) * NOSE; },
+    // the way her snout WILL point when she lines up on (tx, ty): level-
+    // limited like her lean, so aiming a centre point along it brings the
+    // snout, not the side of her head, onto the thing
+    aimA(tx, ty) {
+      const a = Math.atan2(ty - this.y, tx - this.x), side = Math.cos(a) >= 0 ? 0 : Math.PI;
+      return side + clamp(angleDiff(side, a), -VP_MAX, VP_MAX);
+    },
     inPen(x, y, m) { return x >= PEN.x0 + m && x <= PEN.x1 - m && y >= PEN.y0 + m && y <= PEN.y1 - m; },
     waypoint(minD, ahead) {
       let best = null, bs = -1e9;
@@ -2647,12 +2673,15 @@
     face(e, dur, then) { this.exp = e; this.expT = dur || 0; this.expTo = then || this.expTo; },
     heartPop(n) {
       // off the top of her reach, so they never sit over him on her back
-      for (let i = 0; i < (n || 1); i++) this.hearts.push({ x: this.x + rand(-8, 8), y: Math.max(102, this.y - 36 - i * 8), vy: rand(-20, -13), ph: rand(0, TAU), life: 1.2 + i * 0.15 });
+      for (let i = 0; i < (n || 1); i++) this.hearts.push({ x: this.x + rand(-8, 8), y: Math.max(102, this.y - 50 - i * 8), vy: rand(-20, -13), ph: rand(0, TAU), life: 1.2 + i * 0.15 });
     },
     popFx(x, y, big) { this.fx.push({ x, y, life: 0.32, max: 0.32, r: big ? 9 : 6 }); },
-    startRoll(turns, dur) {
+    // A barrel roll (a trick: she squashes through her belly and back) or,
+    // with `turn`, the half-roll that changes which way she faces: F flips at
+    // its midpoint, while MenuArt is showing her face-on.
+    startRoll(turns, dur, turn) {
       if (this.roll) return false;
-      this.roll = { p: 0, n: turns, dur: dur, flipped: false, fOld: this.F, end: false };
+      this.roll = { p: 0, n: turns, dur: dur, flipped: false, fOld: this.F, end: false, turn: !!turn };
       return true;
     },
     fishInPen() {
@@ -2705,7 +2734,9 @@
     update(dt, T) {
       if (!(dt > 0)) return;
       dt = Math.min(dt, 1 / 20);
-      if (typeof Rig !== 'undefined' && Rig.updateBlink) Rig.updateBlink(dt);
+      // her own blink: a couple of frames shut every few seconds
+      if (this.blinking > 0) this.blinking -= dt;
+      else if ((this.blinkT -= dt) <= 0) { this.blinking = 0.13; this.blinkT = rand(2.2, 4.8); }
       const M = this.mode;
       M.t += dt;
       let hd = this.h, vd = this.vd;
@@ -2799,8 +2830,8 @@
           }
           if (best) {
             // aim the snout, not the middle of her, at it
-            const a = Math.atan2(best.y - this.y, best.x - this.x);
-            seek(best.x - Math.cos(a) * (NOSE - 6), best.y - Math.sin(a) * (NOSE - 6), 135, true);
+            const a = Math.atan2(best.y - this.y, best.x - this.x), na = this.aimA(best.x, best.y);
+            seek(best.x - Math.cos(na) * (NOSE - 6), best.y - Math.sin(na) * (NOSE - 6), 135, true);
             this.look = a; this.wMax = 3.0; this.tcUp = 0.3; this.tcDn = 0.45;
           } else if (this.bubbles.length) {
             seek(PEN_CX, PEN.y1, 40, true);
@@ -2811,7 +2842,8 @@
         case 'fish': {
           // tag: she chases, it bolts, she catches it up and bops it
           const f = M.f;
-          const d = seek(f.x + (f.s + f.fx) * 0.3, f.y + f.fy * 0.3, 165, false);
+          const na = this.aimA(f.x, f.y);
+          const d = seek(f.x + (f.s + f.fx) * 0.3 - Math.cos(na) * (NOSE - 10), f.y + f.fy * 0.3 - Math.sin(na) * (NOSE - 10), 165, false);
           this.wMax = 3.0; this.tcUp = 0.25;
           const nd = Math.hypot(f.x - this.noseX(), f.y - this.noseY());
           if (nd < 50) this.scare(f, 95);
@@ -2828,8 +2860,8 @@
           const f = M.f;
           const nd = Math.hypot(f.x - this.noseX(), f.y - this.noseY());
           if (M.st === 0) {
-            const a = Math.atan2(f.y - this.y, f.x - this.x);
-            seek(f.x - Math.cos(a) * (NOSE + 14), f.y - Math.sin(a) * (NOSE + 14), 110, true);
+            const a = Math.atan2(f.y - this.y, f.x - this.x), na = this.aimA(f.x, f.y);
+            seek(f.x - Math.cos(na) * (NOSE + 14), f.y - Math.sin(na) * (NOSE + 14), 110, true);
             this.look = a; this.wMax = 2.6; this.tcDn = 0.35;
             // it notices her coming and stops to look, so she can come in slow
             if (nd < 80 && f.hold <= 0) { f.hold = 6; f.face = this.x < f.x ? -1 : 1; f.fx = f.fy = 0; }
@@ -2837,11 +2869,11 @@
             if (M.t > 5 || f.x < PEN.x0 - 40 || f.x > PEN.x1 + 40) { this.next(); break; }
           } else {
             f.hold = Math.max(f.hold, 1);
-            const a = Math.atan2(f.y - this.y, f.x - this.x);
-            hd = a; this.look = a; this.wMax = 2.4;
+            const a = Math.atan2(f.y - this.y, f.x - this.x), na = this.aimA(f.x, f.y);
+            hd = na; this.look = a; this.wMax = 2.4;
             const k = ((M.t - M.t2) % 0.7) / 0.7;
             // a little lunge, then back off, in a rhythm
-            const facing = Math.abs(angleDiff(this.h, a)) < 0.5;
+            const facing = Math.abs(angleDiff(this.h, na)) < 0.5;
             vd = !facing ? (nd < 22 ? -18 : 0) : k < 0.28 ? 60 : (nd < 18 ? -14 : 0);
             this.tcUp = 0.1; this.tcDn = 0.2;
             if (facing && k < 0.28 && nd < 9 && !M.hit) {
@@ -2910,27 +2942,35 @@
       this.flipCool -= dt;
       const base = this.F < 0 ? Math.PI : 0;
       // only for a heading she means: a wiggle past the line while she noses
-      // about is not a reason to turn over
+      // about is not a reason to turn round. Side-on, a heading past the
+      // vertical is her swimming on her back, so she turns early.
       const off = Math.abs(angleDiff(base, this.h));
-      this.flipHold = off > 1.95 ? (this.flipHold || 0) + dt : 0;
-      if (!this.loop && this.flipCool <= 0 && (this.flipHold > 0.35 || off > 2.6)) this.pendFlip = true;
-      if (this.pendFlip && !this.roll) this.startRoll(1, 0.6);
+      this.flipHold = off > 1.75 ? (this.flipHold || 0) + dt : 0;
+      if (!this.loop && this.flipCool <= 0 && (this.flipHold > 0.18 || off > 2.3)) this.pendFlip = true;
+      // a turn waits for a trick roll to finish rather than landing inside it
+      if (this.pendFlip && !this.roll) this.startRoll(0.5, 0.36, true);
       if (this.roll) {
         const R0 = this.roll;
         if (R0.end) this.roll = null;
         else {
           const p0 = R0.p;
           R0.p = Math.min(R0.n, R0.p + dt / R0.dur);
-          if (this.pendFlip && Math.floor(p0 - 0.25) < Math.floor(R0.p - 0.25)) {
+          if (R0.turn && this.pendFlip && Math.floor(p0 - 0.25) < Math.floor(R0.p - 0.25)) {
             R0.fOld = this.F; R0.flipped = true;
             this.F = -this.F; this.pendFlip = false; this.flipCool = 1.0; this.flipHold = 0;
-            // his aim is kept in her frame, which just turned half over
-            if (typeof Rig !== 'undefined' && Rig._aim && typeof Rig._aim.x === 'number') {
-              Rig._aim.x += Math.PI; Rig._headAim += Math.PI; Rig._gunAim += Math.PI;
-            }
+            // her lean, re-measured from the way she now faces (she is
+            // face-on at this instant, so nothing visibly jumps)
+            this.vp = clamp(angleDiff(this.F < 0 ? Math.PI : 0, this.h), -VP_MAX, VP_MAX);
           }
           if (R0.p >= R0.n) R0.end = true;
         }
+      }
+
+      // ---- her body's lean chases her heading, level-limited out of a loop -------
+      {
+        const p = angleDiff(this.F < 0 ? Math.PI : 0, this.h);
+        const want = this.loop ? p : clamp(p, -VP_MAX, VP_MAX);
+        this.vp = angleDiff(0, this.vp + angleDiff(this.vp, want) * (1 - Math.exp(-dt / (this.loop ? 0.05 : 0.12))));
       }
 
       // ---- face / cheer timers --------------------------------------------------
@@ -2942,7 +2982,7 @@
         const b = this.bubbles[i];
         b.y -= b.s * dt; b.ph += dt * 2.2;
         const bx = b.x + Math.sin(b.ph) * b.w;
-        if (Math.hypot(bx - this.noseX(), b.y - this.noseY()) < b.r + 6 || Math.hypot(bx - this.x, b.y - this.y) < 16) {
+        if (Math.hypot(bx - this.noseX(), b.y - this.noseY()) < b.r + 6 || Math.hypot(bx - this.x, b.y - this.y) < 19) {
           this.popFx(bx, b.y, b.r > 3); this.bubbles.splice(i, 1);
           this.face('surprised', 0.22, this.mode.name === 'bubbles' ? 'idle' : 'happy');
           if (Math.random() < 0.5) this.heartPop(1);
@@ -2960,7 +3000,7 @@
 
       // wake bubbles off her fluke, more of them the harder she swims
       if (Math.random() < dt * (1.5 + this.v * 0.06)) {
-        Deep.rise.push({ x: this.x - Math.cos(this.h) * 34 + rand(-3, 3), y: this.y - Math.sin(this.h) * 34 + 3, r: randi(0, 1), s: rand(20, 46), ph: rand(0, TAU), w: rand(3, 8) });
+        Deep.rise.push({ x: this.x - Math.cos(this.h) * (TAIL + 12) + rand(-3, 3), y: this.y - Math.sin(this.h) * (TAIL + 12) + rand(-4, 4), r: randi(0, 1), s: rand(20, 46), ph: rand(0, TAU), w: rand(3, 8) });
         if (Deep.rise.length > 110) Deep.rise.splice(0, Deep.rise.length - 110);
       }
     },
@@ -2977,33 +3017,21 @@
       for (const b of this.bubbles) blit(ctx, Deep.bub[b.r], b.x + Math.sin(b.ph) * b.w, b.y);
     },
     render(ctx, T, shadow) {
-      if (typeof CH === 'undefined' || !CH.manatee || typeof Rig === 'undefined') return;
+      if (typeof MenuArt === 'undefined') return;
       const bob = Math.sin(T * 1.7) * 1.2 * (1 - Math.min(1, this.v / 150));
       const hx = this.x, hy = this.y + bob;
       // the shadow the water drops under her, as the ocean casts it
-      blit(ctx, shadow, (hx + 5) & ~1, (hy + 10) & ~1);
-
-      const base = this.F < 0 ? Math.PI : 0;
+      blit(ctx, shadow, (hx + 4) & ~1, (hy + 12) & ~1);
       const R0 = this.roll;
-      const rp = R0 ? Math.min(R0.p, R0.n) : null;
-      // the rig's own roll wobble changes hand with the flank; hold it steady
-      const corr = (R0 && R0.flipped) ? 2 * R0.fOld * Math.sin(rp * TAU) * 0.18 : 0;
-      // he watches whatever she is after; a cheer throws the gun up
+      const rp = R0 ? Math.min(R0.p, R0.n) : 0;
+      // he watches whatever she is after
       const lk = this.look === null ? this.h : this.look;
-      const aim = this.cheer > 0 ? (this.F > 0 ? -1.2 : -(Math.PI - 1.2))
-        : base + clamp(angleDiff(this.h, lk), -1.0, 1.0) * 0.8;
-
-      ctx.save();
-      // snap on the device grid, the way the player does in the play field
-      ctx.translate(Math.round(hx * DETAIL) / DETAIL, Math.round(hy * DETAIL) / DETAIL);
-      ctx.rotate(angleDiff(base, this.h) + corr);
-      Rig.draw(ctx, 0, 0, {
-        t: T, aim: aim, facing: this.F, tilt: clamp(this.w * 0.1, -0.3, 0.3),
-        swimPhase: this.phase, rollPhase: rp, hurt: false, exp: this.exp, rage: false,
-        recoil: 0, flash: 0, speed: Math.max(0, this.v), armored: true,
-        gunSprite: SP.guns[(typeof G !== 'undefined' && G && G.tree) ? G.tree.primary : 'revolver'] || SP.guns.revolver,
+      MenuArt.draw(ctx, {
+        x: hx, y: hy, F: this.F, pitch: this.vp,
+        roll: R0 ? { a: rp * TAU, turn: R0.turn, flipped: R0.flipped } : null,
+        phase: this.phase, thrust: this.thrust, exp: this.exp, blink: this.blinking > 0,
+        cheer: this.cheer, look: angleDiff(this.h, lk), t: T,
       });
-      ctx.restore();
     },
     renderOver(ctx) {
       for (const f of this.fx) {
@@ -3126,12 +3154,11 @@
         R(ctx, f.col, x - d * GR, y - GR + ((Math.floor(f.ph * 2) & 1) * GR), GR, GR);
       }
 
-      // ---- the hero: war manatee + armed otter, at play in the open water ---
-      // Drawn at 1:1, which is what the play field does (RIG_SCALE = 1): she
-      // is seventy world units long at two art pixels to the unit, so every
-      // pixel of her is one device pixel — a quarter the size of the water
-      // samples she is swimming through. That relationship, fine animal over
-      // coarse ocean, is the whole look of the game.
+      // ---- the mascots: manatee + otter, at play in the open water ---------
+      // The title screen's own pair (src/menuart.js), not the gameplay rig:
+      // side-on to match the side-on sea behind them, a size up from the rig,
+      // and on a chunkier grid — one art pixel per interface unit, a square
+      // 2x2 block of device pixels, half the size of the water's own pixel.
       MenuPet.renderUnder(ctx);
       MenuPet.render(ctx, T, this.shadow);
       MenuPet.renderOver(ctx);

@@ -248,6 +248,25 @@ class Game {
   // kept because entities.js still calls it if the lookout is ever shot in
   // ordinary play -- it is no longer how a run begins
   onFishermanShot() { this.startRun(); }
+  // Setting out from the chart. The run to the place always plays; the first
+  // time into Fisher Village the otter's walk down the pier plays after it,
+  // and the old five-line arrival exchange is left out -- the scenes have
+  // already said it. Without the cutscene module this is the old arrival.
+  beginArrival() {
+    this.holdFire = true; this.skipArm();
+    const dests = (typeof WorldMap !== 'undefined' && WorldMap.destinations) || [];
+    const d = dests[(typeof WorldMap !== 'undefined' && WorldMap.selected) | 0] || {};
+    const S = typeof Save !== 'undefined' ? Save : null;
+    const ids = ['travel'];
+    if (d.kind === 'village' && !(S && S.hasSeen && S.hasSeen('village_arrival'))) ids.push('village');
+    const ok = typeof Cine !== 'undefined' && Cine.play(ids, {
+      dest: { name: d.name, chapter: d.chapter, kind: d.kind },
+      // banked when the scene has gone by, watched or skipped
+      onScene: (id) => { if (id === 'village' && S && S.markSeen) S.markSeen('village_arrival'); },
+    });
+    if (ok) { this.state = 'cine'; return; }
+    this.state = 'dialogue'; Dialogue.reset();
+  }
   // one way in to the skill tree, so every caller gets the same setup
   openTree(prev) {
     this.persist();
@@ -344,14 +363,27 @@ class Game {
         break;
       case 'worldmap': {
         WorldMap.update(dt, this.time); this.time += dt;
+        // bake the arrival scenes a slice at a time while the chart is up,
+        // so the frame she sets out on never pays for them
+        if (typeof Cine !== 'undefined' && Cine.prewarm) Cine.prewarm();
         const wa = WorldMap.action;
         if (wa) {
           WorldMap.consume();
-          if (wa === 'launch') { this.state = 'dialogue'; Dialogue.reset(); this.holdFire = true; this.skipArm(); }
+          if (wa === 'launch') this.beginArrival();
           else if (wa === 'back') this.state = 'menu';
         }
         break;
       }
+      case 'cine':
+        // the swim out (and, the first time, the village) -- Cine is the
+        // intro's own engine. Its clock is held while the bubble wipe still
+        // covers the frame, so the scene starts when you can see it start.
+        Cine.update(this.wipe.t > this.wipe.dur * 0.5 ? 0 : dt);
+        // hold-to-skip ends the scene on screen; a following scene needs a
+        // fresh hold, so one long press never eats both
+        if (this.updateSkip(dt)) { Cine.skip(); if (!Cine.done) this.skipArm(); }
+        if (Cine.done) this.startRun();
+        break;
       case 'dialogue':
         Dialogue.update(dt); this.updateWorld(dt);
         if (Dialogue.cinematic && this.updateSkip(dt) && Dialogue.skip) Dialogue.skip();
@@ -598,6 +630,8 @@ class Game {
     }
     if (this.state === 'intro') { Intro.render(ctx); this.drawSkip(ctx); this.blit(); return; }
     if (this.state === 'worldmap') { WorldMap.render(ctx, t); this.blit(); return; }
+    // a cutscene frame is the whole frame: no world under it, no HUD over it
+    if (this.state === 'cine') { Cine.render(ctx); this.drawSkip(ctx); this.blit(); return; }
     // the shore half of the death scene is its own side-on frame: the bay is
     // not in it at all, so nothing of the world is drawn under it
     if (this.state === 'death' && !DeathScene.worldActive) { DeathScene.renderScreen(ctx, t); this.drawSkip(ctx); this.blit(); return; }
@@ -614,7 +648,8 @@ class Game {
     // underwater shadows
     for (const e of this.enemies) this.ocean.shadow(W, cam, e.x, e.y, e.radius * 2.6, e.radius * 1.5, t, 1.15);
     if (this.boss && !this.boss.dead) this.ocean.shadow(W, cam, this.boss.x, this.boss.y, this.boss.radius * 2.4, this.boss.radius * 1.1, t, 1.4);
-    if (!this.player.dead) this.ocean.shadow(W, cam, this.player.x, this.player.y, 48, 24, t, this.player.diving ? 1.7 : 1.25);
+    // with her down, player.x/y is the otter in the water: she casts her own
+    if (!this.player.dead) { if (this.player.downed) this.player.renderShadows(W, cam, t); else this.ocean.shadow(W, cam, this.player.x, this.player.y, 48, 24, t, this.player.diving ? 1.7 : 1.25); }
     for (const w of this.wrecks) this.ocean.shadow(W, cam, w.x, w.y, w.radius * 2, w.radius, t, 0.6);
     if (typeof Wildlife !== 'undefined') Wildlife.renderUnder(W, cam, t);
     this.ocean.renderTempCurrents(W, cam, t);
