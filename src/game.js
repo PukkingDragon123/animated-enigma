@@ -661,6 +661,9 @@ class Game {
     } else {
       ctx.drawImage(this.world, CROP_X * DETAIL, CROP_Y * DETAIL, VIEW_W * DETAIL, VIEW_H * DETAIL, 0, 0, OUT_W, OUT_H);
     }
+    // Lighting and grade go on the world, after it is composed and before any
+    // interface is drawn over it -- the HUD is not part of the scene.
+    if (typeof Light !== 'undefined' && Light.render) Light.render(ctx, this, t);
     // every interface pass below draws in 640x360 logical units
     this.hud(ctx);
     this.drawCineBars(ctx);

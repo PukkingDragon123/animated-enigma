@@ -39078,6 +39078,38 @@ global.DeathScene = DeathScene;
 
 })(typeof window !== 'undefined' ? window : this);
 
+/* ===== src/light.js ===== */
+// ---- light.js : lighting and grade for the world layer --------------------
+// Called once a frame from game.js, after the world has been composed onto
+// the presentation canvas and BEFORE any interface is drawn on top of it --
+// the HUD is not part of the world and must not be graded with it.
+//
+// Everything here is pixel-art discipline: integer coordinates, posterized
+// bands, hard edges, no gradients, no blur, no antialiasing. Canvas 2D has no
+// real shaders, so "shader" here means cheap screen-space passes built out of
+// composite modes and baked masks, which is what gets the look without
+// costing the frame.
+//
+//   Light.init()                 build whatever is baked, idempotent
+//   Light.render(ctx, G, t)      the pass itself, in full 1280x720 canvas space
+//   Light.enabled                false turns the whole thing off
+//
+const Light = {
+  enabled: true,
+  _built: false,
+
+  init() { this._built = true; },
+
+  render(ctx, G, t) {
+    if (!this.enabled) return;
+    if (!this._built) this.init();
+    // Nothing yet: the passes land here. Deliberately a no-op rather than a
+    // half-lit frame, so the game looks exactly as it did until the real work
+    // arrives.
+  },
+};
+if (typeof globalThis !== 'undefined') globalThis.Light = Light;
+
 /* ===== src/game.js ===== */
 // ---- Game: state machine, world, render ---------------------------------
 const WORLD_W = 6400, WORLD_H = 3000, SHORE_Y = 300;
@@ -39742,6 +39774,9 @@ class Game {
     } else {
       ctx.drawImage(this.world, CROP_X * DETAIL, CROP_Y * DETAIL, VIEW_W * DETAIL, VIEW_H * DETAIL, 0, 0, OUT_W, OUT_H);
     }
+    // Lighting and grade go on the world, after it is composed and before any
+    // interface is drawn over it -- the HUD is not part of the scene.
+    if (typeof Light !== 'undefined' && Light.render) Light.render(ctx, this, t);
     // every interface pass below draws in 640x360 logical units
     this.hud(ctx);
     this.drawCineBars(ctx);
