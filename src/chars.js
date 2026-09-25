@@ -1210,13 +1210,28 @@ function buildOtterTail() {
 //    CH.otterRage / CH.headRage        rampage tint
 //    otterHeadWithFace(exp, blink, t, rage) -> a live head canvas
 //    CH.drawOtter(ctx, o)              the whole otter, posed, in one call
-//  SIDE-ON (facing RIGHT), the cinematic set:
-//    CH.side.body / .bodyScar / .belly / .fluke / .flip / .flipFar
+//  SIDE-ON (facing RIGHT), the cinematic set. TWO BODIES -- she is not hurt
+//  yet at the start of the cutscenes, and the caller says which she is:
+//    CH.side.body / .fluke / .bellyClean      CLEAN: no propeller runs, no
+//                                      wire seam, no blood, no scarred brow,
+//                                      fluke with its trailing edge whole
+//    CH.side.bodyScar / .flukeScar / .belly   WOUNDED: everything the fleet
+//                                      did to her, and a bitten fluke
+//    CH.side.hurt                      white-hot silhouette for a hit frame
+//    CH.side.flip / .flipFar           pectoral flippers, near and far
 //    CH.side.eye / .mouth / .tailX / .shoX / .shoY   anchors, sprite-local
-//    CH.drawManateeSide(ctx, m)        body + fluke + flippers + face
+//    CH.drawManateeSide(ctx, m)        body + fluke + flippers + face.
+//                                      `m.scarred === false` is the ONLY
+//                                      thing that asks for the clean animal;
+//                                      leaving the flag off keeps the
+//                                      wounded one, so every call site that
+//                                      predates the split is unchanged.
 //    CH.sideFace(ctx, exp, blink, t)   just the face, at the anchors
-//    CH.otterStand                     side-on, standing, facing right
-//    CH.drawOtterStanding(ctx, o)      standing/working/holding, one call
+//    CH.otterStand                     side-on, standing on a PAIR of hind
+//                                      legs, facing right
+//    CH.otterStandPeg / ...PegHi       the same pose with the peg leg, opt-in
+//    CH.drawOtterStanding(ctx, o)      standing/working/holding, one call;
+//                                      `o.peg` draws the peg-leg variant
 // ===========================================================================
 
 // ---- belly-up: the same body, drained of the back's colour ---------------
@@ -1271,143 +1286,198 @@ const MSIDE_LOBES = [
   [ 91,  8.0,   9.6, -1.8],
   [ 95,  5.5,   6.2, -1.0],   // and it ends in a WALL, not a point: the last
 ];                            // lobe runs off the canvas and is cut square
-// Everything she is wearing that is NOT a wound: the algae that grows on a
-// wild manatee's back and the barnacles on her shoulder. Kept on both the
-// clean body and the hurt one, because they are the real animal, not damage.
+// She is painted out of the SAME eight-band hide palette (`HD`) and the same
+// marking vocabulary as the top-down animal the game is played with: the same
+// lit back falling through the same mid-tones, the same bowed skin folds with
+// a dark core and a lit lip, the same speckled algae, the same rimmed
+// barnacles, the same bright whisker pad at the front, and literally the same
+// five-pixel dot eye stamp. Someone who has just been fighting in her should
+// recognise her the moment a cutscene opens. `hurt` adds what the fleet did.
+//
+// The body is painted BAND BY BAND down each column, the way the top-down
+// body is, rather than through shadeBlob's lit dome: the blobs give the
+// silhouette and nothing else, so her surface is posterized in exactly the
+// steps the gameplay sprite is posterized in.
 function buildManateeSideBody(hurt) {
   const W = MSIDE_W, H = MSIDE_H, cy = MSIDE_CY;
   const lobes = MSIDE_LOBES.map(l => ({ x: l[0], y: cy + l[3], rx: l[1], ry: l[2] }));
   const f = blobField(W, H, lobes);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manDD, CPAL.manD, CPAL.man, CPAL.manL],
-    { outline: CPAL.out, lx: -0.25, ly: -0.92, contrast: 0.70, lift: 0.30, smooth: 3 });
-  const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0;
-  // ---- her profile, column by column: everything below is placed as a
-  //      FRACTION of the depth at that column, so it follows the barrel round
-  //      instead of being ruled across it in straight lines.
+  const c = newCan(W, H), ctx = c.getContext('2d');
+  // ---- her profile, column by column, then smoothed twice. blobField takes
+  //      the MAX of its lobes, so without this the union reads as a row of
+  //      domes and her back comes out scalloped.
   const top = new Int16Array(W), bot = new Int16Array(W);
   for (let x = 0; x < W; x++) {
     let y0 = -1, y1 = -1;
-    for (let y = 0; y < H; y++) if (inside(x, y)) { if (y0 < 0) y0 = y; y1 = y; }
+    for (let y = 0; y < H; y++) if (f[y * W + x] > 0) { if (y0 < 0) y0 = y; y1 = y; }
     top[x] = y0; bot[x] = y1;
   }
-  const at = (x, k) => top[x] + Math.round((bot[x] - top[x]) * k);
-  // ---- the belly. Four bands over the bottom half, with the palest in the
-  //      middle where the light comes back up off the sand and a turn-under
-  //      shadow along the very bottom, so she rolls away instead of ending.
-  //      The waterline between hide and belly is dithered, not ruled.
+  for (let pass = 0; pass < 2; pass++) {
+    const t2 = Int16Array.from(top), b2 = Int16Array.from(bot);
+    for (let x = 1; x < W - 1; x++) {
+      if (t2[x] < 0 || t2[x - 1] < 0 || t2[x + 1] < 0) continue;
+      top[x] = Math.round((t2[x - 1] + t2[x] * 2 + t2[x + 1]) / 4);
+      bot[x] = Math.round((b2[x - 1] + b2[x] * 2 + b2[x + 1]) / 4);
+    }
+  }
+  // ---- the hide, in eight bands from a lit back through the flank and back
+  //      up into a pale countershaded belly, with a dark keel under it.
+  const RAMP = [HD.dd, HD.d, HD.m, HD.mm, HD.l, HD.ll, HD.pale, HD.top];
+  const bandIx = t => t < 0.06 ? 6 : t < 0.14 ? 5 : t < 0.28 ? 4 : t < 0.46 ? 3
+    : t < 0.70 ? 2 : t < 0.80 ? 3 : t < 0.89 ? 4 : t < 0.96 ? 5 : 1;
+  const bandOf = t => RAMP[bandIx(t)];
+  // A crease is painted RELATIVE to the band it crosses -- two steps down for
+  // its core, one step up for the lit lip over it -- so it creases her at the
+  // same strength everywhere instead of drawing a black bar down a pale back.
+  const dn = (t, n) => RAMP[Math.max(0, bandIx(t) - n)];
+  const up = (t, n) => RAMP[Math.min(7, bandIx(t) + n)];
   for (let x = 0; x < W; x++) {
     const y0 = top[x], y1 = bot[x];
-    if (y0 < 0 || y1 - y0 < 5) continue;
-    const hgt = y1 - y0;
-    for (let y = y0 + 1; y < y1; y++) {
-      const k = (y - y0) / hgt;
-      if (k < 0.58) continue;
-      if (k < 0.66) { if (hash2(x * 3, y * 5) > (k - 0.58) * 12) continue; px(ctx, CPAL.belly, x, y); continue; }
-      px(ctx, k > 0.93 ? '#8b98a8' : k > 0.80 ? '#b2c0cf' : CPAL.belly, x, y);
+    if (y0 < 0) continue;
+    const h = Math.max(1, y1 - y0);
+    for (let y = y0; y <= y1; y++) {
+      if (y === y0 || y === y1) { px(ctx, CPAL.out, x, y); continue; }
+      px(ctx, bandOf((y - y0) / h), x, y);
     }
-    px(ctx, CPAL.manL, x, y0 + 1);          // one lit row along the back and
-    px(ctx, CPAL.out2, x, y1);              // one dark keel, so she turns
   }
-  // ---- hide grain: sparse single pixels one band off their own, so she has
-  //      the texture of an animal and not of a painted hull.
-  for (let x = 4; x < W - 3; x++) for (let y = 3; y < H - 3; y++) {
-    if (!inside(x, y) || !inside(x, y + 2) || !inside(x, y - 2)) continue;
+  const solid = (x, y) => x >= 0 && x < W && top[x] >= 0 && y > top[x] && y < bot[x];
+  const deep = (x, y, k) => solid(x, y) && (y - top[x]) >= k && (bot[x] - y) >= k;
+  const tOf = (x, y) => (y - top[x]) / Math.max(1, bot[x] - top[x]);
+  // ---- blunt muzzle: a manatee's snout ends in a WALL, not a point, so the
+  //      front column is all outline with the two corners knocked off. Same
+  //      trick, same reason, as the top-down body.
+  {
+    const fx = W - 1, y0 = top[fx], y1 = bot[fx];
+    if (y0 >= 0) { for (let y = y0; y <= y1; y++) px(ctx, CPAL.out, fx, y);
+      ctx.clearRect(fx, y0, 1, 1); ctx.clearRect(fx, y1, 1, 1);
+      px(ctx, CPAL.out, fx - 1, y0); px(ctx, CPAL.out, fx - 1, y1); }
+  }
+  // ---- hide grain. Very sparse single pixels one band off their own, in the
+  //      mid-tones only, so she reads leathery rather than speckled.
+  for (let x = 3; x < W - 3; x++) for (let y = 2; y < H - 2; y++) {
+    if (!deep(x, y, 3)) continue;
+    const t = tOf(x, y);
+    if (t < 0.22 || t > 0.84) continue;
     const r = hash2(x * 7 + 3, y * 13 + 5);
-    if (r > 0.974) px(ctx, CPAL.manDD, x, y);
-    else if (r < 0.012) px(ctx, CPAL.manLL, x, y);
+    if (r > 0.984) px(ctx, t < 0.5 ? HD.l : HD.d, x, y);
+    else if (r < 0.014) px(ctx, t < 0.5 ? HD.ll : HD.m, x, y);
   }
-  // ---- the creases. A manatee's wrinkles are on the NECK and the shoulder,
-  //      not ruled evenly down the barrel like a caterpillar's segments: they
-  //      are short, close together, forward, and they BOW with the body.
-  const crease = (fx, k0, k1, bow) => {
-    const ya = at(fx, k0), yb = at(fx, k1);
-    for (let y = ya; y <= yb; y++) {
-      const u = (y - ya) / Math.max(1, yb - ya);
-      const x = fx + Math.round(Math.sin(u * Math.PI) * bow);
-      if (!inside(x, y) || !inside(x - 2, y) || !inside(x + 2, y)) continue;
-      px(ctx, CPAL.manD, x, y);
-      px(ctx, CPAL.manL, x + 1, y);
+  // ---- transverse skin folds across the barrel: a dark core with a lit
+  //      upper lip, bowed the way a fold sits on a round back, and stopping
+  //      short of the sheer so they crease her instead of banding her.
+  for (const fx of [46, 58, 68]) for (let y = 2; y < H - 2; y++) {
+    const x = fx + Math.round(Math.sin((y - cy) / 22) * 3);
+    if (!deep(x, y, 10)) continue;
+    const t = tOf(x, y);
+    px(ctx, dn(t, 1), x, y); px(ctx, dn(t, 1), x + 1, y);
+    if (deep(x - 1, y, 11)) px(ctx, up(t, 1), x - 1, y);
+  }
+  // ---- the crease where her neck meets her shoulders, so the head is a head
+  for (let y = 3; y < H - 3; y++) {
+    const x = 77 + Math.round(Math.sin((y - cy) / 18) * 2);
+    if (!deep(x, y, 6)) continue;
+    const t = tOf(x, y);
+    px(ctx, dn(t, 2), x, y); px(ctx, dn(t, 1), x + 1, y);
+    if (deep(x + 2, y, 7)) px(ctx, up(t, 1), x + 2, y);
+  }
+  // ---- algae on the back, where the light hits and nothing rubs it off.
+  //      Speckled inside a patch, the way it grows; the greens are far enough
+  //      off grey that the intro's family recolour leaves them alone.
+  for (const [ax, ay, w2, h2] of [[34, 10, 9, 5], [52, 9, 8, 4], [22, 14, 7, 4], [62, 11, 6, 3]]) {
+    for (let y = ay; y < ay + h2; y++) for (let x = ax; x < ax + w2; x++) {
+      if (!deep(x, y, 2)) continue;
+      const r = hash2(x * 3, y * 5);
+      if (r > 0.55) px(ctx, HALG[r > 0.86 ? 2 : r > 0.7 ? 0 : 1], x, y);
     }
-  };
-  crease(71, 0.14, 0.50, 3);                 // behind the head
-  crease(76, 0.16, 0.46, 3);
-  crease(81, 0.20, 0.40, 2);
-  crease(59, 0.20, 0.58, 3);                 // and the one across the shoulder
-  // ---- algae on her back, barnacles on her shoulder. Real, not damage: the
-  //      greens survive the intro's hide shift on purpose.
-  for (const [bx, bk] of [[38, 0.12], [50, 0.08], [26, 0.18], [58, 0.10]]) {
-    const by = at(bx, bk);
-    px(ctx, '#3f6b4c', bx, by, 3, 1); px(ctx, '#2d4f38', bx + 1, by + 1, 2, 1);
   }
-  for (const [bx, bk] of [[64, 0.22], [34, 0.30]]) {
-    const by = at(bx, bk);
-    px(ctx, CPAL.manDD, bx, by, 3, 3); px(ctx, CPAL.bone, bx + 1, by + 1, 2, 2);
+  // ---- barnacles: a dark rim, a dull shell and a shadow, three art px wide
+  //      (half the art pixels the top-down ones get, because the side-on set
+  //      is authored at one art pixel per world unit and the top-down at two)
+  for (const [bx, by] of [[31, 21], [47, 16], [60, 24], [25, 28]]) {
+    if (!deep(bx, by, 4)) continue;
+    px(ctx, HD.d, bx - 1, by - 1, 3, 3);
+    px(ctx, '#9a9382', bx, by, 2, 2);
+    px(ctx, '#c2bba6', bx, by, 1, 1);
   }
-  // ---- the flipper socket: a short crease where the pectoral leaves her
-  for (let i = 0; i < 7; i++) { const y = at(72 + i, 0.60) + (i >> 1); if (inside(72 + i, y)) px(ctx, CPAL.manDD, 72 + i, y); }
-  // =======================================================================
-  //  THE HEAD. Blunt muzzle ending in a wall, an upper lip pad that hangs
-  //  down over a short soft mouth, a nostril on TOP of the snout near the
-  //  tip, bristle whiskers, and the tiny DOT eye set high and well back.
-  //  This is the calm face of the real animal, and it is on BOTH bodies --
-  //  what the fleet did to her goes on below.
-  // =======================================================================
-  const ink = (x, y, w, h, col) => { for (let q = 0; q < w; q++) for (let r = 0; r < h; r++) if (inside(x + q, y + r)) px(ctx, col, x + q, y + r); };
-  ink(93, 17, 2, 1, CPAL.out);                 // the nostril: a slit, not a port
-  // the crease that puts the muzzle in FRONT of the cheek -- one curve, not a
-  // stack of horizontal rules, which on a flat wall of snout read as a grille
-  for (let i = 0; i < 7; i++) { const x = 87 + (i >> 1), y = 19 + i; if (inside(x, y) && inside(x + 2, y)) { px(ctx, CPAL.manD, x, y); px(ctx, CPAL.manL, x + 1, y); } }
-  ink(92, 26, 5, 1, CPAL.out2);                // the mouth: short and soft
-  ink(92, 27, 5, 1, CPAL.manD);                // with its own shadow under it
-  // bristle whiskers over the pad
-  for (const [wx, wy] of [[96, 24], [94, 27], [96, 28]]) ink(wx, wy, 1, 1, CPAL.bone);
-  // ---- the DOT eye, exactly as asked for: three pixels of pupil, one shine,
-  //      one lit lid over it. No brow, no scowl -- she is calm here.
-  px(ctx, CPAL.out, 80, 15, 4, 4); px(ctx, CPAL.eye, 80, 15, 3, 3); px(ctx, CPAL.shine, 81, 16);
-  px(ctx, CPAL.manL, 80, 14, 4, 1);
+  // ---- head ---------------------------------------------------------------
+  // The whisker pad: the brightest block on her, right at the front, so the
+  // silhouette has a face end and a tail end at any distance. Clipped to the
+  // muzzle so it never spills off the outline. Same ellipse, same four bands.
+  for (let y = 15; y < 32; y++) for (let x = 89; x < W - 1; x++) {
+    if (!deep(x, y, 1)) continue;
+    const t = Math.abs(y - 23) / 7.2, u = (x - 89) / 9;
+    if (t * t + u * u * 0.30 > 1) continue;
+    px(ctx, t > 0.86 ? HD.mm : t > 0.62 ? HD.l : t > 0.34 ? HD.ll : t > 0.18 ? HD.pale : HD.top, x, y);
+  }
+  for (let y = 18; y < 29; y++) if (deep(88, y, 2)) px(ctx, dn(tOf(88, y), 1), 88, y);
+  // dimples in the pad, a lit row and a shaded one, so it reads as stippled
+  for (const [dx, dy] of [[91, -3], [94, -3], [91, 3], [94, 3]]) {
+    if (!deep(dx, 23 + dy, 1)) continue;
+    px(ctx, HD.l, dx, 23 + dy); px(ctx, HD.top, dx, 23 + dy - 1);
+  }
+  // the nostril: one short slit high on the muzzle with a lit upper lip
+  px(ctx, HD.top, 93, 17, 2, 1); px(ctx, CPAL.out, 93, 18, 2, 2); px(ctx, HD.dd, 93, 20, 2, 1);
+  // the mouth, a crease across the front of the pad, at S.mouth
+  px(ctx, HD.m, 89, 25, 7, 1); px(ctx, HD.d, 90, 26, 6, 1); px(ctx, HD.dd, 91, 27, 4, 1);
+  for (const [wx, wy] of [[96, 20], [96, 28], [95, 16], [95, 31]]) if (solid(wx, wy)) px(ctx, CPAL.bone, wx, wy, 2, 1);
+  // ---- the DOT eye. One black bead with one glint, ringed by a pale socket
+  //      so it survives against whichever band of hide it lands on: the same
+  //      five pixels, the same stamp, as the pair of them on the top-down her.
+  {
+    const ex = 79, ey = 14;
+    px(ctx, HD.pale, ex, ey - 1, 5, 1);
+    stamp(ctx, ['.kkk.', 'keeek', 'keeek', 'keeek', '.kkk.'], ex, ey, { k: CPAL.out, e: CPAL.eye });
+    px(ctx, CPAL.shine, ex + 1, ey + 1);
+    px(ctx, HD.dd, ex, ey + 5, 5, 1);
+  }
   // =======================================================================
   //  WOUNDED ONLY, from here down. `hurt` false leaves her completely clean:
   //  no propeller runs, no wire seam, no blood, no scarred brow.
   // =======================================================================
   if (!hurt) return spriteFrom(c, MSIDE_CX, MSIDE_CY);
-  // Three propeller rakes across the flank: torn hide standing pale on the
-  // lit lip, meat under it, blood in the deep of the run, and a dried smear
-  // dragged aft.
-  const rake = (x0, y0, n, dy, open) => {
+  // Propeller rakes, in the top-down body's own recipe: the hide is cut, the
+  // lip of it stands up torn and pale, meat under the lip, wet blood in the
+  // deepest part of the run, and the smear the water dragged aft.
+  const gash = (x0, y0, dx, dy, n, open) => {
     for (let i = 0; i < n; i++) {
-      const x = x0 + i, y = y0 + Math.round(i * dy);
-      if (!inside(x, y) || !inside(x, y + 2) || !inside(x, y - 2)) continue;
-      px(ctx, CPAL.manLL, x, y - 1);
+      const x = Math.round(x0 + i * dx), y = Math.round(y0 + i * dy);
+      if (!deep(x, y, 3)) continue;
+      const mid = 1 - Math.abs(i - (n - 1) / 2) / ((n - 1) / 2 || 1);
+      px(ctx, HD.top, x, y - 1);
       px(ctx, CPAL.meatD, x, y);
-      if (open) px(ctx, Math.abs(i - n / 2) < n * 0.3 ? CPAL.gore : CPAL.goreD, x, y);
+      if (open) {
+        px(ctx, mid > 0.45 ? CPAL.gore : CPAL.goreD, x, y);
+        if (mid > 0.78) px(ctx, CPAL.goreL, x, y);
+      }
       px(ctx, CPAL.goreD, x, y + 1);
-      for (let k = 1; k <= 4; k++) {
-        const sx = x - k * 2;
-        if (!inside(sx, y + 1) || hash2(sx * 5, y * 3 + i) < 0.22 + k * 0.14) continue;
-        px(ctx, k < 2 ? CPAL.stain : CPAL.stainD, sx, y + (k & 1));
+      for (let k = 1; k <= 6; k++) {
+        const sx = x - k * 2, sy = y + ((k >> 1) & 1);
+        if (!deep(sx, sy, 2)) continue;
+        if (hash2(sx * 5 + i, sy * 7) < 0.26 + k * 0.10) continue;
+        px(ctx, k < 3 ? CPAL.stain : CPAL.stainD, sx, sy);
       }
     }
   };
-  rake(40, 15, 18, 0.46, 1);
-  rake(54, 31, 13, -0.34, 1);
-  rake(26, 23, 11, 0.30, 0);
-  // a seam somebody sewed shut with wire, and it held
-  for (let i = 0; i < 20; i++) {
-    const x = 46 + i, y = 29 + Math.round(Math.sin(i * 0.3) * 1.5);
-    if (!inside(x, y) || !inside(x, y + 2)) continue;
-    px(ctx, CPAL.meatD, x, y);
-    if (i % 5 === 1) { px(ctx, CPAL.bone, x, y - 2, 1, 2); px(ctx, CPAL.manDD, x, y + 1, 1, 2); }
+  gash(40, 13, 1.1, 0.8, 14, 1);
+  gash(58, 32, 1.0, -0.7, 11, 1);
+  gash(28, 24, 1.0, 0.5, 9, 0);
+  gash(66, 18, 0.9, -0.4, 6, 0);
+  // ---- the stitched wound. Somebody sewed her back together with whatever
+  //      was on the boat, and it held: a long closed seam with cross-ticks of
+  //      wire either side of it.
+  for (let i = 0; i < 22; i++) {
+    const x = 46 + i, y = Math.round(cy + 4 + Math.sin(i * 0.22) * 3 + i * 0.16);
+    if (!deep(x, y, 3)) continue;
+    px(ctx, CPAL.meatD, x, y, 1, 2);
+    px(ctx, HD.pale, x, y - 1);
+    if (i % 4 === 1 && deep(x, y + 3, 2)) {
+      px(ctx, CPAL.bone, x, y - 2, 1, 2); px(ctx, CPAL.bone, x + 1, y + 1, 1, 2);
+      px(ctx, HD.dd, x + 1, y - 2, 1, 2); px(ctx, HD.dd, x + 2, y + 1, 1, 2);
+    }
   }
   // a scar through the brow, so the dot eye reads as a hard one
-  px(ctx, CPAL.manDD, 78, 12, 1, 4); px(ctx, CPAL.manLL, 79, 12, 1, 4);
-  ink(83, 19, 3, 1, CPAL.manDD); ink(84, 20, 2, 1, CPAL.bloodD);
-  // and the streaks that used to be the `scarred` variant, folded in: there
-  // are two bodies now, clean and hurt, not three degrees of hurt.
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 7; j++) {
-    const x = 42 + i * 7 + Math.round(j * 0.5), y = 12 + j;
-    if (!inside(x, y)) continue;
-    px(ctx, CPAL.blood, x, y, 2, 1); px(ctx, CPAL.bloodD, x, y + 1, 2, 1);
-  }
+  for (let y = 10; y < 15; y++) if (deep(75, y, 4)) { px(ctx, HD.dd, 75, y); px(ctx, HD.pale, 76, y); }
+  if (deep(84, 18, 1)) { px(ctx, HD.dd, 84, 18, 3, 1); px(ctx, CPAL.bloodD, 85, 19, 2, 1); }
   return spriteFrom(c, MSIDE_CX, MSIDE_CY);
 }
 // ---- the fluke -------------------------------------------------------------
@@ -1426,16 +1496,20 @@ function buildSideFluke(bitten) {
     { x: 4,  y: cy, rx: 5.5, ry: 9.4 },
     { x: 1,  y: cy, rx: 3.0, ry: 7.0 },
   ]);
-  const { c, ctx } = shadeBlob(W, H, f, [CPAL.manD, CPAL.man, CPAL.manL], { outline: CPAL.out, lift: 0.26, smooth: 3, contrast: 0.62 });
+  const { c, ctx } = shadeBlob(W, H, f, [HD.d, HD.m, HD.mm, HD.l], { outline: CPAL.out, lift: 0.22, smooth: 3, contrast: 0.66 });
   const has = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0.05;
   // four creases fanning out of the stock, the way the flesh of a fluke folds
-  for (const sl of [-0.26, 0.26]) for (let x = 6; x < 22; x++) {
+  // ridges fanning out of the peduncle, dark with a lit pixel over them:
+  // the same treatment the top-down fluke gets, so it is the same tail
+  for (const sl of [-0.24, 0.24]) for (let x = 6; x < 22; x++) {
     const y = cy + Math.round((22 - x) * sl);
-    if (has(x, y) && has(x, y + 2) && has(x, y - 2)) px(ctx, CPAL.manD, x, y);
+    if (!has(x, y) || !has(x, y + 3) || !has(x, y - 3)) continue;
+    px(ctx, HD.m, x, y);
+    if ((x & 3) === 0 && has(x, y - 1)) px(ctx, HD.l, x, y - 1);
   }
-  // the trailing edge catches the light all the way round
+  // and one lit pixel along the trailing edge, so it turns instead of ending
   for (let y = 1; y < H - 1; y++) for (let x = 0; x < 6; x++) {
-    if (has(x, y)) { px(ctx, CPAL.manL, x, y); break; }
+    if (has(x, y)) { px(ctx, HD.l, x, y); break; }
   }
   if (!bitten) return spriteFrom(c, W - 3, cy);
   // ---- a chunk out of the trailing edge. The field `f` is what says where
@@ -1479,14 +1553,14 @@ function buildSideFlipper(dark) {
     { x: 8,   y: 5.4, rx: 2.8, ry: 2.9 },
     { x: 10,  y: 6,   rx: 2.0, ry: 2.2 },
   ]);
-  const ramp = dark ? [CPAL.manDD, CPAL.manD, CPAL.manD] : [CPAL.manD, CPAL.man, CPAL.manL];
-  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: dark ? CPAL.out2 : CPAL.manDD, lift: 0.34, smooth: 2, contrast: 0.56 });
+  const ramp = dark ? [HD.d, HD.m, HD.mm] : [HD.m, HD.mm, HD.l];
+  const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: dark ? HD.dd : HD.d, lift: 0.34, smooth: 2, contrast: 0.56 });
   const has = (x, y) => x >= 0 && y >= 0 && x < W && y < H && f[y * W + x] > 0.04;
   // the leading edge keeps a lit lip all the way to the tip
-  for (let x = 2; x < 12; x++) for (let y = 0; y < H; y++) if (has(x, y)) { px(ctx, dark ? CPAL.manD : CPAL.manL, x, y); break; }
+  for (let x = 2; x < 12; x++) for (let y = 0; y < H; y++) if (has(x, y)) { px(ctx, dark ? HD.mm : HD.pale, x, y); break; }
   // one hint of the nails on the tip. Three bone-white pixels here is all it
   // took to make a flipper read as a machined part at her actual screen size.
-  if (!dark && has(10, 6)) px(ctx, CPAL.manLL, 10, 6);
+  if (!dark && has(10, 6)) px(ctx, HD.ll, 10, 6);
   return spriteFrom(c, 2, 4);
 }
 // ---- the side-on set -------------------------------------------------------
@@ -1512,7 +1586,7 @@ function buildManateeSideSet() {
     flip: buildSideFlipper(false),
     flipFar: buildSideFlipper(true),
     // anchors, in sprite-local world units (0,0 = her centre)
-    eye: [81 - MSIDE_CX, 16 - MSIDE_CY],
+    eye: [80 - MSIDE_CX, 15 - MSIDE_CY],
     mouth: [91 - MSIDE_CX, 26 - MSIDE_CY],
     tailX: 8 - MSIDE_CX, shoX: 73 - MSIDE_CX, shoY: 27 - MSIDE_CY,
     len: MSIDE_W,
@@ -1524,21 +1598,27 @@ function manateeSideFace(ctx, exp, blink, t) {
   const ex = S.eye[0], ey = S.eye[1], mx = S.mouth[0], my = S.mouth[1];
   const O = CPAL.out;
   const shut = blink && exp !== 'dead' && exp !== 'wide';
+  // Painted in the hide palette the body is painted in, over the socket the
+  // body already baked: the same bead, the same glint, the same pale brow and
+  // shadow the top-down animal's pair of eyes carry.
   if (exp === 'pain' || shut) {
-    px(ctx, O, ex - 1, ey, 5, 1); px(ctx, CPAL.manDD, ex - 1, ey - 2, 5, 1);
+    px(ctx, O, ex - 1, ey + 1, 5, 1); px(ctx, HD.dd, ex - 1, ey - 1, 5, 1);
   } else if (exp === 'dead') {
-    px(ctx, O, ex - 1, ey - 1, 5, 5); px(ctx, '#5c5668', ex, ey, 3, 3);
+    px(ctx, O, ex - 1, ey - 1, 5, 5); px(ctx, HD.m, ex, ey, 3, 3);
   } else {
     const big = exp === 'wide' ? 1 : 0;
+    px(ctx, HD.pale, ex - 1, ey - 2, 5, 1);
     px(ctx, O, ex - 1 - big, ey - 1 - big, 5 + big * 2, 5 + big * 2);
     px(ctx, CPAL.eye, ex - big, ey - big, 3 + big * 2, 3 + big * 2);
-    px(ctx, CPAL.shine, ex + 1, ey);
-    if (exp === 'angry') { px(ctx, CPAL.manDD, ex - 2, ey - 2, 6, 1); px(ctx, CPAL.manDD, ex + 1, ey - 3, 4, 1); }
-    else if (exp === 'sad') { px(ctx, CPAL.manDD, ex - 3, ey - 3, 5, 1); }
+    px(ctx, CPAL.shine, ex, ey);
+    px(ctx, HD.dd, ex - 1, ey + 4, 5, 1);
+    if (exp === 'angry') { px(ctx, HD.dd, ex - 2, ey - 2, 6, 1); px(ctx, HD.dd, ex + 1, ey - 3, 4, 1); }
+    else if (exp === 'sad') { px(ctx, HD.dd, ex - 3, ey - 3, 5, 1); }
   }
+  // the mouth, on the whisker pad: a soft crease closed, a small round O open
   const open = exp === 'wide' || exp === 'pain' || (exp === 'talk' && (Math.floor(t * 7) & 1));
   if (open) { px(ctx, O, mx - 2, my - 1, 6, 4); px(ctx, '#2a1218', mx - 1, my, 4, 2); }
-  else px(ctx, O, mx - 2, my, 6, 1);
+  else { px(ctx, HD.m, mx - 2, my - 1, 7, 1); px(ctx, HD.d, mx - 1, my, 6, 1); px(ctx, HD.dd, mx, my + 1, 4, 1); }
 }
 // One call for the whole side-on animal.
 //  m: {x, y, rot, flip, sx, sy, phase, tailAmp, flipperA, exp, blink, belly,

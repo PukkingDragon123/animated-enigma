@@ -1,7 +1,7 @@
 // ===========================================================================
 //  INTRO — "MANATEE VS BOATS" opening cinematic.
-//  Eleven beats of side-scrolling 640x360 pixel art, about a minute and a
-//  half of it, nearly all in daylight, all of it spoken by the animals in
+//  Twelve beats of side-scrolling 640x360 pixel art, near enough two
+//  minutes of it, nearly all in daylight, all of it SPOKEN by the animals in
 //  shot rather than narrated over them.  Every layer is generated
 //  procedurally at load and scrolled; nothing is rebuilt per frame.
 //  This is the only cutscene the game keeps, so it carries the whole setup,
@@ -12,11 +12,19 @@
 //    4  net         her brother is taken alive; she finds the tear
 //    5  captured    the crane does not miss.  Out of the water, and out
 //    6  crate       she wakes in a box in a fish hold, under the catch
-//    7  noise       something is working at the crate's iron, and it looks in
-//    8  breakout    the boards let go, and she leaves through the hull
-//    9  alone       home, still red, and something drops through the surface
-//   10  pact        the pirate wants the fleet dead too, and she wants him back
-//   11  colours     black flag up, and they turn and run AT the fleet
+//    7  junk        the heap moves -- and the otter digs himself out of it
+//    8  plan        he has been chewing one bolt for nineteen days, and he
+//                   knows which boat took her brother and where it went
+//    9  breakout    his bolt, her shoulder, and out through the hull with
+//                   him stood on her back shouting directions
+//   10  reef        she takes him home, and home is still red
+//   11  pact        they agree on the work, out loud
+//   12  colours     black flag up, and they turn and run AT the fleet
+//  THE OTTER IS FOUND, NOT SENT.  He is dug out of somebody else's catch in
+//  the same box she is locked in, and the escape is his plan -- which is the
+//  only thing that makes the pair of them read as a pair rather than as a
+//  hero and a mascot who turned up.  Beats 7-9 are the talkiest in the
+//  cinematic on purpose: he will not stop, she answers in four words.
 //  NOTHING IS PRE-DAMAGED.  Every actor enters beat 1 with `scarred` false
 //  and no wounds; the flag is set on the frame the steel goes in, in beat 2,
 //  on whoever it went into.  The opening seven seconds have to read as safe
@@ -3664,8 +3672,9 @@ BEATS.push({
 BEATS.push({
   name: 'crate', dur: 8.5,
   talk: [
-    [2.80, 'you', '...where.'],
-    [5.40, 'you', 'Shrimp. Dead things. And me.'],
+    [2.60, 'you', '...Where.'],
+    [4.40, 'you', 'Shrimp. Dead things.'],
+    [6.30, 'you', 'And me.'],
   ],
   anchor() { return [A.you.x + 24, A.you.y - 34, 1]; },
   enter() {
@@ -3716,80 +3725,162 @@ BEATS.push({
   },
 });
 
-// ---------------------------------------------------------- 7. THE METAL
-//  Something in the hold is working at the crate's iron, and it gets closer
-//  every time it hits.  It is not a rescue.  It is a man with a bar, coming
-//  to move the thing in the box -- and when the bolt gives, he looks in.
+// ------------------------------------------------------- 7. SOMETHING ALIVE
+//  The heap moves.  She has been lying in somebody else's catch for nineteen
+//  days and one of the things in it is not dead: a paw comes up out of the
+//  shrimp, and then a hat, and then the rest of him.  This is where the
+//  player meets the otter -- not dropping out of the sun later on, but dug
+//  out of the junk in the same box she is in, which is the only reason he is
+//  worth anything to her.
+//  It is the talkiest beat in the cinematic on purpose.  He will not stop;
+//  she answers in four words or fewer.  That is the whole double act.
 BEATS.push({
-  name: 'noise', dur: 7.5,
+  name: 'junk', dur: 13.5,
   talk: [
-    [0.55, 'you', 'Days of this.'],
-    [2.70, 'you', 'Closer every time it hits.'],
-    [5.10, 'you', '...It\'s looking at me.'],
+    [0.50, 'you', 'Something moved.'],
+    [1.95, 'otter', 'Don\'t. Squash. Me.'],
+    [3.40, 'you', 'There\'s a rat in here.'],
+    [5.00, 'otter', 'Otter. And a captain.'],
+    [6.60, 'you', 'Captain of a shrimp pile.'],
+    [8.20, 'otter', 'Nineteen days of it.'],
+    [9.70, 'otter', 'They eat the big ones first.'],
+    [11.40, 'you', 'I am the big one.'],
   ],
-  anchor() { return [clamp(A.you.x + 24, 70, 520), A.you.y - 34, 1]; },
+  anchor(who) {
+    if (who === 'otter') return [clamp(SC.ot.x + 2, 80, 560), SC.ot.y - 40, 1];
+    return [clamp(A.you.x + 26, 80, 540), A.you.y - 34, 1];
+  },
   enter() {
     holdArt();
-    SC.clank = 0; SC.next = 0.7; SC.step = 0; SC.spark = 0; SC.reveal = 0; SC.loose = [];
+    SC.loose = []; SC.heave = 0; SC.up = 0; SC.shook = false;
     for (let i = 0; i < 30; i++) looseAdd(SC.loose, { x: rand(20, 620), y: pileFrontTop(300) - 30, vx: rand(-16, 16), vy: rand(0, 40), r: rand(0, TAU), vr: rand(-4, 4), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
-    A.you = actor(MAN.youBig, 286, 254, { beat: 0.6, exp: 'wide', tailAmp: 0.06, rot: 0.06, scarred: true });
+    A.you = actor(MAN.youBig, 270, 256, { beat: 0.6, exp: 'wide', tailAmp: 0.06, rot: 0.05, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
-    SC.manX = 596; SC.manY = 326; SC.manLook = 0;
+    // he is buried to the ears in it and comes up out of the heap
+    SC.ot = { x: 470, y: 300, phase: 0, rot: 0, exp: 'idle', flip: true, ride: false,
+              sq: 0, sqv: 0, sx: 1, sy: 1, blink: false, blade: 0, headR: 0 };
   },
   update(dt, bt) {
-    swim(A.you, dt); bounce(A.you, dt);
-    A.you.y = 254 + Math.sin(bt * 0.8) * 2 - clamp((bt - 0.8) / 1.2, 0, 1) * 10;
-    A.you.rot = 0.06 - clamp((bt - 0.8) / 1.2, 0, 1) * 0.16;
-    A.you.exp = talking('you') ? 'talk' : 'wide';
-    looseUpdate(SC.loose, dt, pileFrontTop, Intro.t);
-    if (SC.clank > 0.6 && Math.random() < 6 * dt) looseAdd(SC.loose, { x: rand(380, 600), y: pileFrontTop(480) - 18, vx: rand(-40, -6), vy: rand(-40, 10), r: rand(0, TAU), vr: rand(-7, 7), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
-    SC.spark = Math.max(0, SC.spark - dt * 3);
-    SC.next -= dt;
-    if (SC.next <= 0 && bt < 6.2) {
-      SC.step++;
-      SC.next = Math.max(0.40, 1.20 - SC.step * 0.12);
-      SC.clank = 1; SC.spark = 1;
-      Intro.shake = Math.max(Intro.shake, 2 + SC.step * 0.5);
-      const vol = clamp(0.06 + SC.step * 0.022, 0, 0.24);
-      if (typeof Audio_ !== 'undefined') {
-        Audio_.tone(190 + SC.step * 26, 0.10, 'square', vol, -90);
-        Audio_.noise(0.13, vol * 0.8, 3600 + SC.step * 300, 800);
-      }
-      for (let i = 0; i < 9; i++) FX.add({ k: 'd', x: 503 + rand(-4, 4), y: 239 + rand(-10, 10), vx: rand(-150, -20), vy: rand(-110, 40), life: rand(0.2, 0.55), c: Math.random() < 0.5 ? '#ffd27a' : '#fff6cc' });
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
+    A.you.x = smooth(A.you.x, 270, 2.4, dt);
+    A.you.y = 256 + Math.sin(bt * 0.7) * 2 - ss(clamp((bt - 2.6) / 1.6, 0, 1)) * 8;
+    A.you.rot = 0.05 + Math.sin(bt * 0.5) * 0.02;
+    A.you.exp = talking('you') ? 'talk' : bt > 5.6 ? 'angry' : 'wide';
+    // ---- the heap heaves twice, and then he digs himself out of it
+    SC.heave = (bt < 2.0) ? Math.max(0, Math.sin(bt * 5.5)) : 0;
+    if (SC.heave > 0.1 && Math.random() < 26 * dt) {
+      looseAdd(SC.loose, { x: 470 + rand(-30, 30), y: pileFrontTop(470) - 6, vx: rand(-70, 70), vy: -rand(40, 170), r: rand(0, TAU), vr: rand(-9, 9), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
     }
-    SC.clank = Math.max(0, SC.clank - dt * 5);
-    // he comes up the hold to the bolt, and at the end he stops and looks in
-    SC.reveal = clamp((bt - 4.5) / 0.7, 0, 1);
-    SC.manX = lerp(596, 530, ss(SC.reveal));
-    SC.manLook = clamp((bt - 5.0) / 0.5, 0, 1);
+    if (!SC.shook && bt > 1.85) {
+      SC.shook = true;
+      Intro.shake = 6; kick(A.you, -6);
+      FX.catchSpray(470, pileFrontTop(470) - 10, 26, 1.0);
+      if (typeof Audio_ !== 'undefined') { Audio_.noise(0.22, 0.09, 1800, 400); Audio_.tone(140, 0.12, 'square', 0.08, -60); }
+    }
+    // up out of the shrimp, shake himself off, then stand
+    SC.up = ss2(clamp((bt - 1.85) / 1.5, 0, 1));
+    SC.ot.x = smooth(SC.ot.x, lerp(470, 424, ss(clamp((bt - 4.6) / 2.4, 0, 1))), 6, dt);
+    SC.ot.y = smooth(SC.ot.y, lerp(pileFrontTop(470) + 26, pileFrontTop(440) - 16, SC.up), 7, dt);
+    SC.ot.phase += dt * (SC.up < 1 ? 5.5 : 1.9);
+    SC.ot.rot = (1 - SC.up) * 0.55 + Math.sin(bt * 1.7) * 0.05;
+    SC.ot.exp = talking('otter') ? 'talk' : bt > 9.4 ? 'angry' : SC.up < 1 ? 'idle' : 'grin';
+    // the arms sell the whole performance: he talks with them
+    const gab = talking('otter') ? 1 : 0.25;
+    SC.ot.armNear = 0.95 + Math.sin(SC.ot.phase * 2.3) * 0.60 * gab - (1 - SC.up) * 1.5;
+    SC.ot.armFar = -0.95 - Math.sin(SC.ot.phase * 1.9) * 0.45 * gab;
+    SC.ot.headR = Math.sin(SC.ot.phase * 1.4) * 0.10 * gab;
+    if (SC.up > 0.2 && SC.up < 0.98 && Math.random() < 20 * dt) FX.catchSpray(SC.ot.x + rand(-10, 10), SC.ot.y + rand(0, 16), 1, 0.5);
+    looseUpdate(SC.loose, dt, pileFrontTop, Intro.t);
+    if (Math.random() < 1.0 * dt) looseAdd(SC.loose, { x: rand(40, 600), y: pileFrontTop(300) - 26, vx: rand(-16, 16), vy: rand(-16, 16), r: rand(0, TAU), vr: rand(-5, 5), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
   },
-  render(ctx, bt) {
+  render(ctx) {
     crateScene(ctx, Intro.t, { hatch: 0 });
     drawManatee(ctx, A.you, Intro.t);
     cratePileFront(ctx);
     looseRender(ctx, SC.loose);
-    // the deck hand working the bolt, on the far side of the slats: a
-    // silhouette, half swallowed by the boards, at the cast's own rig
-    if (bt > 1.4) {
-      ctx.save();
-      // he is on the far side of the slats: he comes up out of them rather
-      // than standing in front of them, so the alpha climbs with the reveal
-      ctx.globalAlpha = qa(0.34 + SC.reveal * 0.58);
-      const sw = Math.sin(bt * 5) * (1 - SC.manLook);
-      figure(ctx, SC.manX, SC.manY, 74, {
-        facing: -1, lean: 0.20 - SC.manLook * 0.34,
-        armA: 1.20 + sw * 0.50, foreA: 1.34 + sw * 0.55,
-        armB: 0.88, foreB: 1.08,
-        legA: 0.34, legB: -0.36, kneeA: -0.10, kneeB: 0.12,
-        head: -0.22 - SC.manLook * 0.52,
-      }, '#0b0d12', '#33415a');
-      // the bar in his fist, swinging until he stops and looks
-      ctx.translate(R(SC.manX - 23), R(SC.manY - 41));
-      ctx.rotate(1.05 + sw * 0.55);
-      P(ctx, '#0b0d12', -4, -2, 26, 5); P(ctx, '#46566f', -3, -1, 24, 3);
-      ctx.restore();
+    drawCapOtter(ctx, SC.ot, Intro.t);
+    FX.render(ctx);
+    holdLight(ctx);
+    motes(ctx, Intro.t * 6, Intro.t, 30, '#ffe0a0', 0.26);
+  },
+});
+
+// ---------------------------------------------------------------- 8. A PLAN
+//  He has been working one bolt with the flat of a cutlass for nineteen days
+//  and has twelve hours of it left.  While he works he talks, and while he
+//  talks he tells her the only thing she actually wants to know: where her
+//  brother went, and who took him.
+BEATS.push({
+  name: 'plan', dur: 15.0,
+  talk: [
+    [0.45, 'otter', 'See that bolt? That\'s ours.'],
+    [2.20, 'you', 'It\'s iron.'],
+    [3.40, 'otter', 'So is my cutlass. Watch.'],
+    [5.10, 'otter', 'Nineteen days I\'ve worked it.'],
+    [6.90, 'you', 'They took my brother.'],
+    [8.50, 'otter', 'Grey. Small. Very loud?'],
+    [9.90, 'you', 'Yes.'],
+    [10.80, 'otter', 'Out last night. Other boat.'],
+    [12.40, 'otter', 'Same buyer. Same village.'],
+  ],
+  anchor(who) {
+    if (who === 'otter') return [clamp(SC.ot.x + 2, 80, 560), SC.ot.y - 40, 1];
+    return [clamp(A.you.x + 26, 80, 520), A.you.y - 34, 1];
+  },
+  enter() {
+    holdArt();
+    SC.loose = []; SC.hit = 0; SC.next = 0.9; SC.step = 0; SC.spark = 0; SC.dim = 0;
+    for (let i = 0; i < 34; i++) looseAdd(SC.loose, { x: rand(20, 620), y: pileFrontTop(300) - 30, vx: rand(-14, 14), vy: rand(0, 40), r: rand(0, TAU), vr: rand(-4, 4), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
+    A.you = actor(MAN.youBig, 252, 254, { beat: 0.5, exp: 'calm', tailAmp: 0.05, rot: 0.04, scarred: true });
+    A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
+    SC.ot = { x: 452, y: 236, phase: 0, rot: 0, exp: 'angry', flip: true, ride: false,
+              sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -0.2, headR: 0 };
+  },
+  update(dt, bt) {
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
+    A.you.y = 254 + Math.sin(bt * 0.6) * 2 - (bt > 6.9 ? ss(clamp((bt - 6.9) / 2, 0, 1)) * 5 : 0);
+    A.you.rot = 0.04 + Math.sin(bt * 0.45) * 0.02;
+    A.you.exp = talking('you') ? 'talk' : bt > 12.2 ? 'angry' : bt > 6.8 ? 'sad' : 'calm';
+    SC.ot.phase += dt * 1.6;
+    // he works the bolt while he talks, and comes off it to say the big bits
+    const atBolt = bt < 6.8 || bt > 10.4;
+    SC.ot.flip = !atBolt;
+    SC.ot.x = smooth(SC.ot.x, atBolt ? 474 : 396, 3.4, dt);
+    SC.ot.y = smooth(SC.ot.y, atBolt ? 236 : 244, 3.4, dt);
+    SC.ot.exp = talking('otter') ? 'talk' : bt > 12.2 ? 'angry' : 'idle';
+    const work = atBolt ? 1 : 0;
+    const gab = talking('otter') ? 1 : 0.3;
+    SC.ot.armNear = 0.95 - work * 1.55 + Math.sin(bt * (work ? 9 : 2.4)) * (work ? 0.45 : 0.55 * gab);
+    SC.ot.armFar = -0.95 - Math.sin(SC.ot.phase * 1.8) * 0.40 * gab;
+    SC.ot.bladeR = work ? (0.92 + Math.sin(bt * 9) * 0.30) : -0.25;
+    SC.ot.headR = Math.sin(SC.ot.phase * 1.3) * 0.10 * gab;
+    SC.spark = Math.max(0, SC.spark - dt * 3);
+    SC.next -= dt;
+    if (SC.next <= 0 && work) {
+      SC.step++;
+      SC.next = rand(0.34, 0.62);
+      SC.hit = 1; SC.spark = 1;
+      Intro.shake = Math.max(Intro.shake, 2.2);
+      if (typeof Audio_ !== 'undefined') {
+        Audio_.tone(210 + (SC.step % 5) * 22, 0.09, 'square', 0.10, -90);
+        Audio_.noise(0.11, 0.07, 3800, 900);
+      }
+      for (let i = 0; i < 8; i++) FX.add({ k: 'd', x: 503 + rand(-4, 4), y: 239 + rand(-9, 9), vx: rand(-150, -20), vy: rand(-110, 40), life: rand(0.2, 0.55), c: Math.random() < 0.5 ? '#ffd27a' : '#fff6cc' });
     }
-    // sparks at the bolt, and the bolt itself
+    SC.hit = Math.max(0, SC.hit - dt * 5);
+    // the news about her brother takes the light out of the hold for a moment
+    SC.dim = (bt > 10.6 && bt < 12.6) ? clamp(Math.min(bt - 10.6, 12.6 - bt) / 0.6, 0, 1) : 0;
+    looseUpdate(SC.loose, dt, pileFrontTop, Intro.t);
+    if (Math.random() < 1.1 * dt) looseAdd(SC.loose, { x: rand(40, 600), y: pileFrontTop(300) - 26, vx: rand(-18, 18), vy: rand(-20, 20), r: rand(0, TAU), vr: rand(-5, 5), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
+    if (Math.random() < 1.4 * dt) FX.add({ k: 'd', x: rand(60, 580), y: 60, vx: rand(-4, 4), vy: rand(20, 50), life: rand(1.6, 3), c: '#8f9a6a' });
+  },
+  render(ctx) {
+    crateScene(ctx, Intro.t, { hatch: 0 });
+    drawManatee(ctx, A.you, Intro.t);
+    cratePileFront(ctx);
+    looseRender(ctx, SC.loose);
+    drawCapOtter(ctx, SC.ot, Intro.t);
+    // the bolt, and what he is doing to it
     P(ctx, IP.ink, 496, 232, 14, 14); P(ctx, '#5d6675', 497, 233, 12, 12);
     P(ctx, '#9aa6b6', 497, 233, 12, 4); P(ctx, IP.ink, 500, 237, 6, 6);
     if (SC.spark > 0) {
@@ -3797,77 +3888,98 @@ BEATS.push({
       P(ctx, '#fff6cc', 500, 236, 5, 5);
     }
     FX.render(ctx);
-    if (SC.clank > 0) { ctx.fillStyle = rgbaq('#ffe9b0', qa(SC.clank * 0.10)); ctx.fillRect(0, 0, 640, 360); }
+    if (SC.hit > 0) { ctx.fillStyle = rgbaq('#ffe9b0', qa(SC.hit * 0.10)); ctx.fillRect(0, 0, 640, 360); }
     holdLight(ctx);
     motes(ctx, Intro.t * 6, Intro.t, 30, '#ffe0a0', 0.26);
+    if (SC.dim > 0) { ctx.fillStyle = rgbaq('#05070c', qa(SC.dim * 0.55)); ctx.fillRect(0, 0, 640, 360); }
   },
 });
 
-// ------------------------------------------------------------- 8. BREAK OUT
-//  He undid the bolt for her.  The boards let go, the catch goes everywhere,
-//  and she takes the shortest way out of a boat there is: through the side
-//  of it.  They did not use the door.
+// ------------------------------------------------------------- 9. BREAK OUT
+//  His plan, her shoulder.  The bolt goes, the boards go, nineteen days of
+//  somebody else's catch goes up in the air, and the two of them take the
+//  shortest way out of a boat there is -- through the side of it, with him
+//  stood on her back shouting directions the whole way.
+//  This is the loudest thing in the cinematic and it is meant to be.
 BEATS.push({
-  name: 'breakout', dur: 10.0,
+  name: 'breakout', dur: 12.0,
   talk: [
-    [0.40, 'you', 'Come on. Come ON.'],
-    [2.40, 'you', 'Not the door.'],
-    [7.60, 'you', 'I\'m coming for him.'],
+    [0.35, 'otter', 'NOW! Shoulder! GO!'],
+    [2.00, 'you', 'Hold on to something.'],
+    [3.40, 'otter', 'I AM holding you!'],
+    [5.00, 'otter', 'Left! The hull\'s thin there!'],
+    [7.00, 'you', 'Not the door, then.'],
+    [8.60, 'otter', 'HA! Beautiful!'],
+    [10.10, 'otter', 'Now do that to the rest.'],
   ],
-  anchor() { return [clamp(A.you.x + 26, 70, 540), A.you.y - 32, 1]; },
+  anchor(who) {
+    if (who === 'otter') return [clamp(SC.ot.x + 2, 80, 560), SC.ot.y - 40, 1];
+    return [clamp(A.you.x + 26, 80, 540), A.you.y - 34, 1];
+  },
   enter() {
     holdArt();
     SC.popped = false; SC.smash = false; SC.splash = false;
     SC.boardOff = null; SC.boards = null; SC.run = 0; SC.flash = 0; SC.shout = 0;
-    SC.loose = []; SC.thin = false; SC.boatX = 214; SC.boatY = 158;
+    SC.loose = []; SC.thin = false; SC.boatX = 214; SC.boatY = 158; SC.arc = 0;
     for (let i = 0; i < 26; i++) looseAdd(SC.loose, { x: rand(20, 620), y: pileFrontTop(300) - 26, vx: rand(-14, 14), vy: rand(0, 30), r: rand(0, TAU), vr: rand(-4, 4), s: randi(0, CATCH.all.length - 1), f: Math.random() > 0.5, rest: 0, hop: 0 });
     A.you = actor(MAN.youBig, 250, 252, { beat: 1.0, exp: 'angry', tailAmp: 0.2, rot: 0.04, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
+    SC.ot = { x: 470, y: 232, phase: 0, rot: 0, exp: 'angry', flip: true, ride: false,
+              sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -0.4, headR: 0 };
   },
   update(dt, bt) {
-    swim(A.you, dt); bounce(A.you, dt);
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
     SC.flash = Math.max(0, SC.flash - dt * 4);
+    SC.arc = Math.max(0, SC.arc - dt * 2.8);
+    SC.ot.phase += dt * 2.4;
     A.you.exp = talking('you') ? 'talk' : 'angry';
+    SC.ot.exp = talking('otter') ? 'talk' : bt > 8.4 ? 'grin' : 'angry';
+    // ---- where he is.  On the bolt, then on her back for the rest of it.
+    const aboard = ss2(clamp((bt - 1.35) / 0.7, 0, 1));
     if (bt < 1.6) {                                    // the last turns of the bolt
-      if (Math.random() < 10 * dt) { Intro.shake = Math.max(Intro.shake, 2); if (typeof Audio_ !== 'undefined') Audio_.tone(220, 0.07, 'square', 0.12, -80); }
+      SC.ot.flip = false;
+      SC.ot.x = smooth(SC.ot.x, 474, 6, dt); SC.ot.y = smooth(SC.ot.y, 236, 6, dt);
+      SC.ot.bladeR = 0.92 + Math.sin(bt * 15) * 0.45;
+      SC.ot.armNear = -0.55 + Math.sin(bt * 15) * 0.5;
+      if (Math.random() < 12 * dt) { Intro.shake = Math.max(Intro.shake, 2.4); if (typeof Audio_ !== 'undefined') Audio_.tone(224, 0.07, 'square', 0.12, -80); }
       A.you.beat = 1.4;
       A.you.y = 252 + Math.sin(bt * 1.4) * 3;
-    } else if (bt < 3.0) {                             // POP, and the crate lets go
+    } else if (bt < 3.2) {                             // POP, and the crate lets go
       if (!SC.popped) {
-        SC.popped = true; SC.flash = 1; Intro.shake = 16;
-        kick(A.you, 10);
-        SC.boardOff = { x: 0, y: 0, r: 0, vx: 210, vy: -60, vr: 5 };
+        SC.popped = true; SC.flash = 1; SC.arc = 1; Intro.shake = 18;
+        kick(A.you, 11); kick(SC.ot, 9);
+        SC.boardOff = { x: 0, y: 0, r: 0, vx: 230, vy: -70, vr: 5 };
         SC.boards = [];
-        for (let i = 0; i < 3; i++) SC.boards.push({ x: 420 - i * 44, y: 0, r: 0, vx: 140 + i * 60, vy: -120 - i * 40, vr: rand(-6, 6) });
-        FX.chunks(506, 176, 34);
+        for (let i = 0; i < 4; i++) SC.boards.push({ x: 430 - i * 42, y: 0, r: 0, vx: 150 + i * 60, vy: -130 - i * 40, vr: rand(-6, 6) });
+        FX.chunks(506, 176, 38);
         SC.thin = true;
-        pileBurst(SC.loose, 470, 214, 200);
-        FX.catchSpray(330, 270, 40, 1.15);
-        if (typeof Audio_ !== 'undefined') { Audio_.explosion(0.7); Audio_.noise(0.4, 0.3, 2600, 300); }
-        for (let i = 0; i < 40; i++) FX.add({ k: 'd', x: rand(440, 560), y: rand(120, 260), vx: rand(20, 260), vy: rand(-180, 120), life: rand(0.5, 1.4), c: '#ffd27a' });
+        pileBurst(SC.loose, 470, 214, 210);
+        FX.catchSpray(330, 270, 46, 1.2);
+        if (typeof Audio_ !== 'undefined') { Audio_.explosion(0.8); Audio_.noise(0.4, 0.3, 2600, 300); }
+        for (let i = 0; i < 44; i++) FX.add({ k: 'd', x: rand(440, 560), y: rand(120, 260), vx: rand(20, 260), vy: rand(-180, 120), life: rand(0.5, 1.4), c: '#ffd27a' });
       }
-      const k = clamp((bt - 1.6) / 1.4, 0, 1);
-      A.you.x = lerp(250, 320, k); A.you.y = lerp(252, 226, inCube(k));
+      const k = clamp((bt - 1.6) / 1.6, 0, 1);
+      A.you.x = lerp(250, 320, k); A.you.y = lerp(252, 222, inCube(k));
       A.you.rot = lerp(0.04, -0.18, k); A.you.beat = 7;
       if (Math.random() < 40 * dt) FX.add({ k: 'c', x: rand(200, 520), y: rand(200, 300), vx: rand(-90, 190), vy: rand(-220, -40), life: rand(0.6, 1.4), w: randi(2, 5), h: randi(1, 3), c: pick(['#d08a76', '#eab79c', '#93a0aa', '#c3ced6']) });
       if (Math.random() < 34 * dt) FX.catchSpray(A.you.x, A.you.y + 20, 2, 0.8);
-    } else if (bt < 5.2) {                             // down the hold, men above
-      SC.run = clamp((bt - 3.0) / 2.2, 0, 1);
-      A.you.x = 320; A.you.y = 214 + Math.sin(bt * 8) * 5;
+    } else if (bt < 5.4) {                             // down the hold, men above
+      SC.run = clamp((bt - 3.2) / 2.2, 0, 1);
+      A.you.x = 320; A.you.y = 212 + Math.sin(bt * 8) * 5;
       A.you.rot = -0.1 + Math.sin(bt * 8) * 0.07; A.you.beat = 11;
       SC.shout = 1;
       Intro.shake = Math.max(Intro.shake, 3);
       if (Math.random() < 30 * dt) FX.add({ k: 'd', x: rand(0, 640), y: 46, vx: rand(-10, 10), vy: rand(60, 160), life: rand(0.4, 0.9), c: '#6a5b3a' });
       if (typeof Audio_ !== 'undefined') { sndT -= dt; if (sndT <= 0) { sndT = 0.34; Audio_.noise(0.2, 0.09, 420, 60); } }
-      if (bt > 4.9 && !SC.smash) {
-        SC.smash = true; SC.flash = 1; Intro.shake = 20;
+      if (bt > 5.1 && !SC.smash) {
+        SC.smash = true; SC.flash = 1; SC.arc = 1; Intro.shake = 22;
         if (typeof Audio_ !== 'undefined') { Audio_.explosion(1.1); Audio_.splash(3); }
       }
-    } else if (bt < 7.4) {                             // out through the hull
-      const k = clamp((bt - 5.2) / 2.2, 0, 1);
+    } else if (bt < 8.0) {                             // out through the hull
+      const k = clamp((bt - 5.4) / 2.6, 0, 1);
       SC.boatX = 214 - k * 26;
-      A.you.x = lerp(SC.boatX + 96, 570, k); A.you.y = lerp(272, 308, ss(k));
-      A.you.rot = lerp(-0.22, 0.16, k); A.you.beat = 9;
+      A.you.x = lerp(SC.boatX + 96, 580, k); A.you.y = lerp(272, 304, ss(k));
+      A.you.rot = lerp(-0.22, 0.14, k); A.you.beat = 9;
       if (k < 0.3 && Math.random() < 40 * dt) FX.chunks(A.you.x, A.you.y, 2);
       if (Math.random() < 26 * dt) FX.bubble(A.you.x - 26, A.you.y + rand(-8, 8), 1, 2.4);
       if (!SC.splash && k > 0.06) {
@@ -3876,27 +3988,38 @@ BEATS.push({
         if (typeof Audio_ !== 'undefined') Audio_.splash(3);
       }
     } else {                                           // clear water, and gone
-      const k = clamp((bt - 7.4) / 2.6, 0, 1);
-      Intro.scroll += lerp(120, 300, k) * dt;
-      A.you.x = 300 + Math.sin(bt * 1.4) * 6; A.you.y = 216 + Math.sin(bt * 3.4) * 9;
+      const k = clamp((bt - 8.0) / 4.0, 0, 1);
+      Intro.scroll += lerp(140, 320, k) * dt;
+      A.you.x = smooth(A.you.x, 300, 3, dt) + Math.sin(bt * 1.4) * 5;
+      A.you.y = 216 + Math.sin(bt * 3.4) * 9;
       A.you.rot = Math.sin(bt * 3.4) * 0.10; A.you.beat = 7;
       if (Math.random() < 34 * dt) FX.bubble(A.you.x - 40, A.you.y + 6, 1, 2.4);
-      // she is still open, and at this speed it streams off her
-      FX.flow(-220, dt);
+      FX.flow(-240, dt);
       if (Math.random() < 5 * dt) {
         const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
         FX.blood(wp[0] - rand(2, 12), wp[1], 1, 0.5);
       }
+    }
+    // once he is aboard he rides her, on his feet, for every frame of it
+    if (bt >= 1.35) {
+      SC.ot.flip = false;
+      const rx = A.you.x + 4, ry = A.you.y - 27;
+      SC.ot.x = smooth(SC.ot.x, lerp(SC.ot.x, rx, aboard), 16, dt);
+      SC.ot.y = smooth(SC.ot.y, lerp(SC.ot.y, ry, aboard), 16, dt);
+      SC.ot.rot = smooth(SC.ot.rot, A.you.rot, 9, dt);
+      SC.ot.armNear = 0.95 + Math.sin(SC.ot.phase * 2.1) * 0.60 - (bt > 4.9 ? 1.9 : 0);
+      SC.ot.armFar = -0.95 - Math.sin(SC.ot.phase * 1.7) * 0.45;
+      SC.ot.bladeR = -0.9 - (bt > 4.9 ? 0.5 : 0);
     }
     if (SC.boardOff) {
       const b = SC.boardOff;
       b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 260 * dt; b.r += b.vr * dt;
     }
     if (SC.boards) for (const b of SC.boards) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 300 * dt; b.r += b.vr * dt; }
-    if (bt < 5.2) looseUpdate(SC.loose, dt, SC.thin ? pileThinTop : pileFrontTop, Intro.t);
+    if (bt < 5.4) looseUpdate(SC.loose, dt, SC.thin ? pileThinTop : pileFrontTop, Intro.t);
   },
   render(ctx, bt) {
-    if (bt < 5.2) {
+    if (bt < 5.4) {
       crateScene(ctx, Intro.t, { hatch: 0, boardOff: SC.boardOff, thin: SC.thin });
       if (SC.run > 0) {                                 // boots stamping on the boards above
         for (let i = 0; i < 4; i++) {
@@ -3914,29 +4037,33 @@ BEATS.push({
       drawManatee(ctx, A.you, Intro.t);
       cratePileFront(ctx, SC.thin);
       looseRender(ctx, SC.loose);
+      drawCapOtter(ctx, SC.ot, Intro.t);
+      if (SC.arc > 0) bladeArc(ctx, SC.ot.x + 8, SC.ot.y, 30, -2.2, 0.9, SC.arc);
       FX.render(ctx);
       holdLight(ctx);
-      if (SC.shout && bt > 3.3) {
+      if (SC.shout && bt > 3.5) {
         pixelTextOutlined(ctx, 'IT IS LOOSE!', 150, 70, 9, '#ffe48f', '#14141c', 'center');
-        if (bt > 4.1) pixelTextOutlined(ctx, 'GET THE GAFF!', 470, 84, 9, '#ffe48f', '#14141c', 'center');
+        if (bt > 4.2) pixelTextOutlined(ctx, 'GET THE GAFF!', 470, 84, 9, '#ffe48f', '#14141c', 'center');
       }
     } else {
       // outside: the boat with a hole in her side
-      backdrop(ctx, { mood: 'dawn', grade: 'dawn', scroll: Intro.scroll, t: Intro.t, surfY: bt < 7.4 ? 252 : 46, bedY: 352, shafts: 0.6, causticBed: true });
-      if (bt < 7.4) {
+      backdrop(ctx, { mood: 'dawn', grade: 'dawn', scroll: Intro.scroll, t: Intro.t, surfY: bt < 8.0 ? 252 : 46, bedY: 352, shafts: 0.6, causticBed: true });
+      if (bt < 8.0) {
         drawAir(ctx, 252, Intro.scroll, Intro.t, 'day');
         ctx.save(); ctx.translate(R(SC.boatX), R(SC.boatY + 94)); ctx.rotate(0.04);
         ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
         // the hole, in the part of the hull that is actually in the water
         hullHole(ctx, R(SC.boatX + 86), 274, 27, 31);
         drawManatee(ctx, A.you, Intro.t);
+        drawCapOtter(ctx, SC.ot, Intro.t);
       } else {
-        const k = clamp((bt - 7.4) / 2.6, 0, 1);
+        const k = clamp((bt - 8.0) / 4.0, 0, 1);
         drawAir(ctx, 46, Intro.scroll, Intro.t, 'day');
         ctx.save(); ctx.translate(R(520 - k * 460), 78); ctx.scale(0.42 - k * 0.24, 0.42 - k * 0.24);
         ctx.globalAlpha = qa(0.9 - k * 0.7);
         ctx.drawImage(YAC.s.c, -YAC.s.ax, -YAC.s.ay); ctx.restore();
         drawManatee(ctx, A.you, Intro.t);
+        drawCapOtter(ctx, SC.ot, Intro.t);
         speedLines(ctx, A.you.x - 90, A.you.y, 16, 64, -1, 'rgba(190,225,245,0.32)', 7);
       }
       FX.render(ctx);
@@ -3946,27 +4073,34 @@ BEATS.push({
   },
 });
 
-// ----------------------------------------------------------------- 9. ALONE
-//  She came back.  Out of a crate, out through a hull, and all the way home
-//  to the one piece of reef she knows -- and it is still red.  The blood
-//  clouds her family made are hanging in the water at the top of the beat
-//  and are still hanging at the end of it, a barb the fleet cut loose is
-//  buried in the sand with the line still on it, and she is opened along one
-//  flank and leaking into all of it.  Then something hits the surface hard
-//  enough to punch a hole in the red.
+// ------------------------------------------------------------------ 10. REEF
+//  She takes him home.  This used to be the beat the otter arrived in --
+//  dropped through the surface blade first -- and he is already standing on
+//  her back now, so what is left is the thing that beat was really for: the
+//  water she grew up in, four days later, still full of her family.  Sixteen
+//  clouds of them hang in it at the top of the beat and are still hanging at
+//  the end.  A barb the fleet cut loose is buried in the sand with the line
+//  still on it.  He does not have a joke for this one.
 BEATS.push({
-  name: 'alone', dur: 5.5,
+  name: 'reef', dur: 9.0,
   talk: [
-    [3.20, 'otter', 'Oi. Not dead yet. Good.'],
+    [0.70, 'otter', 'This your water?'],
+    [2.30, 'you', 'It was.'],
+    [3.60, 'otter', 'It\'s still red.'],
+    [5.20, 'you', 'That\'s my mother.'],
+    [6.90, 'otter', '...Aye. I know that red.'],
   ],
-  anchor() { return [SC.ot.x + 6, SC.ot.y - 38, 1]; },
+  anchor(who) {
+    if (who === 'otter') return [clamp(SC.ot.x + 4, 80, 560), SC.ot.y - 40, 1];
+    return [clamp(A.you.x + 34, 80, 540), A.you.y - 26, 1];
+  },
   enter() {
-    A.you = actor(MAN.youBig, 302, 198, { beat: 0.70, exp: 'pain', tailAmp: 0.10, scarred: true });
+    A.you = actor(MAN.youBig, 268, 206, { beat: 0.80, exp: 'pain', tailAmp: 0.12, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
-    SC.ot = { x: 474, y: 30, phase: 0, rot: 0, exp: 'angry', flip: true, ride: true,
-              sq: 0, sqv: 0, sx: 1, sy: 1, blink: false, blade: 1, bladeR: -1.30, bladeWet: 1 };
+    SC.ot = { x: 272, y: 179, phase: 0, rot: 0, exp: 'idle', flip: false, ride: false,
+              sq: 0, sqv: 0, sx: 1, sy: 1, blink: false, blade: 1, bladeR: -1.0, bladeWet: 1 };
     SC.sch1 = makeSchool(7, 600, 140, 40, 0, 2, -15);
-    SC.splash = false; SC.landed = false; SC.surfY = 62; SC.gore = 0.66; SC.arc = 0;
+    SC.surfY = 62; SC.gore = 0.58; SC.seen = false;
     // her family, still in the water, going nowhere
     for (let i = 0; i < 13; i++) FX.blood(rand(90, 560), rand(112, 268), 1, rand(1.2, 2.6), true);
     // a barb the fleet cut loose on its way out, buried in the sand with
@@ -3975,51 +4109,32 @@ BEATS.push({
   },
   update(dt, bt) {
     Intro.scroll += 7 * dt;
-    swim(A.you, dt); bounce(A.you, dt);
-    SC.gore = smooth(SC.gore, 0.50, 0.55, dt);
-    const sink = ss(clamp(bt / 2.6, 0, 1));
-    A.you.x = 302 + Math.sin(bt * 0.34) * 5;
-    A.you.y = lerp(198, 222, sink) + Math.sin(bt * 0.62) * 3;
-    A.you.rot = smooth(A.you.rot, bt > 3.2 ? -0.06 : 0.10 * (1 - sink) + 0.03, 3, dt);
-    A.you.exp = bt > 2.72 ? 'wide' : 'pain';
-    // she is still running: the flank has not stopped since the last beat
-    if (Math.random() < 4.5 * dt) {
+    swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
+    SC.gore = smooth(SC.gore, 0.46, 0.5, dt);
+    // she slows down as she comes over it, and stops
+    const slow = ss2(clamp(bt / 3.2, 0, 1));
+    A.you.beat = lerp(2.6, 0.7, slow);
+    A.you.x = smooth(A.you.x, 268, 2.2, dt) + Math.sin(bt * 0.34) * 4;
+    A.you.y = lerp(206, 224, slow) + Math.sin(bt * 0.62) * 3;
+    A.you.rot = smooth(A.you.rot, bt > 5.0 ? -0.05 : 0.06, 3, dt);
+    A.you.exp = talking('you') ? 'talk' : bt > 5.0 ? 'sad' : 'pain';
+    // he rides her, and for once he keeps still
+    SC.ot.x = smooth(SC.ot.x, A.you.x + 4, 11, dt);
+    SC.ot.y = smooth(SC.ot.y, A.you.y - 27, 11, dt);
+    SC.ot.rot = smooth(SC.ot.rot, A.you.rot, 9, dt);
+    SC.ot.phase += dt * 1.6;
+    SC.ot.exp = talking('otter') ? 'talk' : bt > 6.8 ? 'angry' : 'idle';
+    const gab = talking('otter') ? 1 : 0.2;
+    SC.ot.armNear = 0.95 + Math.sin(SC.ot.phase * 2.0) * 0.45 * gab;
+    SC.ot.armFar = -0.95 - Math.sin(SC.ot.phase * 1.6) * 0.34 * gab;
+    SC.ot.headR = (bt > 3.4 && bt < 6.4 ? 0.18 : 0) + Math.sin(SC.ot.phase * 1.2) * 0.07 * gab;
+    // she is still open, and it is still running
+    if (Math.random() < 4.0 * dt) {
       const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
       FX.blood(wp[0], wp[1], 1, 0.7);
     }
-    if (bt > 1.15 && bt < 2.5 && Math.random() < 1.3 * dt) FX.bubble(A.you.x + 30, A.you.y - 10, 1, 0.35);
-    if (!SC.splash && bt >= 2.62) {
-      SC.splash = true;
-      FX.drops(474, SC.surfY, 26, 1.0);
-      FX.foam(474, SC.surfY + 4, 14, 1.0);
-      FX.ring(474, SC.surfY + 6, 44, 0.45, '#ffffff');
-      if (typeof Audio_ !== 'undefined') Audio_.splash(2);
-    }
-    // he comes in off the surface on a long decelerating arc, blade first
-    const dive = clamp((bt - 2.62) / 1.15, 0, 1), e = outCube(dive);
-    SC.ot.x = lerp(474, 394, e);
-    SC.ot.y = lerp(SC.surfY - 6, 190, e);
-    // two WHOLE turns, eased out: landing on a multiple of TAU means the
-    // spin ends where the idle bob begins, with no half-turn snap between
-    SC.ot.rot = TAU * 2 * outCube(dive) + Math.sin(bt * 2.2) * 0.08 * dive;
-    SC.ot.phase += dt * (dive < 1 ? 7 : 2.0);
-    SC.ot.bladeR = -1.30 - (1 - dive) * 0.5;
-    if (dive > 0 && dive < 1 && Math.random() < 40 * dt) FX.bubble(SC.ot.x + rand(-6, 6), SC.ot.y + rand(-6, 6), 1, 2.2);
-    if (!SC.landed && dive >= 1) {
-      SC.landed = true;
-      SC.arc = 1;
-      kick(SC.ot, 8); kick(A.you, 4);
-      FX.bubble(SC.ot.x, SC.ot.y, 10, 1.9);
-      FX.ring(SC.ot.x, SC.ot.y, 40, 0.34, '#dff0ff');
-      // he lands in the middle of her family and knocks a hole in it
-      FX.blood(SC.ot.x - 20, SC.ot.y + 6, 4, 1.4);
-      if (typeof Audio_ !== 'undefined') { Audio_.noise(0.2, 0.09, 1600, 400); Audio_.tone(210, 0.08, 'square', 0.05, -110); }
-    }
-    SC.arc = Math.max(0, SC.arc - dt * 3.2);
-    bounce(SC.ot, dt);
-    SC.ot.exp = talking('otter') ? 'talk' : dive < 1 ? 'angry' : 'idle';
-    SC.ot.armNear = 0.9 + Math.sin(SC.ot.phase * 1.2) * 0.30;
-    SC.ot.armFar = -0.9 - Math.sin(SC.ot.phase * 1.1) * 0.24;
+    if (!SC.seen && bt >= 5.2) { SC.seen = true; kick(A.you, -5); }
+    if (Math.random() < 1.1 * dt) FX.bubble(A.you.x + 30, A.you.y - 10, 1, 0.35);
   },
   render(ctx) {
     backdrop(ctx, { mood: 'lagoon', grade: 'noon', gore: SC.gore, scroll: Intro.scroll, t: Intro.t, surfY: SC.surfY, bedY: 306, shafts: 1, causticBed: true });
@@ -4036,31 +4151,35 @@ BEATS.push({
     P(ctx, IP.blood[3], R(lx) - 8, R(SC.line.y) - 15, 5, 2);
     drawManatee(ctx, A.you, Intro.t);
     drawCapOtter(ctx, SC.ot, Intro.t);
-    if (SC.arc > 0) bladeArc(ctx, SC.ot.x - 6, SC.ot.y + 2, 26, -2.5, 0.5, SC.arc);
     FX.render(ctx);
     foreground(ctx, { grade: 'noon', gore: SC.gore, scroll: Intro.scroll, t: Intro.t, bedY: 306 });
   },
 });
 
-// ----------------------------------------------------------------- 10. PACT
-//  He is not here to comfort her.  He is a pirate who has wanted that fleet
-//  on the bottom for years and has just found something that wants it more.
+// ----------------------------------------------------------------- 11. PACT
+//  Not a rescuer and not a friend yet: a pirate who has wanted that fleet on
+//  the bottom for years, stood on the back of something that wants it more.
+//  They agree on the work, out loud, and that is the deal the whole game is
+//  played under.
 BEATS.push({
-  name: 'pact', dur: 9.0,
+  name: 'pact', dur: 10.5,
   talk: [
-    [0.40, 'otter', 'They gutted your kin.'],
-    [2.10, 'you', 'They took my brother alive.'],
-    [4.00, 'otter', 'Then he is cargo. Cargo moves.'],
-    [6.20, 'otter', 'Sharpen up. We hunt the fleet.'],
+    [0.40, 'otter', 'I sink boats for plunder.'],
+    [2.10, 'you', 'I sink them for this.'],
+    [3.70, 'otter', 'Better reason. Same work.'],
+    [5.50, 'otter', 'So. Partners, or passengers?'],
+    [7.20, 'you', 'Every boat. Then my brother.'],
+    [9.00, 'otter', 'Aye. Sharpen up. We hunt.'],
   ],
   anchor(who) {
-    if (who === 'otter') return [SC.ot.x + 4, SC.ot.y - 38, 1];
-    return [A.you.x + 34, A.you.y - 28, 1];
+    if (who === 'otter') return [clamp(SC.ot.x + 4, 80, 560), SC.ot.y - 40, 1];
+    return [clamp(A.you.x + 36, 80, 540), A.you.y - 26, 1];
   },
   enter() {
     A.you = actor(MAN.youBig, 234, 226, { beat: 0.9, exp: 'pain', tailAmp: 0.14, scarred: true });
     A.you.wounds = [{ x: 8, y: -3, r: 5 }, { x: -16, y: 4, r: 3 }];
-    SC.ot = { x: 390, y: 198, phase: 0, rot: 0, exp: 'angry', flip: true, ride: true,
+    // he steps off her back to say it to her face, and comes back for the end
+    SC.ot = { x: 330, y: 200, phase: 0, rot: 0, exp: 'angry', flip: true, ride: true,
               sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -1.05, bladeWet: 1 };
     SC.sch1 = makeSchool(8, 590, 130, 44, 0, 3, -18);
     SC.offer = false; SC.flourish = false; SC.surfY = 72; SC.arc = 0; SC.gore = 0.44;
@@ -4069,21 +4188,21 @@ BEATS.push({
   update(dt, bt) {
     Intro.scroll += 9 * dt;
     swim(A.you, dt); bounce(A.you, dt); bounce(SC.ot, dt);
-    SC.gore = smooth(SC.gore, 0.30, 0.5, dt);
+    SC.gore = smooth(SC.gore, 0.28, 0.5, dt);
     A.you.x = smooth(A.you.x, 234, 3, dt) + Math.sin(bt * 0.5) * 0.4;
     A.you.y = 226 + Math.sin(bt * 0.66) * 4;
-    A.you.rot = smooth(A.you.rot, bt > 7.0 ? -0.10 : 0.04, 3, dt);
+    A.you.rot = smooth(A.you.rot, bt > 7.4 ? -0.10 : 0.04, 3, dt);
     A.you.exp = talking('you') ? 'talk' : bt > 2.0 ? 'angry' : 'pain';
     if (Math.random() < 3.5 * dt) {
       const wp = bodyPoint(A.you, A.you.wounds[0].x, A.you.wounds[0].y);
       FX.blood(wp[0], wp[1], 1, 0.62);
     }
     // he never holds still: a slow figure of eight with two errands in it
-    const offer = clamp((bt - 1.60) / 0.55, 0, 1);            // blade out to her
-    const back = clamp((bt - 2.35) / 0.75, 0, 1);             // and away again
-    const near = clamp((bt - 6.15) / 0.90, 0, 1);             // alongside, at the end
-    const hover = [390 + Math.sin(bt * 0.95) * 34, 198 + Math.sin(bt * 1.42) * 15];
-    const nose = [308, 212], side = [334, 234];
+    const offer = clamp((bt - 5.40) / 0.55, 0, 1);            // blade out to her
+    const back = clamp((bt - 6.30) / 0.75, 0, 1);             // and away again
+    const near = clamp((bt - 8.30) / 0.90, 0, 1);             // alongside, at the end
+    const hover = [370 + Math.sin(bt * 0.95) * 34, 200 + Math.sin(bt * 1.42) * 15];
+    const nose = [306, 212], side = [334, 234];
     let ox = hover[0], oy = hover[1];
     if (offer > 0 && back < 1) {
       const k = ss(offer) * (1 - ss(back));
@@ -4095,7 +4214,7 @@ BEATS.push({
     SC.ot.phase += dt * 2.2;
     // the flourish, between his two boasts: a whole turn with the blade out,
     // and a swept arc of steel where the sparkles used to be
-    const spin = clamp((bt - 4.75) / 0.85, 0, 1);
+    const spin = clamp((bt - 3.55) / 0.85, 0, 1);
     SC.ot.rot = TAU * ss2(spin) + Math.sin(bt * 1.8) * 0.07;
     SC.ot.exp = talking('otter') ? 'talk' : 'angry';
     SC.ot.bladeR = -1.05 - ss(offer) * 0.45 + (spin > 0 && spin < 1 ? Math.sin(spin * Math.PI) * 0.9 : 0);
@@ -4133,7 +4252,7 @@ BEATS.push({
   },
 });
 
-// -------------------------------------------------------------- 11. COLOURS
+// -------------------------------------------------------------- 12. COLOURS
 //  Not an escape.  The old ending ran them off into empty water; this one
 //  turns them round and points them AT the fleet, with the black flag up and
 //  her still bleeding out of the hole they put in her.
