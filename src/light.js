@@ -77,18 +77,23 @@ const Light = {
   // The field buffer. 160x90 puts one cell on 8 screen pixels, which is 4
   // world units: coarse enough to be nearly free, fine enough that a banded
   // light disc reads as chunky pixel art instead of a polygon.
-  LW: 160, LH: 90,
+  LW: 128, LH: 72,
 
   FOG: 0.30,      // how far the deep end pulls the frame toward its own water
-  BOUNCE: 0.060,  // warm light the sand shelf throws back up at everything
-  CAUST: 0.100,   // surface caustics playing over the top of everything
-  SHAFT: 0.045,   // broad shafts coming down off the swell
+  BOUNCE: 0.085,  // warm light the sand shelf throws back up at everything
+  CAUST: 0.130,   // surface caustics playing over the top of everything
+  SHAFT: 0.070,   // broad shafts coming down off the swell
   VIG: 0.22,      // corner falloff
   PMAX: 0.45,     // a ceiling on point light, so a flash can never flatten the frame
   LAND: 0.105,    // direct sun on the village, above the waterline
   HERO: 0.45,     // how much of the depth push the hero is spared, so she reads
 
   _built: false, _ramp: null, _err: 0,
+
+  // Light.profile = true fills Light.cost with the split, in ms. Off by
+  // default and three timestamps when on, all of them outside the hot loop.
+  profile: false,
+  cost: { lights: 0, field: 0, blit: 0, total: 0 },
 
   // =========================================================================
   //  BAKED TABLES
@@ -106,17 +111,27 @@ const Light = {
     this._bctx = this._buf.getContext('2d');
     this._bctx.imageSmoothingEnabled = false;
     this._img = this._bctx.createImageData(LW, LH);
-    this._d = this._img.data;
+    // A plain Uint8Array view of the SAME memory. ImageData.data is
+    // Uint8ClampedArray, and the clamp is paid on every one of the 57600
+    // writes a frame; the loop below already guarantees 0..255, so the clamp
+    // is pure overhead. Same buffer, so putImageData still sees the writes.
+    this._d = new Uint8Array(this._img.data.buffer);
 
     // point-light accumulators: alpha, and colour premultiplied by it
     this._pA = new Float32Array(n);
     this._pR = new Float32Array(n); this._pG = new Float32Array(n); this._pB = new Float32Array(n);
-    this._row = new Float32Array(LW);           // one row of ocean depth
+    this._rowN = (LW >> 1) + 1;                 // the depth grid is coarser than
+    this._row = new Float32Array(this._rowN);   // the field, so sample at half rate
 
     // 1/A for a quantized A, so the un-premultiply in the compose costs a
     // table read instead of a divide, fourteen thousand times a frame.
     this._RCP = new Float32Array(65); this._AB = new Uint8Array(65);
     for (let k = 1; k <= 64; k++) { this._RCP[k] = 64 / k; this._AB[k] = Math.min(255, (k * 255 / 64) | 0); }
+    // posterize-in-fives as a table. Doing it as (v/5|0)*5 is three integer
+    // divisions per cell, which measured as the most expensive single thing in
+    // the whole pass -- more than the blit.
+    this._Q5 = new Uint8Array(256);
+    for (let v = 0; v < 256; v++) this._Q5[v] = (v / 5 | 0) * 5;
 
     // ---- vignette, baked once in screen space ---------------------------
     // Quantized against a 4x4 Bayer so the falloff breaks into a chunky
@@ -175,17 +190,22 @@ const Light = {
       this._fogR[b] = q(c[0] * dk * 0.80);      // red goes first, as absR does
       this._fogG[b] = q(c[1] * dk * 0.97);
       this._fogB[b] = q(c[2] * dk * 1.06);
-      // --- the shallow bounce: warm sand light carrying the band's own cast.
-      // The colour is THIS BAND'S WATER, opened up, with a warm push -- not a
-      // flat cream. Lerping toward a brightened version of the scene's own hue
-      // lifts value without bleaching it; lerping toward cream turns a lagoon
-      // into milk, which is what the first tuning of this did.
+      // --- the shallow bounce: the light a pale sand shelf throws back up.
+      // It WARMS the band rather than brightening it. The lagoon is already the
+      // brightest, most saturated thing in frame -- a brighter version of that
+      // cyan can only be a whiter one, and two earlier tunings of this line
+      // both bleached the shallows to milk. So the target keeps the band's own
+      // value and slides it toward sand: red up hard, green a little, blue
+      // down. Sunlit shallow water over white sand goes green-gold, not white.
       this._bncA[b] = k * k * this.BOUNCE;
-      this._bncR[b] = q(c[0] * 1.30 + 96);
-      this._bncG[b] = q(c[1] * 1.30 + 60);
-      this._bncB[b] = q(c[2] * 1.30 + 40);
-      // --- caustics live where the surface can still focus light onto things
-      this._cstA[b] = k * k * k * this.CAUST;
+      this._bncR[b] = q(c[0] + 135);
+      this._bncG[b] = q(c[1] + 22);
+      this._bncB[b] = q(c[2] * 0.82);
+      // --- caustics live where the surface can still focus light onto things.
+      // k*k*k shut them off by the middle of the shelf and they were invisible
+      // over the water most of the fighting happens in; clear water carries
+      // them a good deal further down than that.
+      this._cstA[b] = k * Math.sqrt(k) * k * 0.6 * this.CAUST + k * 0.4 * this.CAUST;
       // --- shafts read in the middle water: no room at the shore, no light
       // left in the gloom. A hump, not a ramp.
       const s = Math.sin(Math.max(0, Math.min(1, (b - 1) / 10)) * Math.PI);
@@ -398,12 +418,15 @@ const Light = {
     // ---- point lights ----------------------------------------------------
     const pA = this._pA, pR = this._pR, pG = this._pG, pB = this._pB;
     pA.fill(0); pR.fill(0); pG.fill(0); pB.fill(0);
+    const prof = this.profile, C = this.cost;
+    let T0 = prof ? performance.now() : 0, T1;
     const lit = this._splat(this._gather(G, t), wx0, wy0, wpcX);
+    if (prof) { T1 = performance.now(); C.lights = T1 - T0; T0 = T1; }
 
     // ---- the field -------------------------------------------------------
-    const d = this._d, row = this._row, vig = this._vig;
+    const d = this._d, row = this._row, rowN = this._rowN, vig = this._vig;
     const S = this._S, SK = this._SK, M = 2047, BAY = this.BAYER;
-    const RCP = this._RCP, AB = this._AB;
+    const RCP = this._RCP, AB = this._AB, Q5 = this._Q5;
     const fogA = this._fogA, fogR = this._fogR, fogG = this._fogG, fogB = this._fogB;
     const bncA = this._bncA, bncR = this._bncR, bncG = this._bncG, bncB = this._bncB;
     const cstA = this._cstA, shfA = this._shfA;
@@ -422,7 +445,7 @@ const Light = {
 
     // caustic and shaft phase steps, built the way water.js builds its own so
     // the two fields drift together instead of beating against each other
-    const e1 = 0.0182 * wpcX * SK, e2 = -0.0141 * wpcX * SK, e3 = 0.0071 * wpcX * SK;
+    const e1 = 0.0400 * wpcX * SK, e2 = -0.0310 * wpcX * SK, e3 = 0.0156 * wpcX * SK;
     const g1 = 0.0112 * wpcX * SK, h1 = 0.0271 * wpcX * SK;
     const swell = Math.sin(t * 0.23) * 0.9;
 
@@ -430,11 +453,11 @@ const Light = {
     for (let cy = 0; cy < LH; cy++) {
       const wy = wy0 + cy * wpcY;
       const land = wy < shore - 10;
-      if (!land) oc.fillRow(row, oc.depth, wy, wx0, LW, wpcX);
+      if (!land) oc.fillRow(row, oc.depth, wy, wx0, rowN, wpcX * 2);
       // per-row phases: x is stepped inside the loop, y is folded in here
-      let q1 = (wx0 * 0.0182 + wy * 0.0182 + t * 0.74) * SK;
-      let q2 = (-wx0 * 0.0141 + wy * 0.0199 - t * 0.61) * SK;
-      let q3 = (wx0 * 0.0071 - wy * 0.0062 + t * 0.35) * SK;
+      let q1 = (wx0 * 0.0400 + wy * 0.0400 + t * 0.74) * SK;
+      let q2 = (-wx0 * 0.0310 + wy * 0.0438 - t * 0.61) * SK;
+      let q3 = (wx0 * 0.0156 - wy * 0.0136 + t * 0.35) * SK;
       let r1 = (wx0 * 0.0112 + (wy - shore) * 0.0047 + t * 0.085 + swell) * SK;
       let r2 = (wx0 * 0.0271 + (wy - shore) * 0.0101 - t * 0.052) * SK;
       const bry = (cy & 3) * 4;
@@ -450,7 +473,7 @@ const Light = {
           // above the waterline the village stands in direct sun, not in water
           al = LANDA; lr = 255 * LANDA; lg = 241 * LANDA; lb = 198 * LANDA;
         } else {
-          let dp = row[cx]; if (dp < 0) dp = 0; else if (dp > 1) dp = 1;
+          let dp = row[cx >> 1]; if (dp < 0) dp = 0; else if (dp > 1) dp = 1;
           let b = (dp * 15.999) | 0; if (b > 15) b = 15;
 
           // --- the deep push, spared around the hero ---------------------
@@ -528,18 +551,21 @@ const Light = {
         const rc = RCP[k];
         // posterize the colour in fives, exactly as water.js posterizes its own
         let cr = ((lr + fr * wf) * rc) | 0, cg = ((lg + fg * wf) * rc) | 0, cb = ((lb + fb * wf) * rc) | 0;
-        d[p] = cr > 255 ? 255 : (cr / 5 | 0) * 5;
-        d[p + 1] = cg > 255 ? 255 : (cg / 5 | 0) * 5;
-        d[p + 2] = cb > 255 ? 255 : (cb / 5 | 0) * 5;
+        d[p] = cr > 255 ? 255 : Q5[cr];
+        d[p + 1] = cg > 255 ? 255 : Q5[cg];
+        d[p + 2] = cb > 255 ? 255 : Q5[cb];
         d[p + 3] = AB[k];
       }
     }
+
+    if (prof) { T1 = performance.now(); C.field = T1 - T0; T0 = T1; }
 
     // ---- one blit, and it is the only time the frame itself is touched ---
     this._bctx.putImageData(this._img, 0, 0);
     ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this._buf, 0, 0, LW, LH, 0, 0, OW, OH);
+    if (prof) { C.blit = performance.now() - T0; C.total = C.lights + C.field + C.blit; }
   },
 };
 if (typeof globalThis !== 'undefined') globalThis.Light = Light;

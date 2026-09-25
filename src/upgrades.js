@@ -2583,8 +2583,440 @@
     return spr(c, cx, cy);
   }
 
+  // ===========================================================================
+  //  THE MENU PET — the hero at play in the open water right of the buttons
+  // ===========================================================================
+  // Her centre never leaves this pen: the open water right of the buttons and
+  // under the title plate, inset by her own reach (about forty px from her
+  // centre to the fluke tip or the flag's top at any angle), so nothing of her
+  // ever crosses a button or the title. Everything she does is steering: a
+  // heading with an eased turn rate, a speed with eased thrust, and a mood
+  // that picks what she wants next. She is drawn by the shared rig, whole —
+  // the heading is a turn of the canvas around her, the rig does the rest.
+  const PEN = { x0: 292, x1: 592, y0: 138, y1: 274 };
+  const PEN_CX = (PEN.x0 + PEN.x1) / 2, PEN_CY = (PEN.y0 + PEN.y1) / 2;
+  const NOSE = 30;                       // centre to snout, world units
+  const LOOP_W = 3.9;                    // loop-the-loop turn rate, rad/s
+
+  // a small heart, outlined, two tones — the one thing she emits when happy
+  function buildHeart() {
+    const P = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+    const c = can(9, 8), x = c.getContext('2d');
+    const on = (i, j) => j >= 0 && j < P.length && i >= 0 && i < 7 && P[j][i] === 'X';
+    for (let j = -1; j <= P.length; j++) for (let i = -1; i <= 7; i++) {
+      if (on(i, j)) continue;
+      if (on(i - 1, j) || on(i + 1, j) || on(i, j - 1) || on(i, j + 1)) { x.fillStyle = '#3a0f22'; x.fillRect(i + 1, j + 1, 1, 1); }
+    }
+    for (let j = 0; j < P.length; j++) for (let i = 0; i < 7; i++) if (on(i, j)) {
+      x.fillStyle = (j >= 3 || (j === 2 && i >= 5)) ? '#d9467a' : '#ff7fae';
+      x.fillRect(i + 1, j + 1, 1, 1);
+    }
+    x.fillStyle = '#ffe0ec'; x.fillRect(2, 2, 1, 1); x.fillRect(3, 2, 1, 1); x.fillRect(2, 3, 1, 1);
+    return spr(c, 4, 4);
+  }
+
+  const MenuPet = {
+    init(fish) {
+      this.fish = fish;
+      this.x = 470; this.y = 214; this.h = Math.PI * 0.94; this.F = -1;
+      this.w = 0; this.v = 26; this.vd = 26; this.hd = this.h;
+      this.tcUp = 0.4; this.tcDn = 1.0; this.wMax = 2.2;
+      this.phase = 0; this.thrust = 0.3; this.cheer = 0; this.look = null;
+      this.exp = 'happy'; this.expT = 0; this.expTo = 'happy';
+      this.roll = null; this.pendFlip = false; this.flipCool = 0; this.loop = null;
+      this.bubbles = []; this.fx = []; this.hearts = []; this.last = [];
+      this.heart = buildHeart();
+      this.start('glide');
+    },
+
+    // ---- helpers ------------------------------------------------------------
+    noseX() { return this.x + Math.cos(this.h) * NOSE; },
+    noseY() { return this.y + Math.sin(this.h) * NOSE; },
+    inPen(x, y, m) { return x >= PEN.x0 + m && x <= PEN.x1 - m && y >= PEN.y0 + m && y <= PEN.y1 - m; },
+    waypoint(minD, ahead) {
+      let best = null, bs = -1e9;
+      for (let i = 0; i < 14; i++) {
+        const px = rand(PEN.x0 + 12, PEN.x1 - 12), py = rand(PEN.y0 + 10, PEN.y1 - 10);
+        const d = Math.hypot(px - this.x, py - this.y);
+        let s = Math.min(d, minD) + Math.random() * 20;
+        if (ahead) s -= Math.abs(angleDiff(this.h, Math.atan2(py - this.y, px - this.x))) * 40;
+        if (s > bs) { bs = s; best = [px, py]; }
+      }
+      return best;
+    },
+    face(e, dur, then) { this.exp = e; this.expT = dur || 0; this.expTo = then || this.expTo; },
+    heartPop(n) {
+      for (let i = 0; i < (n || 1); i++) this.hearts.push({ x: this.x + rand(-6, 6), y: this.y - 20 - i * 7, vy: rand(-22, -15), ph: rand(0, TAU), life: 1.3 + i * 0.15 });
+    },
+    popFx(x, y, big) { this.fx.push({ x, y, life: 0.32, max: 0.32, r: big ? 9 : 6 }); },
+    startRoll(turns, dur) {
+      if (this.roll) return false;
+      this.roll = { p: 0, n: turns, dur: dur, flipped: false, fOld: this.F, end: false };
+      return true;
+    },
+    fishInPen() {
+      const c = [];
+      for (const f of this.fish) if (f.hold <= 0 && f.x > PEN.x0 - 30 && f.x < PEN.x1 + 30 && f.y > PEN.y0 - 10 && f.y < PEN.y1 + 16) c.push(f);
+      return c;
+    },
+
+    // ---- what she wants next ------------------------------------------------
+    choose() {
+      const W = { glide: 3, dash: 2, loop: 2.4, roll: 1.8, bubbles: 2.4, fish: 2.2, boop: 1.8, rest: 1.1, eight: 1.2, spiral: 1.0 };
+      for (const m of this.last) W[m] *= 0.12;
+      let sum = 0; for (const k in W) sum += W[k];
+      let r = Math.random() * sum;
+      for (const k in W) { r -= W[k]; if (r <= 0) return k; }
+      return 'glide';
+    },
+    next() { const m = this.choose(); if (!this.start(m)) this.start('glide'); },
+    start(m) {
+      const M = { name: m, t: 0, st: 0, dur: 5 };
+      this.tcUp = 0.4; this.tcDn = 1.0; this.wMax = 2.2; this.look = null;
+      if (m === 'glide') {
+        M.wp = this.waypoint(130); M.dur = rand(3.6, 5.2); this.face('happy');
+      } else if (m === 'dash') {
+        M.wp = this.waypoint(190); M.dur = 3.4; this.face('surprised', 0.35, 'happy');
+      } else if (m === 'loop' || m === 'eight' || m === 'spiral') {
+        M.dur = 7; this.face('happy');
+      } else if (m === 'roll') {
+        M.wp = this.waypoint(200, true); M.dur = 4; M.turns = Math.random() < 0.4 ? 2 : 1; this.face('happy');
+      } else if (m === 'rest') {
+        M.dur = rand(2.2, 3.4); M.ph = rand(0, TAU); this.face('happy', 1.2, 'idle');
+      } else if (m === 'bubbles') {
+        const bx = rand(PEN.x0 + 40, PEN.x1 - 40), n = randi(4, 6);
+        for (let i = 0; i < n; i++) this.bubbles.push({ x: bx + rand(-26, 26), y: rand(292, 330) + i * 9, r: randi(2, 5), s: rand(15, 24), ph: rand(0, TAU), w: rand(2, 5) });
+        M.dur = 10; this.face('idle');
+      } else if (m === 'fish' || m === 'boop') {
+        const c = this.fishInPen();
+        if (!c.length) return false;
+        // the nearest one she is not already swimming away from
+        let best = null, bs = 1e9;
+        for (const f of c) { const d = Math.hypot(f.x - this.x, f.y - this.y) + Math.abs(angleDiff(this.h, Math.atan2(f.y - this.y, f.x - this.x))) * 30; if (d < bs) { bs = d; best = f; } }
+        M.f = best; M.dur = m === 'fish' ? 4.8 : 8; M.boops = 0; this.face('idle');
+      }
+      this.mode = M;
+      this.last.push(m); if (this.last.length > 2) this.last.shift();
+      return true;
+    },
+
+    // ---- one tick -----------------------------------------------------------
+    update(dt, T) {
+      if (!(dt > 0)) return;
+      dt = Math.min(dt, 1 / 20);
+      if (typeof Rig !== 'undefined' && Rig.updateBlink) Rig.updateBlink(dt);
+      const M = this.mode;
+      M.t += dt;
+      let hd = this.h, vd = this.vd;
+      const seek = (tx, ty, sp, slow) => {
+        tx = clamp(tx, PEN.x0, PEN.x1); ty = clamp(ty, PEN.y0, PEN.y1);
+        const d = Math.hypot(tx - this.x, ty - this.y);
+        // arrived: hold the heading rather than spin on the spot
+        hd = d < 10 ? angleLerp(this.h, Math.atan2(ty - this.y, tx - this.x), d / 10) : Math.atan2(ty - this.y, tx - this.x);
+        vd = slow ? Math.min(sp, 12 + d * 1.5) : sp;
+        this.look = hd;
+        return d;
+      };
+
+      switch (M.name) {
+        case 'glide': {
+          // a push of the fluke, then a long lazy coast that bends toward
+          // wherever she was going
+          const d = seek(M.wp[0], M.wp[1], M.t < 1.1 ? 100 : 10, false);
+          this.wMax = M.t < 1.1 ? 2.2 : 1.0; this.tcUp = 0.5; this.tcDn = 1.9;
+          if (M.t > M.dur || (d < 24 && M.t > 1.5)) this.next();
+          break;
+        }
+        case 'dash': {
+          // a sudden burst across the pen, then she lets it carry her
+          if (M.st === 0) {
+            const d = seek(M.wp[0], M.wp[1], 255, false);
+            this.tcUp = 0.16; this.wMax = 2.6;
+            if (d < 70 || M.t > 1.4) { M.st = 1; M.t2 = M.t; this.face('happy'); }
+          } else {
+            vd = 12; this.tcDn = 1.3; this.wMax = 0.8; hd = this.h + 0.25;
+            if (M.t - M.t2 > 1.6) this.next();
+          }
+          break;
+        }
+        case 'loop': case 'eight': case 'spiral': {
+          if (M.st === 0) {
+            // get somewhere with room for the circle(s) first
+            const d = seek(PEN_CX + Math.cos(T) * 20, PEN_CY, 120, false);
+            this.tcUp = 0.3;
+            const r = Math.max(this.v, 60) / LOOP_W + 6;
+            const fits = s => {
+              const cx = this.x + Math.cos(this.h + s * Math.PI / 2) * r, cy = this.y + Math.sin(this.h + s * Math.PI / 2) * r;
+              return this.inPen(cx, cy, r);
+            };
+            const ok = s => fits(s) && (M.name !== 'eight' || fits(-s));
+            if (this.v > 70 && (d < 70 || M.t > 1.0)) {
+              const s0 = Math.random() < 0.5 ? 1 : -1;
+              const s = ok(s0) ? s0 : ok(-s0) ? -s0 : 0;
+              if (s) {
+                M.st = 1;
+                this.loop = { dir: s, left: TAU, again: M.name === 'eight' ? -s : M.name === 'spiral' ? s : 0 };
+                this.face('happy');
+              }
+            }
+            if (M.t > 3.5) this.next();
+          } else {
+            vd = 118; this.tcUp = 0.35; this.tcDn = 0.5;
+            if (!this.loop) {
+              this.cheer = 0.7; this.heartPop(1);
+              M.wp = this.waypoint(120, true); this.mode = { name: 'glide', t: 0.6, st: 0, dur: 3.2, wp: M.wp };
+            }
+          }
+          break;
+        }
+        case 'roll': {
+          const d = seek(M.wp[0], M.wp[1], 215, false);
+          this.tcUp = 0.25; this.wMax = 2.4;
+          if (M.st === 0 && this.v > 150 && Math.abs(angleDiff(this.h, hd)) < 0.3 && d > 60) {
+            if (this.startRoll(M.turns, 0.62)) { M.st = 1; this.face('happy'); }
+          }
+          if (M.st === 1 && !this.roll) { M.st = 2; M.t2 = M.t; this.cheer = 0.6; }
+          if (M.st === 2) { vd = 20; this.tcDn = 1.2; if (M.t - M.t2 > 1.1) this.next(); }
+          if (M.t > M.dur) this.next();
+          break;
+        }
+        case 'rest': {
+          // hangs in the water, paddling, while he has a look round
+          vd = 0; this.tcDn = 0.9; this.wMax = 0.5;
+          hd = this.h + Math.sin(M.t * 0.9 + M.ph) * 0.3;
+          this.look = this.h + Math.sin(M.t * 1.4 + M.ph) * 1.1;
+          if (M.t > M.dur) this.next();
+          break;
+        }
+        case 'bubbles': {
+          // chase the rising cluster and pop every one
+          let best = null, bs = 1e9;
+          for (const b of this.bubbles) {
+            if (b.y > PEN.y1 + 40) continue;
+            const d = Math.hypot(b.x - this.noseX(), b.y - this.noseY());
+            if (d < bs) { bs = d; best = b; }
+          }
+          if (best) {
+            // aim the snout, not the middle of her, at it
+            const a = Math.atan2(best.y - this.y, best.x - this.x);
+            seek(best.x - Math.cos(a) * (NOSE - 6), best.y - Math.sin(a) * (NOSE - 6), 135, true);
+            this.look = a; this.wMax = 3.0; this.tcUp = 0.3; this.tcDn = 0.45;
+          } else if (this.bubbles.length) {
+            seek(PEN_CX, PEN.y1, 40, true);
+          } else { this.cheer = 0.8; this.heartPop(2); this.face('happy', 0, 'happy'); this.mode = { name: 'rest', t: 0, dur: 1.6, ph: 0 }; }
+          if (M.t > M.dur) this.next();
+          break;
+        }
+        case 'fish': {
+          // tag: she chases, it bolts, she catches it up and bops it
+          const f = M.f;
+          const d = seek(f.x + (f.s + f.fx) * 0.3, f.y + f.fy * 0.3, 165, false);
+          this.wMax = 3.0; this.tcUp = 0.25;
+          const nd = Math.hypot(f.x - this.noseX(), f.y - this.noseY());
+          if (nd < 50) this.scare(f, 95);
+          if (nd < 11) {
+            this.popFx(f.x, f.y, false); this.heartPop(1); this.cheer = 0.6; this.face('happy', 0, 'happy');
+            this.scare(f, 150);
+            this.startRoll(1, 0.6);
+            this.mode = { name: 'dash', t: 0, st: 1, t2: 0, dur: 2 };
+          } else if (M.t > M.dur || f.x < PEN.x0 - 60 || f.x > PEN.x1 + 60 || d > 260) { this.face('happy'); this.next(); }
+          break;
+        }
+        case 'boop': {
+          // sneak up, the fish turns to look, and she nudges it with her snout
+          const f = M.f;
+          const nd = Math.hypot(f.x - this.noseX(), f.y - this.noseY());
+          if (M.st === 0) {
+            const a = Math.atan2(f.y - this.y, f.x - this.x);
+            seek(f.x - Math.cos(a) * (NOSE + 14), f.y - Math.sin(a) * (NOSE + 14), 110, true);
+            this.look = a; this.wMax = 2.6;
+            if (nd < 26) { M.st = 1; M.t2 = M.t; f.hold = 6; f.face = this.x < f.x ? -1 : 1; this.face('idle'); }
+            if (M.t > 4 || f.x < PEN.x0 - 40 || f.x > PEN.x1 + 40) { this.next(); break; }
+          } else {
+            f.hold = Math.max(f.hold, 1);
+            const a = Math.atan2(f.y - this.y, f.x - this.x);
+            hd = a; this.look = a; this.wMax = 2.4;
+            const k = ((M.t - M.t2) % 0.7) / 0.7;
+            // a little lunge, then back off, in a rhythm
+            vd = k < 0.28 ? 60 : (nd < 18 ? -14 : 0);
+            this.tcUp = 0.1; this.tcDn = 0.2;
+            if (k < 0.28 && nd < 9 && !M.hit) {
+              M.hit = true; M.boops++;
+              f.fx += Math.cos(a) * 40; f.fy += Math.sin(a) * 28;
+              this.heartPop(1); this.face('talk', 0.45, 'happy');
+            }
+            if (k >= 0.28) M.hit = false;
+            if (M.boops >= 3 || M.t - M.t2 > 5) {
+              f.hold = 0; f.s = Math.abs(f.s) * (Math.cos(a) >= 0 ? 1 : -1); this.scare(f, 80);
+              this.cheer = 0.8; this.face('happy', 0, 'happy');
+              this.startRoll(1, 0.65);
+              this.mode = { name: 'rest', t: 0.8, dur: 2.0, ph: 0 };
+            }
+          }
+          break;
+        }
+      }
+
+      // ---- the pen: look ahead, and bend away from its edges early ----------
+      if (!this.loop) {
+        const la = 24 + Math.max(0, this.v) * 0.5;
+        const px = this.x + Math.cos(this.h) * la, py = this.y + Math.sin(this.h) * la;
+        const ox = px < PEN.x0 ? PEN.x0 - px : px > PEN.x1 ? PEN.x1 - px : 0;
+        const oy = py < PEN.y0 ? PEN.y0 - py : py > PEN.y1 ? PEN.y1 - py : 0;
+        if (ox || oy) {
+          const k = clamp(Math.hypot(ox, oy) / 26, 0, 1);
+          hd = angleLerp(hd, Math.atan2(PEN_CY - this.y, PEN_CX - this.x), k);
+          this.wMax = Math.max(this.wMax, 2.4);
+          vd = Math.min(vd, 140);
+        }
+      }
+      this.hd = hd; this.vd = vd;
+
+      // ---- turn, eased: the turn RATE chases the error, not the heading -------
+      let wDes;
+      if (this.loop) wDes = this.loop.dir * LOOP_W;
+      else wDes = clamp(angleDiff(this.h, hd) * 3.0, -this.wMax, this.wMax);
+      this.w += (wDes - this.w) * (1 - Math.exp(-dt / 0.17));
+      this.h = angleDiff(0, this.h + this.w * dt);
+      if (this.loop) {
+        this.loop.left -= Math.abs(this.w) * dt;
+        if (this.loop.left <= 0) {
+          if (this.loop.again) { this.loop.dir = this.loop.again; this.loop.again = 0; this.loop.left = TAU; this.heartPop(1); }
+          else { this.loop = null; this.flipCool = 0.3; }
+        }
+      }
+
+      // ---- speed, eased: quick to push, slow to coast ---------------------------
+      this.v += (vd - this.v) * (1 - Math.exp(-dt / (vd > this.v ? this.tcUp : this.tcDn)));
+      this.x += Math.cos(this.h) * this.v * dt;
+      this.y += Math.sin(this.h) * this.v * dt;
+      // the hard wall, which the steering above keeps her well clear of
+      this.x = clamp(this.x, PEN.x0 - 4, PEN.x1 + 4);
+      this.y = clamp(this.y, PEN.y0 - 4, PEN.y1 + 4);
+
+      // the stroke rate follows how hard she is pushing: a coast is a coast
+      const th = clamp((vd - this.v) / 70 + Math.max(0, vd) / 240, 0.08, 1.3);
+      this.thrust += (th - this.thrust) * (1 - Math.exp(-dt / 0.3));
+      this.phase += dt * (1.3 + this.thrust * 4.6);
+
+      // ---- which flank is up. Crossing over happens inside a barrel roll, at
+      //      the instant she is edge-on and he is out of sight under her ---
+      this.flipCool -= dt;
+      const base = this.F < 0 ? Math.PI : 0;
+      // only for a heading she means: a wiggle past the line while she noses
+      // about is not a reason to turn over
+      const off = Math.abs(angleDiff(base, this.h));
+      this.flipHold = off > 1.95 ? (this.flipHold || 0) + dt : 0;
+      if (!this.loop && this.flipCool <= 0 && (this.flipHold > 0.35 || off > 2.6)) this.pendFlip = true;
+      if (this.pendFlip && !this.roll) this.startRoll(1, 0.6);
+      if (this.roll) {
+        const R0 = this.roll;
+        if (R0.end) this.roll = null;
+        else {
+          const p0 = R0.p;
+          R0.p = Math.min(R0.n, R0.p + dt / R0.dur);
+          if (this.pendFlip && Math.floor(p0 - 0.25) < Math.floor(R0.p - 0.25)) {
+            R0.fOld = this.F; R0.flipped = true;
+            this.F = -this.F; this.pendFlip = false; this.flipCool = 1.0; this.flipHold = 0;
+            // his aim is kept in her frame, which just turned half over
+            if (typeof Rig !== 'undefined' && Rig._aim && typeof Rig._aim.x === 'number') {
+              Rig._aim.x += Math.PI; Rig._headAim += Math.PI; Rig._gunAim += Math.PI;
+            }
+          }
+          if (R0.p >= R0.n) R0.end = true;
+        }
+      }
+
+      // ---- face / cheer timers --------------------------------------------------
+      if (this.expT > 0) { this.expT -= dt; if (this.expT <= 0) this.exp = this.expTo; }
+      this.cheer = Math.max(0, this.cheer - dt);
+
+      // ---- the things she plays with --------------------------------------------
+      for (let i = this.bubbles.length - 1; i >= 0; i--) {
+        const b = this.bubbles[i];
+        b.y -= b.s * dt; b.ph += dt * 2.2;
+        const bx = b.x + Math.sin(b.ph) * b.w;
+        if (Math.hypot(bx - this.noseX(), b.y - this.noseY()) < b.r + 6 || Math.hypot(bx - this.x, b.y - this.y) < 16) {
+          this.popFx(bx, b.y, b.r > 3); this.bubbles.splice(i, 1);
+          this.face('surprised', 0.22, this.mode.name === 'bubbles' ? 'idle' : 'happy');
+          if (Math.random() < 0.5) this.heartPop(1);
+          continue;
+        }
+        if (b.y < 104) { this.popFx(bx, b.y, false); this.bubbles.splice(i, 1); }
+      }
+      for (let i = this.hearts.length - 1; i >= 0; i--) {
+        const h = this.hearts[i];
+        h.life -= dt; h.y += h.vy * dt; h.vy *= Math.exp(-dt * 0.8); h.ph += dt * 3;
+        if (h.life <= 0) this.hearts.splice(i, 1);
+      }
+      for (let i = this.fx.length - 1; i >= 0; i--) { this.fx[i].life -= dt; if (this.fx[i].life <= 0) this.fx.splice(i, 1); }
+
+      // wake bubbles off her fluke, more of them the harder she swims
+      if (Math.random() < dt * (1.5 + this.v * 0.06)) {
+        Deep.rise.push({ x: this.x - Math.cos(this.h) * 34 + rand(-3, 3), y: this.y - Math.sin(this.h) * 34 + 3, r: randi(0, 1), s: rand(20, 46), ph: rand(0, TAU), w: rand(3, 8) });
+        if (Deep.rise.length > 110) Deep.rise.splice(0, Deep.rise.length - 110);
+      }
+    },
+
+    // send a fish darting away from her snout
+    scare(f, sp) {
+      const a = Math.atan2(f.y - this.y, f.x - this.x) + rand(-0.5, 0.5);
+      f.fx = Math.cos(a) * sp; f.fy = Math.sin(a) * sp * 0.7; f.hold = 0;
+      if (Math.abs(f.fx) > 20) f.s = Math.abs(f.s) * (f.fx > 0 ? 1 : -1);
+    },
+
+    // ---- draw ---------------------------------------------------------------
+    renderUnder(ctx) {
+      for (const b of this.bubbles) blit(ctx, Deep.bub[b.r], b.x + Math.sin(b.ph) * b.w, b.y);
+    },
+    render(ctx, T, shadow) {
+      if (typeof CH === 'undefined' || !CH.manatee || typeof Rig === 'undefined') return;
+      const bob = Math.sin(T * 1.7) * 1.2 * (1 - Math.min(1, this.v / 150));
+      const hx = this.x, hy = this.y + bob;
+      // the shadow the water drops under her, as the ocean casts it
+      blit(ctx, shadow, (hx + 5) & ~1, (hy + 10) & ~1);
+
+      const base = this.F < 0 ? Math.PI : 0;
+      const R0 = this.roll;
+      const rp = R0 ? Math.min(R0.p, R0.n) : null;
+      // the rig's own roll wobble changes hand with the flank; hold it steady
+      const corr = (R0 && R0.flipped) ? 2 * R0.fOld * Math.sin(rp * TAU) * 0.18 : 0;
+      // he watches whatever she is after; a cheer throws the gun up
+      const lk = this.look === null ? this.h : this.look;
+      const aim = this.cheer > 0 ? (this.F > 0 ? -1.2 : -(Math.PI - 1.2))
+        : base + clamp(angleDiff(this.h, lk), -1.0, 1.0) * 0.8;
+
+      ctx.save();
+      // snap on the device grid, the way the player does in the play field
+      ctx.translate(Math.round(hx * DETAIL) / DETAIL, Math.round(hy * DETAIL) / DETAIL);
+      ctx.rotate(angleDiff(base, this.h) + corr);
+      Rig.draw(ctx, 0, 0, {
+        t: T, aim: aim, facing: this.F, tilt: clamp(this.w * 0.1, -0.3, 0.3),
+        swimPhase: this.phase, rollPhase: rp, hurt: false, exp: this.exp, rage: false,
+        recoil: 0, flash: 0, speed: Math.max(0, this.v), armored: true,
+        gunSprite: SP.guns[(typeof G !== 'undefined' && G && G.tree) ? G.tree.primary : 'revolver'] || SP.guns.revolver,
+      });
+      ctx.restore();
+    },
+    renderOver(ctx) {
+      for (const f of this.fx) {
+        const k = 1 - f.life / f.max, r = 2 + k * f.r;
+        ctx.fillStyle = k < 0.5 ? '#eefaff' : '#9fd8ee';
+        for (let i = 0; i < 8; i++) {
+          const a = i / 8 * TAU;
+          ctx.fillRect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r), 1, 1);
+        }
+        if (k < 0.3) { ctx.fillRect(Math.round(f.x) - 1, Math.round(f.y), 3, 1); ctx.fillRect(Math.round(f.x), Math.round(f.y) - 1, 1, 3); }
+      }
+      for (const h of this.hearts) {
+        if (h.life < 0.3 && (Math.floor(h.life * 20) & 1)) continue;   // blink out
+        blit(ctx, this.heart, h.x + Math.sin(h.ph) * 2.5, h.y);
+      }
+    },
+  };
+
   const MainMenu = {
-    ready: false, action: null, sel: 0, T: 0, hasRun: null, hero: { x: 320, y: 214 },
+    ready: false, action: null, sel: 0, T: 0, hasRun: null,
     buttons: [], fish: [],
 
     init() {
@@ -2593,15 +3025,17 @@
       Deep.build();
       buildNodeBubbles();
       const rng = new SeededRandom(7788);
-      // a single wide shaft that the pair swim in, so the title screen has
-      // somewhere the eye is supposed to land
-      this.beam = Deep.buildRay(168, 300, 0.16);
+      // a single wide shaft over the open water she plays in, so the title
+      // screen has somewhere the eye is supposed to land
+      this.beam = Deep.buildRay(176, 300, 0.16);
       this.shadow = buildHeroShadow();
       // the little fish the ocean draws on its low buffer, at its coarseness
       for (let i = 0; i < 14; i++) this.fish.push({
         x: rng.range(0, 640), y: rng.range(120, 300), s: rng.range(10, 26) * (rng.next() > 0.5 ? 1 : -1),
         ph: rng.range(0, TAU), len: rng.int(2, 3), col: rng.next() > 0.6 ? 'rgb(125,215,205)' : 'rgb(70,150,155)',
+        fx: 0, fy: 0, hold: 0, face: 1,
       });
+      MenuPet.init(this.fish);
     },
     consume() { this.action = null; },
 
@@ -2626,7 +3060,17 @@
       this.init();
       this.T += dt;
       Deep.update(dt, this.T);
-      for (const f of this.fish) { f.x += f.s * dt; f.ph += dt * 3; if (f.x < -20) f.x = 660; if (f.x > 660) f.x = -20; }
+      for (const f of this.fish) {
+        // a fish she is nosing at holds still and looks at her; one she has
+        // spooked carries a dart that bleeds off
+        if (f.hold > 0) f.hold -= dt;
+        const k = Math.exp(-dt * 1.4);
+        f.x += ((f.hold > 0 ? 0 : f.s) + f.fx) * dt; f.y += f.fy * dt; f.fx *= k; f.fy *= k;
+        f.ph += dt * (3 + Math.min(6, Math.abs(f.fx) / 20));
+        f.y = clamp(f.y, 112, 300);
+        if (f.x < -20) f.x = 660; if (f.x > 660) f.x = -20;
+      }
+      MenuPet.update(dt, this.T);
 
       const items = this.items(), m = Input.mouse;
       const BX = 46, BW = 190, BH = 26, GAP = 6;
@@ -2659,8 +3103,8 @@
       // the key light: one broad shaft the pair hang in, added to the water
       // inside the backdrop's own bake
       Deep.render(ctx, {
-        wreckX: 430,
-        beam: { s: this.beam, x: 322 + Math.round(Math.sin(T * 0.23) * 5 / GR) * GR, y: 6, a: 0.85 + Math.sin(T * 0.6) * 0.14 },
+        wreckX: 474,
+        beam: { s: this.beam, x: 444 + Math.round(Math.sin(T * 0.23) * 5 / GR) * GR, y: 6, a: 0.85 + Math.sin(T * 0.6) * 0.14 },
       });
 
       Deep.renderNear(ctx);
@@ -2668,36 +3112,22 @@
       // little fish schooling past, on the water's grid — the ocean draws its
       // own fish on the low buffer, this coarse
       for (const f of this.fish) {
-        const d = f.s > 0 ? 1 : -1;
+        const d = f.hold > 0 ? f.face : (f.s + f.fx) > 0 ? 1 : -1;
         const y = Math.round(f.y + Math.sin(f.ph) * 2) & ~1;
         const x = Math.round(f.x) & ~1;
         R(ctx, f.col, x, y, f.len * GR, GR);
         R(ctx, f.col, x - d * GR, y - GR + ((Math.floor(f.ph * 2) & 1) * GR), GR, GR);
       }
 
-      // ---- the hero: war manatee + armed otter, bobbing in the current ----
+      // ---- the hero: war manatee + armed otter, at play in the open water ---
       // Drawn at 1:1, which is what the play field does (RIG_SCALE = 1): she
       // is seventy world units long at two art pixels to the unit, so every
       // pixel of her is one device pixel — a quarter the size of the water
       // samples she is swimming through. That relationship, fine animal over
       // coarse ocean, is the whole look of the game.
-      if (typeof CH !== 'undefined' && CH.manatee && typeof Rig !== 'undefined') {
-        const hx = 322 + Math.sin(T * 0.4) * 7, hy = 196 + Math.sin(T * 0.8) * 3;
-        // the shadow the water drops under her, as the ocean casts it
-        blit(ctx, this.shadow, (hx + 5 + Math.sin(T * 3) * 1.5) & ~1, (hy + 10) & ~1);
-        ctx.save();
-        // snap on the device grid, the way the player does in the play field
-        ctx.translate(Math.round(hx * DETAIL) / DETAIL, Math.round(hy * DETAIL) / DETAIL);
-        Rig.draw(ctx, 0, 0, {
-          t: T, aim: -0.35 + Math.sin(T * 0.5) * 0.25, facing: 1, tilt: Math.sin(T * 0.6) * 0.06,
-          swimPhase: T * 2.2, rollPhase: null, hurt: false, exp: 'angry', rage: false,
-          recoil: 0, flash: 0, speed: 40, armored: true, gunSprite: SP.guns[(typeof G !== 'undefined' && G && G.tree) ? G.tree.primary : 'revolver'],
-        });
-        ctx.restore();
-        // wake bubbles off her fluke
-        if (Math.random() < 0.16) Deep.rise.push({ x: hx - 40 + rand(-4, 4), y: hy + 4, r: randi(0, 1), s: rand(20, 46), ph: rand(0, TAU), w: rand(3, 8) });
-        if (Deep.rise.length > 110) Deep.rise.splice(0, Deep.rise.length - 110);
-      }
+      MenuPet.renderUnder(ctx);
+      MenuPet.render(ctx, T, this.shadow);
+      MenuPet.renderOver(ctx);
 
       // ---- title: a posterised plate under the surface, not a flat wash ---
       const TY = 26, TH = 62;
@@ -2736,63 +3166,14 @@
       }
       pixelTextOutlined(ctx, 'ARROWS + ENTER, OR JUST CLICK', 141, 320, 6, '#9fd8ee', '#06121d', 'center');
 
-      // ---- run panel ----
-      this.drawRunPanel(ctx, T);
-
       Deep.renderForeground(ctx);
 
       if (typeof Audio_ !== 'undefined' && Audio_.muted) pixelTextOutlined(ctx, 'MUTED', 634, 348, 6, '#8ea6bc', '#06121d', 'right');
-    },
-
-    drawRunPanel(ctx, T) {
-      const x = 408, y = 106, w = 218, h = 156;
-      UIKit.panel(ctx, x, y, w, h, 'gold');
-      const X = x + 10; let Y = y + 10;
-      const running = this.runInProgress();
-      pixelTextOutlined(ctx, running ? 'THE RUN SO FAR' : 'THE HUNT', X, Y, 9, '#ffe48f', '#2a1d08'); Y += 13;
-      UIKit.divider(ctx, X, Y, w - 20); Y += 8;
-
-      const tree = (typeof G !== 'undefined' && G && G.tree) ? G.tree : null;
-      const st = (typeof G !== 'undefined' && G && G.stats) ? G.stats : null;
-      const line = (a, b, col) => { pixelText(ctx, a, X, Y, 6, '#9ab4c6'); pixelText(ctx, b, X + w - 20, Y, 7, col || '#ffffff', 'right'); Y += 10; };
-      if (running && st) {
-        line('TIME', typeof fmtTime === 'function' && G.director ? fmtTime(G.director.time) : '-');
-        line('BOATS SUNK', String(st.kills || 0), '#ff9a3c');
-        line('ABSORBS', String(st.absorbs || 0), '#8ac6ff');
-        line('SALVAGE', String(st.scrapCollected || 0), '#6fd88e');
-      } else {
-        for (const l of wrapText(ctx, 'A manatee with a gun-toting otter on her back against an entire fishing village. Salvage the wrecks, spend it in the SKILL TREE.', w - 20, 6)) {
-          pixelText(ctx, l, X, Y, 6, '#cfe6f2'); Y += 9;
-        }
-        Y += 2;
-      }
-      if (tree) {
-        line('UPGRADES', tree.unlocked.size + '/' + SKILL_NODES.length, '#ffe48f');
-        Y += 1;
-        UIKit.divider(ctx, X, Y, w - 20); Y += 7;
-        pixelText(ctx, 'SALVAGE', X, Y, 5, '#9ab4c6'); Y += 8;
-        SCRAP_TYPES.forEach((k, i) => {
-          const sx = X + i * 39;
-          R(ctx, '#0a0e18', sx, Y, 36, 16); box(ctx, '#2b3548', sx, Y, 36, 16);
-          drawSprite(ctx, SP.scrap[k], sx + 8, Y + 8);
-          pixelText(ctx, String(tree.scrap[k] || 0), sx + 33, Y + 4, 6, SCRAP_COLORS[k], 'right');
-        });
-        Y += 20;
-        const wp = WEAPONS[tree.primary] || WEAPONS.revolver, gs = SP.guns[tree.primary];
-        pixelText(ctx, 'WEAPON', X, Y + 2, 5, '#9ab4c6');
-        ctx.drawImage(gs.c, X + 34, Y + 1);
-        pixelText(ctx, fitLabel(wp.name, w - 56 - gs.w, 6), X + 38 + gs.w, Y + 1, 6, '#ffffff');
-        if (tree.sidearm) {
-          const ss = SP.guns[tree.sidearm];
-          pixelText(ctx, '+', X + 26, Y + 11, 5, '#ffe48f');
-          ctx.drawImage(ss.c, X + 34, Y + 11);
-          pixelText(ctx, fitLabel(WEAPONS[tree.sidearm].name, w - 56 - ss.w, 5), X + 38 + ss.w, Y + 11, 5, '#ffe48f');
-        }
-      }
     },
   };
 
   global.Upgrades = Upgrades;
   global.MainMenu = MainMenu;
   global.DeepScene2 = Deep;   // exposed for debugging / harnesses only
+  global.MenuPet = MenuPet;   // likewise
 })(typeof window !== 'undefined' ? window : this);
