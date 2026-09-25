@@ -655,7 +655,7 @@
   // Same frame the fishermen used. What is on the hooks is the difference.
   Kit.fishRack = function (c, x, y, w, rng, o) {
     o = o || {};
-    const h = o.h || uw(11), leg = uw(1);
+    const h = o.h || uw(14), leg = uw(1);
     R(c, x - 1, y - h, 1, h, W.ink); R(c, x + w, y - h, 1, h, W.ink);
     R(c, x, y - h, leg, h, W.post1); R(c, x + w - leg, y - h, leg, h, W.post1);
     R(c, x, y - h, 1, h, W.post2); R(c, x + w - leg, y - h, 1, h, W.post2);
@@ -668,18 +668,20 @@
     let body = o.body === false ? 1 : 0;      // at most one full body per rack
     for (let i = uw(1.5); i < w - uw(1.5); i += uw(3)) {
       const ln = uw(1) + Math.floor(rng.next() * uw(1));
-      const top = rng.next() < 0.5 ? y - h : y - Math.round(h * 0.58);
+      const hi = y - h, lo = y - Math.round(h * 0.58);
       const r = rng.next();
+      // the long things hang off the top beam so their feet clear the boards;
+      // only the short stuff goes on the lower one
       if (!body && r < 0.3) {
         body = 1;
-        Kit.hangBody(c, x + i, top + uw(1), ln + uw(1), rng, { crow: true });
+        Kit.hangBody(c, x + i, hi + uw(1), ln, rng, { crow: true });
       } else if (r < 0.72) {
-        R(c, x + i, top + uw(1), 1, ln, W.rope0);
-        c.drawImage(P.meat.c, x + i - (P.meat.w >> 1), top + uw(1) + ln);
+        R(c, x + i, hi + uw(1), 1, ln, W.rope0);
+        c.drawImage(P.meat.c, x + i - (P.meat.w >> 1), hi + uw(1) + ln);
       } else {
-        R(c, x + i, top + uw(1), 1, ln + uw(2), W.rope0);
-        R(c, x + i - uw(1), top + uw(1) + ln + uw(2), uw(2), uw(2.5), W.ink);
-        R(c, x + i - uw(1) + 1, top + uw(1) + ln + uw(2), uw(1.5), uw(2), rng.next() < 0.5 ? W.bone1 : '#55090c');
+        R(c, x + i, lo + uw(1), 1, ln + uw(1), W.rope0);
+        R(c, x + i - uw(1), lo + uw(1) + ln + uw(1), uw(2), uw(2.5), W.ink);
+        R(c, x + i - uw(1) + 1, lo + uw(1) + ln + uw(1), uw(1.5), uw(2), rng.next() < 0.5 ? W.bone1 : '#55090c');
       }
     }
     Kit.brace(c, x + 1, y - 2, x + w - 2, y - h + uw(3), uw(1));
@@ -929,7 +931,6 @@
     if (openFront) {
       // a big open mouth: dark interior, a boat or a counter inside
       const ow = Math.round(w * (kind === 'boathouse' ? 0.62 : 0.72));
-      const oy0 = 0; void oy0;
       const ox2 = x + Math.round((w - ow) / 2);
       const oh = Math.round(wallH * (kind === 'boathouse' ? 0.72 : 0.6));
       R(c, ox2 - 1, y - oh - 1, ow + 2, oh + 1, W.ink);
@@ -966,9 +967,14 @@
         R(c, ox2, y - uw(5), ow, uw(2), W.deck1);
         R(c, ox2, y - uw(5), ow, 1, W.deck3);
         R(c, ox2, y - uw(3), ow, 1, W.ink);
-        for (let i = uw(1); i < ow - uw(5); i += uw(5)) c.drawImage(P.keg.c, ox2 + i, y - uw(5) - P.keg.h);
-        for (let i = uw(2); i < ow - uw(3); i += uw(4)) R(c, ox2 + i, y - uw(6), uw(1), uw(1), W.met3);
-        for (let q = uw(2); q < ow - uw(2); q += uw(6)) {
+        let ki = uw(1);
+        while (ki < ow - uw(5)) {
+          c.drawImage(rng.next() < 0.35 ? P.rumBarrel.c : P.keg.c, ox2 + ki, y - uw(5) - P.keg.h);
+          ki += uw(4) + Math.floor(rng.next() * uw(4));
+        }
+        for (let i = uw(2); i < ow - uw(3); i += uw(4)) if (rng.next() < 0.6) R(c, ox2 + i, y - uw(6), uw(1), uw(1), W.met3);
+        // two lamps over the bar, not a row of them
+        for (const q of [uw(3), ow - uw(6)]) {
           R(c, ox2 + q, y - oh + uw(1), 1, uw(2), W.rope0);
           c.drawImage(P.lantern.c, ox2 + q - uw(1), y - oh + uw(3));
           lights.push({ x: ox2 + q - uw(1), y: y - oh + uw(5), w: uw(2.5), h: uw(2.5), ph: rng.range(0, TAU), k: 1.2, lantern: true });
@@ -2512,7 +2518,6 @@
       this.tx = x; this.ty = y;
       this.bob = 0; this.lean = 0; this.crouch = 0;
       this.workPh = rand(0, TAU);
-      this.fishLine = 0; this.catchT = 0;
       this._ax = 0; this._ay = 0; this._c = 1; this._s = 0; this._face = this.face;
       if (this.role === 'watch_deck') this.setState('idle');
       else if (['guard', 'hammer', 'chat', 'idle', 'mend', 'gut'].indexOf(this.role) >= 0) this.setState(this.role === 'chat' ? 'idle' : this.role);
@@ -3117,30 +3122,10 @@
       }
     }
     drawItem(ctx, cam, t, h1x, h1y, h2x, h2y, ink) {
-      void h2x; void h2y;
+      void cam; void t; void h2x; void h2y;
       if (!this.item) return;
       const th = v => Math.max(1, Math.round(v * U));
-      if (this.item === 'rod') {
-        const bend = this.catchT > 0 ? 1 : 0;
-        const tipX = h1x + 13 - bend * 3, tipY = h1y + 9 - bend * 5;
-        seg(ctx, this, h1x - 3, h1y - 2, tipX, tipY, th(1.5), ink);
-        seg(ctx, this, h1x - 3, h1y - 2, tipX, tipY, 1, '#6b4a2a');
-        dot(ctx, this, h1x + 1, h1y, th(1), W.met2);
-        T(this, tipX, tipY);
-        const lx = Math.round(_tx), ly = Math.round(_ty);
-        const wy = Math.round((this.waterY - cam.y) * K);
-        if (wy > ly) {
-          ctx.fillStyle = 'rgba(232,244,255,0.30)';
-          const drift = Math.sin(t * 1.3 + this.workPh) * 3 * K;
-          for (let y = ly; y < wy; y += 3) ctx.fillRect(Math.round(lx + drift * (y - ly) / Math.max(1, wy - ly)) / K, y / K, 1 / K, 1 / K);
-          const fx = Math.round(lx + drift), fy = wy + Math.round(Math.sin(t * 3 + this.workPh) * 1.5 * K);
-          const A = (px2, py, pw, ph, c2) => { ctx.fillStyle = c2; ctx.fillRect(px2 / K, py / K, pw / K, ph / K); };
-          A(fx - th(0.8), fy - th(1.4), th(1.6), th(1.6), W.ink);
-          A(fx - th(0.6), fy - th(1.2), th(1.2), th(0.6), '#ffffff');
-          A(fx - th(0.6), fy - th(0.6), th(1.2), th(0.6), '#e0322e');
-          if (this.catchT > 0) A(fx - th(2), fy + th(0.4), th(4), 1, 'rgba(235,250,255,0.8)');
-        }
-      } else if (this.item === 'crate' || this.item === 'box') {
+      if (this.item === 'crate' || this.item === 'box') {
         const spr = this.item === 'box' ? P.lootBox : P.crateSm;
         T(this, h1x + 2.2, h1y + 2.2);
         ctx.drawImage(spr.c, (Math.round(_tx) - (spr.w >> 1)) / K, (Math.round(_ty) - (spr.h >> 1)) / K, spr.w / K, spr.h / K);

@@ -1282,7 +1282,7 @@ const FX = {
       const a = rand(0, TAU), sp = rand(8, 54) * (pw || 1) * (hang ? 0.22 : 1);
       this.add({ k: 'r', x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 6,
                  r: rand(2, 7) * (pw || 1), g: rand(1.4, 3.6) * (hang ? 0.55 : 1),
-                 rmax: hang ? rand(8, 17) : rand(7, 15),
+                 rmax: hang ? rand(7, 14) : rand(6, 13),
                  // its own shape seed, fixed for life.  Keying the silhouette
                  // off the cloud's screen position instead made the edge boil
                  // as it drifted -- a cloud that re-rolls its own outline
@@ -1413,7 +1413,7 @@ const FX = {
           // A denser heart to it, one band further down the ramp and off
           // centre.  Only on the big ones: on a four-pixel cloud it is
           // invisible and it is the second row loop that costs.
-          const r2 = r >= 7 ? R(r * 0.58) : 0, ox = R(r * 0.14);
+          const r2 = r >= 9 ? R(r * 0.58) : 0, ox = R(r * 0.14);
           ctx.fillStyle = rgbaq(IP.blood[k > 0.6 ? 2 : 0], Math.min(0.38, (k * 0.38 + 0.05) * thin));
           for (let dy = -r2; dy <= r2; dy += 2) {
             const w = Math.sqrt(Math.max(0, r2 * r2 - dy * dy));
@@ -1538,7 +1538,9 @@ function foreground(ctx, o) {
   }
   // the coloured light itself, laid over the actors so they sit in the scene
   if (GLOW[o.grade]) ctx.drawImage(GLOW[o.grade], 0, 0);
-  if (o.gore > 0.01 && GLOW.gore) { ctx.save(); ctx.globalAlpha = qa(o.gore * 0.75); ctx.drawImage(GLOW.gore, 0, 0); ctx.restore(); }
+  // The over-light only earns its full-frame blit while there is real blood
+  // in the water; under that the scenery pass alone carries it.
+  if (o.gore > 0.34 && GLOW.gore) { ctx.save(); ctx.globalAlpha = qa(o.gore * 0.75); ctx.drawImage(GLOW.gore, 0, 0); ctx.restore(); }
   motes(ctx, s * 2, t, 26, G ? G.mote : '#e6f6ff', 0.36);
 }
 // ---- drifting fish school --------------------------------------------------
@@ -2302,7 +2304,7 @@ BEATS.push({
     SC.sch1 = makeSchool(7, 600, 140, 40, 0, 2, -15);
     SC.splash = false; SC.landed = false; SC.surfY = 62; SC.gore = 0.66; SC.arc = 0;
     // her family, still in the water, going nowhere
-    for (let i = 0; i < 22; i++) FX.blood(rand(90, 560), rand(112, 268), 1, rand(1.2, 2.6), true);
+    for (let i = 0; i < 13; i++) FX.blood(rand(90, 560), rand(112, 268), 1, rand(1.2, 2.6), true);
     // a barb the fleet cut loose on its way out, buried in the sand with
     // the line still on it and somebody still on the line
     SC.line = { x: 412, y: 298, a: 1.22 };
@@ -2398,7 +2400,7 @@ BEATS.push({
               sq: 0, sqv: 0, sx: 1, sy: 1, blade: 1, bladeR: -1.05, bladeWet: 1 };
     SC.sch1 = makeSchool(8, 590, 130, 44, 0, 3, -18);
     SC.offer = false; SC.flourish = false; SC.surfY = 72; SC.arc = 0; SC.gore = 0.44;
-    for (let i = 0; i < 10; i++) FX.blood(rand(80, 580), rand(130, 258), 1, rand(1.0, 2.2), true);
+    for (let i = 0; i < 6; i++) FX.blood(rand(80, 580), rand(130, 258), 1, rand(1.0, 2.2), true);
   },
   update(dt, bt) {
     Intro.scroll += 9 * dt;

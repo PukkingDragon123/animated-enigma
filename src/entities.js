@@ -1575,25 +1575,25 @@ class Player {
 // chars.js and the hitbox follows it on its own; editing the number here
 // only moves the fallback for a boat whose sprite is missing.
 const ENEMY_TYPES = {
-  dinghy: { hp: 30, speed: 100, turn: 2.6, radius: 12, behavior: 'chase', ram: 12, drops: { wood: 2, metal: 1 }, name: 'Fishing Dinghy', wake: 6 },
-  netter: { hp: 48, speed: 85, turn: 2.2, radius: 13, behavior: 'orbit', orbit: 150, attackCd: 3.0, attack: 'net', ram: 8, drops: { wood: 2, tech: 1 }, name: 'Net Boat', wake: 7 },
-  harpooner: { hp: 58, speed: 88, turn: 2.2, radius: 14, behavior: 'kite', orbit: 260, attackCd: 2.4, attack: 'harpoon', ram: 8, drops: { metal: 3, wood: 1 }, name: 'Harpooner', wake: 7 },
-  speedboat: { hp: 55, speed: 215, turn: 3.2, radius: 15, behavior: 'strafe', attackCd: 0.18, attack: 'pistol', ram: 15, drops: { fuel: 3, metal: 1 }, name: 'Speedboat', wake: 9 },
-  jetski: { hp: 22, speed: 200, turn: 5, radius: 8, behavior: 'zigzag', ram: 0, kamikaze: 22, drops: { fuel: 2 }, name: 'Jetski Bomber', wake: 4 },
-  dynaboat: { hp: 62, speed: 78, turn: 2.0, radius: 14, behavior: 'orbit', orbit: 210, attackCd: 2.8, attack: 'dynamite', ram: 8, drops: { powder: 3, wood: 1 }, name: 'Dynamite Skiff', wake: 7 },
-  trawler: { hp: 280, speed: 58, turn: 1.1, radius: 25, behavior: 'chase', attackCd: 2.2, attack: 'buckshot', attackRange: 230, ram: 25, drops: { metal: 4, wood: 4, tech: 2 }, name: 'Trawler', wake: 14, big: true },
-  gunboat: { hp: 220, speed: 92, turn: 1.7, radius: 22, behavior: 'kite', orbit: 230, attackCd: 2.1, attack: 'turret', ram: 15, drops: { metal: 5, powder: 3, tech: 3 }, name: 'Gunboat', wake: 12, big: true },
+  dinghy: { hp: 30, speed: 100, turn: 2.6, radius: 12, behavior: 'chase', ram: 12, drops: { wood: 2, metal: 1 }, name: 'Cutthroat Dinghy', wake: 6 },
+  netter: { hp: 48, speed: 85, turn: 2.2, radius: 13, behavior: 'orbit', orbit: 150, attackCd: 3.0, attack: 'net', ram: 8, drops: { wood: 2, tech: 1 }, name: 'Netter Corsair', wake: 7 },
+  harpooner: { hp: 58, speed: 88, turn: 2.2, radius: 14, behavior: 'kite', orbit: 260, attackCd: 2.4, attack: 'harpoon', ram: 8, drops: { metal: 3, wood: 1 }, name: 'Bone Harpooner', wake: 7 },
+  speedboat: { hp: 55, speed: 215, turn: 3.2, radius: 15, behavior: 'strafe', attackCd: 0.18, attack: 'pistol', ram: 15, drops: { fuel: 3, metal: 1 }, name: 'Raider Speedboat', wake: 9 },
+  jetski: { hp: 22, speed: 200, turn: 5, radius: 8, behavior: 'zigzag', ram: 0, kamikaze: 22, drops: { fuel: 2 }, name: 'Fireship Jetski', wake: 4 },
+  dynaboat: { hp: 62, speed: 78, turn: 2.0, radius: 14, behavior: 'orbit', orbit: 210, attackCd: 2.8, attack: 'dynamite', ram: 8, drops: { powder: 3, wood: 1 }, name: 'Powder Skiff', wake: 7 },
+  trawler: { hp: 280, speed: 58, turn: 1.1, radius: 25, behavior: 'chase', attackCd: 2.2, attack: 'buckshot', attackRange: 230, ram: 25, drops: { metal: 4, wood: 4, tech: 2 }, name: 'Trawler Hulk', wake: 14, big: true },
+  gunboat: { hp: 220, speed: 92, turn: 1.7, radius: 22, behavior: 'kite', orbit: 230, attackCd: 2.1, attack: 'turret', ram: 15, drops: { metal: 5, powder: 3, tech: 3 }, name: 'Gunboat Marauder', wake: 12, big: true },
   // ---- the rest of the fleet -------------------------------------------
   // A pusher tug: no guns at all, just weight. Slow enough to walk away from,
   // punishing if you let it corner you against the pier.
-  tug: { hp: 190, speed: 70, turn: 1.3, radius: 20, behavior: 'chase', ram: 20, drops: { metal: 4, fuel: 2 }, name: 'Harbour Tug', wake: 11, big: true },
+  tug: { hp: 190, speed: 70, turn: 1.3, radius: 20, behavior: 'chase', ram: 20, drops: { metal: 4, fuel: 2 }, name: 'Press-Gang Tug', wake: 11, big: true },
   // Lays baited hooks that drift and linger. Area denial you can simply swim
   // around, or parry if you would rather not.
-  longliner: { hp: 74, speed: 80, turn: 1.9, radius: 15, behavior: 'kite', orbit: 240, attackCd: 3.4, attack: 'hooks', ram: 8, drops: { wood: 3, tech: 2 }, name: 'Longliner', wake: 8 },
+  longliner: { hp: 74, speed: 80, turn: 1.9, radius: 15, behavior: 'kite', orbit: 240, attackCd: 3.4, attack: 'hooks', ram: 8, drops: { wood: 3, tech: 2 }, name: 'Hook Longliner', wake: 8 },
   // Drops crab pots in your path. They sink, sit, and burst.
-  crabber: { hp: 86, speed: 74, turn: 1.8, radius: 15, behavior: 'orbit', orbit: 170, attackCd: 3.2, attack: 'pot', ram: 8, drops: { wood: 2, metal: 2, tech: 1 }, name: 'Crabber', wake: 8 },
+  crabber: { hp: 86, speed: 74, turn: 1.8, radius: 15, behavior: 'orbit', orbit: 170, attackCd: 3.2, attack: 'pot', ram: 8, drops: { wood: 2, metal: 2, tech: 1 }, name: 'Pot-Hauler Crabber', wake: 8 },
   // Unarmed. Fires a flare that rallies everything near it. Kill it first.
-  spotter: { hp: 40, speed: 170, turn: 3.6, radius: 11, behavior: 'kite', orbit: 300, attackCd: 5.0, attack: 'flare', ram: 6, drops: { fuel: 2, tech: 3 }, name: 'Spotter', wake: 6 },
+  spotter: { hp: 40, speed: 170, turn: 3.6, radius: 11, behavior: 'kite', orbit: 300, attackCd: 5.0, attack: 'flare', ram: 6, drops: { fuel: 2, tech: 3 }, name: 'Crows Nest Runner', wake: 6 },
   // ---- the wider fleet --------------------------------------------------
   // Everything below arrives in the middle and late waves. None of them is a
   // stat variation: each one asks the player to do something she was not
@@ -1604,24 +1604,24 @@ const ENEMY_TYPES = {
   // touch it. A boil of bubbles marks where it is about to come up. Get off
   // that spot -- or hit it with the manatee, which reaches under the water.
   sub: { hp: 78, speed: 96, turn: 2.2, radius: 13, behavior: 'kite', orbit: 170, ram: 8,
-    drops: { metal: 3, tech: 2 }, name: 'Submersible', wake: 7 },
+    drops: { metal: 3, tech: 2 }, name: 'Sea Devil', wake: 7 },
   // No guns at all. Everything inside its ring takes 60% less damage, so it
   // is the thing you shoot first and the reason a pack suddenly reads as a
   // wall instead of a queue.
   bulwark: { hp: 170, speed: 68, turn: 1.3, radius: 20, behavior: 'chase', ram: 12,
-    drops: { metal: 5, wood: 3 }, name: 'Bulwark Barge', wake: 11, big: true },
+    drops: { metal: 5, wood: 3 }, name: 'Bulwark Hulk', wake: 11, big: true },
   // Runs a lane across your front and pays mines out over the stern. The
   // water it has already crossed is the danger, not the boat.
   minelayer: { hp: 82, speed: 122, turn: 2.4, radius: 14, behavior: 'runner', orbit: 210, ram: 8,
-    drops: { powder: 3, metal: 2 }, name: 'Mine Runner', wake: 8 },
+    drops: { powder: 3, metal: 2 }, name: 'Powder Runner', wake: 8 },
   // It will not fire at a moving target. Hold still to line up a shot of your
   // own and it lines one up on you, with a sight line you can watch grow.
   stalker: { hp: 70, speed: 92, turn: 2.2, radius: 13, behavior: 'orbit', orbit: 210, ram: 6,
-    drops: { tech: 3, metal: 1 }, name: 'Stillwater Gunner', wake: 7 },
+    drops: { tech: 3, metal: 1 }, name: 'Stillwater Sniper', wake: 7 },
   // They fish in pairs on one warp. Sink one and its partner hauls a fresh
   // boat up in four seconds unless you put the partner down as well.
   twin: { hp: 64, speed: 92, turn: 2.0, radius: 13, behavior: 'chase', ram: 10,
-    drops: { wood: 2, metal: 2 }, name: 'Trawl Pair', wake: 7 },
+    drops: { wood: 2, metal: 2 }, name: 'Yoked Pair', wake: 7 },
   // Keeps the width of the bay between you and it and whistles up more boats.
   // The only answer is to go and get it.
   courier: { hp: 46, speed: 178, turn: 3.4, radius: 11, behavior: 'flee', orbit: 300, ram: 4,
@@ -1629,20 +1629,20 @@ const ENEMY_TYPES = {
   // Spins its winch up for a second, throws a hook, and reels you in. Roll
   // and the line parts.
   grappler: { hp: 96, speed: 84, turn: 1.9, radius: 15, behavior: 'kite', orbit: 190, ram: 8,
-    drops: { metal: 3, tech: 2 }, name: 'Winch Boat', wake: 8 },
+    drops: { metal: 3, tech: 2 }, name: 'Boarding Winch', wake: 8 },
   // Plated across the bow and nowhere else. Shoot the front and it sparks
   // off; get behind it and it comes apart. Bait the charge into a rock.
   ironclad: { hp: 200, speed: 84, turn: 1.25, radius: 19, behavior: 'chase', ram: 20,
-    drops: { metal: 6, powder: 2 }, name: 'Ironclad Ram', wake: 11, big: true },
+    drops: { metal: 6, powder: 2 }, name: 'Iron Ram', wake: 11, big: true },
   // Patches up whatever is most chewed up. Leave it alone and nothing you
   // shoot stays shot.
   tender: { hp: 88, speed: 86, turn: 2.0, radius: 14, behavior: 'kite', orbit: 240, ram: 6,
-    drops: { tech: 3, wood: 2 }, name: 'Repair Tender', wake: 8 },
+    drops: { tech: 3, wood: 2 }, name: 'Sawbones Tender', wake: 8 },
   // Opens its intake and drags the whole bay -- you included -- into the
   // grinder. Survive the pull and it jams, and a jammed dredge takes 60%
   // more damage for three seconds.
   dredger: { hp: 250, speed: 56, turn: 1.0, radius: 24, behavior: 'chase', ram: 16,
-    drops: { metal: 5, wood: 3, tech: 2 }, name: 'Dredge Barge', wake: 13, big: true },
+    drops: { metal: 5, wood: 3, tech: 2 }, name: 'Dredge Hulk', wake: 13, big: true },
 };
 
 // ---- hulls for the wider fleet -----------------------------------------
@@ -1787,8 +1787,8 @@ const EXTRA_BOAT_PAINT = {
 // A flag needs somewhere to fly, so the canvas grows by the flag's own
 // depth -- per hull, so a dinghy does not carry a trawler's margin.
 const PIRATE = {
-  flagK: 0.30,        // flag depth as a fraction of the half-beam
-  flagMin: 6, flagMax: 14,
+  flagK: 0.36,        // flag depth as a fraction of the half-beam
+  flagMin: 7, flagMax: 18,
   gunBeam: 15,        // half-beam (art px) below which she carries no guns
 };
 // the hull's outline, read off its own alpha: the first and last opaque row
@@ -1848,11 +1848,13 @@ function piratize(spr, key) {
   const L = hs.len * A, B = hs.beam * A, X0 = 2 * A;
   const fh = clamp(Math.round(B * PIRATE.flagK), PIRATE.flagMin, PIRATE.flagMax);
   const fl = Math.round(fh * 1.8);
-  const PADY = fh + 5, PADX = 4;
+  const PADY = fh + 5, PADX = 8;      // room for the colours, and for a spar
   const W = W0 + PADX * 2, H = H0 + PADY * 2;
   const c = newCan(W, H), x = c.getContext('2d');
   RAWP(x, src, PADX, PADY);
-  const cy = PADY + Math.round(H0 / 2);
+  // her centreline is wherever the hull says it is, not wherever the middle
+  // of the canvas happens to be
+  const cy = PADY + Math.round(spr.ay * A);
   const rng = new SeededRandom(_keyHash(key) || 7);
   // the rail, in the new canvas's coordinates
   const top = q => { const i = q - PADX; if (i < 0 || i >= map.w) return -1; const v = map.top[i]; return v < 0 ? -1 : v + PADY; };
@@ -1863,21 +1865,38 @@ function piratize(spr, key) {
   //      from directly above, so it is drawn OUTSIDE the rail where it
   //      breaks her outline instead of tucked inboard where it would not.
   if (B >= PIRATE.gunBeam) {
-    const n = B >= 30 ? 3 : 2;
+    const n = B >= 34 ? 4 : B >= 24 ? 3 : 2;
+    const step = (B >= 34 ? 0.13 : B >= 24 ? 0.17 : 0.22);
+    const len = clamp(Math.round(B * 0.22), 6, 11);   // how far she runs them out
     for (let i = 0; i < n; i++) {
-      const gx = F + Math.round(L * (0.28 + i * (B >= 30 ? 0.17 : 0.22)));
-      for (let s = -1; s <= 1; s += 2) {
-        const ry = s < 0 ? top(gx) : bot(gx);
-        if (ry < 2 || ry > H - 3) continue;
-        const inb = s < 0 ? ry + 1 : ry - 4;          // the carriage, inboard
-        HPX(x, '#14141c', gx - 2, inb, 5, 4);
-        HPX(x, '#3a2413', gx - 1, inb + 1, 3, 2);
-        const b0 = s < 0 ? ry - 5 : ry;               // and the barrel, out
-        HPX(x, '#14141c', gx, b0, 2, 7);
-        HPX(x, '#4a515a', gx, b0 + (s < 0 ? 1 : 1), 1, 5);
-        HPX(x, '#0a0d12', gx, s < 0 ? b0 : b0 + 6, 2, 1);
+      const gx = F + Math.round(L * (0.30 + i * step));
+      for (let sd = -1; sd <= 1; sd += 2) {
+        const ry = sd < 0 ? top(gx) : bot(gx);
+        if (ry < len + 2 || ry > H - len - 2) continue;
+        // the carriage, inboard of the rail, and the barrel run out over it
+        const inb = sd < 0 ? ry + 1 : ry - 5;
+        HPX(x, '#14141c', gx - 3, inb, 7, 5);
+        HPX(x, '#3a2413', gx - 2, inb + 1, 5, 3);
+        HPX(x, '#5c3a1c', gx - 2, inb + 1, 5, 1);
+        const b0 = sd < 0 ? ry - len : ry;
+        HPX(x, '#14141c', gx - 1, b0, 4, len + 1);
+        HPX(x, '#2f3642', gx, b0 + 1, 2, len - 1);
+        HPX(x, '#5a6472', gx, b0 + 1, 1, len - 1);
+        HPX(x, '#0a0d12', gx - 1, sd < 0 ? b0 : b0 + len, 4, 1);
       }
     }
+  }
+  // ---- a spar run out over the bow with a grapnel line on it: the thing
+  //      she comes alongside with, and the one change to her silhouette
+  //      that says she means to board rather than to fish.
+  {
+    const bx = F + L - 1;
+    const by = clamp(cy, 2, H - 3);
+    HPX(x, '#14141c', bx, by - 2, PADX - 1, 4);
+    HPX(x, '#8f6a3a', bx, by - 1, PADX - 2, 2);
+    HPX(x, '#c9a469', bx, by - 1, PADX - 2, 1);
+    HPX(x, '#5d5b4c', bx - 2, by - 3, PADX - 1, 1);
+    HPX(x, '#cdd8e6', bx + PADX - 3, by - 3, 2, 2);     // the hook on the end
   }
 
   // ---- somebody on deck, and it is not a fisherman: a tricorne, a red
@@ -1934,17 +1953,21 @@ function piratize(spr, key) {
   //      goes on a boat under way, and it flies clear of the rail so it
   //      breaks her silhouette against the water instead of hiding her deck.
   {
-    const mx = F + Math.round(L * 0.34);
+    // aft, where an ensign flies -- and clear of the gun ports, so the
+    // flag never covers the one barrel it would most want to be near
+    const mx = F + Math.round(L * 0.19);
     const rt = top(mx);
     const base = rt < 0 ? cy - B : rt;
     const fy = clamp(base - fh - 3, 1, H - fh - 2);
-    HPX(x, '#14141c', mx - 1, cy - 3, 3, 7);               // the staff, on deck
-    HPX(x, '#8f6a3a', mx, cy - 2, 1, 5);
-    HPX(x, '#cdd8e6', mx, cy - 3, 1, 1);
-    // the halyard, out to the hoist
+    // The staff runs from the deck out to the flag -- a mast seen from above
+    // at the same angle the working boats' masts are drawn at, so the flag
+    // is plainly HERS and not something floating past.
     const hy0 = fy + fh - 1;
-    const dy = cy - hy0, dx2 = 3;
-    for (let i = 0; i <= dy; i += 2) HPX(x, '#5d5b4c', mx - 1 - Math.round(i / Math.max(1, dy) * dx2), cy - i, 1, 1);
+    HPX(x, '#14141c', mx - 2, hy0 - 1, 4, cy - hy0 + 5);
+    HPX(x, '#8f6a3a', mx - 1, hy0, 2, cy - hy0 + 3);
+    HPX(x, '#c9a469', mx - 1, hy0, 1, cy - hy0 + 3);
+    HPX(x, '#14141c', mx - 2, cy - 1, 5, 3);               // the tabernacle
+    HPX(x, '#aeb6c1', mx - 1, cy, 3, 1);
     // the field: black, with a fold catching the light and a ragged fly
     for (let i = 0; i < fl; i++) {
       const u = i / fl;
@@ -1964,7 +1987,9 @@ function piratize(spr, key) {
     skullMark(x, sx0 - (big ? 3 : 2), sy0, big);
   }
 
-  const out = spriteFromHi(c, W / 2, H / 2);
+  // the anchor moves with the padding, so she is drawn about exactly the
+  // same point on the hull she was drawn about before
+  const out = spriteFromHi(c, spr.ax * A + PADX, spr.ay * A + PADY);
   // THE FLEET IS STILL THE FLEET. Length and beam are carried across from
   // the hull we were given, so every radius, hit ellipse and ship/boat test
   // downstream reads the boat she was before the flag went up.
@@ -1980,7 +2005,9 @@ function piratizeFleet() {
   const done = new Map();                 // one hull may fly under two names
   for (const k in SP.boats) {
     const spr = SP.boats[k];
-    if (!spr || !spr.c) continue;
+    // only the procedural hi-res fleet: the hand-drawn fallback hulls in
+    // pixelart.js are a different resolution and a different set of rules
+    if (!spr || !spr.c || !spr.hi) continue;
     if (done.has(spr.c)) { const d = done.get(spr.c); SP.boats[k] = d.s; SP.boatsHurt[k] = d.h; continue; }
     let out = null;
     try { out = piratize(spr, k); } catch (e) { out = null; }
@@ -2127,8 +2154,15 @@ function ensureExtraBoats() {
 // first moment it exists the extra hulls are built and the whole fleet runs
 // up its colours -- before anything draws a boat, rather than on the frame
 // the first one spawns. The Enemy constructor still calls this as a backstop.
+// It must wait for the PROCEDURAL fleet, not merely for SP.boats to exist:
+// pixelart.js puts a set of small hand-drawn hulls there at load, and tuning
+// the fleet against those would hand every boat in the game the collision
+// radius of a rowing boat.
 (function awaitFleet(n) {
-  if (typeof SP !== 'undefined' && SP.boats && SP.boats.dinghy) { try { ensureExtraBoats(); } catch (e) { } return; }
+  if (typeof SP !== 'undefined' && SP.boats && SP.boats.dinghy && SP.boats.dinghy.hi && typeof buildBoat === 'function') {
+    try { ensureExtraBoats(); } catch (e) { }
+    return;
+  }
   if (n > 0 && typeof setTimeout === 'function') setTimeout(() => awaitFleet(n - 1), 120);
 })(80);
 
@@ -2715,7 +2749,21 @@ class Enemy {
     G.projectiles.push(new Projectile({ x: this.x + Math.cos(a) * this.radius, y: this.y + Math.sin(a) * this.radius, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life, dmg, owner: 'enemy', sprite: spr, size: kind === 'harpoon' ? 4 : 3, trail: true, knock: 0 }));
     if (kind !== 'buckshot') this.recoilFx(a, 'flash');
   }
-  recoilFx(a, kind) { if (kind === 'flash') G.particles.sparks(this.x + Math.cos(a) * this.radius, this.y + Math.sin(a) * this.radius, 3, a, 0.6); this.kx -= Math.cos(a) * 30; this.ky -= Math.sin(a) * 30; }
+  // A gun going off on a pirate is black powder, not a muzzle spark: a hard
+  // white flash at the port, a fistful of smoke that hangs and drifts, and
+  // the hull shoved back on the recoil. The shot ITSELF is untouched -- same
+  // sprite, same speed, same dark halo and hot pulse -- because being able
+  // to read incoming fire matters more than any of this.
+  recoilFx(a, kind) {
+    if (kind === 'flash') {
+      const mx = this.x + Math.cos(a) * this.radius, my = this.y + Math.sin(a) * this.radius;
+      G.particles.sparks(mx, my, 3, a, 0.6);
+      G.particles.fire(mx + Math.cos(a) * 3, my + Math.sin(a) * 3, 1);
+      G.particles.smoke(mx + Math.cos(a) * 5, my + Math.sin(a) * 5, 2, 'rgba(206,204,198,', 3.4);
+      Audio_.tone(62, 0.16, 'sine', 0.1, -24);
+    }
+    this.kx -= Math.cos(a) * 30; this.ky -= Math.sin(a) * 30;
+  }
   hit(dmg, kx, ky, proj, silent = false) {
     if (this.dead) return;
     // ---- the wider fleet's defences. Each one is legible on the water: a
