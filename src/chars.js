@@ -1597,7 +1597,7 @@ function buildSideFluke(bitten) {
 function buildSideFlipper(dark) {
   const W = 20, H = 17, A = -0.4, ca = Math.cos(A), sa = Math.sin(A), RX = 4, RY = 10;
   // narrow at the wrist, widening into a round paddle: a mitten, not a pill
-  const L = [[0, 2.8, 3.2], [3, 3.4, 3.9], [6, 3.9, 4.8], [9, 3.8, 5.0], [11.6, 2.8, 4.0]];
+  const L = [[0, 2.8, 3.4], [3, 3.4, 4.3], [6, 3.8, 5.2], [9, 3.6, 5.2], [11.4, 2.6, 4.0]];
   const f = blobField(W, H, L.map(l => ({ x: RX + ca * l[0], y: RY + sa * l[0], rx: l[1], ry: l[2], rot: A })));
   const ramp = dark ? [HD.d, HD.m, HD.mm] : [HD.m, HD.mm, HD.l];
   const { c, ctx } = shadeBlob(W, H, f, ramp, { outline: dark ? HD.dd : HD.d, lift: 0.34, smooth: 2, contrast: 0.56 });
@@ -1605,7 +1605,7 @@ function buildSideFlipper(dark) {
   const inner = (x, y) => has(x, y) && has(x - 1, y) && has(x + 1, y) && has(x, y - 1) && has(x, y + 1);
   // the leading edge keeps a lit lip all the way to the tip (it faces
   // forward once the flipper hangs)
-  for (let x = 1; x < W - 1; x++) for (let y = 0; y < H; y++) if (has(x, y)) { if (inner(x, y + 1)) px(ctx, dark ? HD.mm : HD.pale, x, y + 1); break; }
+  for (let x = 1; x < W - 1; x++) for (let y = 0; y < H; y++) if (has(x, y)) { if (inner(x, y + 1)) px(ctx, dark ? HD.mm : HD.ll, x, y + 1); break; }
   // one hint of the nails on the tip. Three bone-white pixels was all it
   // took to make a flipper read as a machined part at her actual screen size.
   const nx = Math.round(RX + ca * 12.6), ny = Math.round(RY + sa * 12.6);
