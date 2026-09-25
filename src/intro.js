@@ -5301,7 +5301,8 @@ function cineBakeStep() {
   if (VIL.ready) return false;
   const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
   VIL_STEPS[VIL.step++]();
-  CINE_BAKE_MS += ((typeof performance !== 'undefined') ? performance.now() : 0) - t0;
+  const ms = ((typeof performance !== 'undefined') ? performance.now() : 0) - t0;
+  CINE_BAKE_MS += ms; (VIL.ms || (VIL.ms = [])).push(+ms.toFixed(1));
   if (VIL.step >= VIL_STEPS.length) VIL.ready = true;
   return true;
 }
@@ -6095,6 +6096,7 @@ const Cine = {
   scroll: 0, shake: 0, fade: 0, fadeCol: '#fff3d6',
   list: [], segs: [], opts: {}, id: null,
   get bakeMs() { return CINE_BAKE_MS; },
+  get bakeSlices() { return (VIL.ms || []).slice(); },
   get ready() { return VIL.ready; },
   // one slice of scene art per call, for idle frames before a scene is asked for
   prewarm() { if (!BUILT) return false; return cineBakeStep(); },
